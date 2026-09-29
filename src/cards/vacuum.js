@@ -799,7 +799,7 @@ class VacuumCard extends HTMLElement {
     this._update();
   }
 
-  // Start runs the configured start (Gabriel: the "Vacuum" routine button) or
+  // Start runs the configured start (e.g. an app routine button) or
   // vacuum.start; a paused job always *resumes* with vacuum.start, never a new routine.
   _start() {
     const h = this._hass, s = this._config.start;
