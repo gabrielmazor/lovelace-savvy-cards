@@ -25,7 +25,7 @@
       entities[id] = {
         entity_id: id, area_id: reg.area ?? null, device_id: reg.device ?? null, platform: reg.platform || "demo",
         entity_category: reg.category || null, hidden: !!reg.hidden, disabled_by: null,
-        display_precision: reg.precision,
+        display_precision: reg.precision, translation_key: reg.tk,
       };
     };
     const device = (id, area) => { devices[id] = { id, area_id: area }; return id; };
@@ -94,6 +94,26 @@
         { id: "sensor.gone", state: "unavail", occurrences: "/config/scenes.yaml:4" }] }, {});
     add("sensor.watchman_missing_actions", 1, { friendly_name: "Watchman Missing Actions",
       services: [{ id: "script.old_script", state: "missing", occurrences: "/config/automations.yaml:40" }] }, {});
+
+    // ---- a robot vacuum, Roborock-shaped: everything on its device, by translation_key
+    devices.dev_robot = { id: "dev_robot", area_id: null };
+    const V = "vacuum.robot", P = "robot";
+    const vac = (id, state, attributes, tk, category) => add(id, state, attributes, { device: "dev_robot", platform: "roborock", tk, category });
+    vac(V, "docked", { friendly_name: "Robot", fan_speed: "balanced", fan_speed_list: ["quiet", "balanced", "turbo", "max"],
+      supported_features: 4 | 8 | 16 | 32 | 512 | 1024 | 2048 | 4096 | 8192 | 16384 });
+    vac(`sensor.${P}_status`, "charging_complete", { friendly_name: "Status", device_class: "enum" }, "status", "diagnostic");
+    vac(`sensor.${P}_battery`, "100", { friendly_name: "Robot Battery", device_class: "battery", unit_of_measurement: "%" }, "battery", "diagnostic");
+    vac(`sensor.${P}_vacuum_error`, "none", { friendly_name: "Vacuum error", device_class: "enum" }, "vacuum_error", "diagnostic");
+    vac(`sensor.${P}_last_clean_begin`, ago(3 * HOUR), { friendly_name: "Last clean begin", device_class: "timestamp" }, "last_clean_start", "diagnostic");
+    vac(`sensor.${P}_last_clean_end`, ago(2 * HOUR), { friendly_name: "Last clean end", device_class: "timestamp" }, "last_clean_end", "diagnostic");
+    vac(`sensor.${P}_filter_time_left`, "96", { friendly_name: "Filter time left", device_class: "duration", unit_of_measurement: "h" }, "filter_time_left", "diagnostic");
+    vac(`sensor.${P}_main_brush_time_left`, String(212 * 3600), { friendly_name: "Main brush time left", device_class: "duration", unit_of_measurement: "s" }, "main_brush_time_left", "diagnostic");
+    vac(`binary_sensor.${P}_water_shortage`, "off", { friendly_name: "Water shortage", device_class: "problem" }, "water_shortage", "diagnostic");
+    vac(`select.${P}_mop_mode`, "standard", { friendly_name: "Mop mode", options: ["standard", "deep", "fast"] }, "mop_mode", "config");
+    vac(`switch.${P}_dust_emptying`, "off", { friendly_name: "Empty bin" }, "dust_emptying");
+    // app routines: buttons on the device with no translation_key and no category
+    add("button.robot_vacuum", ago(26 * HOUR), { friendly_name: "Robot Vacuum" }, { device: "dev_robot", platform: "roborock" });
+    add("button.robot_mop", "unknown", { friendly_name: "Robot Mop" }, { device: "dev_robot", platform: "roborock" });
 
     return { states, entities, devices, areas };
   }

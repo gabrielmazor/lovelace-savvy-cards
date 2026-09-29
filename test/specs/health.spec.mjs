@@ -23,7 +23,7 @@ export default async function ({ browser, base, check }) {
       && JSON.stringify(r.all.groups) === JSON.stringify(["Unavailable · 2", "Low batteries · 1"]), JSON.stringify(r.all));
     check(`${tag} with Watchman the pill equals the core total the home cog uses`, r.withW.pill === `${r.coreTotal} ISSUES` && r.withW.groups[0] === "Watchman · 3", JSON.stringify(r.withW));
     check(`${tag} battery source: low first, the rest dimmed, phone excluded`, r.batt.pill === "1 LOW"
-      && JSON.stringify(r.batt.rows) === JSON.stringify(["Front Door Battery", "Motion Sensor Battery", "Remote Battery"]), JSON.stringify(r.batt));
+      && JSON.stringify(r.batt.rows) === JSON.stringify(["Front Door Battery", "Motion Sensor Battery", "Remote Battery", "Robot Battery"]), JSON.stringify(r.batt));
     check(`${tag} the pre-Savvy watchman config still works`, r.legacy.pill === "3 ISSUES" && r.legacy.rows.length === 3, JSON.stringify(r.legacy));
 
     // row tap -> more-info; footer button -> its action
