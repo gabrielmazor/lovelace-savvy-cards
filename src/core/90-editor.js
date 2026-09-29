@@ -72,15 +72,24 @@ class SavvyEditor extends HTMLElement {
     for (const f of this.shadowRoot.querySelectorAll("ha-form")) f.hass = hass;
     for (const l of this.shadowRoot.querySelectorAll("savvy-list-editor")) l.hass = hass;
   }
+  _shown() {
+    const d = { ...this._config };
+    for (const [k, v] of this._defaults || []) if (d[k] === undefined) d[k] = v;
+    return d;
+  }
+
   // Cards override: returns the schema for the current config (may depend on hass, e.g.
   // climate lists the area's climate entities).
   schema() { return []; }
 
   _emit(config) {
-    this._config = cleanConfig(config);
+    // an option equal to its default is left out, so the YAML stays as short as the choices
+    const out = { ...config };
+    for (const [k, v] of this._defaults || []) if (out[k] === v) delete out[k];
+    this._config = cleanConfig(out);
     // HA answers config-changed with setConfig, but the forms mustn't show stale values
     // meanwhile (or where nothing answers)
-    for (const f of this.shadowRoot.querySelectorAll("ha-form")) f.data = this._config;
+    for (const f of this.shadowRoot.querySelectorAll("ha-form")) f.data = this._shown();
     this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: this._config }, bubbles: true, composed: true }));
   }
 
@@ -91,6 +100,10 @@ class SavvyEditor extends HTMLElement {
     let wrap = root.querySelector(".sv-ed");
     if (!wrap) { wrap = document.createElement("div"); wrap.className = "sv-ed"; root.appendChild(wrap); }
     const schema = this.schema(this._hass, this._config) || [];
+    // defaults (schema entries with `default`) show in the form while the option is unset
+    this._defaults = new Map();
+    const collect = (list) => list.forEach((e) => { if (e.name && e.default !== undefined) this._defaults.set(e.name, e.default); if (e.schema && !e.name) collect(e.schema); });
+    collect(schema.filter((e) => e.type !== "list"));
     // consecutive scalar entries share one ha-form; each list gets its own editor
     const groups = [];
     for (const entry of schema) {
@@ -121,7 +134,7 @@ class SavvyEditor extends HTMLElement {
         node.computeLabel = (s) => labels.get(s.name) || title(s.name);
         node.computeHelper = (s) => helps.get(s.name) || "";
         node.schema = g;
-        node.data = this._config;
+        node.data = this._shown();
         node.hass = this._hass;
       } else {
         if (!node) {
@@ -133,7 +146,7 @@ class SavvyEditor extends HTMLElement {
           });
         }
         node.hass = this._hass;
-        node.setup(g, this._config[g.name]);
+        node.setup(g, this._config[g.name], this._config);
       }
       nodes.push(node);
     });
@@ -153,9 +166,12 @@ class SavvyListEditor extends HTMLElement {
     this._hass = h;
     for (const f of this.shadowRoot.querySelectorAll("ha-form, ha-entity-picker, ha-selector")) f.hass = h;
   }
-  setup(spec, items) {
+  // spec.initial(hass, config): what to show while the option is unset (lights-card's order
+  // starts as the discovered order, so reordering works from the first touch)
+  setup(spec, items, config) {
     this._spec = spec;
-    this._items = [].concat(items || []);
+    const given = [].concat(items || []);
+    this._items = given.length || !spec.initial ? given : [].concat(spec.initial(this._hass, config || {}) || []);
     this._render();
   }
   _emit() {
@@ -260,7 +276,7 @@ const defineEditor = (type, schemaFn) => {
 const S = {
   area: (name = "area", label = "Area") => ({ name, label, selector: { area: {} } }),
   entity: (name, label, domain, extra = {}) => ({ name, label, selector: { entity: domain ? { domain } : {} }, ...extra }),
-  bool: (name, label, helper) => ({ name, label, helper, selector: { boolean: {} } }),
+  bool: (name, label, helper, dflt) => ({ name, label, helper, selector: { boolean: {} }, ...(dflt !== undefined ? { default: dflt } : {}) }),
   text: (name, label, helper) => ({ name, label, helper, selector: { text: {} } }),
   icon: (name = "icon", label = "Icon") => ({ name, label, selector: { icon: {} } }),
   number: (name, label, min, max, step = 1, unit) => ({ name, label, selector: { number: { min, max, step, mode: "box", unit_of_measurement: unit } } }),
