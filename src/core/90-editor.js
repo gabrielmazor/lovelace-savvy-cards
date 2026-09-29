@@ -61,9 +61,13 @@ class SavvyEditor extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this._open = new Set();
   }
+  // HA answers every config-changed with setConfig. When that's our own change coming
+  // back, nothing is rebuilt: rebuilding replaces the field being typed in, and the cursor
+  // is lost after every character (most visibly in Safari).
   setConfig(config) {
-    this._config = { ...config };
-    this._render();
+    const same = this._config && JSON.stringify(cleanConfig({ ...config })) === JSON.stringify(this._config);
+    this._config = same ? this._config : { ...config };
+    if (!same) this._render();
   }
   set hass(hass) {
     const first = !this._hass;
@@ -89,7 +93,10 @@ class SavvyEditor extends HTMLElement {
     this._config = cleanConfig(out);
     // HA answers config-changed with setConfig, but the forms mustn't show stale values
     // meanwhile (or where nothing answers)
-    for (const f of this.shadowRoot.querySelectorAll("ha-form")) f.data = this._shown();
+    const shown = this._shown(), shownKey = JSON.stringify(shown);
+    for (const f of this.shadowRoot.querySelectorAll("ha-form")) {
+      if (f.__dataKey !== shownKey) { f.__dataKey = shownKey; f.data = shown; }
+    }
     this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: this._config }, bubbles: true, composed: true }));
   }
 
@@ -133,8 +140,12 @@ class SavvyEditor extends HTMLElement {
         walk(g);
         node.computeLabel = (s) => labels.get(s.name) || title(s.name);
         node.computeHelper = (s) => helps.get(s.name) || "";
-        node.schema = g;
-        node.data = this._shown();
+        // a new schema array makes ha-form rebuild its fields: only hand it one when the
+        // schema really changed (by content; functions don't count)
+        const schemaKey = JSON.stringify(g);
+        if (node.__schemaKey !== schemaKey) { node.__schemaKey = schemaKey; node.schema = g; }
+        const data = this._shown(), dataKey = JSON.stringify(data);
+        if (node.__dataKey !== dataKey) { node.__dataKey = dataKey; node.data = data; }
         node.hass = this._hass;
       } else {
         if (!node) {
@@ -169,12 +180,20 @@ class SavvyListEditor extends HTMLElement {
   // spec.initial(hass, config): what to show while the option is unset (lights-card's order
   // starts as the discovered order, so reordering works from the first touch)
   setup(spec, items, config) {
-    this._spec = spec;
     const given = [].concat(items || []);
-    this._items = given.length || !spec.initial ? given : [].concat(spec.initial(this._hass, config || {}) || []);
+    const next = given.length || !spec.initial ? given : [].concat(spec.initial(this._hass, config || {}) || []);
+    // unchanged items: keep the rows (and whatever field in them has the cursor)
+    const key = JSON.stringify([spec.name, spec.label, next]);
+    if (this._spec && key === this._key) return;
+    this._key = key;
+    this._spec = spec;
+    this._items = next;
     this._render();
   }
+  // what the list last sent: its echo back through setup() changes nothing
+  _sent() { this._key = JSON.stringify([this._spec.name, this._spec.label, this._items]); }
   _emit() {
+    this._sent();
     // a copy: listeners keep what they were given, later edits don't rewrite it
     this.dispatchEvent(new CustomEvent("list-changed", { detail: { items: [...this._items] }, bubbles: true, composed: true }));
     this._render();
@@ -238,6 +257,7 @@ class SavvyListEditor extends HTMLElement {
         form.addEventListener("value-changed", (e) => {
           e.stopPropagation();
           this._items[i] = cleanConfig(e.detail.value);
+          this._sent();
           this.dispatchEvent(new CustomEvent("list-changed", { detail: { items: [...this._items] }, bubbles: true, composed: true }));
         });
         body.appendChild(form);

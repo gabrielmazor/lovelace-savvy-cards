@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1
+
+- **Editor: typing no longer loses the cursor after every character** (most visible in
+  Safari). Home Assistant answers each change by handing the config back, and the editor
+  rebuilt its form on the echo, replacing the field being typed in. It now ignores its
+  own echo, only hands HA's form a new schema when the schema really changed, and keeps
+  list rows (chips) in place while you type in them.
+
 ## 0.1.0
 
 The first four cards, on the shared Savvy core.

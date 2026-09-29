@@ -195,7 +195,7 @@ if (typeof window !== "undefined") window.makeHass = makeHass;
 if (typeof window !== "undefined" && !customElements.get("ha-form")) {
   const flatten = (schema) => schema.flatMap((s) => (s.schema ? flatten(s.schema) : [s]));
   customElements.define("ha-form", class extends HTMLElement {
-    set schema(v) { this._schema = v; this._render(); }
+    set schema(v) { this.__schemaSets = (this.__schemaSets || 0) + 1; this._schema = v; this._render(); }
     get schema() { return this._schema; }
     set data(v) { this._data = v; this._render(); }
     get data() { return this._data; }

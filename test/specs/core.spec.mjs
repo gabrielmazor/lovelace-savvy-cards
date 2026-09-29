@@ -194,6 +194,31 @@ export default async function ({ browser, base, check }) {
     && JSON.parse(ed.changes[3]).chips[2].entity === "light.d"
     && !("area" in JSON.parse(ed.changes[4])) && JSON.parse(ed.changes[4]).chips.length === 3, ed.changes.join("\n"));
 
+  // ---- editor: typing survives HA's round trip (config-changed -> setConfig)
+  const typing = await page.evaluate(async () => {
+    const s = window.__savvy;
+    s.defineEditor("savvy-typing-card", () => [s.S.text("title", "Title"), s.S.bool("show_toggle", "Toggle", null, true), s.S.chips()]);
+    const el = document.createElement("savvy-typing-card-editor");
+    document.body.appendChild(el);
+    // behave like HA: every config-changed comes straight back as setConfig
+    el.addEventListener("config-changed", (e) => el.setConfig(e.detail.config));
+    el.hass = window.hass;
+    el.setConfig({ type: "custom:x", chips: [{ entity: "light.a", name: "A" }] });
+    await new Promise((r) => setTimeout(r, 50));
+    const form = el.shadowRoot.querySelector("ha-form");
+    const sets0 = form.__schemaSets;
+    for (const t of ["L", "Li", "Liv", "Livi"]) form.set("title", t);       // four keystrokes
+    const sameForm = el.shadowRoot.querySelector("ha-form") === form;
+    const list = el.shadowRoot.querySelector("savvy-list-editor");
+    list.shadowRoot.querySelector('[data-a="edit"]').click();              // open the chip
+    const itemForm = list.shadowRoot.querySelector(".sv-item-body ha-form");
+    for (const t of ["B", "Be", "Bed"]) itemForm.set("name", t);            // type in the chip's name
+    const sameItemForm = list.shadowRoot.querySelector(".sv-item-body ha-form") === itemForm;
+    return { sameForm, schemaResets: form.__schemaSets - sets0, sameItemForm, title: el._config.title, chip: el._config.chips[0].name };
+  });
+  check("editor: typing keeps the field (no rebuild on HA's echo), top level and in a chip",
+    typing.sameForm && typing.schemaResets === 0 && typing.sameItemForm && typing.title === "Livi" && typing.chip === "Bed", JSON.stringify(typing));
+
   check("no page errors", errors.length === 0, errors.join(" | "));
   await page.close();
 }
