@@ -36,7 +36,7 @@ const STYLE = `${BASE_CSS}
   .titles { display: flex; flex-direction: column; min-width: 0; }
   .when { font-size: 11.5px; line-height: 15px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .group { display: flex; align-items: baseline; gap: 6px; }
-  .group .gs[data-ok] { color: var(--lvl-good); }
+  .rows .empty.ok { flex: none; padding: 4px 4px 2px; }
   .group .gw { margin-inline-start: auto; font-weight: 500; letter-spacing: 0; text-transform: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .group { flex: none; margin: 8px 4px 2px; font-size: 11px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em;
     text-transform: uppercase; color: var(--secondary-text-color); }
@@ -168,6 +168,8 @@ class SavvyHealthCard extends HTMLElement {
       if (key === "watchman" && !sum.opts.watchman.length) continue;
       const list = key === "battery" ? sum.battery.filter((r) => r.alert) : sum[key];
       rows.push({ key: `g:${key}`, group: GROUP_TITLE[key], count: sum.counts[key], lastRun: key === "watchman" });
+      // an empty category says so the way a single list does: a tick and "All good", below its title
+      if (!sum.counts[key]) rows.push({ key: `ok:${key}`, ok: true });
       rows.push(...list.map((r) => ({ ...r, groupStart: false, dim: false })));
     }
     return { total: sum.total, rows };
@@ -199,7 +201,10 @@ class SavvyHealthCard extends HTMLElement {
       let node = this._rows.get(r.key);
       if (!node) {
         node = document.createElement("div");
-        if (r.group) {
+        if (r.ok) {
+          node.className = "empty ok";
+          node.innerHTML = `<ha-icon icon="mdi:check-circle-outline"></ha-icon><span>All good</span>`;
+        } else if (r.group) {
           node.className = "group";
           node.innerHTML = `<span class="gt"></span><span class="gs"></span><span class="gw"></span>`;
         }
@@ -212,10 +217,10 @@ class SavvyHealthCard extends HTMLElement {
         }
         this._rows.set(r.key, node);
       }
+      if (r.ok) { box.appendChild(node); continue; }
       if (r.group) {
         text(node.querySelector(".gt"), r.group);
-        text(node.querySelector(".gs"), r.count ? `· ${r.count}` : "· All good");
-        attr(node.querySelector(".gs"), "data-ok", !r.count);
+        text(node.querySelector(".gs"), r.count ? `· ${r.count}` : "");
         node.__lastRun = r.lastRun;
         box.appendChild(node);
         continue;

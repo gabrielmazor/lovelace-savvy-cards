@@ -20,6 +20,25 @@ const VACUUM_WS = `window.hass.callWS = async (m) => {
 };`;
 // the tiles: three rooms side by side (the first is mounted by the loop)
 const TILES = `window.__tiles = () => { for (const area of ["bedroom", "office"]) window.mount("savvy-room-tile", { area }, 260); };`;
+// a day of history, and a month of statistics, for the graphs
+const RECORDER = `window.hass.callWS = async (m) => {
+  const now = Date.now(), H = 3600000, out = {};
+  for (const id of m.entity_ids || m.statistic_ids) {
+    if (m.type === "history/history_during_period") out[id] = Array.from({ length: 48 }, (_, i) => ({ s: String(21.5 + 2.2 * Math.sin(i / 7) + (i % 5) * 0.08), lu: (now - (48 - i) * H / 2) / 1000 }));
+    else out[id] = Array.from({ length: 30 }, (_, i) => ({ mean: 3 + (i % 7) * 0.6 + Math.sin(i) * 0.4, start: now - (30 - i) * 24 * H }));
+  }
+  return out;
+};`;
+// Frigate, enough for the recordings summary
+const FRIGATE = `window.hass.callWS = async (m) => {
+  const now = Date.now() / 1000;
+  if (m.type === "frigate/reviews/get") return [{ id: "r1", camera: m.cameras[0], start_time: now - 300, end_time: now - 240, severity: "alert", has_been_reviewed: false, thumb_path: "/x", data: { objects: ["person"] } },
+    { id: "r2", camera: m.cameras[0], start_time: now - 7200, end_time: now - 7150, severity: "detection", has_been_reviewed: true, thumb_path: "/x", data: { objects: ["dog"] } }];
+  if (m.type === "frigate/recordings/get") return [];
+  if (m.type === "frigate/recordings/summary") return [];
+  if (m.type === "auth/sign_path") return { path: m.path };
+  throw new Error("unmocked");
+};`;
 const SHOTS = [
   ["lights", "savvy-lights-card", { area: "living_room", featured: ["light.living_room_ceiling"], chips: [{ entity: "switch.living_room_plug", name: "Plug" }] }, 520],
   ["lights-compact", "savvy-lights-card", { area: "living_room", layout: "compact" }, 520],
@@ -35,6 +54,16 @@ const SHOTS = [
     entities: [{ entity: "input_boolean.movie_mode", name: "Movie", icon: "mdi:movie-open" }] }, 600],
   ["heading", "savvy-heading-card", { area: "living_room", mode: "input_select.living_room_scene" }, 520],
   ["tiles", "savvy-room-tile", { area: "living_room", mode: "input_select.living_room_scene" }, 260, TILES],
+  ["entity", "savvy-entity-card", { entity: "person.alex", chips: [{ entity: "switch.living_room_plug", name: "Plug", icon: "mdi:power-plug", color: "blue" },
+    { entity: "sensor.alex_phone_battery", name: "Phone" }] }, 340],
+  ["graph", "savvy-graph-card", { title: "House", entities: [{ entity: "sensor.living_room_temperature", name: "Living room",
+    thresholds: [{ value: 0, level: "good" }, { value: 23, level: "warn" }, { value: 26, level: "bad" }] }, { entity: "sensor.energy_cost", name: "Energy", hours_to_show: 720 },
+    { entity: "binary_sensor.living_room_door", name: "Door" }, { entity: "sensor.watchman_last_parse", name: "Checked" }] }, 560, RECORDER],
+  ["snapshot", "savvy-snapshot-card", { area: "living_room", chips: [{ entity: "input_boolean.movie_mode", name: "Movie", icon: "mdi:movie-open" }] }, 460],
+  ["snapshot-compact", "savvy-snapshot-card", { area: "bedroom", layout: "compact" }, 400],
+  ["media", "savvy-media-card", { area: "living_room", presets: [{ entity: "script.good_night", name: "Good night" }] }, 460],
+  ["media-compact", "savvy-media-card", { area: "kitchen", layout: "compact" }, 460],
+  ["camera", "savvy-camera-card", { area: ["living_room", "kitchen"] }, 820, FRIGATE],
 ];
 
 const TYPES = { ".html": "text/html", ".js": "application/javascript" };
@@ -70,7 +99,8 @@ for (const [name, type, config, width, setup] of SHOTS) {
       if (!(await page.evaluate(() => window.cards.some((c) => (c._springs || []).some((s) => !s.idle && s.group !== "liquid"))))) break;
       await page.waitForTimeout(150);
     }
-    await page.locator("#stage").screenshot({ path: path.join(OUT, `${name}-${theme}.png`) });
+    const stage = await page.evaluateHandle(() => document.getElementById("stage"));   // not a card's own #stage
+    await stage.asElement().screenshot({ path: path.join(OUT, `${name}-${theme}.png`) });
     await page.close();
   }
   process.stdout.write(`${name} `);

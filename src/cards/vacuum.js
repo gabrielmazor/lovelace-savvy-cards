@@ -1659,7 +1659,8 @@ const EDITOR = defineEditor("savvy-vacuum-card", () => {
     S.entity("entity", "Vacuum", "vacuum"),
     S.grid(S.text("name", "Name"), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (one row)" }])),
     S.entity("start", "What Start runs", null, { helper: "A button, script or scene (e.g. an app routine). Empty: the vacuum's own start. Resume after a pause is always a real resume." }),
-    S.grid(S.text("start_name", "Start label"), S.text("navigation_path", "Tap the name to open")),
+    S.text("start_name", "Start label"),
+    S.nav("navigation_path", "Navigate to on tap", "Where tapping the name goes."),
     S.section("Parts", [
       { name: "map", label: "Map", helper: "Popup adds a Map button; inline shows it in the card. Or pick an image/camera entity.",
         selector: { select: { mode: "dropdown", custom_value: true, options: [

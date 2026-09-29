@@ -81,6 +81,7 @@
     add("binary_sensor.living_room_door", "off", { friendly_name: "Living Room Door", device_class: "door" }, { area: "living_room", changed: 47 * MIN });
     add("binary_sensor.bedroom_window", "on", { friendly_name: "Bedroom Window", device_class: "window" }, { area: "bedroom", changed: 2 * HOUR });
     add("binary_sensor.kitchen_motion", "off", { friendly_name: "Kitchen Motion", device_class: "motion" }, { area: "kitchen" });
+    add("binary_sensor.hallway_leak", "off", { friendly_name: "Hallway Leak", device_class: "moisture" }, { area: "hallway" });
     add("lock.front_door", "locked", { friendly_name: "Front Door" }, { area: "hallway" });
     add("lock.back_door", "unlocked", { friendly_name: "Back Door" }, { area: "kitchen" });
     add("alarm_control_panel.home_alarm", "armed_home", { friendly_name: "Home Alarm" }, {});
@@ -89,6 +90,19 @@
     add("media_player.living_room_tv", "playing", { friendly_name: "Living Room TV", device_class: "tv", media_title: "A Show", supported_features: 21437, volume_level: 0.3 }, { area: "living_room" });
     add("media_player.living_room_speaker", "idle", { friendly_name: "Living Room Speaker", device_class: "speaker", supported_features: 21437, volume_level: 0.4 }, { area: "living_room" });
     add("media_player.kitchen_speaker", "playing", { friendly_name: "Kitchen Speaker", device_class: "speaker", media_title: "A Song", supported_features: 21437, volume_level: 0.25 }, { area: "kitchen" });
+
+    // ---- cameras: two through Frigate, one plain
+    const still = (c) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='16' height='9'><rect width='16' height='9' fill='${c}'/></svg>`)}`;
+    add("camera.living_room", "streaming", { friendly_name: "Living Room", entity_picture: still("#2d3b52") }, { area: "living_room", platform: "frigate" });
+    add("camera.kitchen", "streaming", { friendly_name: "Kitchen", entity_picture: still("#3b4a2d") }, { area: "kitchen", platform: "frigate" });
+    add("camera.hallway", "idle", { friendly_name: "Hallway Cam", entity_picture: still("#4a2d3b") }, { area: "hallway", platform: "generic" });
+
+    // ---- people, zones, a script
+    add("person.alex", "home", { friendly_name: "Alex" }, { changed: 3 * HOUR });
+    add("person.sam", "Work", { friendly_name: "Sam Rivera" }, { changed: 40 * MIN });
+    add("zone.work", "0", { friendly_name: "Work", icon: "mdi:briefcase" }, {});
+    add("sensor.alex_phone_battery", 64, { friendly_name: "Alex Phone Battery", device_class: "battery", unit_of_measurement: "%" }, { platform: "mobile_app", category: "diagnostic" });
+    add("script.good_night", "off", { friendly_name: "Good Night" }, {});
 
     // ---- the rest
     add("weather.home", "sunny", { friendly_name: "Home", temperature: 26, humidity: 40 }, {});

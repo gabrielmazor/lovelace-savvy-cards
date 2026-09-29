@@ -296,7 +296,7 @@ class SavvyHeadingCard extends SavvyCard {
 const EDITOR = defineEditor("savvy-heading-card", (hass, c) => [
   S.area(),
   S.grid(S.text("name", "Name"), S.icon("icon", "Icon")),
-  { name: "navigation_path", label: "Tapping the name opens", helper: "A dashboard path, e.g. /lovelace/living-room. Or set a tap action below.", selector: { text: {} } },
+  S.nav("navigation_path", "Navigate to on tap", "Where tapping the name goes. Or set a tap action below."),
   S.grid(S.select("heading_style", "Style", [{ value: "title", label: "Title" }, { value: "subtitle", label: "Subtitle" }]),
     S.bool("filled", "On a card background", null, false)),
   ...modeSchema(hass, c),

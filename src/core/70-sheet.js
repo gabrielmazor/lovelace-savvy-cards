@@ -80,13 +80,13 @@ function portalRoot() {
 // While a popup is open the page underneath stays put: a press on the backdrop closes it
 // (and goes no further), a scroll on the backdrop closes it without scrolling, and a
 // scroll inside the popup never carries on into the page.
-function guardBackdrop(scrim, panel, close) {
+function guardBackdrop(scrim, panel, close, bodySel = ".sv-body") {
   const swallow = (e) => { e.preventDefault(); e.stopPropagation(); };
   scrim.addEventListener("pointerdown", (e) => { swallow(e); close(); });
   for (const t of ["click", "pointerup", "contextmenu"]) scrim.addEventListener(t, swallow);
   for (const t of ["wheel", "touchmove"]) scrim.addEventListener(t, (e) => { swallow(e); close(); }, { passive: false });
   const stuck = (e) => {
-    const box = e.target.closest?.(".sv-body");
+    const box = e.composedPath().find((n) => n.matches?.(bodySel));
     if (!box || box.scrollHeight <= box.clientHeight + 1) { e.preventDefault(); return; }
     // at an end, a wheel that would go further is kept in
     if (e.type === "wheel" && ((e.deltaY < 0 && box.scrollTop <= 0) || (e.deltaY > 0 && box.scrollTop + box.clientHeight >= box.scrollHeight - 1))) e.preventDefault();

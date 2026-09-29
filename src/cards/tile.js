@@ -602,7 +602,7 @@ class SavvyRoomTile extends SavvyCard {
 const EDITOR = defineEditor("savvy-room-tile", (hass, c) => [
   S.area(),
   S.grid(S.text("name", "Name"), S.icon("icon", "Icon")),
-  { name: "navigation_path", label: "Tapping opens", helper: "A dashboard path, e.g. /lovelace/kitchen. Empty: tapping lists the room's lights.", selector: { text: {} } },
+  S.nav("navigation_path", "Navigate to on tap", "Empty: tapping lists the room's lights."),
   ...modeSchema(hass, c),
   { name: "temperature", label: "Temperature", helper: "Found from the area. Pick another to override.", selector: { entity: { domain: ["sensor", "climate"] } } },
   S.section("Lights", [

@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.2.2 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.3.0 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.2.2";
+const SAVVY_VERSION = "0.3.0";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -1296,13 +1296,13 @@ function portalRoot() {
 // While a popup is open the page underneath stays put: a press on the backdrop closes it
 // (and goes no further), a scroll on the backdrop closes it without scrolling, and a
 // scroll inside the popup never carries on into the page.
-function guardBackdrop(scrim, panel, close) {
+function guardBackdrop(scrim, panel, close, bodySel = ".sv-body") {
   const swallow = (e) => { e.preventDefault(); e.stopPropagation(); };
   scrim.addEventListener("pointerdown", (e) => { swallow(e); close(); });
   for (const t of ["click", "pointerup", "contextmenu"]) scrim.addEventListener(t, swallow);
   for (const t of ["wheel", "touchmove"]) scrim.addEventListener(t, (e) => { swallow(e); close(); }, { passive: false });
   const stuck = (e) => {
-    const box = e.target.closest?.(".sv-body");
+    const box = e.composedPath().find((n) => n.matches?.(bodySel));
     if (!box || box.scrollHeight <= box.clientHeight + 1) { e.preventDefault(); return; }
     // at an end, a wheel that would go further is kept in
     if (e.type === "wheel" && ((e.deltaY < 0 && box.scrollTop <= 0) || (e.deltaY > 0 && box.scrollTop + box.clientHeight >= box.scrollHeight - 1))) e.preventDefault();
@@ -2280,6 +2280,8 @@ const S = {
   number: (name, label, min, max, step = 1, unit) => ({ name, label, selector: { number: { min, max, step, mode: "box", unit_of_measurement: unit } } }),
   select: (name, label, options) => ({ name, label, selector: { select: { mode: "dropdown", options } } }),
   action: (name, label) => ({ name, label, selector: { ui_action: {} } }),
+  // HA's own page picker: every dashboard and view, or a path typed in
+  nav: (name, label, helper) => ({ name, label, helper, selector: { navigation: {} } }),
   color: (name = "color", label = "Colour") => ({ name, label, selector: { text: {} }, helper: "An HA colour name (blue, amber…) or a hex like #F5B83D" }),
   grid: (...schema) => ({ type: "grid", name: "", schema }),
   section: (label, schema, expanded = false) => ({ type: "expandable", name: "", title: label, expanded, schema }),
@@ -2340,6 +2342,1914 @@ if (window.__SAVVY_TEST__) {
     roomBadges, roomTemperature, areaLights, houseLights, housePlaying, houseTemperature, houseSecurity, modeInfo, legacyBadges, chipState, portalRoot,
   };
 }
+
+// ===== cards/camera.js =====
+(() => {
+// savvy-camera-card: live cameras, and Frigate's recordings when the cameras come from it.
+//
+// Layout follows the card's width (a camera per ~380px, or `columns:`):
+//   pager   one camera at a time, swipe between them; playback keeps its moment when you
+//           swipe, so the same second can be seen from another angle
+//   grid    every camera side by side, all live; playback is synced: the timeline, a
+//           review, play / pause and the seek bar drive every camera at once
+//
+// `area` finds the room's cameras (or list them in `cameras`). Frigate turns itself on
+// when the cameras come from the Frigate integration (`frigate: false` turns it off,
+// `frigate: { instance: … }` names another instance). Through Home Assistant's own APIs:
+//   reviews    frigate/reviews/get (alerts, detections), else frigate/events/get
+//   activity   frigate/recordings/get: every segment's motion score is the activity graph
+//   playback   Frigate's HLS playlist where the browser plays HLS (Safari, iOS), else the
+//              MP4 the integration cuts; URLs signed with auth/sign_path
+//
+//   type: custom:savvy-camera-card
+//   area: living_room                 recordings: popup | inline | false
+
+const DAY = 86400;
+const TILE_MIN = 380;         // px of card width per camera before the grid adds a column
+const REFRESH_MS = 60000;     // today's reviews/activity, while on screen
+const SUMMARY_MS = 600000;
+const SIGN_TTL = 3600;
+const PAD_S = 3;              // seconds of context either side of a review
+const DRIFT_S = 0.45;         // synced playback: re-align a camera further off than this
+const BUCKETS = 288;          // activity graph: 5-minute buckets
+
+const MOTION = {
+  press:   { response: 0.12, damping: 1 },
+  release: { response: 0.3,  damping: 0.82 },
+  ui:      { response: 0.4,  damping: 1 },
+  pager:   { response: 0.42, damping: 0.86 },
+  pill:    { response: 0.34, damping: 0.82 },
+  scrub:   { response: 0.1,  damping: 1 },
+  drag:    { response: 0.34, damping: 1 },
+  graph:   { response: 0.7,  damping: 1 },
+  sheetIn:  { response: 0.38, damping: 0.82 },
+  sheetOut: { response: 0.24, damping: 1 },
+};
+
+const COLORS = { live: "#E06666", alert: "#E06666", detection: "#E8A33D" };
+
+const LABEL_ICONS = {
+  person: "mdi:account", car: "mdi:car", motorcycle: "mdi:motorbike", bicycle: "mdi:bicycle",
+  dog: "mdi:dog", cat: "mdi:cat", bird: "mdi:bird", package: "mdi:package-variant-closed",
+  face: "mdi:face-recognition", license_plate: "mdi:card-text-outline", speech: "mdi:account-voice",
+};
+
+
+
+const pad2 = (n) => String(n).padStart(2, "0");
+const hhmm = (s) => { const d = new Date(s * 1000); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+const mmss = (s) => {
+  s = Math.max(0, Math.round(s));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
+  return h ? `${h}:${pad2(m)}:${pad2(x)}` : `${m}:${pad2(x)}`;
+};
+const span = (s) => {
+  const m = Math.round(s / 60);
+  if (m < 1) return "under a minute";
+  if (m < 60) return `${m} min`;
+  return `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""}`;
+};
+const dayStart = (offset) => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - offset);
+  return d.getTime() / 1000;
+};
+const ymd = (s) => { const d = new Date(s * 1000); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
+const nowS = () => Date.now() / 1000;
+const parseWS = (r) => (typeof r === "string" ? JSON.parse(r) : r) || [];
+
+const STYLE = `
+:host {
+  display: block; -webkit-tap-highlight-color: transparent;
+  /* repeated here from ha-card so the recordings popup, which lives outside it, matches */
+  --well: color-mix(in oklab, var(--primary-text-color) 6%, transparent);
+  --line: color-mix(in oklab, var(--primary-text-color) 9%, transparent);
+  --live: ${COLORS.live};
+  --alert-c: ${COLORS.alert};
+  --det-c: ${COLORS.detection};
+  --accent: 88 142 233;
+}
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; }
+
+ha-card {
+  --radius: var(--ha-card-border-radius, 18px);
+  --pad: 12px;
+  --well: color-mix(in oklab, var(--primary-text-color) 6%, transparent);
+  --line: color-mix(in oklab, var(--primary-text-color) 9%, transparent);
+  --live: ${COLORS.live};
+  --alert-c: ${COLORS.alert};
+  --det-c: ${COLORS.detection};
+  --accent: 88 142 233;
+  position: relative;
+  box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: var(--pad);
+  border-radius: var(--radius);
+  border: var(--ha-card-border-width, 1px) solid var(--ha-card-border-color, var(--line));
+  background: var(--ha-card-background, var(--card-background-color));
+  box-shadow: var(--ha-card-box-shadow, none);
+  color: var(--primary-text-color);
+  font-family: var(--camera-card-font-family, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI Variable Text", "Segoe UI", Roboto, sans-serif);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  isolation: isolate;
+  container-type: inline-size;
+  transition: background-color 240ms ease, border-color 240ms ease;
+}
+@supports (corner-shape: squircle) {
+  ha-card { corner-shape: squircle; border-radius: calc(var(--radius) * 1.7); }
+}
+:host([dark]) ha-card::after {
+  content: ""; position: absolute; inset: 0; z-index: 9;
+  border-radius: inherit; corner-shape: inherit;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
+  pointer-events: none;
+}
+
+/* ---------- stage: pager (one camera) or grid (all cameras) ---------- */
+.stage { position: relative; user-select: none; -webkit-user-select: none; }
+:host(:not([grid])) .stage {
+  overflow: hidden; border-radius: calc(var(--radius) * 0.72); aspect-ratio: var(--ar, 16 / 9);
+  background: #000; touch-action: pan-y;
+}
+:host(:not([grid])) .track { position: absolute; inset: 0; display: flex; will-change: transform; }
+:host(:not([grid])) .tile { flex: 0 0 100%; height: 100%; }
+:host([grid]) .stage { display: flex; flex-direction: column; gap: 8px; }
+:host([grid]) .track { display: grid; grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); gap: 8px; }
+:host([grid]) .tile { aspect-ratio: var(--ar, 16 / 9); border-radius: calc(var(--radius) * 0.72); }
+@supports (corner-shape: squircle) {
+  :host(:not([grid])) .stage, :host([grid]) .tile { corner-shape: squircle; border-radius: calc(var(--radius) * 1.2); }
+}
+
+.tile { position: relative; overflow: hidden; background: #111; color: #fff; transform-origin: 50% 50%; }
+.tile img.still, .tile .live, .tile ha-camera-stream {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block;
+}
+.tile ha-camera-stream { --video-max-height: 100%; }
+.tile .ph {
+  position: absolute; inset: 0; display: grid; place-items: center; gap: 6px; align-content: center;
+  color: rgb(255 255 255 / 0.55); font-size: 12px; font-weight: 550; --mdc-icon-size: 28px;
+}
+.player { position: absolute; inset: 0; background: #000; }
+.player video { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+.shade-top, .shade-bot { position: absolute; left: 0; right: 0; pointer-events: none; }
+.shade-top { top: 0; height: 64px; background: linear-gradient(rgb(0 0 0 / 0.45), transparent); }
+.shade-bot { bottom: 0; height: 84px; background: linear-gradient(transparent, rgb(0 0 0 / 0.62)); }
+
+.tl-row { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; align-items: center; gap: 6px; pointer-events: none; }
+.badge {
+  display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 8px;
+  background: rgb(0 0 0 / 0.42); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  font-size: 11px; line-height: 13px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase;
+  white-space: nowrap; --mdc-icon-size: 14px; min-width: 0;
+}
+.badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--live); box-shadow: 0 0 0 3px rgb(224 102 102 / 0.28); flex: none; }
+.badge .pi { display: none; }
+.badge[data-mode="play"] { text-transform: none; letter-spacing: -0.003em; font-size: 12px; padding-left: 6px; }
+.badge[data-mode="play"] .pi { display: flex; }
+.badge[data-mode="play"] .dot { display: none; }
+.det { background: color-mix(in oklab, var(--det-c) 78%, black); }
+.spacer { flex: 1; }
+
+.bot-row {
+  position: absolute; left: 12px; right: 8px; bottom: 9px; display: flex; align-items: flex-end; gap: 8px;
+  pointer-events: none;
+}
+.who { flex: 1; min-width: 0; display: flex; flex-direction: column; text-shadow: 0 1px 2px rgb(0 0 0 / 0.4); }
+.who b { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.who span { font-size: 12px; line-height: 16px; font-weight: 500; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:host(:not([grid])) .tile[data-playing] .bot-row { display: none; }
+.dots { position: absolute; left: 50%; top: 19px; transform: translateX(-50%); display: flex; gap: 5px; pointer-events: none; }
+.dots i { width: 6px; height: 6px; border-radius: 50%; background: rgb(255 255 255 / 0.4); }
+.dots i[data-on] { background: #fff; }
+:host([grid]) .dots, :host([playing]) .dots { display: none; }
+.iconbtn {
+  pointer-events: auto; width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center;
+  background: rgb(0 0 0 / 0.38); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  --mdc-icon-size: 19px; color: #fff; flex: none; transform-origin: 50% 50%;
+}
+
+.msg {
+  position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 8px;
+  text-align: center; padding: 14px 16px 56px; font-size: 13px; line-height: 17px; font-weight: 550; color: rgb(255 255 255 / 0.88);
+  background: rgb(0 0 0 / 0.55); --mdc-icon-size: 26px;
+}
+:host([grid]) .msg { padding-bottom: 14px; }
+.msg .mt { max-width: 34ch; }
+.msgd { max-width: 44ch; font-size: 11px; line-height: 14px; font-weight: 500; color: rgb(255 255 255 / 0.6);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+
+/* playback controls: overlaid in the pager, their own row under the grid */
+.ctrl {
+  position: absolute; left: 8px; right: 8px; bottom: 8px; height: 40px; box-sizing: border-box; z-index: 2;
+  display: flex; align-items: center; gap: 8px; padding: 0 6px 0 4px; border-radius: 13px; color: #fff;
+  background: rgb(0 0 0 / 0.5); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+}
+:host([grid]) .ctrl { position: static; background: var(--well); color: var(--primary-text-color); backdrop-filter: none; -webkit-backdrop-filter: none; }
+.ctrl .iconbtn { background: none; backdrop-filter: none; -webkit-backdrop-filter: none; width: 32px; height: 32px; color: inherit; }
+.bar { position: relative; flex: 1; height: 28px; display: flex; align-items: center; cursor: pointer; touch-action: none; }
+.bar .rail { position: absolute; left: 0; right: 0; height: 4px; border-radius: 2px; background: color-mix(in oklab, currentColor 25%, transparent); overflow: hidden; }
+.bar .fill { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; background: currentColor; transform-origin: 0 50%; }
+.bar .knob { position: absolute; left: 0; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: currentColor; box-shadow: 0 1px 3px rgb(0 0 0 / 0.4); }
+.ctime { font-size: 12px; line-height: 16px; font-weight: 600; white-space: nowrap; min-width: 34px; text-align: end; }
+.sync { font-size: 11px; line-height: 13px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; opacity: 0.7; white-space: nowrap; }
+.livebtn {
+  height: 28px; padding: 0 10px; border-radius: 9px; display: flex; align-items: center; gap: 6px;
+  background: color-mix(in oklab, currentColor 16%, transparent); font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+  pointer-events: auto; transform-origin: 50% 50%; flex: none;
+}
+.livebtn .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--live); }
+
+/* ---------- camera picker (pager only) ---------- */
+.pills { position: relative; display: flex; gap: 2px; padding: 3px; border-radius: 13px; background: var(--well); }
+:host([grid]) .pills { display: none; }
+.pills .ind {
+  position: absolute; top: 3px; bottom: 3px; left: 0; border-radius: 10px; pointer-events: none;
+  background: var(--card-background-color, #fff);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12), 0 0 0 0.5px var(--line);
+}
+:host([dark]) .pills .ind { background: color-mix(in oklab, var(--primary-text-color) 14%, transparent); box-shadow: none; }
+.pill {
+  position: relative; flex: 1 1 0; min-width: 0; height: 30px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  font-size: 12.5px; line-height: 16px; font-weight: 600; letter-spacing: -0.006em;
+  color: var(--secondary-text-color); --mdc-icon-size: 16px; white-space: nowrap;
+}
+.pill span { overflow: hidden; text-overflow: ellipsis; }
+.pill[aria-selected="true"] { color: var(--primary-text-color); }
+
+/* ---------- timeline ---------- */
+.tlhead { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.step {
+  width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center;
+  --mdc-icon-size: 20px; color: var(--primary-text-color); transform-origin: 50% 50%;
+}
+.step[disabled] { opacity: 0.3; cursor: default; }
+.dayname { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; min-width: 0; white-space: nowrap; }
+.daysum { flex: 1; text-align: end; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.tl { position: relative; height: 44px; cursor: pointer; touch-action: none; border-radius: 11px; background: var(--well); outline-offset: 2px; }
+.tl .hours { position: absolute; inset: 0; display: flex; border-radius: inherit; overflow: hidden; }
+.tl .hours i { flex: 1; border-inline-start: 1px solid color-mix(in oklab, var(--primary-text-color) 5%, transparent); }
+.tl .hours i:first-child { border: 0; }
+.tl .hours i[data-norec] {
+  background: repeating-linear-gradient(135deg, transparent 0 4px, color-mix(in oklab, var(--primary-text-color) 7%, transparent) 4px 5px);
+}
+.tl .act { position: absolute; left: 0; right: 0; bottom: 0; height: 100%; width: 100%; border-radius: 0 0 11px 11px; overflow: hidden; pointer-events: none; }
+.tl .act path { fill: color-mix(in oklab, var(--primary-text-color) 22%, transparent); }
+.tl .future { position: absolute; top: 0; bottom: 0; right: 0; border-radius: 0 11px 11px 0;
+  background: var(--card-background-color, transparent); opacity: 0.55; }
+.tl .marks { position: absolute; inset: 6px 0 auto; height: 10px; }
+.tl .mk { position: absolute; top: 0; height: 10px; min-width: 4px; margin-left: -2px; border-radius: 3px; background: var(--det-c); }
+.tl .mk[data-sev="alert"] { background: var(--alert-c); }
+.tl .mk[data-dim] { opacity: 0.2; }
+.tl .ph { position: absolute; top: -3px; bottom: -3px; left: 0; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--primary-text-color); pointer-events: none; opacity: 0; }
+.tl .now { position: absolute; top: 4px; bottom: 4px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--live); pointer-events: none; }
+.tl .bubble {
+  position: absolute; bottom: calc(100% + 6px); left: 0; transform: translateX(-50%);
+  padding: 3px 8px; border-radius: 8px; white-space: nowrap; pointer-events: none; opacity: 0;
+  font-size: 12px; line-height: 16px; font-weight: 650;
+  background: color-mix(in oklab, var(--card-background-color, canvas) 80%, var(--primary-text-color) 20%);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.2);
+}
+.axis { display: flex; justify-content: space-between; margin-top: -6px; padding: 0 2px;
+  font-size: 10.5px; line-height: 13px; font-weight: 550; letter-spacing: 0.006em; color: var(--secondary-text-color); }
+.axis i { font-style: normal; }
+.legend { display: flex; gap: 12px; margin-top: -4px; font-size: 11px; line-height: 13px; font-weight: 550; color: var(--secondary-text-color); }
+.legend span { display: flex; align-items: center; gap: 5px; }
+.legend i { width: 10px; height: 6px; border-radius: 2px; }
+.legend .l-a { background: var(--alert-c); }
+.legend .l-d { background: var(--det-c); }
+.legend .l-m { background: color-mix(in oklab, var(--primary-text-color) 30%, transparent); }
+
+/* ---------- reviews ---------- */
+.filters, .reviews {
+  display: flex; gap: 6px; min-width: 0; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain;
+  padding: 3px; margin: -3px;
+}
+.filters::-webkit-scrollbar, .reviews::-webkit-scrollbar { display: none; }
+.filters[data-overflow], .reviews[data-overflow] {
+  mask-image: linear-gradient(to left, transparent 0, #000 26px);
+  -webkit-mask-image: linear-gradient(to left, transparent 0, #000 26px);
+}
+.chip {
+  flex: none; height: 30px; padding: 0 11px 0 9px; border-radius: 10px; display: flex; align-items: center; gap: 5px;
+  background: var(--well); font-size: 12.5px; line-height: 16px; font-weight: 600; letter-spacing: -0.006em;
+  color: var(--secondary-text-color); --mdc-icon-size: 16px; white-space: nowrap; transform-origin: 50% 50%;
+}
+.chip[aria-pressed="true"] { background: color-mix(in oklab, var(--primary-text-color) 14%, transparent); color: var(--primary-text-color); }
+.chip .n { font-weight: 500; opacity: 0.7; }
+
+.rv { flex: none; width: 132px; display: flex; flex-direction: column; gap: 5px; text-align: start; transform-origin: 50% 50%; }
+.rv .th {
+  position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 11px; overflow: hidden;
+  background: var(--well); display: grid; place-items: center; --mdc-icon-size: 22px; color: var(--secondary-text-color);
+}
+.rv .th img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.rv[data-active] .th { box-shadow: 0 0 0 2px var(--primary-text-color); }
+.rv .lbl {
+  position: absolute; left: 5px; bottom: 5px; height: 20px; padding: 0 6px 0 4px; border-radius: 6px;
+  display: flex; align-items: center; gap: 3px; color: #fff; background: rgb(0 0 0 / 0.5);
+  font-size: 11px; font-weight: 650; --mdc-icon-size: 13px;
+}
+.rv .new { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--det-c); box-shadow: 0 0 0 2px rgb(0 0 0 / 0.35); }
+.rv[data-sev="alert"] .new { background: var(--alert-c); }
+.rv .meta { display: flex; gap: 6px; font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: -0.003em; min-width: 0; }
+.rv .meta .d { font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.note { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); padding: 2px; }
+
+:host(:not([kbd])) :focus { outline: none; }
+:host([kbd]) :focus-visible { outline: 2px solid rgb(var(--accent)); outline-offset: 2px; }
+@media (prefers-contrast: more) {
+  ha-card { border-width: 1.5px; }
+  .daysum, .axis, .legend, .note, .rv .meta .d { color: var(--primary-text-color); opacity: 0.85; }
+}
+@media (prefers-reduced-motion: reduce) { ha-card { transition: none; } }
+
+/* ---------- recordings button: the timeline and reviews open from here ---------- */
+.recbtn {
+  display: flex; align-items: center; gap: 9px; min-width: 0; height: 40px; padding: 0 10px 0 12px;
+  border-radius: 12px; background: var(--well); color: var(--primary-text-color);
+  font-size: 13.5px; line-height: 17px; font-weight: 600; letter-spacing: -0.008em;
+  transform-origin: 50% 50%;
+}
+.recbtn ha-icon { --mdc-icon-size: 18px; display: flex; flex: none; color: var(--secondary-text-color); }
+.recbtn .rl { flex: none; }
+.recbtn .rsum {
+  flex: 1; min-width: 0; text-align: end; font-size: 12px; font-weight: 500; color: var(--secondary-text-color);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ---------- popup (CARD-DESIGN.md 8): outside ha-card, position: fixed ---------- */
+.dscrim { position: fixed; inset: 0; z-index: 998; background: rgb(0 0 0 / 0.45); opacity: 0; }
+.dlg {
+  position: fixed; z-index: 999; box-sizing: border-box; display: flex; flex-direction: column;
+  left: 50%; top: 50%; width: min(560px, calc(100vw - 32px)); max-height: min(720px, calc(100vh - 48px));
+  border-radius: 22px; overflow: hidden; opacity: 0;
+  background: var(--ha-card-background, var(--card-background-color, #fff)); color: var(--primary-text-color);
+  box-shadow: 0 18px 50px rgb(0 0 0 / 0.35), 0 0 0 0.5px var(--line);
+  font-family: var(--camera-card-font-family, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", Roboto, sans-serif);
+  font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased;
+}
+@supports (corner-shape: squircle) { .dlg { corner-shape: squircle; border-radius: 36px; } }
+/* phones: a bottom sheet you can reach with a thumb */
+.dlg[data-sheet] { left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: 85vh; border-radius: 22px 22px 0 0; padding-bottom: env(safe-area-inset-bottom); }
+.dlg .grab { align-self: center; width: 36px; height: 5px; border-radius: 3px; margin: 7px 0 -3px; background: color-mix(in oklab, var(--primary-text-color) 20%, transparent); }
+.dlg:not([data-sheet]) .grab { display: none; }
+.dh { display: flex; align-items: center; gap: 8px; padding: 14px 12px 8px 18px; }
+.dh .dt { flex: 1; font-size: 18px; line-height: 23px; font-weight: 650; letter-spacing: -0.022em; }
+.dh .dx { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--well); --mdc-icon-size: 18px; transform-origin: 50% 50%; }
+/* its own container, so the card's width breakpoints follow the popup's width */
+.db { overflow: auto; overscroll-behavior: contain; padding: 4px 16px 18px; display: flex; flex-direction: column; gap: 10px; container-type: inline-size; }
+
+@container (max-width: 380px) {
+  .pill ha-icon { display: none; }
+  .rv { width: 116px; }
+  .sync { display: none; }
+}
+@container (max-width: 300px) {
+  .who span { display: none; }
+  .ctime { display: none; }
+  .axis i:nth-child(even) { visibility: hidden; }
+}
+`;
+
+const TILE_HTML = `
+  <img class="still" alt="" hidden>
+  <div class="ph" hidden><ha-icon icon="mdi:cctv-off"></ha-icon><span></span></div>
+  <div class="player" hidden><video playsinline preload="auto"></video></div>
+  <div class="shade-top"></div><div class="shade-bot"></div>
+  <div class="tl-row">
+    <span class="badge"><span class="dot"></span><ha-icon class="pi" icon="mdi:play"></ha-icon><span class="bt">Live</span></span>
+    <span class="spacer"></span>
+    <span class="badge det" hidden><ha-icon></ha-icon><span></span></span>
+  </div>
+  <div class="bot-row">
+    <span class="who"><b></b><span></span></span>
+    <button class="iconbtn fs" aria-label="Full screen"><ha-icon icon="mdi:fullscreen"></ha-icon></button>
+  </div>
+  <div class="msg" hidden><ha-icon icon="mdi:filmstrip-off"></ha-icon><span class="mt"></span><span class="msgd" hidden></span></div>`;
+
+class SavvyCameraCard extends HTMLElement {
+  static getStubConfig(hass) {
+    const a = allAreas(hass).find((x) => areaEntities(hass, x.id).some((id) => domainOf(id) === "camera"));
+    if (a) return { area: a.id };
+    const cam = Object.keys(hass?.states || {}).find((id) => id.startsWith("camera."));
+    return cam ? { cameras: [cam] } : {};
+  }
+  static getConfigElement() { return document.createElement(EDITOR); }
+
+  constructor() {
+    super();
+    watchKeyboard(this);
+    this._job = (now, dt) => this._frame(now, dt);
+    this._onscreen = true;
+    this._index = 0;
+    this._day = 0;
+    this._filter = "all";
+    this._mode = "live";
+    this._cols = 1;
+    this._signed = new Map();      // path -> { url, until }
+    this._reviews = new Map();     // scope|day -> { at, items, source, error }
+    this._summary = new Map();     // cam -> { at, days }
+    this._motion = new Map();      // cam|day -> { at, rows: [[start, end, motion]], last }
+  }
+
+  setConfig(config) {
+    if (!config?.cameras && !config?.entity && !config?.area && !config?.areas) throw new Error('savvy-camera-card: set an "area" (or "cameras")');
+    this._given = config;
+    this._sig = null;
+    if (this._hass) this.hass = this._hass;
+  }
+
+  // The cameras (given, else the area's) and whether Frigate is on (given, else found
+  // from the cameras' integration). -> true when that changed.
+  _resolve(hass) {
+    const g = this._given;
+    let cams = asItems(g.cameras || g.entity);
+    if (!cams.length) {
+      cams = [].concat(g.area || g.areas || []).flatMap((a) => pick(hass, areaEntities(hass, a), { domains: "camera" })
+        .sort((x, y) => (hass.states[x].attributes.friendly_name || x).localeCompare(hass.states[y].attributes.friendly_name || y))
+        .map((entity) => ({ entity, area: a })));
+    }
+    const found = cams.some((c) => hass.entities?.[c.entity]?.platform === "frigate");
+    const fr = g.frigate === false ? false
+      : g.frigate && typeof g.frigate === "object" ? { instance: "frigate", ...g.frigate }
+      : g.frigate === true || found ? { instance: "frigate" } : false;
+    const sig = JSON.stringify([cams, fr, g]);
+    if (sig === this._sig) return false;
+    this._sig = sig;
+    this._config = { days: 7, columns: "auto", ...g, cameras: cams, frigate: fr };
+    // recordings: popup (default) | inline (the timeline and reviews in the card) | false
+    this._recMode = !fr || g.recordings === false ? false : g.recordings === "inline" ? "inline" : "popup";
+    this._index = clamp(this._index || 0, 0, Math.max(0, cams.length - 1));
+    return true;
+  }
+
+  set hass(hass) {
+    const first = !this._hass;
+    this._hass = hass;
+    if (!this._given) return;
+    const changed = this._resolve(hass);
+    if (!this._config.cameras.length) return this._renderMissing();
+    if (!this._root || changed || this._missing) { this._missing = false; this._build(); }
+    for (const t of this._tiles || []) if (t.liveEl) t.liveEl.hass = hass;
+    this._update();
+    if (first || changed) this._loadAll();
+  }
+
+  _renderMissing() {
+    this._missing = true;
+    this._root = this.shadowRoot || this.attachShadow({ mode: "open" });
+    const where = this._given.area ? ` in ${esc(areaInfo(this._hass, this._given.area).name)}` : "";
+    this._root.innerHTML = `<style>${BASE_CSS} ha-card { padding: 16px; font-size: 13px; color: var(--secondary-text-color); }</style><ha-card>No cameras${where}.</ha-card>`;
+  }
+
+  connectedCallback() {
+    this._observe();
+    this._timer = this._timer || setInterval(() => this._refresh(), REFRESH_MS);
+    this._wake();
+  }
+  disconnectedCallback() {
+    Clock.remove(this._job);
+    this._io?.disconnect();
+    this._ro?.disconnect();
+    clearInterval(this._timer);
+    this._timer = 0;
+    for (const t of this._tiles || []) { this._dropLive(t); this._stopVideo(t); }
+    this._closeDialog(true);
+    this._finishClosing();
+  }
+
+  getCardSize() { return this._recMode === "inline" ? 8 : 5; }
+  getGridOptions() { return { columns: 12, min_columns: 6, rows: "auto" }; }
+
+  get _grid() { return this._cols > 1; }
+  get _cam() { return this._config.cameras[this._index]; }
+  // the cameras currently on screen: all of them in the grid, the selected one otherwise
+  _active() { return this._grid ? this._config.cameras.map((_, i) => i) : [this._index]; }
+  _fcam(cam = this._cam) { return cam.frigate_camera || cam.entity.split(".")[1]; }
+  _scope() { return this._active().map((i) => this._fcam(this._config.cameras[i])); }
+  _camName(cam) {
+    const st = this._hass?.states[cam.entity];
+    if (cam.name) return cam.name;
+    if (cam.area && this._hass?.areas?.[cam.area]?.name) return this._hass.areas[cam.area].name;
+    return st?.attributes.friendly_name || title(cam.entity.split(".")[1]);
+  }
+  _camByFrigate(name) { return this._config.cameras.find((c) => this._fcam(c) === name); }
+
+  // ---------- build ----------
+  _build() {
+    this._root = this._shadow || (this._shadow = this.attachShadow({ mode: "open" }));
+    for (const t of this._tiles || []) { this._dropLive(t); this._stopVideo(t); }
+    this._springs = [];
+    this._pressNodes = [];
+    const cams = this._config.cameras;
+    const fr = !!this._config.frigate;
+    const popup = this._recMode === "popup";
+    this._closeDialog(true);
+    this._finishClosing();
+    const ar = String(this._config.aspect_ratio || "16/9").replace(/\s*[/:x]\s*/, " / ");
+
+    this._root.innerHTML = `
+      <style>${STYLE}</style>
+      <ha-card>
+        <div class="stage" id="stage" role="group" aria-roledescription="camera viewer" style="--ar:${ar}">
+          <div class="track" id="track">
+            ${cams.map((c, i) => `<div class="tile" data-i="${i}">${TILE_HTML}</div>`).join("")}
+          </div>
+          <span class="dots" id="dots" ${cams.length > 1 ? "" : "hidden"}>${cams.map(() => "<i></i>").join("")}</span>
+          <div class="ctrl" id="ctrl" hidden>
+            <button class="iconbtn" id="pp" aria-label="Pause"><ha-icon id="ppIcon" icon="mdi:pause"></ha-icon></button>
+            <div class="bar" id="bar" role="slider" tabindex="0" aria-label="Playback position">
+              <div class="rail"><div class="fill" id="fill"></div></div><div class="knob" id="knob"></div>
+            </div>
+            <span class="ctime" id="ctime"></span>
+            <span class="sync" id="sync" hidden>Synced</span>
+            <button class="livebtn" id="live"><span class="dot"></span>Live</button>
+          </div>
+        </div>
+        <div class="pills" id="pills" role="tablist" ${cams.length > 1 ? "" : "hidden"}>
+          <span class="ind" id="ind"></span>
+          ${cams.map((c, i) => `<button class="pill" role="tab" data-i="${i}"><ha-icon></ha-icon><span></span></button>`).join("")}
+        </div>
+        <button class="recbtn" id="recBtn" aria-haspopup="dialog" ${popup ? "" : "hidden"}>
+          <ha-icon icon="mdi:history"></ha-icon><span class="rl">Recordings</span><span class="rsum" id="recSum"></span>
+          <ha-icon icon="mdi:chevron-right"></ha-icon>
+        </button>
+        ${popup ? '<div id="holder" hidden>' : ""}
+        <div id="rec" ${this._recMode ? "" : "hidden"} style="display:contents">
+          <div class="tlhead">
+            <button class="step" id="prev" aria-label="Previous day"><ha-icon icon="mdi:chevron-left"></ha-icon></button>
+            <span class="dayname" id="dayname"></span>
+            <button class="step" id="next" aria-label="Next day"><ha-icon icon="mdi:chevron-right"></ha-icon></button>
+            <span class="daysum" id="daysum"></span>
+          </div>
+          <div class="tl" id="tl" role="slider" tabindex="0" aria-label="Recording timeline" aria-valuemin="0" aria-valuemax="86400">
+            <div class="hours" id="hours">${"<i></i>".repeat(24)}</div>
+            <svg class="act" id="act" viewBox="0 0 ${BUCKETS} 100" preserveAspectRatio="none" aria-hidden="true"><path id="actPath" d=""></path></svg>
+            <div class="future" id="future"></div>
+            <div class="marks" id="marks"></div>
+            <div class="now" id="now"></div>
+            <div class="ph" id="playhead"></div>
+            <div class="bubble" id="bubble"></div>
+          </div>
+          <div class="axis"><i>00</i><i>06</i><i>12</i><i>18</i><i>24</i></div>
+          <div class="legend" id="legend" hidden>
+            <span><i class="l-m"></i>Motion</span><span><i class="l-d"></i>Detection</span><span><i class="l-a"></i>Alert</span>
+          </div>
+          <div class="filters" id="filters"></div>
+          <div class="reviews" id="reviews" role="list"></div>
+          <div class="note" id="note" hidden></div>
+        </div>
+        ${popup ? "</div>" : ""}
+      </ha-card>`;
+
+    const $ = (id) => this._root.getElementById(id);
+    const ids = ["stage", "track", "dots", "ctrl", "pp", "ppIcon", "bar", "fill", "knob", "ctime", "sync", "live",
+      "pills", "ind", "prev", "next", "dayname", "daysum", "tl", "hours", "act", "actPath", "future", "marks",
+      "now", "playhead", "bubble", "legend", "filters", "reviews", "note", "rec", "recBtn", "recSum", "holder"];
+    this._el = Object.fromEntries(ids.map((id) => [id, $(id)]));
+    this._el.card = this._root.querySelector("ha-card");
+    this._el.pillBtns = [...this._root.querySelectorAll(".pill")];
+
+    this._tiles = [...this._root.querySelectorAll(".tile")].map((node, i) => {
+      const q = (s) => node.querySelector(s);
+      const t = {
+        i, cam: cams[i], node,
+        still: q("img.still"), ph: q(".ph"), phText: q(".ph span"), player: q(".player"), video: q("video"),
+        badge: q(".badge"), badgeText: q(".badge .bt"), det: q(".det"), detIcon: q(".det ha-icon"), detText: q(".det span"),
+        name: q(".who b"), status: q(".who span"), fs: q(".fs"),
+        msg: q(".msg"), msgIcon: q(".msg ha-icon"), msgText: q(".msg .mt"), msgDetail: q(".msg .msgd"),
+        liveEl: null, liveFor: null,
+      };
+      this._wireVideo(t);
+      this._press(t.fs, () => this._fullscreen(t));
+      return t;
+    });
+
+    this._pager = new Spring(this._index, MOTION.pager, "pager");
+    this._indX = new Spring(0, MOTION.pill, "pill");
+    this._indW = new Spring(0, MOTION.pill, "pill");
+    this._scrub = new Spring(0, MOTION.scrub, "scrub");
+    this._head = new Spring(0, MOTION.drag, "head");
+    this._headOn = new Spring(0, MOTION.ui, "head");
+    this._actIn = new Spring(0, MOTION.graph, "act");
+    this._springs.push(this._pager, this._indX, this._indW, this._scrub, this._head, this._headOn, this._actIn);
+    this._pillReady = false;
+    this._laidOut = false;
+
+    this._wireStage();
+    this._wireTimeline();
+    this._wireBar();
+    this._el.pillBtns.forEach((b, i) => this._press(b, () => this._select(i)));
+    this._press(this._el.prev, () => this._stepDay(1));
+    this._press(this._el.next, () => this._stepDay(-1));
+    this._press(this._el.live, () => this._goLive());
+    this._press(this._el.pp, () => this._togglePlay());
+    if (popup) this._press(this._el.recBtn, () => this._openRec());
+
+    this._ro?.disconnect();
+    this._ro = new ResizeObserver(() => {
+      this._layout();
+      this._pillReady = false;
+      this._fitRows();
+      this._renderActivity();
+      this._paint(null);
+      this._wake();
+    });
+    this._ro.observe(this._el.card);
+    this._ro.observe(this._el.filters);
+    this._ro.observe(this._el.reviews);
+    this._layout();
+    this._observe();
+  }
+
+  // One camera per TILE_MIN px of the card's own width, never more than there are
+  // cameras. `columns:` forces it (1 = always the pager).
+  _layout() {
+    const n = this._config.cameras.length;
+    const want = this._config.columns;
+    const w = this._el.card.clientWidth || 0;
+    let cols = want !== "auto" && Number.isFinite(+want) ? clamp(Math.round(+want), 1, n)
+      : (w ? clamp(Math.floor((w + 8) / TILE_MIN), 1, n) : 1);
+    if (n === 1) cols = 1;
+    if (cols === this._cols && this._laidOut) return;
+    const was = this._laidOut ? this._grid : null;
+    this._laidOut = true;
+    this._cols = cols;
+    this.toggleAttribute("grid", cols > 1);
+    put(this._el.stage, "--cols", String(cols));
+    if (was === null || was === this._grid || !this._hass) return;
+    // switching pager <-> grid changes which cameras are on screen
+    this._filter = "all";
+    if (this._mode === "play") this._replayAt(this._leadOffset());
+    else this._syncLive();
+    this._loadAll();
+    this._update();
+  }
+
+  _observe() {
+    if (!this._root || !this.isConnected) return;
+    this._io = this._io || new IntersectionObserver(([e]) => {
+      this._onscreen = e.isIntersecting;
+      // a stream nobody is looking at is pure load on the Pi and the network
+      if (!this._onscreen) for (const t of this._tiles) this._dropLive(t);
+      else { this._syncLive(); this._paint(null); this._wake(); this._refresh(); }
+    });
+    this._io.disconnect();
+    this._io.observe(this);
+  }
+
+  // Feedback on pointer-down, commit on release; a press that travels is a scroll.
+  _press(el, onTap, { haptic = "light" } = {}) {
+    const spring = new Spring(0, MOTION.press, `p${this._springs.length}`);
+    this._springs.push(spring);
+    this._pressNodes.push(el);
+    el.__spring = spring;
+    let origin = null, armed = false, swallow = false;
+    const settle = (motion) => { origin = null; spring.to(0, motion); this._wake(); };
+    el.addEventListener("pointerdown", (e) => {
+      if (e.button > 0) return;
+      origin = [e.clientX, e.clientY];
+      armed = true; swallow = false;
+      spring.to(1, MOTION.press);
+      this._wake();
+    });
+    el.addEventListener("pointermove", (e) => {
+      if (!origin || Math.hypot(e.clientX - origin[0], e.clientY - origin[1]) < SLOP) return;
+      swallow = true;
+      settle(MOTION.release);
+    });
+    el.addEventListener("pointerup", () => origin && settle(MOTION.release));
+    for (const t of ["pointercancel", "pointerleave"]) {
+      el.addEventListener(t, () => { if (origin) { swallow = true; settle(MOTION.release); } });
+    }
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const ok = (armed || e.detail === 0) && !swallow;
+      armed = false; swallow = false;
+      if (!ok || el.disabled) return;
+      if (haptic) this._haptic(haptic);
+      onTap(e);
+    });
+    if (el.tagName !== "BUTTON") {
+      el.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); el.click(); }
+      });
+    }
+    return spring;
+  }
+
+  // ---------- stage: pager swipe, taps ----------
+  _wireStage() {
+    const stage = this._el.stage;
+    let start = null, dragging = false, samples = [];
+    const onControl = (e) => e.composedPath().some((n) => n.classList?.contains("iconbtn")
+      || n.classList?.contains("ctrl") || n.classList?.contains("livebtn"));
+    const tileOf = (e) => e.composedPath().find((n) => n.classList?.contains("tile"));
+
+    stage.addEventListener("pointerdown", (e) => {
+      if (e.button > 0 || onControl(e)) return;
+      start = { x: e.clientX, y: e.clientY, id: e.pointerId, from: this._pager.x, tile: tileOf(e) };
+      dragging = false;
+      samples = [[performance.now(), e.clientX]];
+    });
+    stage.addEventListener("pointermove", (e) => {
+      if (!start || e.pointerId !== start.id) return;
+      const dx = e.clientX - start.x, dy = e.clientY - start.y;
+      if (!dragging) {
+        if (Math.hypot(dx, dy) < SLOP) return;
+        // vertical intent goes back to the page; the grid has nothing to page
+        if (Math.abs(dy) > Math.abs(dx) || this._grid || this._config.cameras.length < 2) { start = null; return; }
+        dragging = true;
+        try { stage.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+      }
+      const W = stage.clientWidth || 1, n = this._config.cameras.length;
+      let x = start.from - dx / W;
+      if (x < 0) x = -rubber(-x * W, W) / W;
+      if (x > n - 1) x = n - 1 + rubber((x - (n - 1)) * W, W) / W;
+      this._pager.snap(x);
+      samples.push([performance.now(), e.clientX]);
+      if (samples.length > 6) samples.shift();
+      this._paint(new Set(["pager"]));
+    });
+    const end = (e) => {
+      if (!start || e.pointerId !== start.id) return;
+      const was = dragging, tile = start.tile;
+      start = null; dragging = false;
+      if (!was) {
+        if (e.type === "pointerup" && tile) this._tileTap(+tile.dataset.i);
+        return;
+      }
+      const [t0, x0] = samples[0], [t1, x1] = samples[samples.length - 1];
+      const v = t1 > t0 ? ((x1 - x0) / (t1 - t0)) * 1000 : 0;
+      const W = stage.clientWidth || 1;
+      const landing = this._pager.x - project(v) / W;
+      const target = clamp(Math.round(landing), Math.max(0, this._index - 1),
+        Math.min(this._config.cameras.length - 1, this._index + 1));
+      this._pager.v = -v / W;
+      this._select(target, { fromSwipe: true });
+    };
+    stage.addEventListener("pointerup", end);
+    stage.addEventListener("pointercancel", end);
+    stage.addEventListener("keydown", (e) => {
+      if (this._grid || e.target !== stage) return;
+      if (e.key === "ArrowRight") { e.preventDefault(); this._select(Math.min(this._index + 1, this._config.cameras.length - 1)); }
+      if (e.key === "ArrowLeft") { e.preventDefault(); this._select(Math.max(this._index - 1, 0)); }
+    });
+    attr(stage, "tabindex", "0");
+  }
+
+  _tileTap(i) {
+    if (this._mode === "play") return this._togglePlay();
+    this._moreInfo(this._config.cameras[i].entity);
+  }
+
+  _select(i, { fromSwipe = false } = {}) {
+    const changed = i !== this._index;
+    const offset = this._mode === "play" ? this._leadOffset() : 0;
+    this._index = i;
+    this._pager.to(i, MOTION.pager);
+    if (changed) {
+      this._haptic(fromSwipe ? "light" : "selection");
+      this._filter = "all";
+      // playback follows you to the other camera at the same moment
+      if (this._mode === "play") this._replayAt(offset);
+      else this._syncLive();
+      this._loadAll();
+    }
+    this._update();
+    this._wake();
+  }
+
+  // ---------- live ----------
+  // HA lazy-loads its camera player; creating a picture-entity card through the card
+  // helpers is the supported way to make sure <ha-camera-stream> gets defined.
+  async _ensureStreamElement() {
+    if (customElements.get("ha-camera-stream")) return true;
+    if (!this._streamLoad && window.loadCardHelpers) {
+      this._streamLoad = window.loadCardHelpers()
+        .then((helpers) => helpers.createCardElement({ type: "picture-entity", entity: this._cam.entity, camera_view: "live" }))
+        .then(() => Promise.race([customElements.whenDefined("ha-camera-stream"), new Promise((r) => setTimeout(r, 4000))]))
+        .catch(() => {});
+    }
+    if (this._streamLoad) await this._streamLoad;
+    return !!customElements.get("ha-camera-stream");
+  }
+
+  _syncLive() {
+    if (!this._root || !this._hass) return;
+    const active = new Set(this._active());
+    for (const t of this._tiles) {
+      const st = this._hass.states[t.cam.entity];
+      const want = this._onscreen && this.isConnected && this._mode === "live" && active.has(t.i)
+        && st && st.state !== "unavailable";
+      if (!want) this._dropLive(t);
+      else if (!t.liveEl && !t.liveToken) this._startLive(t, st);
+    }
+  }
+
+  async _startLive(t, st) {
+    t.liveFor = t.cam.entity;
+    const token = (t.liveToken = {});
+    const stream = await this._ensureStreamElement();
+    if (t.liveToken !== token) return;
+    // the moment passed (scrolled away, playback started): leave it for the next sync
+    if (!this._onscreen || this._mode !== "live") { t.liveToken = null; t.liveFor = null; return; }
+    let el;
+    if (stream) {
+      el = document.createElement("ha-camera-stream");
+      el.hass = this._hass;
+      el.stateObj = st;
+      el.muted = true;
+      el.controls = false;
+      el.fitMode = "cover";
+      el.allowExoPlayer = true;
+    } else {
+      el = document.createElement("img");
+      el.className = "live";
+      el.alt = "";
+      const refresh = () => {
+        const pic = this._hass.states[t.cam.entity]?.attributes.entity_picture;
+        if (pic) el.src = `${pic}${pic.includes("?") ? "&" : "?"}t=${Date.now()}`;
+      };
+      refresh();
+      el.__timer = setInterval(refresh, 2000);
+    }
+    t.liveEl = el;
+    t.player.before(el);
+  }
+
+  _dropLive(t) {
+    t.liveToken = null;
+    if (t.liveEl) {
+      clearInterval(t.liveEl.__timer);
+      t.liveEl.remove();
+    }
+    t.liveEl = null;
+    t.liveFor = null;
+  }
+
+  // ---------- playback ----------
+  _wireVideo(t) {
+    const v = t.video;
+    v.addEventListener("loadedmetadata", () => {
+      if (t.offset > 0 && Number.isFinite(v.duration)) v.currentTime = Math.min(t.offset, Math.max(0, v.duration - 0.5));
+      t.offset = 0;
+      this._syncPlayer();
+    });
+    // Frigate cuts/segments on request; a long span can take a few seconds to arrive
+    v.addEventListener("loadeddata", () => {
+      if (this._mode !== "play") return;
+      this._hideMsg(t);
+      this._syncPlayer();
+    });
+    v.addEventListener("timeupdate", () => {
+      if (t === this._lead()) this._keepInSync();
+      this._syncPlayer();
+    });
+    for (const ev of ["play", "pause", "ended"]) v.addEventListener(ev, () => this._syncPlayer());
+    v.addEventListener("error", () => {
+      if (this._mode !== "play" || !v.getAttribute("src") || !t.sources) return;
+      const src = t.sources[t.source];
+      t.tried.push({ kind: src?.kind, code: v.error?.code ?? null });
+      // try the next way of fetching the same footage before giving up
+      if (t.source < t.sources.length - 1) return this._loadSource(t, t.source + 1);
+      this._diagnose(t, v.getAttribute("src"), v.error);
+    });
+  }
+
+  _wireBar() {
+    // the progress bar owns its horizontal axis (CARD-DESIGN.md 3.2), and the finger
+    // owns the position while it's down (4): timeupdates mustn't yank it back
+    const bar = this._el.bar;
+    let seeking = false;
+    const seek = (e) => {
+      const r = bar.getBoundingClientRect();
+      const f = clamp((e.clientX - r.left) / (r.width || 1));
+      this._seekFrac = f;
+      this._seekAll(f);
+      this._syncPlayer(f);
+    };
+    bar.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      seeking = true;
+      try { bar.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+      seek(e);
+    });
+    bar.addEventListener("pointermove", (e) => { if (seeking) seek(e); });
+    for (const ev of ["pointerup", "pointercancel"]) {
+      bar.addEventListener(ev, () => {
+        if (!seeking) return;
+        seeking = false;
+        this._seekFrac = null;
+        this._syncPlayer();
+      });
+    }
+    bar.addEventListener("keydown", (e) => {
+      const lead = this._lead()?.video;
+      if (!lead || !Number.isFinite(lead.duration)) return;
+      const d = e.key === "ArrowRight" ? 5 : e.key === "ArrowLeft" ? -5 : 0;
+      if (!d) return;
+      e.preventDefault();
+      this._seekAll(clamp((lead.currentTime + d) / lead.duration));
+    });
+  }
+
+  _playingTiles() { return this._tiles.filter((t) => t.playing); }
+
+  // The tile whose clock the controls show: the first playing camera that has
+  // actually loaded, so one camera with no footage can't stall the others.
+  _lead() {
+    const list = this._playingTiles();
+    return list.find((t) => t.video.getAttribute("src") && !t.video.error && t.video.readyState >= 1) || list[0] || null;
+  }
+  _leadOffset() {
+    const v = this._lead()?.video;
+    return v && Number.isFinite(v.currentTime) ? v.currentTime : 0;
+  }
+
+  _seekAll(f) {
+    const lead = this._lead()?.video;
+    const dur = lead && Number.isFinite(lead.duration) ? lead.duration : null;
+    for (const t of this._playingTiles()) {
+      const v = t.video, d = Number.isFinite(v.duration) ? v.duration : dur;
+      if (d && !v.error && v.readyState >= 1) v.currentTime = f * d;
+    }
+  }
+
+  // Every camera plays the same span, so equal offsets are the same moment; nudge
+  // back any camera that drifted (buffering, a slower segment) past DRIFT_S.
+  _keepInSync() {
+    if (this._seekFrac != null) return;
+    const lead = this._lead();
+    if (!lead) return;
+    const t0 = lead.video.currentTime;
+    for (const t of this._playingTiles()) {
+      if (t === lead) continue;
+      const v = t.video;
+      if (v.error || v.readyState < 2 || !Number.isFinite(v.duration)) continue;
+      if (Math.abs(v.currentTime - t0) > DRIFT_S && t0 < v.duration) v.currentTime = t0;
+      if (lead.video.paused !== v.paused && !lead.video.ended) {
+        if (lead.video.paused) v.pause(); else v.play?.().catch(() => {});
+      }
+    }
+  }
+
+  async _playSpan(start, end, meta = {}, offset = 0) {
+    const fr = this._config.frigate;
+    if (!fr) return;
+    end = Math.min(end, nowS());
+    if (end - start < 2) return this._goLive();
+    this._mode = "play";
+    this._play = { start, end, ...meta };
+    const play = this._play;
+    this.toggleAttribute("playing", true);
+    const active = new Set(this._active());
+    for (const t of this._tiles) {
+      this._dropLive(t);
+      this._stopVideo(t);
+      t.playing = active.has(t.i);
+      t.player.hidden = !t.playing;
+      attr(t.node, "data-playing", t.playing ? "" : null);
+      this._hideMsg(t);
+    }
+    this._el.ctrl.hidden = false;
+    this._el.sync.hidden = this._playingTiles().length < 2;
+    this._headOn.to(1, MOTION.ui);
+    this._head.snap(clamp(start + offset - dayStart(this._day), 0, DAY));
+    const at = hhmm(start + offset + (meta.review && !offset ? PAD_S : 0));
+    this._update();
+    await Promise.all(this._playingTiles().map((t) => {
+      t.offset = offset;
+      this._showMsg(t, `Preparing the recording from ${at}…`, { icon: "mdi:progress-clock", loading: true });
+      return this._loadTile(t, play);
+    }));
+    this._wake();
+  }
+
+  _replayAt(offset) {
+    const p = this._play;
+    if (!p) return;
+    const { start, end, ...meta } = p;
+    this._playSpan(start, end, meta, offset);
+  }
+
+  // Two ways to get the same footage out of Frigate, tried in order:
+  //   hls   Frigate's VOD playlist, the same thing Frigate's own UI plays. Segmented,
+  //         so it needs no byte ranges, and Safari/iOS play H.265 through it. Only
+  //         where the browser plays HLS natively.
+  //   mp4   one file Frigate cuts on request. Plays anywhere the codec does, but
+  //         Safari refuses it for H.265 (hev1 tag, no byte ranges through the proxy).
+  async _loadTile(t, play) {
+    const fr = this._config.frigate, cam = this._fcam(t.cam);
+    const s0 = Math.floor(play.start), s1 = Math.ceil(play.end);
+    t.sources = [];
+    if (t.video.canPlayType("application/vnd.apple.mpegurl")) {
+      t.sources.push({ kind: "hls", path: `/api/frigate/${fr.instance}/vod/${cam}/start/${s0}/end/${s1}/index.m3u8` });
+    }
+    t.sources.push({ kind: "mp4", path: `/api/frigate/${fr.instance}/recording/${cam}/start/${s0}/end/${s1}` });
+    t.tried = [];
+    await this._loadSource(t, 0);
+  }
+
+  async _loadSource(t, k) {
+    const play = this._play, src = t.sources?.[k];
+    if (!src) return;
+    t.source = k;
+    const token = (t.playToken = {});
+    let url;
+    try { url = await this._sign(src.path); }
+    catch (err) { url = null; }
+    if (t.playToken !== token || this._play !== play) return;
+    if (!url) { this._showMsg(t, "Couldn't open the recording."); return; }
+    const v = t.video;
+    v.muted = true;
+    v.src = url;
+    v.play?.().catch(() => {});
+  }
+
+  _playReview(item) {
+    if (this._dialog) this._closeDialog();
+    this._activeReview = item.id;
+    if (item.source === "review" && !item.reviewed) {
+      item.reviewed = true;
+      this._hass.callWS({ type: "frigate/reviews/viewed", instance_id: this._config.frigate.instance, ids: [item.id] })
+        .catch(() => {});
+    }
+    const label = item.labels[0] ? title(item.labels[0]) : "";
+    this._playSpan(item.start - PAD_S, (item.end || nowS()) + PAD_S, { review: item.id, label });
+    this._renderReviews();
+  }
+
+  // ---------- recordings popup ----------
+  // The real #rec node moves into the popup and back, so it keeps updating from hass
+  // while open. Outside ha-card: its container-type would clip a fixed popup.
+  _openRec() {
+    const rec = this._el.rec;
+    if (!rec || this._dialog) return;
+    this._finishClosing();
+    this._haptic("selection");
+    const scrim = document.createElement("div");
+    scrim.className = "dscrim";
+    const dlg = document.createElement("div");
+    dlg.className = "dlg";
+    dlg.setAttribute("role", "dialog");
+    dlg.setAttribute("aria-modal", "true");
+    dlg.setAttribute("aria-label", "Recordings");
+    dlg.innerHTML = `<span class="grab" aria-hidden="true"></span>
+      <div class="dh"><span class="dt">Recordings</span><button class="dx" aria-label="Close"><ha-icon icon="mdi:close"></ha-icon></button></div>
+      <div class="db"></div>`;
+    dlg.querySelector(".db").appendChild(rec);
+    this._layer().append(scrim, dlg);
+    const place = () => dlg.toggleAttribute("data-sheet", window.innerWidth < 600);
+    place();
+    const open = new Spring(0, MOTION.sheetIn, "dlg");
+    open.to(1, MOTION.sheetIn);
+    this._springs.push(open);
+    const close = () => this._closeDialog();
+    const onKey = (e) => { if (e.key === "Escape") { e.preventDefault(); close(); } };
+    dlg.querySelector(".dx").addEventListener("click", (e) => { e.stopPropagation(); close(); });
+    guardBackdrop(scrim, dlg, close, ".db");
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", place);
+    this._dialog = { rec, scrim, dlg, open, anchor: this._el.recBtn, off: () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", place);
+    } };
+    attr(this._el.recBtn, "aria-expanded", "true");
+    this._fitRows();
+    this._renderActivity();
+    dlg.querySelector(".dx").focus({ preventScroll: true });
+    this._paint(new Set(["dlg"]));
+    this._wake();
+  }
+
+  _closeDialog(now = false) {
+    const d = this._dialog;
+    if (!d) return;
+    this._dialog = null;
+    d.off();
+    if (this._el?.recBtn) attr(this._el.recBtn, "aria-expanded", "false");
+    d.anchor?.focus?.({ preventScroll: true });
+    if (now || !this.isConnected) {
+      this._dropDialog(d);
+      return;
+    }
+    d.closing = true;      // the backdrop stays until it's gone: the rest of that tap lands on it
+    d.open.to(0, MOTION.sheetOut);
+    this._finishClosing();
+    this._closing = d;
+    this._wake();
+  }
+
+  _finishClosing() {
+    const c = this._closing;
+    if (!c) return;
+    this._closing = null;
+    this._dropDialog(c);
+  }
+
+  // Popups live at the top of the page, not inside the card: dashboards wrap cards in
+  // boxes that would clip a full-screen layer to the card. This card's styles go with it.
+  _layer() {
+    if (!this._layerEl || !this._layerEl.isConnected) {
+      const host = document.createElement("div");
+      host.className = "savvy-layer";
+      host.attachShadow({ mode: "open" }).innerHTML = `<style>${STYLE}</style>`;
+      watchKeyboard(host);
+      document.body.appendChild(host);
+      this._layerEl = host;
+    }
+    this._layerEl.toggleAttribute("dark", this.hasAttribute("dark"));
+    return this._layerEl.shadowRoot;
+  }
+
+  _dropDialog(d) {
+    if (this._el?.holder && d.rec.parentElement !== this._el.holder) this._el.holder.appendChild(d.rec);
+    d.dlg.remove();
+    d.scrim.remove();
+    if (this._layerEl && this._layerEl.shadowRoot.children.length <= 1) { this._layerEl.remove(); this._layerEl = null; }
+    const i = this._springs.indexOf(d.open);
+    if (i >= 0) this._springs.splice(i, 1);
+  }
+
+  _goLive() {
+    this._seekFrac = null;
+    this._mode = "live";
+    this._play = null;
+    this._activeReview = null;
+    this.toggleAttribute("playing", false);
+    for (const t of this._tiles) {
+      this._stopVideo(t);
+      t.playing = false;
+      t.player.hidden = true;
+      attr(t.node, "data-playing", null);
+      this._hideMsg(t);
+    }
+    this._el.ctrl.hidden = true;
+    this._headOn.to(0, MOTION.ui);
+    this._syncLive();
+    this._update();
+    this._renderReviews();
+    this._wake();
+  }
+
+  _stopVideo(t) {
+    t.playToken = null;
+    t.sources = null;
+    const v = t.video;
+    v.pause?.();
+    if (v.getAttribute("src")) { v.removeAttribute("src"); v.load?.(); }
+  }
+
+  _togglePlay() {
+    const lead = this._lead()?.video;
+    if (!lead) return;
+    const resume = lead.paused || lead.ended;
+    for (const t of this._playingTiles()) {
+      const v = t.video;
+      if (v.error || !v.getAttribute("src")) continue;
+      if (resume) { if (v.ended) v.currentTime = 0; v.play?.().catch(() => {}); }
+      else v.pause();
+    }
+    this._syncPlayer();
+  }
+
+  _syncPlayer(forceFrac) {
+    if (this._mode !== "play" || !this._el || !this._play) return;
+    const lead = this._lead();
+    if (!lead) return;
+    const v = lead.video;
+    const dur = Number.isFinite(v.duration) ? v.duration : (this._play.end - this._play.start);
+    const cur = v.currentTime || 0;
+    const f = forceFrac ?? this._seekFrac ?? clamp(dur ? cur / dur : 0);
+    put(this._el.fill, "transform", `scaleX(${f.toFixed(4)})`);
+    put(this._el.knob, "left", `${(f * 100).toFixed(2)}%`);
+    text(this._el.ctime, `${mmss(f * dur)} / ${mmss(dur)}`);
+    attr(this._el.bar, "aria-valuenow", String(Math.round(f * dur)));
+    attr(this._el.bar, "aria-valuemax", String(Math.round(dur)));
+    const paused = v.paused || v.ended;
+    attr(this._el.ppIcon, "icon", v.ended ? "mdi:replay" : paused ? "mdi:play" : "mdi:pause");
+    attr(this._el.pp, "aria-label", v.ended ? "Replay" : paused ? "Play" : "Pause");
+    const at = this._play.start + f * dur;
+    this._head.to(clamp(at - dayStart(this._day), 0, DAY), MOTION.drag);
+    for (const t of this._playingTiles()) {
+      text(t.badgeText, `${hhmm(at)}${this._play.label ? ` · ${this._play.label}` : ""}`);
+    }
+    this._wake();
+  }
+
+  _showMsg(t, msg, { detail = "", icon = "mdi:filmstrip-off", loading = false } = {}) {
+    text(t.msgText, msg);
+    text(t.msgDetail, detail);
+    t.msgDetail.hidden = !detail;
+    attr(t.msgIcon, "icon", icon);
+    attr(t.msg, "data-loading", loading ? "" : null);
+    t.msg.hidden = false;
+  }
+  _hideMsg(t) {
+    t.msg.hidden = true;
+    attr(t.msg, "data-loading", null);
+  }
+
+  // A <video> error only says "couldn't play". Ask the same signed URL directly for
+  // its first bytes to tell apart what actually goes wrong: no footage (404), link
+  // refused (401/403), Frigate failed to cut the clip (5xx), or a codec/tag this
+  // browser won't decode (H.265 from a camera's main stream is the usual one).
+  async _diagnose(t, url, mediaErr) {
+    const play = this._play;
+    if (!play) return;
+    const at = hhmm(play.start + (play.review ? PAD_S : 0));
+    const info = { camera: this._fcam(t.cam), path: url.split("?")[0], mediaError: mediaErr?.code ?? null, mediaMessage: mediaErr?.message || "" };
+    try {
+      const r = await fetch(url, { headers: { Range: "bytes=0-262143" }, cache: "no-store" });
+      info.status = r.status;
+      info.type = r.headers.get("content-type");
+      info.ranges = r.status === 206 ? "ranges" : "no ranges";
+      if (r.ok) {
+        const bytes = new Uint8Array(await r.arrayBuffer());
+        let ascii = "";
+        for (let i = 0; i < bytes.length; i++) ascii += bytes[i] > 31 && bytes[i] < 127 ? String.fromCharCode(bytes[i]) : ".";
+        info.codec = /hvc1|hev1/.test(ascii) ? "h265" : /avc1|avc3/.test(ascii) ? "h264"
+          : /av01/.test(ascii) ? "av1" : /vp09/.test(ascii) ? "vp9" : null;
+        // Apple only decodes H.265 in MP4 when the sample entry is tagged hvc1
+        info.tag = /hvc1/.test(ascii) ? "hvc1" : /hev1/.test(ascii) ? "hev1" : null;
+      } else {
+        info.body = (await r.text()).replace(/\s+/g, " ").slice(0, 200);
+      }
+    } catch (err) {
+      info.status = "network";
+      info.body = err?.message || String(err);
+    }
+    if (this._play !== play) return;
+    info.tried = (t.tried || []).map((x) => `${x.kind}:${x.code}`).join(" ");
+    console.warn("[camera-card] recording playback failed", info);
+
+    const v = t.video;
+    const canHevc = !!(v.canPlayType('video/mp4; codecs="hvc1.1.6.L93.B0"') || v.canPlayType('video/mp4; codecs="hev1.1.6.L93.B0"'));
+    const detail = `${info.status}${info.type ? ` · ${info.type}` : ""}${info.codec ? ` · ${info.codec}` : ""}`
+      + `${info.tag ? `/${info.tag}` : ""}${info.status === 200 || info.status === 206 ? ` · ${info.ranges}` : ""}`
+      + `${info.tried ? ` · tried ${info.tried}` : ""}${info.body ? ` · ${info.body}` : ""}`;
+    let msg;
+    if (info.status === 404) {
+      msg = /no recordings/i.test(info.body || "")
+        ? `Frigate has no recording of ${this._camName(t.cam)} at ${at}.`
+        : `Frigate didn't find “${info.camera}” recordings at ${at}. If the Frigate camera has a different name, set frigate_camera.`;
+    } else if (info.status === 401 || info.status === 403) {
+      msg = "Home Assistant refused the recording link. Reload the dashboard and try again.";
+    } else if (typeof info.status === "number" && info.status >= 500) {
+      msg = `Frigate couldn't prepare the recording from ${at}.`;
+    } else if (info.status === "network") {
+      msg = "Couldn't reach Home Assistant for the recording.";
+    } else if (info.codec === "h265" && !canHevc) {
+      msg = "This camera records in H.265, which this browser can't play. Try Safari / the iOS app, or record an H.264 stream in Frigate.";
+    } else if (info.codec === "h265" && info.tag === "hev1") {
+      msg = "This camera's H.265 recordings are tagged “hev1”, which Apple devices won't play. In Frigate, set ffmpeg: apple_compatibility: true for this camera (applies to new recordings).";
+    } else if (info.codec === "h265") {
+      msg = "This camera records in H.265; this browser says it supports it but failed to decode it.";
+    } else {
+      msg = `This browser couldn't play the recording from ${at}.`;
+    }
+    this._showMsg(t, msg, { detail });
+  }
+
+  _fullscreen(t) {
+    const target = this._grid ? t.node : this._el.stage;
+    const v = t.video;
+    if (this._mode === "play" && v.webkitEnterFullscreen && !target.requestFullscreen) return v.webkitEnterFullscreen();
+    if (target.requestFullscreen) {
+      if (document.fullscreenElement) return document.exitFullscreen?.();
+      return target.requestFullscreen().catch(() => this._moreInfo(t.cam.entity));
+    }
+    this._moreInfo(t.cam.entity);
+  }
+
+  // ---------- timeline ----------
+  _wireTimeline() {
+    const tl = this._el.tl;
+    let down = null;
+    const secAt = (e) => {
+      const r = tl.getBoundingClientRect();
+      return clamp((e.clientX - r.left) / (r.width || 1)) * DAY;
+    };
+    const show = (sec) => {
+      const limit = this._day === 0 ? nowS() - dayStart(0) : DAY;
+      sec = Math.min(sec, limit);
+      this._cursor = sec;
+      this._head.to(sec, MOTION.scrub);
+      this._headOn.to(1, MOTION.ui);
+      this._scrub.to(1, MOTION.scrub);
+      const day0 = dayStart(this._day);
+      text(this._el.bubble, hhmm(day0 + sec));
+      attr(tl, "aria-valuenow", String(Math.round(sec)));
+      attr(tl, "aria-valuetext", hhmm(day0 + sec));
+      this._wake();
+      return sec;
+    };
+    tl.addEventListener("pointerdown", (e) => {
+      if (e.button > 0) return;
+      e.stopPropagation();
+      down = e.pointerId;
+      try { tl.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+      this._lastDetent = null;
+      show(secAt(e));
+    });
+    tl.addEventListener("pointermove", (e) => {
+      if (e.pointerId !== down) return;
+      const sec = show(secAt(e));
+      const detent = Math.floor(sec / 3600);
+      if (this._lastDetent !== null && detent !== this._lastDetent) this._haptic("selection");
+      this._lastDetent = detent;
+    });
+    const up = (e) => {
+      if (e.pointerId !== down) return;
+      down = null;
+      this._scrub.to(0, MOTION.ui);
+      if (e.type === "pointerup") this._playAt(this._cursor);
+      else if (this._mode !== "play") this._headOn.to(0, MOTION.ui);
+      this._wake();
+    };
+    tl.addEventListener("pointerup", up);
+    tl.addEventListener("pointercancel", up);
+    tl.addEventListener("keydown", (e) => {
+      const base = this._cursor ?? (this._day === 0 ? nowS() - dayStart(0) : DAY / 2);
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        e.preventDefault();
+        show(clamp(base + (e.key === "ArrowRight" ? 300 : -300), 0, DAY));
+        clearTimeout(this._kbTimer);
+        this._kbTimer = setTimeout(() => { this._scrub.to(0, MOTION.ui); this._wake(); }, 900);
+      }
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); this._playAt(base); }
+    });
+  }
+
+  // A moment on the timeline plays from there, on every camera on screen. Landing on
+  // a review plays that review (so it's marked seen and labelled); within a minute
+  // of now just means live.
+  _playAt(sec) {
+    if (sec == null) return;
+    if (this._dialog) this._closeDialog();
+    const at = dayStart(this._day) + sec;
+    this._haptic("light");
+    if (nowS() - at < 60) return this._goLive();
+    const hit = this._visibleReviews().find((r) => at >= r.start - 5 && at <= (r.end || nowS()) + 5);
+    if (hit) return this._playReview(hit);
+    this._activeReview = null;
+    this._playSpan(at, at + 600, { label: "" });
+    this._renderReviews();
+  }
+
+  _stepDay(dir) {
+    const next = clamp(this._day + dir, 0, this._config.days - 1);
+    if (next === this._day) return;
+    this._day = next;
+    this._cursor = null;
+    if (this._mode === "play") this._goLive();
+    this._actIn.snap(0);
+    this._el.actPath.__d = null;
+    this._loadAll();
+    this._update();
+  }
+
+  // ---------- frigate data ----------
+  async _sign(path) {
+    const c = this._signed.get(path);
+    if (c && c.until > Date.now()) return c.url;
+    const res = await this._hass.callWS({ type: "auth/sign_path", path, expires: SIGN_TTL });
+    const url = res?.path || path;
+    this._signed.set(path, { url, until: Date.now() + (SIGN_TTL - 120) * 1000 });
+    return url;
+  }
+
+  _refresh() {
+    if (!this._onscreen || !this._hass || this._day !== 0) return;
+    this._loadAll();
+  }
+
+  _loadAll() {
+    if (!this._config?.frigate || !this._hass) return;
+    this._loadReviews();
+    for (const cam of this._scope()) { this._loadSummary(cam); this._loadMotion(cam); }
+  }
+
+  _reviewKey() { return `${this._scope().join(",")}|${this._day}|${ymd(dayStart(this._day))}`; }
+
+  async _loadReviews() {
+    const fr = this._config.frigate, cams = this._scope(), day = this._day;
+    const key = this._reviewKey();
+    const have = this._reviews.get(key);
+    if (have?.loading) return;
+    if (have && (day > 0 || Date.now() - have.at < REFRESH_MS - 1000)) { this._renderRec(); return; }
+    this._reviews.set(key, { ...(have || {}), loading: true });
+    const after = dayStart(day), before = day === 0 ? nowS() : dayStart(day - 1);
+    let items = null, source = null, error = null;
+    try {
+      const list = parseWS(await this._hass.callWS({
+        type: "frigate/reviews/get", instance_id: fr.instance, cameras: cams, after, before, limit: 500,
+      }));
+      source = "review";
+      items = list.map((r) => {
+        const cam = r.camera || cams[0];
+        const thumb = r.thumb_path && r.thumb_path.includes("/clips/")
+          ? `/api/frigate/${fr.instance}/clips/${r.thumb_path.split("/clips/")[1]}`
+          : `/api/frigate/${fr.instance}/clips/review/thumb-${cam}-${r.id}.webp`;
+        return {
+          id: r.id, source, camera: cam, start: r.start_time, end: r.end_time,
+          severity: r.severity === "alert" ? "alert" : "detection",
+          labels: [...new Set([...(r.data?.objects || []), ...(r.data?.audio || [])].map((l) => String(l).replace(/-verified$/, "")))],
+          reviewed: !!r.has_been_reviewed, thumb,
+        };
+      });
+    } catch (err) {
+      try {
+        const list = parseWS(await this._hass.callWS({
+          type: "frigate/events/get", instance_id: fr.instance, cameras: cams,
+          after: Math.floor(after), before: Math.ceil(before), limit: 500,
+        }));
+        source = "event";
+        items = list.map((e) => ({
+          id: e.id, source, camera: e.camera || cams[0], start: e.start_time, end: e.end_time, severity: "detection",
+          labels: e.label ? [e.label] : [], reviewed: true,
+          thumb: `/api/frigate/${fr.instance}/notifications/${e.id}/thumbnail.jpg`,
+        }));
+      } catch (err2) {
+        error = err2?.message || String(err2);
+      }
+    }
+    if (!error) console.info(`[savvy-camera-card] ${items.length} ${source === "review" ? "reviews" : "events"} for ${cams.join(", ")} on ${ymd(after)}`);
+    this._reviews.set(key, { at: Date.now(), items: (items || []).sort((a, b) => b.start - a.start), source, error });
+    if (key === this._reviewKey()) this._renderRec();
+  }
+
+  async _loadSummary(cam) {
+    const fr = this._config.frigate;
+    const have = this._summary.get(cam);
+    if (have && (have.loading || Date.now() - have.at < SUMMARY_MS)) return;
+    this._summary.set(cam, { ...(have || {}), loading: true });
+    let days = null;
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      days = parseWS(await this._hass.callWS({ type: "frigate/recordings/summary", instance_id: fr.instance, camera: cam, timezone: tz }));
+    } catch (err) { days = null; }
+    this._summary.set(cam, { at: Date.now(), days });
+    if (this._scope().includes(cam)) this._renderRec();
+  }
+
+  // Every ~10s recording segment carries Frigate's motion score; that's the same
+  // signal Frigate's own activity graph is drawn from. Today refreshes incrementally.
+  async _loadMotion(cam) {
+    const fr = this._config.frigate, day = this._day;
+    const key = `${cam}|${ymd(dayStart(day))}`;
+    const have = this._motion.get(key);
+    if (have?.loading) return;
+    if (have && !have.error && (day > 0 || Date.now() - have.at < REFRESH_MS - 1000)) return;
+    const after = have?.last && day === 0 ? have.last : dayStart(day);
+    const before = day === 0 ? nowS() : dayStart(day - 1);
+    this._motion.set(key, { ...(have || { rows: [] }), loading: true });
+    let rows = null, error = null;
+    try {
+      const list = parseWS(await this._hass.callWS({
+        type: "frigate/recordings/get", instance_id: fr.instance, camera: cam,
+        after: Math.floor(after), before: Math.ceil(before),
+      }));
+      rows = list.map((r) => [r.start_time, r.end_time, Number(r.motion) || 0]).filter((r) => Number.isFinite(r[0]));
+    } catch (err) { error = err?.message || String(err); }
+    const merged = rows ? [...(have?.rows || []).filter((r) => r[0] < after), ...rows] : (have?.rows || []);
+    const last = merged.length ? merged[merged.length - 1][0] : null;
+    this._motion.set(key, { at: Date.now(), rows: merged, last, error: rows ? null : error });
+    if (this._scope().includes(cam)) this._renderRec();
+  }
+
+  _dayReviews() { return this._reviews.get(this._reviewKey())?.items || []; }
+
+  _visibleReviews() {
+    const f = this._filter;
+    return this._dayReviews().filter((r) => f === "all" || (f === "alert" ? r.severity === "alert" : r.labels.includes(f)));
+  }
+
+  // hours of this day with no recording in any on-screen camera; null = unknown
+  _missingHours() {
+    const want = ymd(dayStart(this._day));
+    let known = false;
+    const have = new Set();
+    for (const cam of this._scope()) {
+      const days = this._summary.get(cam)?.days;
+      if (!Array.isArray(days)) continue;
+      known = true;
+      const d = days.find((x) => x.day === want);
+      for (const h of d?.hours || []) if ((h.duration ?? 1) > 0) have.add(parseInt(h.hour, 10));
+    }
+    if (!known) return null;
+    const upto = this._day === 0 ? new Date().getHours() : 23;
+    const miss = new Set();
+    for (let h = 0; h <= upto; h++) if (!have.has(h)) miss.add(h);
+    return miss;
+  }
+
+  // motion per 5-minute bucket across the on-screen cameras, plus total seconds
+  _activity() {
+    const day0 = dayStart(this._day), want = ymd(day0);
+    const buckets = new Float64Array(BUCKETS);
+    let any = false, seconds = 0, loaded = false;
+    for (const cam of this._scope()) {
+      const m = this._motion.get(`${cam}|${want}`);
+      if (m && !m.loading && !m.error) loaded = true;
+      for (const [s, e, v] of m?.rows || []) {
+        if (v <= 0) continue;
+        const b = Math.floor(((s - day0) / DAY) * BUCKETS);
+        if (b < 0 || b >= BUCKETS) continue;
+        buckets[b] += v;
+        seconds += Math.max(0, (e || s + 10) - s);
+        any = true;
+      }
+      // no segment data: fall back to the hourly motion counts in the summary
+      if (!m?.rows?.length) {
+        const d = Array.isArray(this._summary.get(cam)?.days) ? this._summary.get(cam).days.find((x) => x.day === want) : null;
+        for (const h of d?.hours || []) {
+          const v = Number(h.motion) || 0;
+          if (v <= 0) continue;
+          const hr = parseInt(h.hour, 10), per = BUCKETS / 24;
+          for (let k = 0; k < per; k++) buckets[hr * per + k] += v / per;
+          any = true;
+          loaded = true;
+        }
+      }
+    }
+    return { buckets, any, seconds, loaded };
+  }
+
+  // ---------- update ----------
+  _update() {
+    const h = this._hass;
+    if (!h || !this._root) return;
+    this._reduced = MQ.reduced.matches;
+    this.toggleAttribute("dark", !!h.themes?.darkMode);
+    const cams = this._config.cameras, el = this._el, active = new Set(this._active());
+
+    for (const t of this._tiles) {
+      const c = t.cam, st = h.states[c.entity];
+      const off = !st || st.state === "unavailable";
+      attr(t.node, "aria-hidden", active.has(t.i) ? "false" : "true");
+      attr(t.node, "aria-label", `${this._camName(c)}, ${this._mode === "play" && t.playing ? "recording" : off ? "offline" : "live"}`);
+      t.ph.hidden = !off;
+      if (off) text(t.phText, st ? `${this._camName(c)} is offline` : `${c.entity} not found`);
+      const pic = st?.attributes.entity_picture;
+      t.still.hidden = off || !pic;
+      if (pic && t.still.__pic !== pic) { t.still.__pic = pic; t.still.src = pic; }
+      text(t.name, this._camName(c));
+      text(t.status, this._roomStatus(c));
+      if (this._mode === "live" || !t.playing) {
+        attr(t.badge, "data-mode", "live");
+        text(t.badgeText, off ? "Offline" : "Live");
+      } else attr(t.badge, "data-mode", "play");
+      const det = this._detections(c);
+      t.det.hidden = !det.length || this._mode !== "live";
+      if (det.length) {
+        attr(t.detIcon, "icon", LABEL_ICONS[det[0]] || "mdi:motion-sensor");
+        text(t.detText, det.map(title).join(" · "));
+      }
+    }
+
+    cams.forEach((c, i) => {
+      const btn = el.pillBtns[i];
+      if (btn) {
+        attr(btn.querySelector("ha-icon"), "icon", c.icon || h.areas?.[c.area]?.icon || "mdi:cctv");
+        text(btn.querySelector("span"), this._camName(c));
+        attr(btn, "aria-selected", String(i === this._index));
+        attr(btn, "tabindex", i === this._index ? "0" : "-1");
+      }
+      const dot = el.dots.children[i];
+      if (dot) attr(dot, "data-on", i === this._index ? "" : null);
+    });
+
+    const pill = el.pillBtns[this._index];
+    if (this._pillReady && pill?.offsetWidth) {
+      this._indX.to(pill.offsetLeft, MOTION.pill);
+      this._indW.to(pill.offsetWidth, MOTION.pill);
+    }
+
+    if (this._mode === "live") this._syncLive();
+    this._renderRec();
+    this._wake();
+  }
+
+  // Frigate's own per-camera occupancy sensors, found by registry platform so a room
+  // presence sensor that also happens to end in "_occupancy" never counts.
+  _detections(cam) {
+    const h = this._hass, prefix = `binary_sensor.${this._fcam(cam)}_`, out = [];
+    for (const id in h.states) {
+      if (!id.startsWith(prefix) || !id.endsWith("_occupancy") || h.states[id].state !== "on") continue;
+      const plat = h.entities?.[id]?.platform;
+      if (plat && plat !== "frigate") continue;
+      if (!plat && !h.entities) continue;
+      const label = id.slice(prefix.length, -"_occupancy".length);
+      if (label === "all" || !label) continue;
+      out.push(label);
+    }
+    return out;
+  }
+
+  _roomStatus(cam) {
+    const h = this._hass;
+    if (!cam.area || !h.entities) return "";
+    if (this._regFor !== h.entities) { this._regFor = h.entities; this._areaCache = new Map(); }
+    let ids = this._areaCache.get(cam.area);
+    if (!ids) {
+      ids = { presence: [], door: [] };
+      for (const id in h.entities) {
+        const ent = h.entities[id];
+        if (ent.hidden || ent.disabled_by || ent.entity_category || !id.startsWith("binary_sensor.")) continue;
+        if (ent.platform === "frigate") continue;
+        const a = ent.area_id || h.devices?.[ent.device_id]?.area_id;
+        if (a !== cam.area) continue;
+        const dc = h.states[id]?.attributes.device_class;
+        if (["presence", "occupancy", "motion"].includes(dc)) ids.presence.push(id);
+        if (["door", "garage_door", "opening"].includes(dc)) ids.door.push(id);
+      }
+      this._areaCache.set(cam.area, ids);
+    }
+    const parts = [];
+    const pres = ids.presence.map((id) => h.states[id]).filter(Boolean);
+    if (pres.length) parts.push(pres.some((s) => s.state === "on") ? "Occupied" : "Clear");
+    const doors = ids.door.map((id) => h.states[id]).filter(Boolean);
+    if (doors.length) {
+      const open = doors.filter((s) => s.state === "on").length;
+      parts.push(open ? (doors.length > 1 ? `${open} doors open` : "Door open") : (doors.length > 1 ? "Doors closed" : "Door closed"));
+    }
+    return parts.join(" · ");
+  }
+
+  // ---------- recordings UI ----------
+  _renderActivity() {
+    if (!this._config.frigate || !this._el) return;
+    const { buckets, any } = this._activity();
+    let max = 0;
+    for (const v of buckets) max = Math.max(max, v);
+    const path = this._el.actPath;
+    if (!any || !max) {
+      if (path.__d) { path.__d = ""; path.setAttribute("d", ""); }
+      this._el.legend.hidden = !this._dayReviews().length;
+      return;
+    }
+    // sqrt lifts the quiet stretches so one busy minute doesn't flatten the whole day
+    let d = "M0 100";
+    for (let i = 0; i < BUCKETS; i++) {
+      const y = (100 - (buckets[i] > 0 ? 6 + Math.sqrt(buckets[i] / max) * 60 : 0)).toFixed(1);
+      d += `L${i} ${y}L${i + 1} ${y}`;
+    }
+    d += `L${BUCKETS} 100Z`;
+    if (path.__d !== d) {
+      const first = !path.__d;
+      path.__d = d;
+      path.setAttribute("d", d);
+      if (first) { this._actIn.snap(0); this._actIn.to(1, MOTION.graph); this._wake(); }
+    }
+    this._el.legend.hidden = false;
+  }
+
+  _renderRec() {
+    if (!this._config.frigate || !this._el) return;
+    const el = this._el, day0 = dayStart(this._day), grid = this._grid;
+    const names = ["Today", "Yesterday"];
+    text(el.dayname, names[this._day] || new Date(day0 * 1000).toLocaleDateString(this._hass?.locale?.language || undefined,
+      { weekday: "short", day: "numeric", month: "short" }));
+    attr(el.prev, "disabled", this._day >= this._config.days - 1 ? "" : null);
+    attr(el.next, "disabled", this._day === 0 ? "" : null);
+
+    const entry = this._reviews.get(this._reviewKey());
+    const all = entry?.items || [];
+    const alerts = all.filter((r) => r.severity === "alert").length;
+    const act = this._activity();
+    let sum;
+    if (!entry || (entry.loading && !entry.items)) sum = "Loading…";
+    else if (entry.error) sum = "";
+    else if (all.length) sum = `${alerts ? `${alerts} alert${alerts > 1 ? "s" : ""} · ` : ""}${all.length - alerts} detection${all.length - alerts === 1 ? "" : "s"}`;
+    else if (act.any) sum = `No detections · ${span(act.seconds)} of motion`;
+    else sum = act.loaded ? "No activity" : "No detections";
+    text(el.daysum, sum);
+    if (el.recSum) text(el.recSum, sum);
+
+    const miss = this._missingHours();
+    [...el.hours.children].forEach((i, hIdx) => attr(i, "data-norec", miss?.has(hIdx) ? "" : null));
+    const nowFrac = this._day === 0 ? clamp((nowS() - day0) / DAY) : 1;
+    el.future.hidden = this._day !== 0;
+    put(el.future, "left", `${(nowFrac * 100).toFixed(3)}%`);
+    el.now.hidden = this._day !== 0;
+    put(el.now, "left", `${(nowFrac * 100).toFixed(3)}%`);
+
+    const vis = new Set(this._visibleReviews().map((r) => r.id));
+    const marks = all.map((r) => {
+      const a = clamp((r.start - day0) / DAY), b = clamp(((r.end || nowS()) - day0) / DAY);
+      return `<i class="mk" data-sev="${r.severity}" ${vis.has(r.id) ? "" : "data-dim"} style="left:${(a * 100).toFixed(3)}%;width:${Math.max(0, (b - a) * 100).toFixed(3)}%"></i>`;
+    }).join("");
+    if (el.marks.__html !== marks) { el.marks.__html = marks; el.marks.innerHTML = marks; }
+
+    const counts = new Map();
+    for (const r of all) for (const l of r.labels) counts.set(l, (counts.get(l) || 0) + 1);
+    const filters = [["all", "All", "mdi:filmstrip", all.length]];
+    if (alerts) filters.push(["alert", "Alerts", "mdi:alert-circle-outline", alerts]);
+    for (const [l, n] of [...counts.entries()].sort((a, b) => b[1] - a[1])) filters.push([l, title(l), LABEL_ICONS[l] || "mdi:motion-sensor", n]);
+    if (!filters.some((f) => f[0] === this._filter)) this._filter = "all";
+    const fkey = filters.map((f) => f.join(":")).join("|");
+    if (el.filters.__key !== fkey) {
+      el.filters.__key = fkey;
+      this._dropPress(el.filters);
+      el.filters.innerHTML = "";
+      for (const [key, name, icon, n] of filters) {
+        const b = document.createElement("button");
+        b.className = "chip";
+        b.dataset.key = key;
+        b.innerHTML = `<ha-icon icon="${icon}"></ha-icon><span>${name}</span><span class="n">${n}</span>`;
+        b.setAttribute("aria-label", `${name}, ${n}`);
+        this._press(b, () => { this._filter = key; this._haptic("selection"); this._renderRec(); }, { haptic: null });
+        el.filters.appendChild(b);
+      }
+    }
+    for (const b of el.filters.children) attr(b, "aria-pressed", String(b.dataset.key === this._filter));
+    el.filters.hidden = !all.length;
+
+    this._renderReviews();
+    this._renderActivity();
+
+    let note = "";
+    if (entry?.error) note = "Recordings unavailable: the Frigate integration didn't answer. Check the instance id and that Frigate is running.";
+    el.note.hidden = !note;
+    text(el.note, note);
+    attr(el.tl, "aria-label", `Recording timeline${grid ? ", all cameras" : `, ${this._camName(this._cam)}`}`);
+    this._fitRows();
+  }
+
+  _dropPress(container) {
+    this._pressNodes = this._pressNodes.filter((n) => {
+      if (!container.contains(n)) return true;
+      const i = this._springs.indexOf(n.__spring);
+      if (i >= 0) this._springs.splice(i, 1);
+      return false;
+    });
+  }
+
+  _renderReviews() {
+    const el = this._el, list = this._visibleReviews(), grid = this._grid;
+    const key = `${this._reviewKey()}|${this._filter}|${grid}|${list.map((r) => `${r.id}:${r.reviewed}:${r.end}`).join(",")}`;
+    if (el.reviews.__key !== key) {
+      el.reviews.__key = key;
+      this._dropPress(el.reviews);
+      el.reviews.innerHTML = "";
+      for (const r of list) {
+        const b = document.createElement("button");
+        b.className = "rv";
+        b.dataset.id = r.id;
+        b.dataset.sev = r.severity;
+        b.setAttribute("role", "listitem");
+        const label = r.labels[0];
+        const dur = r.end ? r.end - r.start : nowS() - r.start;
+        const cam = this._camByFrigate(r.camera);
+        // in the grid the reviews come from every camera, so say which one
+        const where = grid && cam ? this._camName(cam) : (r.end ? mmss(dur) : "ongoing");
+        b.innerHTML = `
+          <span class="th"><ha-icon icon="${LABEL_ICONS[label] || "mdi:cctv"}"></ha-icon><img alt="" hidden>
+            ${label ? `<span class="lbl"><ha-icon icon="${LABEL_ICONS[label] || "mdi:motion-sensor"}"></ha-icon>${title(label)}${r.labels.length > 1 ? ` +${r.labels.length - 1}` : ""}</span>` : ""}
+            ${r.reviewed ? "" : `<span class="new" aria-hidden="true"></span>`}
+          </span>
+          <span class="meta"><span>${hhmm(r.start)}</span><span class="d">${where}</span></span>`;
+        b.setAttribute("aria-label", `${r.severity === "alert" ? "Alert" : "Detection"}: ${r.labels.map(title).join(", ") || "motion"}`
+          + `${cam && grid ? ` on ${this._camName(cam)}` : ""} at ${hhmm(r.start)}${r.reviewed ? "" : ", not reviewed"}`);
+        this._press(b, () => this._playReview(r), { haptic: "light" });
+        el.reviews.appendChild(b);
+        this._thumb(b.querySelector("img"), r.thumb);
+      }
+    }
+    for (const b of el.reviews.children) attr(b, "data-active", b.dataset.id === this._activeReview ? "" : null);
+    el.reviews.hidden = !list.length;
+  }
+
+  async _thumb(img, path) {
+    if (!path) return;
+    try {
+      const url = await this._sign(path);
+      img.onload = () => { img.hidden = false; };
+      img.onerror = () => { img.hidden = true; };
+      img.src = url;
+    } catch (err) { /* the label icon stays as the placeholder */ }
+  }
+
+  _fitRows() {
+    for (const row of [this._el?.filters, this._el?.reviews]) {
+      if (!row || row.hidden) continue;
+      row.toggleAttribute("data-overflow", row.scrollWidth > row.clientWidth + 1);
+    }
+  }
+
+  // ---------- actions ----------
+  _moreInfo(entityId) {
+    if (!entityId || !this._hass?.states[entityId]) return;
+    this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId }, bubbles: true, composed: true }));
+  }
+  _haptic(type) { window.dispatchEvent(new CustomEvent("haptic", { detail: type })); }
+
+  // ---------- frame ----------
+  _wake() { if (this._root && this.isConnected) Clock.add(this._job); }
+
+  _frame(now, dt) {
+    const dirty = new Set();
+    for (const s of this._springs) {
+      if (s.idle) continue;
+      if (this._reduced) s.snap();
+      else s.step(dt);
+      dirty.add(s.group);
+    }
+    if (!this._pillReady && !this._grid && this._config.cameras.length > 1) dirty.add("pill");
+    if (!dirty.size) return false;
+    if (this._onscreen) this._paint(dirty);
+    return true;
+  }
+
+  _paint(dirty) {
+    if (!this._el) return;
+    const all = !dirty, red = this._reduced, el = this._el;
+
+    const dl = this._dialog || this._closing;
+    if (dl && (all || dirty.has("dlg"))) {
+      const v = dl.open.x, sheet = dl.dlg.hasAttribute("data-sheet");
+      put(dl.scrim, "opacity", clamp(v).toFixed(3));
+      put(dl.dlg, "opacity", clamp(v * 1.6).toFixed(3));
+      put(dl.dlg, "transform", sheet ? `translateY(${((1 - v) * 60).toFixed(2)}px)`
+        : `translate(-50%, calc(-50% + ${((1 - v) * 18).toFixed(2)}px)) scale(${(0.97 + 0.03 * v).toFixed(4)})`);
+      if (dl.closing && v < 0.02 && dl.open.idle) this._finishClosing();
+    }
+
+    for (const node of this._pressNodes) {
+      const s = node.__spring;
+      if (!s || (!all && !dirty.has(s.group))) continue;
+      const p = s.x;
+      if (red) put(node, "opacity", Math.abs(p) < 1e-4 ? "" : (1 - 0.25 * p).toFixed(3));
+      else put(node, "transform", Math.abs(p) < 1e-4 ? "" : `scale(${(1 - 0.04 * p).toFixed(4)})`);
+    }
+
+    if (all || dirty.has("pager")) {
+      const W = this._grid ? 0 : (el.stage.clientWidth || 0);
+      put(el.track, "transform", this._grid ? "" : `translate3d(${(-this._pager.x * W).toFixed(2)}px,0,0)`);
+    }
+
+    if ((all || dirty.has("pill")) && !this._grid && this._config.cameras.length > 1) {
+      const btn = el.pillBtns[this._index];
+      if (btn && btn.offsetWidth) {
+        if (!this._pillReady) {
+          this._pillReady = true;
+          this._indX.snap(btn.offsetLeft);
+          this._indW.snap(btn.offsetWidth);
+        }
+        this._indX.to(btn.offsetLeft, MOTION.pill);
+        this._indW.to(btn.offsetWidth, MOTION.pill);
+        put(el.ind, "transform", `translateX(${this._indX.x.toFixed(2)}px)`);
+        put(el.ind, "width", `${this._indW.x.toFixed(2)}px`);
+      }
+    }
+
+    if (this._config.frigate && (all || dirty.has("head") || dirty.has("scrub"))) {
+      const f = clamp(this._head.x / DAY);
+      put(el.playhead, "left", `${(f * 100).toFixed(3)}%`);
+      put(el.playhead, "opacity", clamp(this._headOn.x).toFixed(3));
+      put(el.bubble, "left", `${(f * 100).toFixed(3)}%`);
+      put(el.bubble, "opacity", clamp(this._scrub.x).toFixed(3));
+    }
+
+    // the activity graph grows up out of the baseline the first time it has data
+    if (this._config.frigate && (all || dirty.has("act"))) {
+      const a = clamp(this._actIn.x);
+      put(el.act, "transform-origin", "50% 100%");
+      put(el.act, "transform", a > 0.999 ? "" : `scaleY(${a.toFixed(3)})`);
+    }
+  }
+}
+
+// ---------- editor ----------
+const EDITOR = defineEditor("savvy-camera-card", (hass, c) => [
+  { name: "area", label: "Area", helper: "Its cameras. Pick several areas for one card across rooms.", selector: { area: { multiple: true } } },
+  { name: "cameras", label: "Cameras", type: "list", helper: "Instead of the area's: these, in this order.", add: { selector: { entity: { domain: "camera" } }, label: "Add a camera" },
+    item: [
+      { name: "entity", label: "Camera", selector: { entity: { domain: "camera" } } },
+      { type: "grid", name: "", schema: [{ name: "name", label: "Name", selector: { text: {} } }, { name: "area", label: "Area", selector: { area: {} } }] },
+      { name: "frigate_camera", label: "Frigate's name for it", helper: "When it isn't the entity's own name.", selector: { text: {} } },
+    ] },
+  S.grid(S.select("recordings", "Recordings", [{ value: "popup", label: "In a popup" }, { value: "inline", label: "In the card" }]),
+    { name: "columns", label: "Cameras side by side", selector: { select: { mode: "dropdown", options: [{ value: "auto", label: "By width" }, "1", "2", "3", "4"] } } }),
+  S.grid(S.number("days", "Days of recordings", 1, 30), S.text("aspect_ratio", "Aspect ratio")),
+  { type: "expandable", name: "frigate", title: "Frigate", schema: [
+    { name: "instance", label: "Instance", helper: "Frigate's MQTT client id; 'frigate' unless you changed it. Found by itself when the cameras come from Frigate.", selector: { text: {} } },
+  ] },
+]);
+
+registerCard("savvy-camera-card", SavvyCameraCard, "Camera",
+  "Live cameras side by side, with Frigate's alerts, motion activity and synced recording playback when the cameras come from Frigate.");
+})();
 
 // ===== cards/climate.js =====
 (() => {
@@ -4099,6 +6009,1005 @@ registerCard("savvy-climate-card", ClimateCard, "Climate",
   "An A/C or thermostat: drag the target, pick the mode, and swipe for its history. Finds the room's unit for you.");
 })();
 
+// ===== cards/entity.js =====
+(() => {
+// savvy-entity-card: one main entity, and the entities that belong with it underneath as
+// chips.
+//
+//   main   by what it is: a person or device_tracker gets their picture (initials when
+//          there's none), a zone badge and "Home · for 3 h"; anything else its own state
+//          icon, name and "Charging · for 40 min". The time ticks on a coarse timer.
+//   chips  the one chip spec. A toggle toggles at once (the chip shows the result before
+//          HA confirms), a button presses, a script or scene runs, anything else shows its
+//          value and opens more-info. Hold opens more-info.
+//
+//   type: custom:savvy-entity-card
+//   entity: person.alex
+//   chips: [{ entity: switch.scooter_plug, name: Scooter, icon: mdi:scooter-electric, color: blue }]
+
+const TICK_MS = 30000;
+const PREDICT_MS = 4000;
+const PEOPLE = new Set(["person", "device_tracker"]);
+const initials = (name) => String(name || "?").trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() || "").join("") || "?";
+
+// The pre-Savvy shorthands: tap_action: toggle | press | turn_on | more-info
+const legacyAction = (a, entity) => {
+  if (a === "press" || a === "turn_on") return { action: "perform-action", perform_action: `${domainOf(entity)}.${a}`, target: { entity_id: entity } };
+  return asAction(a);
+};
+
+const STYLE = `${BASE_CSS}
+  ha-card { --pad: 12px; display: flex; flex-direction: column; gap: 10px; padding: var(--pad); }
+  .main { --on: 0; --away: 0; display: flex; align-items: center; gap: 11px; min-width: 0;
+    border-radius: 14px; margin: -4px; padding: 4px; cursor: pointer; transform-origin: 30% 50%; }
+  .av { position: relative; flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--well);
+    --mdc-icon-size: 22px; color: color-mix(in oklab, var(--main-c, var(--primary-text-color)) calc(var(--on) * 100%), var(--secondary-text-color)); }
+  .av[data-kind="icon"] { border-radius: 14px; background: color-mix(in oklab, var(--main-c, var(--primary-text-color)) calc(6% + var(--on) * 10%), transparent); }
+  @supports (corner-shape: squircle) { .av[data-kind="icon"] { corner-shape: squircle; border-radius: 22px; } }
+  .av img { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; object-fit: cover;
+    filter: grayscale(calc(var(--away) * 0.85)); opacity: calc(1 - var(--away) * 0.35); }
+  .av .ini { font-size: 14px; line-height: 1; font-weight: 650; letter-spacing: -0.01em; transform: translate(-2px, -2px);
+    color: var(--primary-text-color); opacity: calc(1 - var(--away) * 0.45); }
+  .av .zone { position: absolute; right: -4px; bottom: -4px; width: 19px; height: 19px; border-radius: 50%; display: grid; place-items: center;
+    --mdc-icon-size: 12px; background: var(--card-background-color, #fff); color: var(--primary-text-color);
+    box-shadow: 0 0 0 1.5px var(--card-background-color, #fff), inset 0 0 0 20px var(--well); }
+  /* ha-icon is inline with a baseline gap under its svg; as a fixed-size flex box it centres */
+  .av > ha-icon, .av > ha-state-icon, .av .zone ha-icon { display: flex; align-items: center; justify-content: center;
+    width: var(--mdc-icon-size); height: var(--mdc-icon-size); line-height: 0; }
+  .txt { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+  .name { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sub { display: flex; gap: 4px; min-width: 0; font-size: 12.5px; line-height: 16px; font-weight: 500; letter-spacing: -0.005em;
+    color: var(--secondary-text-color); white-space: nowrap; }
+  .sub .st { font-weight: 600; color: var(--primary-text-color); flex: none; }
+  .sub .since { overflow: hidden; text-overflow: ellipsis; }
+  .sub .st:not([hidden]) + .since::before { content: "· "; }
+  .sub .since:empty { display: none; }
+  .main[data-off] .av, .main[data-off] .sub .st { opacity: 0.55; }
+
+  .pills { display: flex; gap: 6px; min-width: 0; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; padding: 3px; margin: -3px; }
+  .pills::-webkit-scrollbar { display: none; }
+  .pills[data-overflow] { mask-image: linear-gradient(to left, transparent 0, #000 26px); -webkit-mask-image: linear-gradient(to left, transparent 0, #000 26px); }
+  .pill { --on: 0; flex: none; display: flex; align-items: center; gap: 6px; box-sizing: border-box; height: 32px; padding: 0 12px 0 9px; border-radius: 11px;
+    background: color-mix(in oklab, var(--chip-c, var(--primary-text-color)) calc(6% + var(--on) * 10%), transparent);
+    font-size: 12.5px; line-height: 16px; font-weight: 600; letter-spacing: -0.006em;
+    color: color-mix(in oklab, var(--primary-text-color) calc(60% + var(--on) * 40%), transparent);
+    --mdc-icon-size: 17px; cursor: pointer; white-space: nowrap; transform-origin: 50% 50%; }
+  .pill .ic { display: flex; color: color-mix(in oklab, var(--chip-c, var(--primary-text-color)) calc(var(--on) * 100%), var(--secondary-text-color)); }
+  .pill[data-kind="value"] { color: var(--primary-text-color); }
+  .pill .cn { font-weight: 500; color: var(--secondary-text-color); }
+  /* show_state: false -> the name is the only label, so it reads as one and stays */
+  .pill[data-nostate] .cn { font-weight: 600; color: inherit; display: inline !important; }
+  .pill[data-icononly] { padding: 0 9px; }
+  .pill[data-off] { opacity: 0.5; }
+  @media (prefers-contrast: more) { .sub, .pill .cn { color: var(--primary-text-color); opacity: 0.85; } }
+  /* half a section: names drop first (the icon says what it is), the time only when there's truly no room */
+  @container (max-width: 300px) { .pill .cn { display: none; } .pill { padding-right: 11px; } }
+  @container (max-width: 190px) { .av { width: 40px; height: 40px; } .sub .since { display: none; } }
+`;
+
+class SavvyEntityCard extends SavvyCard {
+  static getStubConfig(hass) {
+    const p = Object.keys(hass?.states || {}).find((id) => id.startsWith("person."))
+      || Object.keys(hass?.states || {}).find((id) => id.startsWith("light.") || id.startsWith("switch."));
+    return p ? { entity: p } : {};
+  }
+  static getConfigElement() { return document.createElement(EDITOR); }
+
+  constructor() {
+    super();
+    this._onscreen = true;
+    this._pills = new Map();
+    this._expect = new Map();
+  }
+
+  setConfig(config) {
+    if (!config?.entity) throw new Error('savvy-entity-card: "entity" (the main entity) is required');
+    // chips: the one chip spec; `entities` is the pre-Savvy name
+    const chips = asItems(config.chips ?? config.entities);
+    this._config = { ...config, chips };
+    if (this._el) { this._build(); if (this._hass) this._update(); }
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._config) return;
+    if (!this._el) this._build();
+    this._update();
+  }
+
+  connectedCallback() {
+    this._observe();
+    this._ticker = this._ticker || setInterval(() => { if (this._onscreen) this._tickTimes(); }, TICK_MS);
+    this._wake();
+  }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._io?.disconnect();
+    clearInterval(this._ticker);
+    this._ticker = 0;
+  }
+  getCardSize() { return this._config?.chips?.length ? 2 : 1; }
+  getGridOptions() { return { columns: 6, min_columns: 3, rows: "auto" }; }
+
+  _build() {
+    const root = this.shadowRoot || this.attachShadow({ mode: "open" });
+    this._resetMotion();
+    this._pills.clear();
+    root.innerHTML = `<style>${STYLE}</style>
+      <ha-card>
+        <div class="main" id="main" role="button" tabindex="0">
+          <span class="av" id="av"></span>
+          <span class="txt"><span class="name" id="name"></span>
+            <span class="sub" id="sub"><span class="st" id="st"></span><span class="since" id="since"></span></span></span>
+        </div>
+        <div class="pills" id="pills" role="group"></div>
+      </ha-card>`;
+    const $ = (id) => root.getElementById(id);
+    this._el = { card: root.querySelector("ha-card"), main: $("main"), av: $("av"), name: $("name"), st: $("st"), since: $("since"), sub: $("sub"), pills: $("pills") };
+    this._mainOn = this._spring(0, MOTION.ui, "main");
+    this._mainAway = this._spring(0, MOTION.ui, "main");
+    this._first = true;
+    const c = this._config;
+    this._pressable(this._el.main, {
+      onTap: () => this._mainAct("tap"),
+      onHold: () => this._mainAct("hold"),
+      onDouble: c.double_tap_action ? () => this._mainAct("double_tap") : null,
+      haptic: null,
+    }, 0.035);
+    this._ro?.disconnect();
+    this._ro = new ResizeObserver(() => this._fitRow(this._el.pills));
+    this._ro.observe(this._el.pills);
+    this._observe();
+  }
+
+  _observe() {
+    if (!this._el || !this.isConnected) return;
+    this._io = this._io || new IntersectionObserver(([e]) => {
+      this._onscreen = e.isIntersecting;
+      if (this._onscreen) { this._tickTimes(); this._paintAll(null); this._wake(); }
+    });
+    this._io.disconnect();
+    this._io.observe(this);
+  }
+
+  // ---------- the main entity ----------
+  _mainAction(kind) {
+    const c = this._config;
+    const given = c[`${kind}_action`];
+    if (given !== undefined) return legacyAction(given, c.entity);
+    if (kind === "tap") return c.navigation_path ? { action: "navigate", navigation_path: c.navigation_path } : { action: "more-info" };
+    if (kind === "hold") return { action: "more-info" };
+    return null;
+  }
+
+  _mainAct(kind) {
+    const c = this._config, h = this._hass, a = this._mainAction(kind);
+    if (!a || a.action === "none") return;
+    haptic("light");
+    if (a.action === "toggle") return this._toggle(c.entity);
+    // a button presses, a script or scene runs: the status line says so for a moment,
+    // since a stateless entity has no state change of its own to show
+    const svc = a.action === "perform-action" || a.action === "call-service" ? (a.perform_action || a.service || "") : "";
+    const self = !a.target || [].concat(a.target.entity_id || []).includes(c.entity);
+    if (self && /\.(press|turn_on)$/.test(svc) && STATELESS.has(domainOf(c.entity))) {
+      if (isDown(h.states[c.entity])) return;
+      runAction(this, h, a, { entity: c.entity });
+      this._firedUntil = Date.now() + 1800;
+      this._firedWord = svc.endsWith(".press") ? "Pressed" : "Running";
+      clearTimeout(this._firedT);
+      this._firedT = setTimeout(() => this._update(), 1850);
+      return this._update();
+    }
+    runAction(this, h, a, { entity: c.entity });
+  }
+
+  _where(st) {
+    if (!st) return { word: "Not found", icon: "mdi:help", away: false };
+    if (isOff(st)) return { word: "Unavailable", icon: "mdi:help", away: false };
+    if (st.state === "home") return { word: "Home", icon: "mdi:home", away: false };
+    if (st.state === "not_home") return { word: "Away", icon: "mdi:home-export-outline", away: true };
+    const zone = Object.values(this._hass.states).find((z) => z.entity_id.startsWith("zone.")
+      && (z.attributes.friendly_name === st.state || z.entity_id === `zone.${st.state}`));
+    return { word: stateText(this._hass, st), icon: zone?.attributes.icon || "mdi:map-marker", away: false };
+  }
+
+  _renderMain() {
+    const h = this._hass, c = this._config, el = this._el, st = h.states[c.entity];
+    const person = PEOPLE.has(domainOf(c.entity));
+    const name = c.name || st?.attributes.friendly_name || title(c.entity.split(".")[1] || c.entity);
+    text(el.name, name);
+    attr(el.main, "data-off", !st || isOff(st));
+    if (c.color) put(el.main, "--main-c", colorOf(c.color));
+    let word, active, away = 0;
+    if (person) {
+      const w = this._where(st);
+      word = w.word;
+      active = !isOff(st);
+      away = w.away ? 1 : 0;
+      const pic = c.picture ?? st?.attributes.entity_picture;
+      const want = `person|${pic || ""}|${initials(name)}`;
+      if (el.av.__key !== want) {
+        el.av.__key = want;
+        attr(el.av, "data-kind", "person");
+        el.av.innerHTML = `${pic ? `<img alt="" src="${esc(pic)}">` : `<span class="ini">${esc(initials(name))}</span>`}<span class="zone" aria-hidden="true"><ha-icon></ha-icon></span>`;
+        const img = el.av.querySelector("img");
+        // a picture that 404s falls back to initials rather than a broken image
+        if (img) img.onerror = () => { img.replaceWith(Object.assign(document.createElement("span"), { className: "ini", textContent: initials(name) })); };
+      }
+      attr(el.av.querySelector(".zone ha-icon"), "icon", w.icon);
+      el.av.querySelector(".zone").hidden = !st || isOff(st);
+    } else {
+      const k = c.icon ? "icon" : "state";
+      if (el.av.__key !== k) {
+        el.av.__key = k;
+        attr(el.av, "data-kind", "icon");
+        el.av.innerHTML = c.icon ? "<ha-icon></ha-icon>" : "<ha-state-icon></ha-state-icon>";
+      }
+      const ic = el.av.firstElementChild;
+      if (c.icon) attr(ic, "icon", c.icon);
+      else if (st && ic.stateObj !== st) { ic.hass = h; ic.stateObj = st; }
+      active = !!st && !isOff(st) && !["off", "idle", "closed", "locked", "standby", "0"].includes(st.state);
+      word = st ? stateText(h, st) : "Not found";
+      // a button/scene/script's state is *when* it last ran, not a state
+      if (st && STATELESS.has(domainOf(c.entity)) && st.state !== "unavailable") {
+        const press = PRESSES.has(domainOf(c.entity));
+        active = false;
+        word = Number.isFinite(Date.parse(st.state)) ? (press ? "Last pressed" : "Last run") : (press ? "Never pressed" : "Never run");
+      }
+    }
+    const fired = this._firedUntil && Date.now() < this._firedUntil;
+    if (fired) { word = this._firedWord; active = true; }
+    text(el.st, word);
+    el.st.hidden = c.show_state === false && !fired;
+    this._mainOn.to(active ? 1 : 0, MOTION.ui);
+    this._mainAway.to(away, MOTION.ui);
+    el.main.__st = st;
+    this._mainWord = word;
+    this._tickTimes();
+  }
+
+  // ---------- the chips ----------
+  _tapAction(item) {
+    if (item.tap_action !== undefined) return legacyAction(item.tap_action, item.entity);
+    if (item.navigation_path) return { action: "navigate", navigation_path: item.navigation_path };
+    if (!item.entity) return null;
+    const d = domainOf(item.entity);
+    // locks and covers too: a chip is a quick control (the lock's more-info is a hold away)
+    if (d === "lock" || d === "cover") return { action: "toggle" };
+    return defaultTapAction(item.entity);
+  }
+
+  _kind(item) {
+    const a = this._tapAction(item);
+    if (!a) return "value";
+    if (a.action === "navigate" && !item.entity) return "nav";
+    if (a.action === "toggle") return "toggle";
+    const svc = a.perform_action || a.service || "";
+    if (/\.press$/.test(svc)) return "press";
+    if (/\.turn_on$/.test(svc) && STATELESS.has(domainOf(item.entity))) return "turn_on";
+    return "value";
+  }
+
+  _renderPills() {
+    const h = this._hass, list = this._config.chips, box = this._el.pills, seen = new Set();
+    list.forEach((item, i) => {
+      const key = `${i}|${item.entity || item.navigation_path}`;
+      seen.add(key);
+      let node = this._pills.get(key);
+      if (!node) {
+        node = document.createElement("div");
+        node.className = "pill";
+        node.innerHTML = `<span class="ic"></span><span class="cn"></span><span class="cv"></span>`;
+        node.__el = { ic: node.querySelector(".ic"), v: node.querySelector(".cv"), n: node.querySelector(".cn") };
+        attr(node, "role", "button");
+        attr(node, "tabindex", "0");
+        const cur = () => node.__item;
+        this._pressable(node, {
+          onTap: () => this._runPill(cur(), "tap"),
+          onHold: () => this._runPill(cur(), "hold"),
+          onDouble: item.double_tap_action ? () => this._runPill(cur(), "double_tap") : null,
+          haptic: null,
+        }, 0.035);
+        node.__on = this._spring(0, MOTION.ui, `pill:${key}`);
+        node.__enter = this._spring(0, MOTION.ui, `pill:${key}`).to(1, MOTION.ui);
+        this._pills.set(key, node);
+      }
+      node.__item = item;
+      box.appendChild(node);
+      this._renderPill(node, item, item.entity ? h.states[item.entity] : null);
+    });
+    for (const [key, node] of this._pills) {
+      if (seen.has(key)) continue;
+      for (const s of [node.__on, node.__enter, node.__spring]) { const k = this._springs.indexOf(s); if (k >= 0) this._springs.splice(k, 1); }
+      const p = this._pressNodes.indexOf(node);
+      if (p >= 0) this._pressNodes.splice(p, 1);
+      node.remove();
+      this._pills.delete(key);
+    }
+    box.hidden = !list.length;
+    this._fitRow(box);
+  }
+
+  // A chip reads as its value ("On", "82 %", "Charging"); a configured name leads it
+  // ("Scooter On"); a toggle's on/off is carried by its tint as well as the word.
+  _renderPill(node, item, st) {
+    const h = this._hass, kind = this._kind(item);
+    attr(node, "data-kind", kind);
+    if (item.color) put(node, "--chip-c", colorOf(item.color));
+    attr(node, "data-off", !!item.entity && isDown(st));
+    const wantState = !item.icon && !!st;
+    if (node.__iconKind !== (wantState ? "state" : "plain")) {
+      node.__iconKind = wantState ? "state" : "plain";
+      node.__el.ic.outerHTML = wantState ? `<ha-state-icon class="ic"></ha-state-icon>` : `<ha-icon class="ic"></ha-icon>`;
+      node.__el.ic = node.querySelector(".ic");
+    }
+    if (wantState) { if (node.__el.ic.stateObj !== st) { node.__el.ic.hass = h; node.__el.ic.stateObj = st; } }
+    else attr(node.__el.ic, "icon", item.icon || (kind === "nav" ? "mdi:arrow-right" : "mdi:help-circle-outline"));
+    const on = kind === "toggle" ? this._isOn(item.entity, st) : kind === "value" && st?.state === "on";
+    let value;
+    if (kind === "nav") value = item.name || "Open";
+    else if (!st) value = "Not found";
+    else if (isDown(st)) value = "Unavailable";
+    else if (kind === "toggle") value = on ? "On" : "Off";
+    else value = chipState(h, st);
+    // a button or a scene's own state says little ("Press", "Scene"); its name reads better
+    if ((kind === "press" || kind === "turn_on") && item.name) value = item.name;
+    const name = kind === "nav" || kind === "press" || kind === "turn_on" ? "" : (item.name || "");
+    text(node.__el.v, value);
+    const noState = item.show_state === false && kind !== "nav";
+    node.__el.v.hidden = noState;
+    attr(node, "data-nostate", noState && !!name);
+    attr(node, "data-icononly", noState && !name);
+    text(node.__el.n, name);
+    node.__el.n.hidden = !name;
+    const full = item.name || st?.attributes.friendly_name || item.entity || "";
+    attr(node, "title", `${full}${kind !== "nav" ? `: ${value}` : ""}`);
+    attr(node, "aria-label", kind === "nav" ? value : `${full}, ${value}`);
+    attr(node, "aria-pressed", kind === "toggle" ? String(on) : null);
+    node.__on.to(on ? 1 : 0, MOTION.ui);
+  }
+
+  // Optimism (CARD-DESIGN.md 4): a toggle shows the result the moment it's tapped and
+  // reconciles when HA reports back; a guess HA never confirms expires.
+  _isOn(id, st) {
+    const exp = this._expect.get(id);
+    if (exp) {
+      if (Date.now() > exp.until || st?.state === exp.state) this._expect.delete(id);
+      else return ["on", "open", "unlocked"].includes(exp.state);
+    }
+    return ["on", "open", "unlocked"].includes(st?.state);
+  }
+
+  _runPill(item, kind) {
+    const h = this._hass, st = item.entity ? h.states[item.entity] : null;
+    let a = kind === "tap" ? this._tapAction(item) : item[`${kind}_action`] !== undefined ? legacyAction(item[`${kind}_action`], item.entity) : { action: "more-info" };
+    if (!a || a.action === "none") return;
+    haptic("light");
+    if (a.action === "toggle") { if (st && !isDown(st)) this._toggle(item.entity); return; }
+    if (item.entity && !st && a.action !== "navigate") return;
+    if (st && isDown(st) && a.action !== "more-info") return;
+    runAction(this, h, a, { entity: item.entity });
+  }
+
+  _toggle(id) {
+    const h = this._hass, d = domainOf(id), st = h.states[id];
+    if (!st || isOff(st)) return;
+    const on = this._isOn(id, st);
+    // lock and cover have no toggle service: say what's meant
+    if (d === "lock") h.callService("lock", on ? "lock" : "unlock", {}, { entity_id: id });
+    else if (d === "cover") h.callService("cover", on ? "close_cover" : "open_cover", {}, { entity_id: id });
+    else toggleEntity(h, id);
+    const next = d === "lock" ? (on ? "locked" : "unlocked") : d === "cover" ? (on ? "closed" : "open") : on ? "off" : "on";
+    this._expect.set(id, { state: next, until: Date.now() + PREDICT_MS });
+    setTimeout(() => this._update(), PREDICT_MS + 50);
+    this._update();
+  }
+
+  _update() {
+    const h = this._hass;
+    if (!h || !this._el) return;
+    this.toggleAttribute("dark", !!h.themes?.darkMode);
+    this._renderMain();
+    this._renderPills();
+    if (this._first) { this._first = false; requestAnimationFrame(() => this._paintAll(null)); }
+    this._wake();
+  }
+
+  _tickTimes() {
+    const el = this._el, st = el?.main.__st;
+    if (!el) return;
+    const stateless = st && STATELESS.has(domainOf(st.entity_id));
+    const fired = this._firedUntil && Date.now() < this._firedUntil;
+    const t = !st ? NaN : stateless ? Date.parse(st.state) : Date.parse(st.last_changed);
+    const show = this._config.show_since !== false && st && !fired && (stateless ? Number.isFinite(t) : !isOff(st));
+    const label = show ? since(t, !stateless) : "";
+    text(el.since, label);
+    el.sub.hidden = el.st.hidden && !label;
+    attr(el.since, "title", show && Number.isFinite(t) ? `Since ${clockTime(t, langOf(this._hass))}` : null);
+    attr(el.main, "aria-label", `${el.name.textContent}, ${this._mainWord || ""}${label ? `, ${label}` : ""}`);
+  }
+
+  _paint(dirty, all, red) {
+    if (all || dirty.has("main")) {
+      put(this._el.main, "--on", clamp(this._mainOn.x).toFixed(3));
+      put(this._el.main, "--away", clamp(this._mainAway.x).toFixed(3));
+    }
+    for (const [key, node] of this._pills) {
+      if (!all && !dirty.has(`pill:${key}`)) continue;
+      put(node, "--on", clamp(node.__on.x).toFixed(3));
+      const v = clamp(node.__enter.x);
+      if (!node.hasAttribute("data-off")) put(node, "opacity", v > 0.999 ? "" : v.toFixed(3));
+      put(node, "translate", red || v > 0.999 ? "" : `0 ${((1 - v) * 4).toFixed(2)}px`);
+    }
+  }
+}
+
+// ---------- editor ----------
+const EDITOR = defineEditor("savvy-entity-card", (hass, c) => [
+  S.entity("entity", "Entity", null, { helper: "A person gets their picture, zone and how long they've been there." }),
+  S.grid(S.text("name", "Name"), S.icon("icon", "Icon")),
+  S.grid(S.color("color", "Colour"), { name: "picture", label: "Picture", helper: "A person's picture, instead of theirs in HA.", selector: { text: {} } }),
+  S.grid(S.bool("show_state", "Show the state", null, true), S.bool("show_since", "Show how long", null, true)),
+  S.nav("navigation_path", "Navigate to on tap", "Empty: tapping opens more-info (or set a tap action below)."),
+  S.section("Actions", [S.action("tap_action", "Tap"), S.action("hold_action", "Hold"), S.action("double_tap_action", "Double tap")]),
+  S.chips("chips", "Chips", "Entities that belong with it: a toggle toggles, a button presses, anything else shows its value."),
+]);
+
+registerCard("savvy-entity-card", SavvyEntityCard, "Entity",
+  "One main entity (a person gets their picture and zone) with the entities that belong with it as chips.");
+})();
+
+// ===== cards/graph.js =====
+(() => {
+// savvy-graph-card: a tile per entity, each one finding its own kind from its state.
+//   graph   a number that's reporting (not a timestamp): a chart, two per row at every
+//           width. Smoothed line over a fading fill, dashed average, min and max, an axis,
+//           a scrub bubble (hover, or press and hold still). Thresholds colour it
+//           good / warn / bad down the value axis. With no history yet it keeps its shape.
+//   state   anything else (on/off, a timestamp, text): a small tile with its state.
+//
+// Each graph shows its own hours_to_show, else the card's; graphs sharing a range share
+// one history call. An hours selector is opt-in (ranges: [24, 168, 720]) and drives every
+// graph that hasn't pinned its own. Past a week, graphs read long-term statistics.
+//
+//   type: custom:savvy-graph-card
+//   title: System
+//   entities:
+//     - entity: sensor.processor_use
+//       thresholds: [{ value: 0, level: good }, { value: 60, level: warn }, { value: 85, level: bad }]
+
+const CHART_H = 72;
+const SCRUB_SLOP = 6;        // press-and-dwell: move sooner and it's a scroll, hold still and it scrubs
+const SCRUB_DWELL = 140;
+
+// The level whose value the reading has most recently crossed.
+function levelOf(value, thresholds) {
+  if (!thresholds?.length || !Number.isFinite(value)) return null;
+  let level = null;
+  for (const t of [...thresholds].sort((a, b) => a.value - b.value)) if (value >= t.value) level = t.level;
+  return level;
+}
+
+const STYLE = `${BASE_CSS}
+  ha-card { display: flex; flex-direction: column; gap: 10px; padding: var(--pad); }
+  .head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .head .ht { flex: 1; min-width: 0; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ranges { position: relative; flex: none; display: flex; gap: 2px; padding: 3px; border-radius: 11px; background: var(--well); }
+  .ranges .sel { position: absolute; top: 3px; bottom: 3px; left: 0; border-radius: 8px; pointer-events: none;
+    background: var(--ha-card-background, var(--card-background-color)); box-shadow: 0 1px 3px rgb(0 0 0 / 0.14), 0 0 0 0.5px rgb(0 0 0 / 0.04); }
+  :host([dark]) .ranges .sel { background: color-mix(in oklab, var(--primary-text-color) 14%, transparent); box-shadow: none; }
+  .rseg { position: relative; height: 24px; padding: 0 9px; border-radius: 8px; display: flex; align-items: center; cursor: pointer;
+    font-size: 11.5px; line-height: 16px; font-weight: 550; color: var(--secondary-text-color); transform-origin: 50% 50%; }
+  .rseg[data-sel] { color: var(--primary-text-color); }
+  .graphs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .grid { display: grid; grid-template-columns: repeat(var(--cols, auto-fill), minmax(92px, 1fr)); gap: 8px; }
+  .tile { position: relative; container-type: inline-size; box-sizing: border-box; display: flex; flex-direction: column; gap: 5px; min-width: 0;
+    padding: 10px; border-radius: calc(var(--radius) * 0.6); background: var(--well); text-align: start; transform-origin: 50% 50%; cursor: pointer; }
+  .tile[data-missing], .tile[data-unavailable] { opacity: 0.55; }
+  .tile .top { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .tile .top ha-icon, .tile .top ha-state-icon { --mdc-icon-size: 16px; display: flex; flex: none; color: var(--tile-lvl, var(--secondary-text-color)); }
+  .tile .cap { min-width: 0; flex: 1; font-size: 13px; line-height: 16px; font-weight: 600; letter-spacing: -0.006em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile .val { display: flex; align-items: baseline; gap: 3px; min-width: 0; font-size: 14px; line-height: 17px; font-weight: 650; letter-spacing: -0.012em; }
+  .tile .val .u { font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: -0.003em; color: var(--secondary-text-color); }
+  .tile .note { font-size: 10.5px; line-height: 13px; font-weight: 500; letter-spacing: 0.006em; color: var(--secondary-text-color); }
+  .tile[data-graph] .val { font-size: 19px; line-height: 23px; letter-spacing: -0.02em; }
+  .tile[data-graph] .val .u { font-size: 12.5px; }
+  .tile .chart { position: relative; height: ${CHART_H}px; margin-top: 2px; touch-action: pan-y; }
+  .tile .chart svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+  .tile .axis { display: flex; justify-content: space-between; margin-top: 2px; font-size: 10px; line-height: 12px; font-weight: 500; letter-spacing: 0.01em;
+    color: var(--secondary-text-color); opacity: 0.8; }
+  .tile .bubble { position: absolute; top: -8px; left: 0; z-index: 1; display: flex; gap: 6px; align-items: center; font-size: 11px; line-height: 14px; font-weight: 600;
+    letter-spacing: -0.004em; padding: 3px 7px; border-radius: 8px; white-space: nowrap; pointer-events: none;
+    background: color-mix(in oklab, var(--primary-text-color) 10%, var(--ha-card-background, var(--card-background-color))); box-shadow: 0 4px 14px rgb(0 0 0 / 0.16); opacity: 0; }
+  .tile .bubble .t { color: var(--secondary-text-color); font-weight: 550; }
+  .tile .cnote { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; font-size: 11px; line-height: 14px; font-weight: 500;
+    color: var(--secondary-text-color); border-radius: 8px; background: color-mix(in oklab, var(--primary-text-color) 3%, transparent); }
+  @media (prefers-contrast: more) { .tile .val .u, .tile .note { color: var(--primary-text-color); opacity: 0.85; } }
+  @container (max-width: 76px) { .tile .cap { display: none; } }
+  @container (max-width: 200px) { .tile .axis .mid { display: none; } }
+`;
+
+class SavvyGraphCard extends SavvyCard {
+  static getStubConfig(hass) {
+    const ids = Object.keys(hass?.states || {}).filter((id) => id.startsWith("sensor.") && hass.states[id].attributes.state_class === "measurement").slice(0, 2);
+    return { entities: ids.length ? ids : [] };
+  }
+  static getConfigElement() { return document.createElement(EDITOR); }
+
+  constructor() {
+    super();
+    this._onscreen = true;
+    this._tiles = new Map();
+    this._series = {};
+  }
+
+  setConfig(config) {
+    const entities = asItems(config?.entities);
+    if (!entities.length) throw new Error('savvy-graph-card: an "entities" list is required');
+    this._config = { hours_to_show: 24, ...config, entities };
+    const hours = Number(this._config.hours_to_show) || 24;
+    const ranges = [].concat(config.ranges || []).map(Number).filter((n) => n > 0);
+    this._ranges = !ranges.length || ranges.includes(hours) ? ranges : [...ranges, hours].sort((a, b) => a - b);
+    this._hours = hours;
+    this._rawBy = new Map();
+    this._raw = null;
+    this._series = {};
+    if (this._el) { this._build(); if (this._hass) this._update(); }
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._config) return;
+    if (!this._el) this._build();
+    this._update();
+    this._loadHistory();
+  }
+
+  connectedCallback() { this._observe(); this._wake(); }
+  disconnectedCallback() { super.disconnectedCallback(); this._io?.disconnect(); }
+  getCardSize() { return 2; }
+  getGridOptions() { return { columns: 12, min_columns: 6, rows: "auto" }; }
+
+  _build() {
+    const root = this.shadowRoot || this.attachShadow({ mode: "open" });
+    this._resetMotion();
+    this._first = true;
+    this._tiles = new Map();
+    root.innerHTML = `<style>${STYLE}</style>
+      <ha-card>
+        <div class="head" id="head" hidden><span class="ht" id="ht"></span>
+          <div class="ranges" id="ranges" role="group" aria-label="History range" hidden><span class="sel"></span></div></div>
+        <div class="graphs" id="graphs" hidden></div>
+        <div class="grid" id="grid" hidden></div>
+      </ha-card>`;
+    const $ = (id) => root.getElementById(id);
+    this._el = { card: root.querySelector("ha-card"), head: $("head"), ht: $("ht"), ranges: $("ranges"), graphs: $("graphs"), grid: $("grid") };
+    text(this._el.ht, this._config.title || "");
+    if (this._config.columns) put(this._el.grid, "--cols", this._config.columns);
+    this._rangeX = this._spring(0, MOTION.pill, "ranges", 0.02);
+    this._rangeW = this._spring(0, MOTION.pill, "ranges", 0.02);
+    for (const hours of this._ranges) {
+      const seg = document.createElement("span");
+      seg.className = "rseg";
+      seg.__hours = hours;
+      attr(seg, "role", "button");
+      attr(seg, "tabindex", "0");
+      text(seg, hours < 48 ? `${hours}h` : `${Math.round(hours / 24)}d`);
+      this._pressable(seg, { onTap: () => this._setRange(hours), haptic: null }, 0.04);
+      this._el.ranges.appendChild(seg);
+    }
+    // charts draw at their real pixel size, so strokes and labels never stretch
+    this._ro?.disconnect();
+    this._ro = new ResizeObserver((entries) => {
+      for (const e of entries) {
+        const node = e.target.__node;
+        if (!node) { this._rangeGeom(); continue; }
+        node.__W = e.contentRect.width;
+        node.__H = e.contentRect.height;
+        node.__chartDirty = true;
+      }
+      this._wake();
+    });
+    this._ro.observe(this._el.ranges);
+    this._observe();
+  }
+
+  _observe() {
+    if (!this._el || !this.isConnected) return;
+    this._io = this._io || new IntersectionObserver(([e]) => { this._onscreen = e.isIntersecting; if (this._onscreen) this._wake(); });
+    this._io.disconnect();
+    this._io.observe(this);
+  }
+
+  // ---------- history ----------
+  _isGraph(st) {
+    if (!st || isOff(st) || isTimestamp(st)) return false;
+    return Number.isFinite(parseFloat(st.state));
+  }
+  _hoursFor(item) { return Number(item.hours_to_show) || this._hours; }
+
+  // Graphs sharing a range share one round-trip; each answer is kept for a minute, so
+  // flipping the selector back and forth doesn't refetch.
+  async _loadHistory() {
+    const h = this._hass, groups = new Map();
+    for (const item of this._config.entities) {
+      if (!this._isGraph(h.states[item.entity])) continue;
+      const hours = this._hoursFor(item);
+      (groups.get(hours) || groups.set(hours, []).get(hours)).push(item.entity);
+    }
+    const key = [...groups].map(([hours, ids]) => `${hours}:${ids.join(",")}`).join("|");
+    if (!key) return;
+    const cached = this._rawBy.get(key);
+    if (cached && Date.now() - cached.at < 60000) {
+      if (this._raw !== cached.raw) { this._raw = cached.raw; this._buildSeries(); this._update(); }
+      return;
+    }
+    if (this._loading === key) return;
+    this._loading = key;
+    const raw = {};
+    await Promise.all([...groups].map(async ([hours, ids]) => {
+      try { Object.assign(raw, await fetchRange(h, ids, hours)); } catch (err) { /* that group shows no history */ }
+    }));
+    if (this._loading !== key) return;
+    this._loading = null;
+    this._rawBy.set(key, { raw, at: Date.now() });
+    this._raw = raw;
+    this._buildSeries();
+    this._update();
+  }
+
+  _buildSeries() {
+    const h = this._hass, end = Date.now(), out = {};
+    for (const item of this._config.entities) {
+      const rows = this._raw?.[item.entity];
+      if (!rows) continue;
+      const start = end - this._hoursFor(item) * 3600000;
+      const pts = numericPoints(rows, h.states[item.entity]?.state, end);
+      const sampled = pts.length < 2 ? [] : resample(pts, start, end);
+      out[item.entity] = sampled.length < 2 ? null : { points: sampled, span: [start, end], ...seriesStats(sampled) };
+    }
+    this._series = out;
+  }
+
+  _setRange(hours) {
+    if (hours === this._hours) return;
+    this._hours = hours;
+    haptic("selection");
+    this._syncRanges();
+    this._raw = null;
+    this._series = {};
+    this._update();
+    this._loadHistory();
+  }
+
+  _syncRanges() {
+    [...this._el.ranges.querySelectorAll(".rseg")].forEach((seg, i) => {
+      const sel = seg.__hours === this._hours;
+      attr(seg, "data-sel", sel);
+      attr(seg, "aria-pressed", String(sel));
+      if (sel) this._rangeIdx = i;
+    });
+    this._rangeGeom();
+  }
+
+  _rangeGeom() {
+    const sel = this._el?.ranges.querySelectorAll(".rseg")[this._rangeIdx];
+    if (!sel || !sel.offsetWidth) return;
+    if (this._rangeW.x === 0) { this._rangeX.snap(sel.offsetLeft); this._rangeW.snap(sel.offsetWidth); }
+    else { this._rangeX.to(sel.offsetLeft, MOTION.pill); this._rangeW.to(sel.offsetWidth, MOTION.pill); }
+    this._wake();
+  }
+
+  // ---------- tiles ----------
+  _update() {
+    const h = this._hass;
+    if (!h || !this._el) return;
+    this.toggleAttribute("dark", !!h.themes?.darkMode);
+    this._renderTiles();
+    if (this._first) { this._first = false; requestAnimationFrame(() => this._paintAll(null)); }
+    this._wake();
+  }
+
+  _renderTiles() {
+    const h = this._hass, cfg = this._config, el = this._el, seen = new Set();
+    let graphs = 0, small = 0;
+    for (const item of cfg.entities) {
+      const key = item.entity;
+      seen.add(key);
+      const graph = this._isGraph(h.states[key]);
+      if (graph) graphs++; else small++;
+      const box = graph ? el.graphs : el.grid;
+      let node = this._tiles.get(key);
+      if (!node) {
+        node = document.createElement("div");
+        node.className = "tile";
+        node.innerHTML = `<span class="top"><span class="iconSlot"></span><span class="cap"></span></span>
+          <span class="val"><span class="n"></span><span class="u"></span></span>
+          <span class="note" hidden></span>
+          <div class="chart" hidden><svg focusable="false" aria-hidden="true"></svg><span class="bubble"></span><span class="cnote" hidden></span></div>
+          <div class="axis" hidden aria-hidden="true"><span></span><span class="mid"></span><span>Now</span></div>`;
+        node.__el = { iconSlot: node.querySelector(".iconSlot"), cap: node.querySelector(".cap"), n: node.querySelector(".val .n"), u: node.querySelector(".val .u"),
+          note: node.querySelector(".note"), chart: node.querySelector(".chart"), svg: node.querySelector("svg"), bubble: node.querySelector(".bubble"),
+          axis: node.querySelector(".axis"), ax: [...node.querySelectorAll(".axis span")], cnote: node.querySelector(".cnote") };
+        node.__el.chart.__node = node;
+        this._ro.observe(node.__el.chart);
+        attr(node, "role", "button");
+        attr(node, "tabindex", "0");
+        const act = (kind) => () => {
+          const it = node.__item, a = it[`${kind}_action`];
+          runAction(this, this._hass, a !== undefined ? a : { action: "more-info" }, { entity: it.entity });
+        };
+        this._pressable(node, { onTap: act("tap"), onHold: act("hold"), haptic: null }, 0.04);
+        this._wireScrub(node, node.__el.chart);
+        node.__enter = this._spring(0, MOTION.ui, `enter:${key}`).to(1, MOTION.ui);
+        this._tiles.set(key, node);
+      }
+      this._renderTile(item, node);
+      attr(node, "data-graph", graph);
+      if (node.parentElement !== box || node.nextSibling) box.appendChild(node);
+    }
+    el.graphs.hidden = !graphs;
+    el.grid.hidden = !small;
+    el.ranges.hidden = !graphs || this._ranges.length < 2;
+    el.head.hidden = !cfg.title && el.ranges.hidden;
+    if (!el.ranges.hidden) this._syncRanges();
+    for (const [key, node] of this._tiles) {
+      if (seen.has(key)) continue;
+      for (const s of [node.__enter, node.__reveal, node.__value, node.__scrub, node.__scrubX, node.__spring]) {
+        const i = this._springs.indexOf(s);
+        if (i >= 0) this._springs.splice(i, 1);
+      }
+      const p = this._pressNodes.indexOf(node);
+      if (p >= 0) this._pressNodes.splice(p, 1);
+      node.remove();
+      this._tiles.delete(key);
+    }
+  }
+
+  _renderTile(item, node) {
+    const h = this._hass, st = h.states[item.entity], el = node.__el;
+    node.__item = item;
+    const missing = !st, unavailable = !missing && isOff(st);
+    attr(node, "data-missing", missing);
+    attr(node, "data-unavailable", unavailable);
+    text(el.cap, item.name || st?.attributes.friendly_name || title(item.entity.split(".")[1] || item.entity));
+    const wantState = !item.icon && !!st;
+    if (node.__iconKind !== (wantState ? "state" : "plain")) {
+      node.__iconKind = wantState ? "state" : "plain";
+      el.iconSlot.innerHTML = wantState ? "<ha-state-icon></ha-state-icon>" : "<ha-icon></ha-icon>";
+      el.icon = el.iconSlot.firstElementChild;
+    }
+    if (wantState) { if (el.icon.stateObj !== st) { el.icon.hass = h; el.icon.stateObj = st; } }
+    else attr(el.icon, "icon", item.icon || "mdi:help-circle-outline");
+
+    const numeric = this._isGraph(st);
+    const series = numeric ? this._series[item.entity] : undefined;
+    if (!numeric) { el.chart.hidden = true; el.axis.hidden = true; }
+    if (missing || unavailable) {
+      el.n.parentElement.hidden = true;
+      el.note.hidden = false;
+      text(el.note, missing ? "Not found" : "Unavailable");
+      put(node, "--tile-lvl", "");
+    } else if (numeric) {
+      el.n.parentElement.hidden = false;
+      const value = parseFloat(st.state);
+      if (!node.__value) node.__value = this._spring(value, MOTION.text, `value:${item.entity}`);
+      else node.__value.to(value, MOTION.text);
+      const level = levelOf(value, item.thresholds);
+      put(node, "--tile-lvl", level ? `var(--lvl-${level})` : "");
+      const unit = item.unit ?? st.attributes.unit_of_measurement ?? "";
+      text(el.u, unit);
+      node.__unit = unit;
+      el.chart.hidden = false;
+      el.axis.hidden = false;
+      el.cnote.hidden = !!series;
+      if (series) {
+        el.note.hidden = true;
+        // the line draws itself in once per range, never on a routine refresh
+        if (node.__revealFor !== this._hoursFor(item)) {
+          node.__revealFor = this._hoursFor(item);
+          if (!node.__reveal) node.__reveal = this._spring(0, MOTION.graph, `reveal:${item.entity}`);
+          node.__reveal.snap(0).to(1, MOTION.graph);
+        }
+        if (!node.__scrub) {
+          node.__scrub = this._spring(0, MOTION.scrub, `scrub:${item.entity}`);
+          node.__scrubX = this._spring(0, MOTION.scrub, `scrub:${item.entity}`);
+        }
+        node.__series = series;
+        node.__chartDirty = true;
+      } else {
+        // said where the graph would be, so the tile keeps its shape
+        el.note.hidden = true;
+        text(el.cnote, this._loading || !this._raw ? "Loading history…" : "No history yet");
+        node.__series = null;
+        if (el.svg.__key) { el.svg.__key = ""; el.svg.innerHTML = ""; }
+        el.axis.hidden = true;
+        if (node.__scrub) { node.__scrub.snap(0); node.__scrubX.snap(0); }
+        put(el.bubble, "opacity", "0");
+      }
+    } else {
+      // a plain state: on/off, a timestamp, text
+      el.n.parentElement.hidden = false;
+      el.note.hidden = true;
+      node.__unit = "";
+      node.__value = null;
+      put(node, "--tile-lvl", item.state_color && domainOf(item.entity) === "binary_sensor"
+        ? (st.state === "on" ? "var(--lvl-good)" : st.state === "off" ? "var(--lvl-bad)" : "") : "");
+      let words = null;
+      if (isTimestamp(st)) { const t = Date.parse(st.state); if (Number.isFinite(t)) words = relativeTime(t, langOf(h)); }
+      text(el.n, words ?? stateText(h, st));
+      text(el.u, "");
+    }
+  }
+
+  // ---------- frames ----------
+  _frame(now, dt) {
+    const stepped = super._frame(now, dt);
+    if (stepped) return true;
+    // a resize with nothing moving still needs the charts redrawn at their new size
+    if ([...this._tiles.values()].some((n) => n.__chartDirty)) { this._paintAll(new Set()); return true; }
+    return false;
+  }
+
+  _paint(dirty, all) {
+    if (all || dirty.has("ranges")) {
+      const pill = this._el.ranges.querySelector(".sel"), w = Math.max(0, this._rangeW.x);
+      put(pill, "opacity", w < 1 ? "0" : "");
+      put(pill, "width", `${w.toFixed(2)}px`);
+      put(pill, "transform", `translate3d(${this._rangeX.x.toFixed(2)}px,0,0)`);
+    }
+    const red = MQ.reduced.matches;
+    for (const [key, node] of this._tiles) {
+      if (node.__enter && (all || dirty.has(`enter:${key}`))) {
+        const v = clamp(node.__enter.x);
+        put(node, "opacity", v > 0.999 ? "" : v.toFixed(3));
+        put(node, "translate", red || v > 0.999 ? "" : `0 ${((1 - v) * 4).toFixed(2)}px`);
+      }
+      if (node.__value && (all || dirty.has(`value:${key}`))) text(node.__el.n, fmtNumber(node.__value.x));
+      const chart = node.__chartDirty || (node.__reveal && (all || dirty.has(`reveal:${key}`))) || (node.__scrub && (all || dirty.has(`scrub:${key}`)));
+      if (chart && node.__series) this._paintChart(node, key);
+      node.__chartDirty = false;
+    }
+  }
+
+  // The climate card's chart at tile scale, in real pixels.
+  _paintChart(node, key) {
+    const series = node.__series, el = node.__el, W = node.__W, H = node.__H;
+    if (!series?.points?.length || !W || !H) return;
+    const [t0, t1] = series.span, item = node.__item, lang = langOf(this._hass);
+    const PT = 13, PB = 12;
+    const pad = Math.max((series.max - series.min) * 0.12, Math.abs(series.max) * 0.002, 1e-6);
+    const lo = series.min - pad, hi = series.max + pad;
+    const xOf = (t) => ((t - t0) / Math.max(1, t1 - t0)) * W;
+    const yOf = (v) => PT + (1 - (v - lo) / Math.max(1e-6, hi - lo)) * (H - PT - PB);
+    const pts = series.points.map((p) => [xOf(p.t), yOf(p.v)]);
+    const d = linePath(pts);
+    const f = (v) => v.toFixed(2);
+    const id = key.replace(/[^a-zA-Z0-9]/g, "_");
+    const unit = node.__unit || "";
+    // with thresholds, good / warn / bad down the value axis; otherwise the accent
+    const levelColor = (lvl) => (lvl ? `var(--lvl-${lvl})` : "rgb(var(--accent))");
+    const th = item.thresholds?.length ? [...item.thresholds].sort((a, b) => b.value - a.value) : null;
+    let stops;
+    if (th) {
+      stops = [{ o: 0, c: levelColor(levelOf(hi, th)) }];
+      for (const t of th) {
+        if (t.value <= lo || t.value >= hi) continue;
+        const o = (hi - t.value) / (hi - lo);
+        stops.push({ o: clamp(o - 0.015), c: levelColor(levelOf(t.value, th)) });
+        stops.push({ o: clamp(o + 0.015), c: levelColor(levelOf(t.value - 1e-9, th)) });
+      }
+      stops.push({ o: 1, c: levelColor(levelOf(lo, th)) });
+    } else stops = [{ o: 0, c: levelColor(null) }, { o: 1, c: levelColor(null) }];
+    const grad = stops.map((s) => `<stop offset="${f(s.o)}" style="stop-color:${s.c}"></stop>`).join("");
+    const lastColor = th ? levelColor(levelOf(series.points[series.points.length - 1].v, th)) : levelColor(null);
+    let labels = "";
+    for (const ex of [{ p: series.maxAt, v: series.max, up: true }, { p: series.minAt, v: series.min, up: false }]) {
+      if (!ex.p || (!ex.up && series.max - series.min < 1e-9)) continue;
+      const x = xOf(ex.p.t), y = yOf(ex.v);
+      labels += `<circle cx="${f(x)}" cy="${f(y)}" r="2.25" fill="currentColor" fill-opacity="0.55"></circle>`
+        + `<text x="${f(clamp(x, 16, W - 16))}" y="${f(ex.up ? y - 5 : y + 11)}" text-anchor="middle" fill="currentColor" fill-opacity="0.55" font-size="9.5" font-weight="600">${fmtNumber(ex.v)}${esc(unit)}</text>`;
+    }
+    const avgY = yOf(series.avg);
+    const html = `<defs>
+        <clipPath id="r-${id}"><rect class="rv" x="-4" y="-16" width="${f(W + 8)}" height="${f(H + 32)}"></rect></clipPath>
+        <linearGradient id="g-${id}" x1="0" y1="${f(PT)}" x2="0" y2="${f(H - PB)}" gradientUnits="userSpaceOnUse">${grad}</linearGradient>
+        <linearGradient id="f-${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.24"></stop><stop offset="1" stop-color="#fff" stop-opacity="0"></stop></linearGradient>
+        <mask id="m-${id}"><rect x="0" y="0" width="${f(W)}" height="${f(H)}" fill="url(#f-${id})"></rect></mask></defs>
+      <g clip-path="url(#r-${id})">
+        <path d="${d} L${f(W)} ${f(H)} L0 ${f(H)} Z" fill="url(#g-${id})" mask="url(#m-${id})"></path>
+        <line x1="0" y1="${f(avgY)}" x2="${f(W)}" y2="${f(avgY)}" stroke="currentColor" stroke-opacity="0.2" stroke-width="1" stroke-dasharray="2 4"></line>
+        <path d="${d}" fill="none" stroke="url(#g-${id})" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"></path>
+        ${labels}
+      </g>
+      <line class="cur" x1="0" y1="0" x2="0" y2="${f(H)}" stroke="currentColor" stroke-width="1" opacity="0"></line>
+      <circle class="dot" r="3.5" opacity="0" style="fill:${lastColor}"></circle>`;
+    if (el.svg.__key !== html) {
+      el.svg.__key = html;
+      el.svg.setAttribute("viewBox", `0 0 ${f(W)} ${f(H)}`);
+      el.svg.innerHTML = html;
+      el.svg.__rv = el.svg.querySelector(".rv");
+      el.svg.__cur = el.svg.querySelector(".cur");
+      el.svg.__dot = el.svg.querySelector(".dot");
+      text(el.ax[0], axisLabel(t0, t1 - t0, lang));
+      text(el.ax[1], axisLabel((t0 + t1) / 2, t1 - t0, lang));
+    }
+    const reveal = node.__reveal ? clamp(node.__reveal.x) : 1;
+    attr(el.svg.__rv, "width", f(Math.max(0.01, reveal * (W + 8))));
+    const s = node.__scrub ? clamp(node.__scrub.x) : 0;
+    attr(el.svg.__cur, "opacity", s < 1e-3 ? "0" : (s * 0.35).toFixed(3));
+    attr(el.svg.__dot, "opacity", s < 1e-3 ? "0" : s.toFixed(3));
+    put(el.bubble, "opacity", s < 1e-3 ? "0" : s.toFixed(3));
+    if (s < 1e-3) return;
+    const x = clamp(node.__scrubX.x, 0, W);
+    let best = 0, bd = Infinity;
+    pts.forEach((q, i) => { const dd = Math.abs(q[0] - x); if (dd < bd) { bd = dd; best = i; } });
+    const q = pts[best], pt = series.points[best];
+    attr(el.svg.__cur, "transform", `translate(${f(q[0])} 0)`);
+    attr(el.svg.__dot, "transform", `translate(${f(q[0])} ${f(q[1])})`);
+    if (th) put(el.svg.__dot, "fill", levelColor(levelOf(pt.v, th)));
+    const bhtml = `<span class="t">${esc(momentLabel(pt.t, t1 - t0, lang))}</span><span>${fmtNumber(pt.v)}${esc(unit)}</span>`;
+    if (el.bubble.__html !== bhtml) { el.bubble.__html = bhtml; el.bubble.innerHTML = bhtml; }
+    const bw = el.bubble.offsetWidth || 0;
+    put(el.bubble, "transform", `translateX(${f(clamp(q[0] - bw / 2, 0, Math.max(0, W - bw)))}px)`);
+  }
+
+  // Hover with a mouse; press and hold still with a finger, so a scrub never fights a
+  // scroll (CARD-DESIGN.md 3.2's dwell rule).
+  _wireScrub(node, chart) {
+    let touchId = null, x0 = 0, y0 = 0, live = false, timer = 0;
+    const show = () => { live = true; haptic("selection"); node.__spring?.swallow?.(); node.__scrub.to(1, MOTION.scrub); };
+    const hide = () => { if (!live) return; live = false; node.__scrub.to(0, MOTION.scrub); this._wake(); };
+    const snapX = (e) => { const r = chart.getBoundingClientRect(); if (r.width) node.__scrubX.snap(clamp(e.clientX - r.left, 0, r.width)); };
+    const track = (e) => { const r = chart.getBoundingClientRect(); if (!r.width) return; node.__scrubX.to(clamp(e.clientX - r.left, 0, r.width), MOTION.scrub); this._wake(); };
+    chart.addEventListener("pointerenter", (e) => { if (e.pointerType !== "mouse" || !node.__series) return; snapX(e); show(); this._wake(); });
+    chart.addEventListener("pointermove", (e) => {
+      if (e.pointerType === "mouse") { if (live) track(e); return; }
+      if (e.pointerId !== touchId) return;
+      if (!live) { if (Math.hypot(e.clientX - x0, e.clientY - y0) < SCRUB_SLOP) return; clearTimeout(timer); touchId = null; return; }
+      track(e);
+    });
+    chart.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") hide(); });
+    chart.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "mouse" || e.button > 0 || !node.__series) return;
+      touchId = e.pointerId; x0 = e.clientX; y0 = e.clientY; live = false;
+      snapX(e);
+      timer = setTimeout(() => {
+        if (touchId !== e.pointerId) return;
+        try { chart.setPointerCapture(e.pointerId); } catch (err) { /* best effort */ }
+        show();
+        this._wake();
+      }, SCRUB_DWELL);
+    });
+    const end = (e) => { if (e.pointerType === "mouse" || e.pointerId !== touchId) return; touchId = null; clearTimeout(timer); hide(); };
+    chart.addEventListener("pointerup", end);
+    chart.addEventListener("pointercancel", end);
+  }
+}
+
+// ---------- editor ----------
+const EDITOR = defineEditor("savvy-graph-card", (hass, c) => [
+  S.text("title", "Title"),
+  S.grid(S.number("hours_to_show", "Hours shown", 1, 8760, 1, "h"), S.number("columns", "Small tiles per row", 1, 8)),
+  { name: "ranges", label: "Hours selector", helper: "Offer these ranges in the header (e.g. 24, 168, 720). Empty: no selector.",
+    selector: { select: { multiple: true, custom_value: true, options: ["6", "24", "48", "168", "720"] } } },
+  { name: "entities", label: "Tiles", type: "list", helper: "A number gets a graph; anything else a small tile with its state.",
+    item: [
+      { name: "entity", label: "Entity", selector: { entity: {} } },
+      { type: "grid", name: "", schema: [{ name: "name", label: "Name", selector: { text: {} } }, { name: "icon", label: "Icon", selector: { icon: {} } }] },
+      { type: "grid", name: "", schema: [{ name: "unit", label: "Unit", selector: { text: {} } },
+        { name: "hours_to_show", label: "Hours (this one)", selector: { number: { min: 1, max: 8760, mode: "box", unit_of_measurement: "h" } } }] },
+      { name: "state_color", label: "On is good, off is bad (on/off tiles)", selector: { boolean: {} } },
+      { name: "thresholds", label: "Thresholds", helper: "[{value: 0, level: good}, {value: 60, level: warn}, {value: 85, level: bad}]", selector: { object: {} } },
+      { name: "tap_action", label: "Tap", selector: { ui_action: {} } },
+      { name: "hold_action", label: "Hold", selector: { ui_action: {} } },
+    ] },
+]);
+
+registerCard("savvy-graph-card", SavvyGraphCard, "Graph",
+  "Tiles for numbers and states: a graph with its range, min, max and average for every number, a plain readout for the rest.");
+})();
+
 // ===== cards/heading.js =====
 (() => {
 // savvy-heading-card: the first card in a room's section. The room's name and icon (from
@@ -4399,7 +7308,7 @@ class SavvyHeadingCard extends SavvyCard {
 const EDITOR = defineEditor("savvy-heading-card", (hass, c) => [
   S.area(),
   S.grid(S.text("name", "Name"), S.icon("icon", "Icon")),
-  { name: "navigation_path", label: "Tapping the name opens", helper: "A dashboard path, e.g. /lovelace/living-room. Or set a tap action below.", selector: { text: {} } },
+  S.nav("navigation_path", "Navigate to on tap", "Where tapping the name goes. Or set a tap action below."),
   S.grid(S.select("heading_style", "Style", [{ value: "title", label: "Title" }, { value: "subtitle", label: "Subtitle" }]),
     S.bool("filled", "On a card background", null, false)),
   ...modeSchema(hass, c),
@@ -4453,7 +7362,7 @@ const STYLE = `${BASE_CSS}
   .titles { display: flex; flex-direction: column; min-width: 0; }
   .when { font-size: 11.5px; line-height: 15px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .group { display: flex; align-items: baseline; gap: 6px; }
-  .group .gs[data-ok] { color: var(--lvl-good); }
+  .rows .empty.ok { flex: none; padding: 4px 4px 2px; }
   .group .gw { margin-inline-start: auto; font-weight: 500; letter-spacing: 0; text-transform: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .group { flex: none; margin: 8px 4px 2px; font-size: 11px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em;
     text-transform: uppercase; color: var(--secondary-text-color); }
@@ -4585,6 +7494,8 @@ class SavvyHealthCard extends HTMLElement {
       if (key === "watchman" && !sum.opts.watchman.length) continue;
       const list = key === "battery" ? sum.battery.filter((r) => r.alert) : sum[key];
       rows.push({ key: `g:${key}`, group: GROUP_TITLE[key], count: sum.counts[key], lastRun: key === "watchman" });
+      // an empty category says so the way a single list does: a tick and "All good", below its title
+      if (!sum.counts[key]) rows.push({ key: `ok:${key}`, ok: true });
       rows.push(...list.map((r) => ({ ...r, groupStart: false, dim: false })));
     }
     return { total: sum.total, rows };
@@ -4616,7 +7527,10 @@ class SavvyHealthCard extends HTMLElement {
       let node = this._rows.get(r.key);
       if (!node) {
         node = document.createElement("div");
-        if (r.group) {
+        if (r.ok) {
+          node.className = "empty ok";
+          node.innerHTML = `<ha-icon icon="mdi:check-circle-outline"></ha-icon><span>All good</span>`;
+        } else if (r.group) {
           node.className = "group";
           node.innerHTML = `<span class="gt"></span><span class="gs"></span><span class="gw"></span>`;
         }
@@ -4629,10 +7543,10 @@ class SavvyHealthCard extends HTMLElement {
         }
         this._rows.set(r.key, node);
       }
+      if (r.ok) { box.appendChild(node); continue; }
       if (r.group) {
         text(node.querySelector(".gt"), r.group);
-        text(node.querySelector(".gs"), r.count ? `· ${r.count}` : "· All good");
-        attr(node.querySelector(".gs"), "data-ok", !r.count);
+        text(node.querySelector(".gs"), r.count ? `· ${r.count}` : "");
         node.__lastRun = r.lastRun;
         box.appendChild(node);
         continue;
@@ -4968,10 +7882,10 @@ const autoSection = (key, what) => ({ type: "expandable", name: key, title: `${A
 
 const EDITOR = defineEditor("savvy-home-card", (hass, c) => [
   ...modeSchema(hass, c, { helper: "The house mode: any input_select or select. Never guessed; empty hides the chip." }),
-  { name: "home_path", label: "Home button opens", helper: "A dashboard path; empty hides the button.", selector: { text: {} } },
+  S.nav("home_path", "Home button navigates to", "Empty hides the button."),
   { name: "weather", label: "Weather", helper: "Empty: the first weather entity.", selector: { entity: { domain: "weather" } } },
   { type: "expandable", name: "health", title: "Health cog", schema: [
-    { name: "navigation_path", label: "Tapping opens", helper: "E.g. your admin page. Empty: tapping lists what needs attention (hold always does).", selector: { text: {} } },
+    S.nav("navigation_path", "Navigate to on tap", "E.g. your admin page. Empty: tapping lists what needs attention (hold always does)."),
     { name: "watchman", label: "Watchman sensors", selector: { entity: { multiple: true, domain: "sensor" } } },
     { type: "grid", name: "", schema: [
       { name: "battery_threshold", label: "Low battery below", selector: { number: { min: 1, max: 100, mode: "box", unit_of_measurement: "%" } } },
@@ -6186,6 +9100,976 @@ registerCard("savvy-lights-card", LightsCard, "Lights",
   "Every light in a room, found for you, each with only the controls it supports. Reorder in the editor.");
 })();
 
+// ===== cards/media.js =====
+(() => {
+// savvy-media-card: a room's media, organised the way the hardware works: sources feed an
+// output.
+//   stage    artwork of what's playing, with the title over it (and progress)
+//   sources  video boxes as a segmented picker, then the picked one's transport
+//   output   the speaker the room actually listens through, with its volume
+//   extras   presets, text to speech, the room's alarm clock, your chips
+// Bands with nothing in them aren't drawn.
+//
+// `area` finds the room's players: speakers and receivers are the audio, TVs and the rest
+// the video. `video` / `audio` name them instead (and add their own options).
+//
+//   type: custom:savvy-media-card
+//   area: living_room
+//   video_output: media_player.soundbar       where the video boxes' sound comes out
+//   presets: [{ entity: input_button.radio }]  tts: { action: tts.speak, data: { ... $MSG ... } }
+//   layout: compact                            one row: what's playing, its transport, the volume
+
+const VOL_THROTTLE = 400;     // ms between volume writes while dragging
+const VOL_PREDICT = 4000;     // how long an unconfirmed level outranks HA's own
+const OPTIMISTIC_MS = 4000;   // a console takes its time to wake: hold the guess this long
+const MEDIA_MOTION = { art: { response: 0.62, damping: 1 }, grab: { response: 0.4, damping: 1 } };
+
+// media_player supported_features
+const F = { PAUSE: 1, SEEK: 2, VOLUME_SET: 4, VOLUME_MUTE: 8, PREV: 16, NEXT: 32, TURN_ON: 128, TURN_OFF: 256,
+  PLAY_MEDIA: 512, VOLUME_STEP: 1024, SELECT_SOURCE: 2048, STOP: 4096, PLAY: 16384 };
+const has = (st, bit) => ((st?.attributes.supported_features || 0) & bit) === bit;
+const ACTIVE = new Set(["playing", "buffering"]);
+const DEAD = new Set(["off", "unavailable", "unknown", "standby"]);
+const PLAYER_ICONS = { tv: "mdi:television", speaker: "mdi:speaker", receiver: "mdi:audio-video", game: "mdi:gamepad-variant", default: "mdi:cast-variant" };
+const AUDIO_CLASSES = new Set(["speaker", "receiver"]);
+const mediaAction = (a, entity) => (a === "press" || a === "turn_on"
+  ? { action: "perform-action", perform_action: `${domainOf(entity)}.${a}`, target: { entity_id: entity } } : asAction(a));
+
+const STYLE = `${BASE_CSS}
+  ha-card { --accent: 154 120 214; display: flex; flex-direction: column; overflow: hidden; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  /* the stage takes the artwork's own proportions, so a poster shows whole */
+  .stage { position: relative; width: 100%; overflow: hidden; aspect-ratio: var(--ar, 16 / 9); min-height: 130px; max-height: var(--art-max, none);
+    background: color-mix(in oklab, var(--primary-text-color) 8%, transparent); cursor: pointer; }
+  .art { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border: 0; object-fit: cover; }
+  .veil { position: absolute; left: 0; right: 0; bottom: 0; height: 78px; background: linear-gradient(to top, rgb(0 0 0 / 0.74) 0%, rgb(0 0 0 / 0.42) 38%, rgb(0 0 0 / 0) 100%); }
+  .caption { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 13px 11px; color: #fff; }
+  .stage .t { display: block; font-size: 15px; line-height: 19px; font-weight: 650; letter-spacing: -0.014em; text-shadow: 0 1px 3px rgb(0 0 0 / 0.42); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stage .s { display: block; font-size: 12.5px; line-height: 16px; font-weight: 500; opacity: 0.88; text-shadow: 0 1px 3px rgb(0 0 0 / 0.36); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .progress { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: rgb(255 255 255 / 0.2); }
+  .progress i { display: block; height: 100%; background: #fff; transform-origin: 0 50%; }
+  header { padding: var(--pad) var(--pad) 10px; }
+  .name { display: block; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.014em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .body { display: flex; flex-direction: column; padding: var(--pad); gap: 10px; }
+  .band { display: flex; flex-direction: column; gap: 9px; }
+  .band + .band { padding-top: 10px; border-top: 1px solid var(--line); }
+  /* the first visible band never gets a divider, even with a hidden one before it */
+  .band[data-first] { padding-top: 0; border-top: 0; }
+  .cap { font-size: 10.5px; line-height: 13px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); opacity: 0.75; margin-bottom: -2px; }
+  .row .when { flex: none; font-size: 15px; line-height: 19px; font-weight: 650; letter-spacing: -0.016em; }
+  .row .when[data-off] { color: var(--secondary-text-color); }
+  /* the alarm isn't media: its own colour, so it never reads as a player */
+  #alarmBand { --alarm: 232 163 61; }
+  #alarmBand .icon[data-live] { background: rgb(var(--alarm) / 0.16); color: rgb(var(--alarm)); }
+  #alarmBand .tb[data-on] { background: rgb(var(--alarm) / 0.18); color: rgb(var(--alarm)); }
+  #alarmBand .meta { text-align: start; }
+  .segmented { position: relative; display: flex; gap: 2px; padding: 3px; border-radius: 14px; background: var(--well); }
+  .sel { position: absolute; top: 3px; bottom: 3px; left: 0; border-radius: 11px; background: var(--ha-card-background, var(--card-background-color));
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.14), 0 0 0 0.5px rgb(0 0 0 / 0.04); }
+  :host([dark]) .sel { background: color-mix(in oklab, var(--primary-text-color) 14%, transparent); box-shadow: none; }
+  .seg { position: relative; flex: 1; min-width: 0; height: 34px; display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: 11px;
+    color: var(--secondary-text-color); font-size: 13px; line-height: 16px; font-weight: 550; letter-spacing: -0.004em; }
+  .seg ha-icon { --mdc-icon-size: 18px; display: flex; }
+  .seg span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .seg[data-sel] { color: var(--primary-text-color); }
+  .seg[data-live] { color: color-mix(in oklab, rgb(var(--accent)) 70%, var(--secondary-text-color)); }
+  @container (max-width: 320px) { .seg span { display: none; } }
+  /* a narrow row keeps play and power; the stage still has the full transport */
+  @container (max-width: 330px) { .row .tb[data-k="prev"], .row .tb[data-k="next"] { display: none; } .vol[data-steps] .pct { display: none; } }
+  .row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .row .icon { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; background: var(--well); color: var(--secondary-text-color); }
+  .row .icon[data-live] { background: rgb(var(--accent) / 0.16); color: rgb(var(--accent)); }
+  .row .icon ha-icon { --mdc-icon-size: 19px; display: flex; }
+  .row .meta { flex: 1; min-width: 0; }
+  .row .n { display: block; font-size: 13.5px; line-height: 17px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .d { display: block; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .transport { flex: none; display: flex; align-items: center; gap: 4px; }
+  .tb { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; color: var(--secondary-text-color); }
+  .tb.solid { background: var(--well); color: var(--primary-text-color); }
+  .tb[data-on] { background: rgb(var(--accent) / 0.18); color: rgb(var(--accent)); }
+  .tb[disabled] { opacity: 0.3; cursor: default; }
+  .tb ha-icon { --mdc-icon-size: 20px; display: flex; }
+  .vol { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .vol .bar { position: absolute; left: 0; right: 0; top: 50%; height: 9px; margin-top: -4.5px; border-radius: 99px; background: var(--well); overflow: hidden; transform-origin: 50% 50%; }
+  .vol .mute { flex: none; display: grid; place-items: center; width: 34px; height: 32px; border-radius: 10px; color: var(--secondary-text-color); }
+  .vol .mute ha-icon { --mdc-icon-size: 19px; display: flex; }
+  .vol .mute[data-on] { color: #E8844F; background: rgb(232 132 79 / 0.16); }
+  /* − / + as one pair at the end, the climate card's steppers at the transport's size */
+  .vol .vsteps { flex: none; display: flex; gap: 4px; }
+  .vol .vstep { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: var(--well); color: var(--primary-text-color); transform-origin: 50% 50%; }
+  .vol .vstep ha-icon { --mdc-icon-size: 18px; display: flex; }
+  .vol .vstep[disabled] { opacity: 0.35; cursor: default; }
+  .slider { position: relative; flex: 1; height: 30px; touch-action: pan-y; cursor: grab; }
+  .slider:active { cursor: grabbing; }
+  .fill { position: absolute; inset: 0; border-radius: 99px; transform-origin: 0 50%; background: linear-gradient(90deg, rgb(var(--accent) / 0.55), rgb(var(--accent))); }
+  .pct { flex: none; min-width: 34px; text-align: end; font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: -0.004em; color: var(--secondary-text-color); }
+  .pills { display: flex; flex-wrap: wrap; gap: 8px; }
+  .pill { display: inline-flex; align-items: center; gap: 7px; min-width: 0; height: 34px; padding: 0 12px; border-radius: 12px; background: var(--well);
+    font-size: 13px; line-height: 16px; font-weight: 550; letter-spacing: -0.004em; color: var(--secondary-text-color); }
+  .pill ha-icon, .pill ha-state-icon { --mdc-icon-size: 18px; flex: none; display: flex; color: var(--cc, inherit); }
+  .pill span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pill[data-on] { background: color-mix(in oklab, var(--cc) 16%, transparent); color: var(--cc); }
+  /* compact: one row, a thumbnail of what's playing, its transport, the room's volume */
+  ha-card[data-compact] .body { padding: 12px; gap: 8px; }
+  ha-card[data-compact] .band + .band { padding-top: 0; border-top: 0; }
+  ha-card[data-compact] .row { gap: 11px; }
+  ha-card[data-compact] .row .icon { width: 46px; height: 46px; border-radius: 12px; overflow: hidden; padding: 0; }
+  ha-card[data-compact] .row .icon ha-icon { --mdc-icon-size: 22px; }
+  ha-card[data-compact] .thumb { width: 100%; height: 100%; object-fit: cover; display: block; border: 0; }
+  ha-card[data-compact] .row .n { font-size: 14px; line-height: 18px; }
+  ha-card[data-compact] .row .d { font-size: 12.5px; line-height: 17px; }
+  ha-card[data-compact] .vol { margin-top: 6px; }
+  .tts { display: flex; align-items: center; gap: 8px; }
+  .tts input { flex: 1; min-width: 0; height: 34px; box-sizing: border-box; padding: 0 12px; border-radius: 12px; border: 0; background: var(--well);
+    color: var(--primary-text-color); font: inherit; font-size: 13px; font-weight: 500; outline: none; user-select: text; -webkit-user-select: text; }
+  .tts input::placeholder { color: var(--secondary-text-color); opacity: 0.9; }
+  .tts input:focus-visible { box-shadow: 0 0 0 2px rgb(var(--accent)); }
+  .send { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 12px; background: rgb(var(--accent) / 0.18); color: rgb(var(--accent)); }
+  .send[disabled] { opacity: 0.35; cursor: default; }
+  .send ha-icon { --mdc-icon-size: 19px; display: flex; }
+  .empty { padding: 4px 0 2px; font-size: 12.5px; font-weight: 500; color: var(--secondary-text-color); }
+  @media (prefers-contrast: more) { .row .d, .pct, .pill { color: var(--primary-text-color); } }
+`;
+
+class SavvyMediaCard extends SavvyCard {
+  static getStubConfig(hass) {
+    const a = allAreas(hass).find((x) => areaEntities(hass, x.id).some((id) => domainOf(id) === "media_player"));
+    return a ? { area: a.id } : {};
+  }
+  static getConfigElement() { return document.createElement(EDITOR); }
+
+  constructor() {
+    super();
+    this._onscreen = true;
+    this._optimistic = new Map();
+  }
+
+  setConfig(config) {
+    const players = (list) => asItems(list).filter((p) => p.entity);
+    if (!config?.area && !players(config?.video).length && !players(config?.audio).length) throw new Error('savvy-media-card: set an "area" (or "video" / "audio" players)');
+    const alarm = typeof config.alarm === "string" ? { entity: config.alarm } : config.alarm;
+    this._compact = config.layout === "compact" || !!config.compact;
+    this._given = { video: players(config.video), audio: players(config.audio) };
+    this._config = { artwork: true, labels: {}, ...config, alarm: alarm || null,
+      presets: asItems(config.presets), chips: asItems(config.chips ?? config.actions), video: [], audio: [] };
+    this._picked = null;
+    this._discovered = null;
+    if (this._el) { this._build(); if (this._hass) this._update(); }
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._config) return;
+    this._discover();
+    if (!this._el) this._build();
+    this._update();
+  }
+
+  // The room's players, unless config lists them: a list that's given is used as it is.
+  _discover() {
+    const h = this._hass, c = this._config, g = this._given;
+    const key = h.entities;
+    if (this._discovered === key) return;
+    this._discovered = key;
+    let video = g.video, audio = g.audio;
+    if (c.area && (!video.length || !audio.length)) {
+      const skip = new Set([...video, ...audio].map((p) => p.entity).concat(asItems(c.exclude).map((i) => i.entity)));
+      const found = pick(h, areaEntities(h, c.area), { domains: "media_player" }).filter((id) => !skip.has(id) && !isGroup(h.states[id]))
+        .sort((a, b) => (h.states[a].attributes.friendly_name || a).localeCompare(h.states[b].attributes.friendly_name || b));
+      const isAudio = (id) => AUDIO_CLASSES.has(h.states[id].attributes.device_class);
+      if (!video.length && !g.audio.length) video = found.filter((id) => !isAudio(id)).map((entity) => ({ entity }));
+      else if (!video.length) video = found.filter((id) => !isAudio(id)).map((entity) => ({ entity }));
+      if (!audio.length) audio = found.filter(isAudio).map((entity) => ({ entity }));
+    }
+    c.video = video;
+    c.audio = audio;
+  }
+
+  connectedCallback() { this._observe(); this._wake(); }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._io?.disconnect();
+    clearInterval(this._tick);
+    for (const t of this._volTimers?.values() || []) clearTimeout(t);
+  }
+  getCardSize() { return this._compact ? 2 : this._config?.artwork ? 6 : 4; }
+  getGridOptions() { return this._compact ? { columns: 12, min_columns: 6, rows: "auto" } : { columns: 12, min_columns: 6, rows: "auto" }; }
+
+  // ---------- build ----------
+  _build() {
+    const root = this.shadowRoot || this.attachShadow({ mode: "open" });
+    this._resetMotion();
+    clearInterval(this._tick);
+    this._tick = 0;
+    this._first = true;
+    this._stageSrc = null;
+    this._bars = new Map();
+    this._volTimers = new Map();
+    const c = this._config;
+    root.innerHTML = `<style>${STYLE}</style>
+      <ha-card>
+        <header id="header"><span class="name" id="title"></span></header>
+        <section class="stage" id="stage" hidden>
+          <img class="art" id="art" alt=""><span class="veil"></span>
+          <div class="caption"><span class="t" id="stageT"></span><span class="s" id="stageS"></span></div>
+          <div class="progress" id="progress" hidden><i id="progressFill"></i></div>
+        </section>
+        <div class="body">
+          <div class="band" id="videoBand" hidden>
+            <span class="cap" id="videoCap" hidden></span>
+            <div class="segmented" id="sources" hidden><span class="sel"></span></div>
+            <div class="row" id="nowRow">
+              <span class="icon" id="nowIcon"></span>
+              <span class="meta"><span class="n" id="nowName"></span><span class="d" id="nowSub"></span></span>
+              <div class="transport" id="nowTransport"></div>
+            </div>
+            <div class="nowvol" id="nowVol"></div>
+          </div>
+          <div class="band" id="audioBand" hidden><span class="cap" id="audioCap" hidden></span></div>
+          <div class="band" id="alarmBand" hidden>
+            <div class="row">
+              <button class="icon" id="alarmIcon"><ha-icon id="alarmGlyph"></ha-icon></button>
+              <button class="meta" id="alarmMeta" style="text-align:start"><span class="n" id="alarmName"></span><span class="d" id="alarmSub"></span></button>
+              <span class="when" id="alarmWhen"></span>
+              <div class="transport"><button class="tb solid" id="alarmToggle"><ha-icon id="alarmToggleIcon"></ha-icon></button></div>
+            </div>
+          </div>
+          <div class="band" id="extras" hidden>
+            <div class="pills" id="presets" hidden></div>
+            <div class="tts" id="tts" hidden>
+              <input id="ttsInput" type="text" enterkeyhint="send" autocomplete="off" spellcheck="false">
+              <button class="send" id="ttsSend" aria-label="Speak"><ha-icon icon="mdi:send"></ha-icon></button>
+            </div>
+            <div class="pills" id="actions" hidden></div>
+          </div>
+        </div>
+      </ha-card>`;
+    if (this._compact) {
+      root.getElementById("nowIcon").innerHTML = `<img class="thumb" id="thumb" alt="" hidden><ha-icon id="nowGlyph"></ha-icon>`;
+      root.querySelector("ha-card").setAttribute("data-compact", "");
+      for (const id of ["stage", "sources", "audioBand", "alarmBand", "extras", "videoCap"]) root.getElementById(id).hidden = true;
+    }
+    const $ = (id) => root.getElementById(id);
+    this._el = { card: root.querySelector("ha-card"), header: $("header"), title: $("title"), stage: $("stage"), art: $("art"), thumb: $("thumb"), nowGlyph: $("nowGlyph"),
+      stageT: $("stageT"), stageS: $("stageS"), progress: $("progress"), progressFill: $("progressFill"), videoBand: $("videoBand"), sources: $("sources"),
+      nowRow: $("nowRow"), nowIcon: $("nowIcon"), nowName: $("nowName"), nowSub: $("nowSub"), nowTransport: $("nowTransport"), nowVol: $("nowVol"),
+      audioBand: $("audioBand"), videoCap: $("videoCap"), audioCap: $("audioCap"), alarmBand: $("alarmBand"), alarmIcon: $("alarmIcon"), alarmGlyph: $("alarmGlyph"),
+      alarmMeta: $("alarmMeta"), alarmName: $("alarmName"), alarmSub: $("alarmSub"), alarmWhen: $("alarmWhen"), alarmToggle: $("alarmToggle"),
+      alarmToggleIcon: $("alarmToggleIcon"), extras: $("extras"), presets: $("presets"), tts: $("tts"), ttsInput: $("ttsInput"), ttsSend: $("ttsSend"), actions: $("actions") };
+    this._sp = {
+      pill: this._spring(0, MOTION.pill, "sources", 0.02),
+      pillW: this._spring(0, MOTION.pill, "sources", 0.02),
+      art: this._spring(0, MEDIA_MOTION.art, "stage", 0.002),
+      swap: this._spring(1, SWAP_IN, "now"),
+      progress: this._spring(0, MOTION.value, "stage", 0.0005),
+    };
+    const P = (el, onTap, onHold) => this._pressable(el, { onTap, onHold, haptic: null }, 0.08);
+    P(this._el.stage, () => this._stageOwner && moreInfo(this, this._stageOwner.entity));
+    const alarmTime = () => moreInfo(this, this._config.alarm?.time || this._config.alarm?.entity);
+    P(this._el.alarmMeta, alarmTime);
+    P(this._el.alarmIcon, alarmTime);
+    P(this._el.alarmToggle, () => this._toggleAlarm(), () => moreInfo(this, this._config.alarm?.entity));
+    this._el.ttsInput.placeholder = c.tts?.placeholder || "Say something";
+    this._el.ttsInput.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") this._speak(); });
+    this._el.ttsInput.addEventListener("input", () => this._syncSend());
+    P(this._el.ttsSend, () => this._speak());
+    this._observe();
+  }
+
+  _observe() {
+    if (!this._el || !this.isConnected) return;
+    this._io = this._io || new IntersectionObserver(([e]) => { this._onscreen = e.isIntersecting; if (this._onscreen) { this._measure(); this._wake(); } });
+    this._ro?.disconnect();
+    this._ro = new ResizeObserver(() => { this._measure(); this._wake(); });
+    this._io.disconnect();
+    this._io.observe(this);
+    this._ro.observe(this._el.card);
+  }
+
+  _measure() {
+    const sel = this._el?.sources.querySelectorAll(".seg")[this._pickedIdx || 0];
+    if (!sel) return;
+    const first = this._first || this._sp.pillW.x === 0;
+    this._sp.pill[first ? "snap" : "to"](sel.offsetLeft);
+    this._sp.pillW[first ? "snap" : "to"](sel.offsetWidth);
+  }
+
+  // A volume bar. Nothing moves until a drag is clearly sideways, so a press, or a finger
+  // on its way to scrolling the page, never changes the volume (CARD-DESIGN.md 3.1); then
+  // the level follows the finger 1:1 from where it was, instead of jumping to it.
+  _bar(key, el) {
+    const group = `vol:${key}`;
+    const value = this._spring(0, MOTION.value, group, 0.002);
+    const grab = this._spring(0, MEDIA_MOTION.grab, group);
+    const bar = { el, value, grab, cfg: null, dragging: false, pending: null, last: 0 };
+    // an optimistic level, shown until HA reports it or it expires
+    bar.guess = (v) => {
+      bar.pending = v;
+      bar.pendingAt = Date.now();
+      clearTimeout(bar.expiry);
+      bar.expiry = setTimeout(() => { bar.pending = null; if (this._hass) this._update(); }, VOL_PREDICT + 50);
+    };
+    bar.write = (v) => this._volumeIO(bar.cfg)?.write(v);
+    this._bars.set(key, bar);
+    const slider = el.querySelector(".slider");
+    let id = null, x0 = 0, y0 = 0, xs = 0, from = 0, live = false;
+    const at = (clientX) => clamp(from + (clientX - xs) / Math.max(1, slider.getBoundingClientRect().width));
+    slider.addEventListener("pointerdown", (e) => {
+      if (e.button > 0) return;
+      e.stopPropagation();
+      id = e.pointerId; x0 = e.clientX; y0 = e.clientY; live = false;
+      try { slider.setPointerCapture(e.pointerId); } catch (err) { /* already lifted */ }
+    });
+    slider.addEventListener("pointermove", (e) => {
+      if (e.pointerId !== id) return;
+      if (!e.buttons && e.pointerType === "mouse") { id = null; return; }
+      if (!live) {
+        const dx = e.clientX - x0, dy = e.clientY - y0;
+        if (Math.hypot(dx, dy) < SLOP) return;
+        if (Math.abs(dy) >= Math.abs(dx)) { id = null; return; }   // vertical: the page scrolls
+        live = true;
+        bar.dragging = true;
+        grab.to(1);
+        xs = e.clientX;
+        from = clamp(bar.pending ?? value.x);
+        bar.last = Math.round(from * 10);
+      }
+      const v = at(e.clientX);
+      value.snap(v);
+      bar.guess(v);
+      const notch = Math.round(v * 10);     // a tick of feedback every 10%
+      if (notch !== bar.last) { bar.last = notch; haptic("selection"); }
+      this._send(bar, v, true);
+      this._wake();
+    });
+    const end = (e) => {
+      if (e.pointerId !== id) return;
+      id = null;
+      if (!live) return;
+      live = false;
+      bar.dragging = false;
+      grab.to(0);
+      this._send(bar, value.x);
+      this._wake();
+    };
+    slider.addEventListener("pointerup", end);
+    slider.addEventListener("pointercancel", end);
+    // one volume_step (default 5%), from the − / + buttons or the arrow keys
+    bar.step = (d) => {
+      const size = (Number(this._config.volume_step) || 5) / 100;
+      const v = clamp((bar.pending ?? value.target) + d * size);
+      if (Math.abs(v - (bar.pending ?? value.target)) < 1e-6) return;
+      bar.guess(v);
+      value.to(v);
+      haptic("selection");
+      this._send(bar, v);
+      this._wake();
+    };
+    slider.addEventListener("keydown", (e) => {
+      const d = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 }[e.key];
+      if (!d) return;
+      e.preventDefault();
+      bar.step(d);
+    });
+    return bar;
+  }
+
+  // writes are throttled while dragging; the release always lands
+  _send(bar, v, throttle = false) {
+    bar.queued = v;
+    if (throttle) {
+      if (this._volTimers.get(bar)) return;
+      this._volTimers.set(bar, setTimeout(() => { this._volTimers.delete(bar); this._flush(bar); }, VOL_THROTTLE));
+      return;
+    }
+    clearTimeout(this._volTimers.get(bar));
+    this._volTimers.delete(bar);
+    this._flush(bar);
+  }
+  _flush(bar) { if (bar.queued == null) return; bar.write(bar.queued); bar.queued = null; }
+
+  // ---------- actions ----------
+  _call(domain, service, data, entity) { this._hass.callService(domain, service, data || {}, { entity_id: entity }); }
+
+  _playerIcon(cfg, st) {
+    if (cfg.icon) return cfg.icon;
+    const dc = st?.attributes.device_class;
+    if (PLAYER_ICONS[dc]) return PLAYER_ICONS[dc];
+    if (/ps\d|playstation|xbox|switch_console/i.test(cfg.entity)) return PLAYER_ICONS.game;
+    return PLAYER_ICONS.default;
+  }
+
+  // a player may be powered by its own service or by a separate switch
+  _isOn(cfg) {
+    const guess = this._optimistic.get(cfg.entity);
+    if (guess && Date.now() - guess.at < OPTIMISTIC_MS) return guess.on;
+    if (cfg.power) { const p = this._hass.states[cfg.power]; if (p) return p.state === "on"; }
+    const st = this._hass.states[cfg.entity];
+    return !!st && !DEAD.has(st.state);
+  }
+
+  _togglePower(cfg) {
+    const on = this._isOn(cfg);
+    this._optimistic.set(cfg.entity, { on: !on, at: Date.now() });
+    haptic("light");
+    setTimeout(() => this._hass && this._update(), OPTIMISTIC_MS + 50);
+    if (cfg.power) return this._call(domainOf(cfg.power), "toggle", {}, cfg.power);
+    this._call("media_player", on ? "turn_off" : "turn_on", {}, cfg.entity);
+  }
+
+  _transport(cfg, action) { haptic("light"); this._call("media_player", action, {}, cfg.entity); }
+
+  _mute(cfg, target) {
+    const st = this._hass.states[target || cfg.entity];
+    haptic("light");
+    this._call("media_player", "volume_mute", { is_volume_muted: !st?.attributes.is_volume_muted }, target || cfg.entity);
+  }
+
+  // A room's real volume is sometimes a helper rather than the player's own level.
+  _volumeIO(cfg) {
+    const id = cfg.volume || cfg.entity;
+    const st = this._hass.states[id];
+    if (!st) return null;
+    if (id.startsWith("input_number.") || id.startsWith("number.")) {
+      const min = Number(st.attributes.min ?? 0), max = Number(st.attributes.max ?? 100);
+      const span = Math.max(1e-6, max - min);
+      return { id, level: clamp((parseFloat(st.state) - min) / span), write: (v) => this._call(domainOf(id), "set_value", { value: Math.round((min + v * span) * 100) / 100 }, id) };
+    }
+    if (!has(st, F.VOLUME_SET)) return null;
+    return { id, level: clamp(Number(st.attributes.volume_level) || 0), muted: !!st.attributes.is_volume_muted,
+      write: (v) => this._call("media_player", "volume_set", { volume_level: Math.round(v * 100) / 100 }, id) };
+  }
+
+  _runChip(cfg, kind) {
+    const a = kind === "hold" ? (cfg.hold_action !== undefined ? mediaAction(cfg.hold_action, cfg.entity) : { action: "more-info" })
+      : cfg.tap_action !== undefined ? mediaAction(cfg.tap_action, cfg.entity)
+      : cfg.navigation_path ? { action: "navigate", navigation_path: cfg.navigation_path }
+      : cfg.entity ? defaultTapAction(cfg.entity) : null;
+    if (!a || a.action === "none") return;
+    haptic("light");
+    runAction(this, this._hass, a, { entity: cfg.entity });
+  }
+
+  _speak() {
+    const cfg = this._config.tts, input = this._el.ttsInput;
+    const msg = input.value.trim();
+    if (!cfg || !msg) return;
+    const [domain, service] = String(cfg.action || "tts.speak").split(".");
+    // any value written as $MSG in the config is where the text goes
+    const fill = (v) => (typeof v === "string" ? v.replace(/\$MSG/g, msg) : Array.isArray(v) ? v.map(fill)
+      : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fill(x)])) : v);
+    const data = cfg.data ? fill({ ...cfg.data }) : { message: msg };
+    if (cfg.data && JSON.stringify(cfg.data) === JSON.stringify(data)) data.message = msg;
+    const target = data.entity_id;
+    delete data.entity_id;
+    this._hass.callService(domain, service, data, target ? { entity_id: target } : undefined);
+    haptic("light");
+    input.value = "";
+    this._syncSend();
+  }
+  _syncSend() { attr(this._el.ttsSend, "disabled", !this._el.ttsInput.value.trim()); }
+
+  // ---------- what's playing ----------
+  _mediaOf(cfg) {
+    const st = this._hass.states[cfg.entity];
+    if (!st) return { title: cfg.name || title(cfg.entity.split(".")[1]), sub: "Not found", missing: true };
+    const a = st.attributes;
+    const name = cfg.name || shortName(this._hass, cfg.entity, this._config.area);
+    if (!this._isOn(cfg)) return { name, st, title: name, sub: "Off", off: true };
+    let line = a.media_title || "", sub = "";
+    if (a.media_series_title) {
+      // a show reads as its name, then where you are in it
+      line = a.media_series_title;
+      const ep = [a.media_season != null ? `S${a.media_season}` : "", a.media_episode != null ? `E${a.media_episode}` : ""].join("");
+      sub = [ep, a.media_title].filter(Boolean).join(" · ");
+    } else if (a.media_artist) sub = [a.media_artist, a.media_album_name].filter(Boolean).join(" · ");
+    if (!sub) sub = a.app_name || a.source || "";
+    if (!line) line = a.app_name || a.source || (st.state === "playing" ? "Playing" : chipState(this._hass, st));
+    return { name, st, title: line, sub: sub || name, playing: ACTIVE.has(st.state) };
+  }
+
+  // the stage only appears with real artwork, where the room says it may show it
+  _artOf(cfg) {
+    if (!this._config.artwork || !cfg || cfg.artwork === false) return null;
+    const st = this._hass.states[cfg.entity];
+    if (!st || !ACTIVE.has(st.state)) return null;
+    if (typeof cfg.artwork === "string") { const gate = this._hass.states[cfg.artwork]; if (!gate || gate.state !== "on") return null; }
+    return st.attributes.entity_picture || null;
+  }
+
+  _position(st) {
+    const a = st?.attributes || {};
+    const dur = Number(a.media_duration);
+    if (!Number.isFinite(dur) || dur <= 0) return null;
+    let pos = Number(a.media_position) || 0;
+    if (st.state === "playing" && a.media_position_updated_at) pos += (Date.now() - Date.parse(a.media_position_updated_at)) / 1000;
+    return clamp(pos / dur);
+  }
+
+  // ---------- update ----------
+  _rowOf(parent, key, tag, cls, html) {
+    const cache = parent.__rows || (parent.__rows = new Map());
+    let el = cache.get(key);
+    if (!el) {
+      el = document.createElement(tag);
+      el.className = cls;
+      el.innerHTML = html;
+      cache.set(key, el);
+      parent.appendChild(el);
+    }
+    return el;
+  }
+
+  _update() {
+    const h = this._hass, c = this._config, el = this._el;
+    if (!h || !el) return;
+    const cap = c.artwork_max_height;
+    put(el.stage, "--art-max", cap ? (typeof cap === "number" ? `${cap}px` : String(cap)) : "none");
+    this.toggleAttribute("dark", !!h.themes?.darkMode);
+    if (c.accent) put(el.card, "--accent", this._rgb(c.accent));
+    text(el.title, c.name || (c.area ? areaInfo(h, c.area).name : "Media"));
+    this._sources();
+    if (!this._compact) this._stage();      // decides what the stage owns, so rows can defer
+    this._nowPlaying();
+    if (!this._compact) { this._outputs(); this._alarm(); this._chips(); }
+    const labels = c.labels || {};
+    for (const [key, node] of [["video", el.videoCap], ["audio", el.audioCap]]) {
+      node.hidden = !labels[key];
+      if (labels[key]) text(node, labels[key]);
+    }
+    let firstSeen = false;
+    for (const band of [el.videoBand, el.audioBand, el.alarmBand, el.extras]) {
+      attr(band, "data-first", !band.hidden && !firstSeen);
+      if (!band.hidden) firstSeen = true;
+    }
+    if (this._first) { this._first = false; requestAnimationFrame(() => { this._measure(); this._paintAll(null); }); }
+    this._syncTick();
+    this._wake();
+  }
+
+  _rgb(css) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(css).trim());
+    if (!m) return css;
+    const n = parseInt(m[1], 16);
+    return `${(n >> 16) & 255} ${(n >> 8) & 255} ${n & 255}`;
+  }
+
+  // Which video source the row and stage are about: the pick while it's still sensible,
+  // else whatever is actually playing. A pick is released only when something new starts.
+  _sources() {
+    const c = this._config, el = this._el;
+    if (this._compact) return this._primary();
+    el.videoBand.hidden = !c.video.length;
+    if (!c.video.length) { this._active = null; return; }
+    const live = c.video.filter((v) => ACTIVE.has(this._hass.states[v.entity]?.state));
+    const sig = live.map((v) => v.entity).join("|");
+    if (this._liveSig === undefined) this._liveSig = sig;
+    if (sig !== this._liveSig) { this._liveSig = sig; if (sig) this._picked = null; }
+    const on = c.video.filter((v) => this._isOn(v));
+    if (this._picked && !c.video.some((v) => v.entity === this._picked)) this._picked = null;
+    const auto = live[0] || on[0] || c.video[0];
+    const active = this._picked ? c.video.find((v) => v.entity === this._picked) : auto;
+    const changed = this._active && this._active.entity !== active.entity;
+    this._active = active;
+    this._pickedIdx = c.video.indexOf(active);
+    el.sources.hidden = c.video.length < 2;
+    if (!el.sources.hidden) {
+      c.video.forEach((v) => {
+        const st = this._hass.states[v.entity];
+        const seg = this._rowOf(el.sources, v.entity, "button", "seg", `<ha-icon></ha-icon><span></span>`);
+        if (!seg.__wired) {
+          seg.__wired = true;
+          this._pressable(seg, { onTap: () => this._pick(v), onHold: () => moreInfo(this, v.entity), haptic: null }, 0.08);
+        }
+        attr(seg.querySelector("ha-icon"), "icon", this._playerIcon(v, st));
+        text(seg.querySelector("span"), v.name || shortName(this._hass, v.entity, c.area));
+        attr(seg, "data-sel", v === active);
+        attr(seg, "data-live", this._isOn(v));
+        attr(seg, "aria-pressed", v === active ? "true" : "false");
+      });
+      this._measure();
+    }
+    if (changed && !MQ.reduced.matches) this._sp.swap.snap(0).to(1, SWAP_IN);
+  }
+
+  // compact: one row for the room, showing whatever is actually playing
+  _primary() {
+    const c = this._config, all = [...c.video, ...c.audio];
+    this._el.videoBand.hidden = !all.length;
+    if (!all.length) { this._active = null; return; }
+    const next = all.find((p) => ACTIVE.has(this._hass.states[p.entity]?.state)) || all.find((p) => this._isOn(p)) || all[0];
+    if (this._active && this._active.entity !== next.entity && !MQ.reduced.matches) this._sp.swap.snap(0).to(1, SWAP_IN);
+    this._active = next;
+  }
+
+  _pick(v) {
+    if (this._active?.entity === v.entity) return moreInfo(this, v.entity);
+    this._picked = v.entity;
+    haptic("selection");
+    this._update();
+  }
+
+  _nowPlaying() {
+    const el = this._el, v = this._active;
+    if (!v) return;
+    const info = this._mediaOf(v), st = info.st;
+    if (this._compact) {
+      // a piece of the artwork stands in for the whole stage
+      const url = this._config.artwork !== false ? this._artOf(v) : null;
+      el.thumb.hidden = !url;
+      el.nowGlyph.hidden = !!url;
+      if (url && el.thumb.getAttribute("src") !== url) el.thumb.src = url;
+      attr(el.nowGlyph, "icon", this._playerIcon(v, st));
+      attr(el.nowIcon, "data-live", !url && this._isOn(v));
+    } else {
+      attr(el.nowIcon, "data-live", this._isOn(v));
+      attr(this._rowOf(el.nowIcon, "i", "ha-icon", "", ""), "icon", this._playerIcon(v, st));
+    }
+    if (!el.nowIcon.__wired) {
+      el.nowIcon.__wired = true;
+      this._pressable(el.nowIcon, { onTap: () => moreInfo(this, el.nowIcon.__entity), haptic: null }, 0.08);
+    }
+    el.nowIcon.__entity = v.entity;
+    if (this._compact) {
+      // no stage here: the row leads with what's playing rather than which box
+      const dead = info.off || info.missing;
+      const primary = dead ? (info.name || info.title) : info.title;
+      const second = !dead && (!info.sub || info.sub === primary) ? info.name : info.sub;
+      text(el.nowName, primary);
+      text(el.nowSub, second === primary ? "" : second);
+    } else {
+      text(el.nowName, info.name || info.title);
+      text(el.nowSub, this._rowSub(v, info));
+    }
+    this._buildTransport(el.nowTransport, v, { power: true });
+    const owner = this._volumeOwner(v);
+    el.nowVol.hidden = !owner;
+    if (owner) this._mountVolume(el.nowVol, owner, "source");
+  }
+
+  // when the stage already shows this player's media, the row says where it comes from
+  _rowSub(cfg, info) {
+    if (info.off) return "Off";
+    if (info.missing) return info.sub;
+    const staged = this._stageOwner?.entity === cfg.entity && !this._el.stage.hidden;
+    const a = info.st?.attributes || {};
+    if (staged) return a.app_name || a.source || chipState(this._hass, info.st);
+    if (info.title === info.name) return info.sub;
+    const extra = info.sub !== info.name && info.sub !== info.title ? info.sub : "";
+    return [info.title, extra].filter(Boolean).join(" · ");
+  }
+
+  // transport buttons follow what the player says it supports
+  _buildTransport(parent, cfg, { power = false, solid = true } = {}) {
+    const st = this._hass.states[cfg.entity];
+    const on = this._isOn(cfg), playing = ACTIVE.has(st?.state);
+    const want = [];
+    if (has(st, F.PREV)) want.push({ key: "prev", icon: "mdi:skip-previous", act: () => this._transport(cfg, "media_previous_track") });
+    if (has(st, F.PAUSE) || has(st, F.PLAY)) want.push({ key: "play", solid, icon: playing ? "mdi:pause" : "mdi:play", act: () => this._transport(cfg, "media_play_pause") });
+    if (has(st, F.NEXT)) want.push({ key: "next", icon: "mdi:skip-next", act: () => this._transport(cfg, "media_next_track") });
+    if (power && (cfg.power || has(st, F.TURN_ON) || has(st, F.TURN_OFF))) want.push({ key: "power", icon: "mdi:power", on, act: () => this._togglePower(cfg) });
+    for (const b of want) {
+      const btn = this._rowOf(parent, b.key, "button", `tb${b.solid ? " solid" : ""}`, `<ha-icon></ha-icon>`);
+      if (!btn.__wired) { btn.__wired = true; this._pressable(btn, { onTap: () => btn.__act(), haptic: null }, 0.08); }
+      btn.__act = b.act;
+      attr(btn, "aria-label", b.key);
+      attr(btn, "data-k", b.key);
+      attr(btn, "data-on", !!b.on);
+      attr(btn, "disabled", !(on || b.key === "power"));
+      attr(btn.querySelector("ha-icon"), "icon", b.icon);
+    }
+    const keys = new Set(want.map((b) => b.key));
+    for (const [key, node] of parent.__rows || []) node.hidden = !keys.has(key);
+    parent.hidden = !want.length;
+  }
+
+  _outputs() {
+    const el = this._el, c = this._config;
+    el.audioBand.hidden = !c.audio.length;
+    for (const cfg of c.audio) {
+      const key = slug(cfg.entity);
+      const row = this._rowOf(el.audioBand, key, "div", "player", `<div class="row">
+          <span class="icon"><ha-icon></ha-icon></span>
+          <span class="meta"><span class="n"></span><span class="d"></span></span>
+          <div class="transport"></div></div>`);
+      const st = this._hass.states[cfg.entity];
+      const info = this._mediaOf(cfg);
+      const icon = row.querySelector(".icon");
+      attr(icon, "data-live", this._isOn(cfg));
+      attr(icon.querySelector("ha-icon"), "icon", this._playerIcon(cfg, st));
+      text(row.querySelector(".n"), info.name || info.title);
+      text(row.querySelector(".d"), this._rowSub(cfg, info));
+      this._buildTransport(row.querySelector(".transport"), cfg, { power: true });
+      if (!icon.__wired) { icon.__wired = true; this._pressable(icon, { onTap: () => moreInfo(this, cfg.entity), haptic: null }, 0.08); }
+      this._mountVolume(row, cfg, key);
+    }
+    const keys = new Set(c.audio.map((cfg) => slug(cfg.entity)));
+    for (const [key, node] of el.audioBand.__rows || []) node.hidden = !keys.has(key);
+  }
+
+  // the alarm clock that rings on this room's speaker: when it's set, and whether it's on
+  _alarm() {
+    const cfg = this._config.alarm, el = this._el, h = this._hass;
+    const st = cfg && h.states[cfg.entity];
+    el.alarmBand.hidden = !st;
+    if (!st) return;
+    const armed = st.state === "on";
+    const time = cfg.time && h.states[cfg.time];
+    attr(el.alarmIcon, "data-live", armed);
+    attr(el.alarmGlyph, "icon", cfg.icon || (armed ? "mdi:alarm" : "mdi:alarm-off"));
+    text(el.alarmName, cfg.name || st.attributes.friendly_name || "Alarm");
+    text(el.alarmSub, armed ? (time ? this._nextAlarm(time) : "Armed") : "Off");
+    text(el.alarmWhen, time ? this._clock(time.state) : "");
+    attr(el.alarmWhen, "data-off", !armed);
+    el.alarmWhen.hidden = !time;
+    attr(el.alarmToggle, "data-on", armed);
+    attr(el.alarmToggleIcon, "icon", armed ? "mdi:bell" : "mdi:bell-outline");
+    attr(el.alarmToggle, "aria-pressed", armed ? "true" : "false");
+    attr(el.alarmToggle, "aria-label", `Alarm ${armed ? "on" : "off"}`);
+    attr(el.alarmMeta, "aria-label", `Alarm time ${time ? this._clock(time.state) : "not set"}`);
+  }
+
+  _toggleAlarm() {
+    const id = this._config.alarm?.entity;
+    if (!id) return;
+    haptic("light");
+    this._call(domainOf(id), "toggle", {}, id);
+  }
+
+  // input_datetime says "07:15:00": shown the way this dashboard's locale writes time
+  _clock(value) {
+    const [hh, mm] = String(value || "").split(":");
+    if (hh == null || mm == null) return "";
+    const d = new Date();
+    d.setHours(Number(hh), Number(mm), 0, 0);
+    const fmt = this._hass.locale?.time_format, opts = { hour: "2-digit", minute: "2-digit" };
+    if (fmt === "12") opts.hour12 = true;
+    if (fmt === "24") opts.hour12 = false;
+    try { return new Intl.DateTimeFormat(langOf(this._hass), opts).format(d); } catch (err) { return `${hh}:${mm}`; }
+  }
+
+  // how long until it goes off, so the number means something at a glance
+  _nextAlarm(time) {
+    const [hh, mm] = String(time.state || "").split(":").map(Number);
+    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return "Armed";
+    const now = new Date(), at = new Date();
+    at.setHours(hh, mm, 0, 0);
+    if (at <= now) at.setDate(at.getDate() + 1);
+    const mins = Math.round((at - now) / 60000), h = Math.floor(mins / 60), m = mins % 60;
+    return h ? `in ${h}h ${m}m` : `in ${m}m`;
+  }
+
+  // a volume block, under a speaker, or under a TV that has no sound output of its own
+  _mountVolume(host, cfg, key) {
+    let vol = host.querySelector(".vol");
+    if (!vol) {
+      vol = document.createElement("div");
+      vol.className = "vol";
+      vol.innerHTML = `<button class="mute" aria-label="Mute"><ha-icon></ha-icon></button>
+        <div class="slider" role="slider" tabindex="0" aria-label="Volume"><div class="bar"><span class="fill"></span></div></div>
+        <span class="pct"></span>
+        <span class="vsteps"><button class="vstep" data-d="-1" aria-label="Volume down"><ha-icon icon="mdi:minus"></ha-icon></button>
+          <button class="vstep" data-d="1" aria-label="Volume up"><ha-icon icon="mdi:plus"></ha-icon></button></span>`;
+      host.appendChild(vol);
+    }
+    const io = this._volumeIO(cfg);
+    vol.hidden = !io;
+    if (!io) return;
+    let bar = this._bars.get(key);
+    if (!bar) bar = this._bar(key, vol);
+    if (bar.cfg && bar.cfg.entity !== cfg.entity) { bar.pending = null; bar.value.snap(io.level); }
+    bar.cfg = cfg;
+    if (bar.pending != null && (Math.abs(bar.pending - io.level) < 0.02 || Date.now() - bar.pendingAt > VOL_PREDICT)) bar.pending = null;
+    if (!bar.dragging && bar.pending == null) { if (this._first) bar.value.snap(io.level); else bar.value.to(io.level); }
+    const mute = vol.querySelector(".mute");
+    const muteable = has(this._hass.states[io.id], F.VOLUME_MUTE);
+    mute.hidden = !muteable;
+    if (muteable) {
+      attr(mute, "data-on", !!io.muted);
+      attr(mute.querySelector("ha-icon"), "icon", io.muted ? "mdi:volume-off" : "mdi:volume-high");
+      mute.__act = () => this._mute(bar.cfg, this._volumeIO(bar.cfg)?.id);
+      if (!mute.__wired) { mute.__wired = true; this._pressable(mute, { onTap: () => mute.__act(), haptic: null }, 0.08); }
+    }
+    const steps = this._config.volume_buttons !== false;
+    attr(vol, "data-steps", steps);
+    vol.querySelector(".vsteps").hidden = !steps;
+    for (const btn of vol.querySelectorAll(".vstep")) {
+      btn.__bar = bar;
+      if (steps && !btn.__wired) { btn.__wired = true; this._pressable(btn, { onTap: () => btn.__bar.step(Number(btn.dataset.d)), haptic: null }, 0.08); }
+    }
+    const slider = vol.querySelector(".slider");
+    attr(slider, "aria-valuenow", Math.round(io.level * 100));
+    attr(slider, "aria-valuemin", "0");
+    attr(slider, "aria-valuemax", "100");
+  }
+
+  // Where a source's sound comes out; nothing declared means the box plays its own.
+  _soundOutput(cfg) { return (cfg.output !== undefined ? cfg.output : this._config.video_output) || null; }
+
+  // Whose volume belongs under the picked source: nothing if its sound goes to a box with
+  // a row of its own (that row owns it); that box's if it has no row; otherwise its own.
+  _volumeOwner(cfg) {
+    if (cfg.volume === false) return null;
+    const out = this._soundOutput(cfg);
+    if (!out) return cfg;
+    const listed = this._config.audio.find((a) => a.entity === out);
+    if (listed) return this._compact ? listed : null;      // compact has no speaker row: it borrows
+    const named = this._config.video.find((v) => v.entity === out);
+    return named ? { ...named } : { entity: out };
+  }
+
+  _chips() {
+    const el = this._el, c = this._config, h = this._hass;
+    const fill = (parent, list) => {
+      const keys = new Set();
+      for (const cfg of list) {
+        const st = cfg.entity && h.states[cfg.entity];
+        if (cfg.entity && !st && !cfg.navigation_path) continue;
+        const key = cfg.entity || cfg.navigation_path || cfg.name;
+        keys.add(key);
+        const chip = this._rowOf(parent, key, "button", "pill", `${cfg.icon ? "<ha-icon></ha-icon>" : "<ha-state-icon></ha-state-icon>"}<span></span>`);
+        if (!chip.__wired) {
+          chip.__wired = true;
+          this._pressable(chip, { onTap: () => this._runChip(chip.__cfg, "tap"), onHold: () => this._runChip(chip.__cfg, "hold"), haptic: null }, 0.08);
+        }
+        chip.__cfg = cfg;
+        put(chip, "--cc", colorOf(cfg.color) || "rgb(var(--accent))");
+        attr(chip, "data-on", !!st && ["on", "playing", "home", "open"].includes(st.state));
+        text(chip.querySelector("span"), cfg.name || st?.attributes.friendly_name || title(String(key).split(".").pop()));
+        const sIcon = chip.querySelector("ha-state-icon");
+        if (sIcon && sIcon.stateObj !== st) { sIcon.hass = h; sIcon.stateObj = st; }
+        const iIcon = chip.querySelector("ha-icon");
+        if (iIcon) attr(iIcon, "icon", cfg.icon);
+      }
+      for (const [key, node] of parent.__rows || []) node.hidden = !keys.has(key);
+      parent.hidden = !keys.size;
+    };
+    fill(el.presets, c.presets);
+    fill(el.actions, c.chips);
+    el.tts.hidden = !c.tts;
+    if (c.tts) this._syncSend();
+    el.extras.hidden = el.presets.hidden && el.actions.hidden && el.tts.hidden;
+  }
+
+  _stage() {
+    const el = this._el, c = this._config;
+    // the stage follows the picked source first, then anything else that's playing
+    let src = null, owner = null;
+    for (const cfg of [this._active, ...c.video, ...c.audio].filter(Boolean)) {
+      const url = this._artOf(cfg);
+      if (url) { src = url; owner = cfg; break; }
+    }
+    el.stage.hidden = !src;
+    if (!src) { this._sp.art.snap(0); this._stageOwner = null; return; }
+    if (this._stageSrc !== src) {
+      this._stageSrc = src;
+      this._sp.art.snap(0);
+      // the stage takes the artwork's shape first, then the artwork arrives into it
+      el.art.onload = () => {
+        const r = el.art.naturalWidth / el.art.naturalHeight;
+        if (Number.isFinite(r) && r > 0.05) put(el.stage, "--ar", clamp(r, 0.56, 2.6).toFixed(4));
+        this._sp.art.to(1, MEDIA_MOTION.art);
+        this._wake();
+      };
+      el.art.onerror = () => { this._sp.art.to(1, MEDIA_MOTION.art); this._wake(); };
+      el.art.src = src;
+    }
+    this._stageOwner = owner;
+    const info = this._mediaOf(owner);
+    text(el.stageT, info.title);
+    text(el.stageS, info.sub);
+    const pos = this._position(this._hass.states[owner.entity]);
+    el.progress.hidden = pos == null;
+    if (pos != null) {
+      if (this._first || Math.abs(pos - this._sp.progress.x) > 0.08) this._sp.progress.snap(pos);
+      else this._sp.progress.to(pos);
+    }
+  }
+
+  // one ticking clock, only while something is actually running on screen
+  _syncTick() {
+    const owner = this._stageOwner;
+    const need = !!owner && ACTIVE.has(this._hass.states[owner.entity]?.state) && this._position(this._hass.states[owner.entity]) != null;
+    if (need === !!this._tick) return;
+    clearInterval(this._tick);
+    this._tick = need ? setInterval(() => {
+      if (!this._onscreen || !this._stageOwner) return;
+      const p = this._position(this._hass.states[this._stageOwner.entity]);
+      if (p != null) { this._sp.progress.to(p); this._wake(); }
+    }, 1000) : 0;
+  }
+
+  _paint(dirty, all, red) {
+    const sp = this._sp, el = this._el;
+    if (all || dirty.has("sources")) {
+      const pill = el.sources.querySelector(".sel"), w = Math.max(0, sp.pillW.x);
+      put(pill, "opacity", w < 1 ? "0" : "");
+      put(pill, "width", `${w.toFixed(2)}px`);
+      put(pill, "transform", `translate3d(${sp.pill.x.toFixed(2)}px,0,0)`);
+    }
+    if (all || dirty.has("now")) {
+      const s = clamp(sp.swap.x);
+      put(el.nowRow, "opacity", s > 0.999 ? "" : s.toFixed(3));
+      put(el.nowRow, "transform", red || s > 0.999 ? "" : `translateY(${((1 - s) * 5).toFixed(2)}px)`);
+    }
+    if (all || dirty.has("stage")) {
+      const a = clamp(sp.art.x);
+      // blur and scale together, so the artwork arrives as a material
+      put(el.art, "opacity", a.toFixed(3));
+      put(el.art, "filter", red || a > 0.995 ? "" : `blur(${((1 - a) * 14).toFixed(2)}px)`);
+      put(el.art, "transform", red || a > 0.995 ? "" : `scale(${(1.04 - 0.04 * a).toFixed(4)})`);
+      put(el.progressFill, "transform", `scaleX(${clamp(sp.progress.x).toFixed(4)})`);
+    }
+    for (const [, bar] of this._bars) {
+      if (!all && !dirty.has(bar.value.group)) continue;
+      const v = clamp(bar.value.x), g = clamp(bar.grab.x);
+      put(bar.el.querySelector(".fill"), "transform", `scaleX(${v.toFixed(4)})`);
+      put(bar.el.querySelector(".bar"), "transform", red ? "" : `scaleY(${(1 + 0.45 * g).toFixed(3)})`);
+      text(bar.el.querySelector(".pct"), `${Math.round(v * 100)}%`);
+      const [down, up] = bar.el.querySelectorAll(".vstep");
+      if (down) attr(down, "disabled", v <= 0.001);
+      if (up) attr(up, "disabled", v >= 0.999);
+    }
+  }
+}
+
+// ---------- editor ----------
+const playerList = (name, label, helper) => ({ name, label, helper, type: "list", add: { selector: { entity: { domain: "media_player" } }, label: "Add a player" },
+  item: [
+    { name: "entity", label: "Player", selector: { entity: { domain: "media_player" } } },
+    { type: "grid", name: "", schema: [{ name: "name", label: "Name", selector: { text: {} } }, { name: "icon", label: "Icon", selector: { icon: {} } }] },
+    { name: "power", label: "Powered by", helper: "A switch that powers it, when the player can't turn itself on.", selector: { entity: { domain: ["switch", "input_boolean"] } } },
+    { name: "output", label: "Its sound comes out of", selector: { entity: { domain: "media_player" } } },
+    { name: "volume", label: "Its volume is", helper: "A helper that is the real volume, when the player's own isn't.", selector: { entity: { domain: ["input_number", "number"] } } },
+    { name: "artwork", label: "Show artwork only while", helper: "A binary sensor that says the artwork is worth showing.", selector: { entity: { domain: "binary_sensor" } } },
+  ] });
+
+const EDITOR = defineEditor("savvy-media-card", (hass, c) => [
+  S.area(),
+  S.grid(S.text("name", "Name"), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (one row)" }])),
+  playerList("video", "Video sources", "Empty: the area's players (not its speakers)."),
+  playerList("audio", "Speakers", "Empty: the area's speakers and receivers."),
+  { name: "video_output", label: "The video's sound comes out of", selector: { entity: { domain: "media_player" } } },
+  S.grid(S.bool("artwork", "Show artwork", null, true), S.bool("volume_buttons", "Volume − / + buttons", null, true)),
+  S.grid(S.number("volume_step", "Volume step", 1, 25, 1, "%"), S.number("artwork_max_height", "Artwork max height", 80, 800, 10, "px")),
+  { type: "expandable", name: "labels", title: "Captions", schema: [S.text("video", "Over the video"), S.text("audio", "Over the speakers")] },
+  { type: "expandable", name: "alarm", title: "Alarm clock", schema: [
+    { name: "entity", label: "On / off", selector: { entity: { domain: ["input_boolean", "switch"] } } },
+    { name: "time", label: "Time", selector: { entity: { domain: "input_datetime" } } },
+    { name: "name", label: "Name", selector: { text: {} } },
+  ] },
+  { type: "expandable", name: "tts", title: "Text to speech", schema: [
+    { name: "action", label: "Action", helper: "e.g. tts.speak, or notify.alexa_media_…", selector: { text: {} } },
+    { name: "data", label: "Data", helper: "$MSG is where the text goes.", selector: { object: {} } },
+    { name: "placeholder", label: "Placeholder", selector: { text: {} } },
+  ] },
+  S.chips("presets", "Presets", "Stations, playlists: a button presses, a script runs."),
+  S.chips("chips", "Chips", "The room's other media controls."),
+]);
+
+registerCard("savvy-media-card", SavvyMediaCard, "Media",
+  "A room's media: artwork, its sources and the speaker they play through, volume, presets and text to speech.");
+})();
+
 // ===== cards/room.js =====
 (() => {
 // savvy-room-card: the header at the top of a room's own page. The room's mode (tap to
@@ -6359,12 +10243,12 @@ const areasOf = (hass, c) => allAreas(hass).filter((a) => a.id !== c.area && are
 const EDITOR = defineEditor("savvy-room-card", (hass, c) => [
   S.area(),
   ...modeSchema(hass, c, { helper: "The room's mode or scenes: any input_select or select." }),
-  { name: "home_path", label: "Home button opens", helper: "A dashboard path; empty hides the button.", selector: { text: {} } },
+  S.nav("home_path", "Home button navigates to", "Empty hides the button."),
   { name: "temperature", label: "Temperature", helper: "Found from the area. Pick another to override.", selector: { entity: { domain: ["sensor", "climate"] } } },
   ...badgeSchema({ pinnedHelp: "Always shown first, in this order: a lights helper, presence, a door. The rest of the room follows." }),
   S.bool("icons_only", "Icons only", "Just the coloured icons, no names or states.", false),
   S.chips("chips", "Chips", "Your own chips, in a row under the room's."),
-  { name: "room_path", label: "Rooms row: each room opens", helper: "E.g. /lovelace/{slug} ({area}: the area id, {slug}: with dashes). Empty hides the row.", selector: { text: {} } },
+  { name: "room_path", label: "Rooms row: each room navigates to", helper: "E.g. /lovelace/{slug} ({area}: the area id, {slug}: with dashes). Empty hides the row.", selector: { text: {} } },
   { name: "room_order", label: "Rooms order", type: "list", helper: "Rooms listed first, in this order; the rest follow by name.",
     initial: (h, cfg) => (h ? areasOf(h, cfg) : []), add: { selector: { area: {} }, label: "Add a room" },
     summary: (a, h) => ({ title: areaInfo(h, a).name, sub: a }) },
@@ -6373,6 +10257,1363 @@ const EDITOR = defineEditor("savvy-room-card", (hass, c) => [
 
 registerCard("savvy-room-card", SavvyRoomCard, "Room",
   "A room page's header: its mode, temperature, everything it has, and the way to every other room.");
+})();
+
+// ===== cards/snapshot.js =====
+(() => {
+// savvy-snapshot-card: a security glance at one room. Is anything happening here, and
+// when did it last happen? Everything is found from the area by device_class, with a
+// per-kind override as the escape hatch.
+//
+//   events    presence / door / window: the state and "for 12 min" / "4 min ago"
+//   readouts  temperature, humidity, light, and quiet "Clear" alert sensors
+//   alerts    smoke / gas / CO / leak: quiet while clear; when one trips a banner pins to
+//             the top and the whole card washes red
+//   chips     your own (the one chip spec), and hand-picked entities placed by what they
+//             are: a toggle is a chip, a door a tile, a number a readout
+//
+// With an alarm (found by itself; `alarm: false` for none), an open door or window while
+// armed, or presence while armed away, turns amber: the only time they borrow a hue.
+//
+// Swipe the card left for its history: a lane per presence / door / window sensor over
+// the room's temperature, for 6 h / 24 h / 3 d; scrubbing snaps onto the nearest change,
+// so "when did the door open" has an exact answer.
+//
+//   type: custom:savvy-snapshot-card
+//   area: living_room            navigation_path: /lovelace/living-room
+//   layout: compact              one row: glyphs and the temperature
+
+const SNAP_TICK_MS = 30000;
+const SNAP_PREDICT_MS = 4000;
+const SNAP_SCRUB_SLOP = 6;
+const SNAP_SCRUB_DWELL = 140;
+const SNAP_PX = 10;          // a scrub this close to a change lands on it
+const HIST_POLL_MS = 300000;
+const SNAP_COLORS = { warn: "#E8A33D", alert: "#E06666", leak: "#5FA8E0" };
+
+// Reading order. kind decides where a sensor renders; single keeps the best match only
+// (dc order is the preference), since two temperatures for one room reads as noise.
+const SLOTS = [
+  { key: "presence", kind: "event", domain: "binary_sensor", dc: ["presence", "occupancy", "motion"], label: "Presence", single: true,
+    on: "Occupied", off: "Clear", icon: "mdi:motion-sensor", iconOff: "mdi:motion-sensor-off" },
+  { key: "door", kind: "event", domain: "binary_sensor", dc: ["door", "garage_door", "opening"], label: "Door",
+    on: "Open", off: "Closed", icon: "mdi:door-open", iconOff: "mdi:door-closed" },
+  { key: "window", kind: "event", domain: "binary_sensor", dc: ["window"], label: "Window",
+    on: "Open", off: "Closed", icon: "mdi:window-open-variant", iconOff: "mdi:window-closed-variant" },
+  { key: "temperature", kind: "read", domain: "sensor", dc: ["temperature"], label: "Temperature", single: true, icon: "mdi:thermometer" },
+  { key: "humidity", kind: "read", domain: "sensor", dc: ["humidity"], label: "Humidity", single: true, icon: "mdi:water-percent" },
+  { key: "illuminance", kind: "read", domain: "sensor", dc: ["illuminance"], label: "Light", single: true, icon: "mdi:brightness-5" },
+  { key: "smoke", kind: "alert", domain: "binary_sensor", dc: ["smoke"], label: "Smoke", color: SNAP_COLORS.alert,
+    icon: "mdi:smoke-detector-variant-alert", iconOff: "mdi:smoke-detector-variant" },
+  { key: "gas", kind: "alert", domain: "binary_sensor", dc: ["gas"], label: "Gas", color: SNAP_COLORS.alert, icon: "mdi:gas-cylinder", iconOff: "mdi:gas-cylinder" },
+  { key: "co", kind: "alert", domain: "binary_sensor", dc: ["carbon_monoxide"], label: "CO", color: SNAP_COLORS.alert, icon: "mdi:molecule-co", iconOff: "mdi:molecule-co" },
+  { key: "leak", kind: "alert", domain: "binary_sensor", dc: ["moisture"], label: "Leak", color: SNAP_COLORS.leak, icon: "mdi:water-alert", iconOff: "mdi:water-check" },
+];
+const SLOT = Object.fromEntries(SLOTS.map((s) => [s.key, s]));
+const CHIP_TOGGLES = new Set(["input_boolean", "switch", "light", "fan", "siren", "automation"]);
+const ARM_ICONS = { armed_home: "mdi:shield-home", armed_away: "mdi:shield-lock", armed_night: "mdi:shield-moon",
+  armed_vacation: "mdi:shield-airplane", armed_custom_bypass: "mdi:shield-half-full", triggered: "mdi:shield-alert" };
+const decimalsOf = (s) => { const m = String(s).match(/\.(\d+)/); return m ? Math.min(m[1].length, 2) : 0; };
+// the pre-Savvy shorthands: tap_action: toggle | press | turn_on | more-info
+const chipAction = (a, entity) => (a === "press" || a === "turn_on"
+  ? { action: "perform-action", perform_action: `${domainOf(entity)}.${a}`, target: { entity_id: entity } } : asAction(a));
+
+const STYLE = `${BASE_CSS}
+  ha-card { --warn-c: ${SNAP_COLORS.warn}; --alert-c: ${SNAP_COLORS.alert}; display: flex; flex-direction: column; gap: 10px; padding: var(--pad); overflow: hidden; }
+  :host([compact]) ha-card { --pad: 12px; gap: 0; }
+  /* the alert wash (steady) and glow (bloom), both springs, never transitions */
+  .wash, .glow { position: absolute; inset: 0; pointer-events: none; z-index: -1; opacity: 0; border-radius: inherit; }
+  .wash { background: color-mix(in oklab, var(--alert-hue, var(--alert-c)) 9%, transparent); box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--alert-hue, var(--alert-c)) 55%, transparent); }
+  .glow { background: radial-gradient(120% 90% at 50% 0%, color-mix(in oklab, var(--alert-hue, var(--alert-c)) 38%, transparent), transparent 70%); }
+  :host([dark]) .glow { mix-blend-mode: plus-lighter; }
+
+  .head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .name { display: flex; align-items: center; gap: 9px; min-width: 0; flex: 1; border-radius: 12px; margin: -4px 0; padding: 4px 0; transform-origin: 0 50%; }
+  .name[role="button"] { cursor: pointer; }
+  .roomIcon { flex: none; width: 32px; height: 32px; border-radius: 11px; display: grid; place-items: center; background: var(--well); --mdc-icon-size: 18px; color: var(--primary-text-color); }
+  .names { display: flex; flex-direction: column; min-width: 0; }
+  .title { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; overflow-wrap: anywhere; }
+  .status { font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: -0.003em; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .status[data-level="warn"] { color: var(--warn-c); font-weight: 600; }
+  .status[data-level="alert"] { color: var(--alert-hue, var(--alert-c)); font-weight: 600; }
+  .armed { flex: none; display: flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 9px; background: var(--well); color: var(--secondary-text-color);
+    font-size: 11px; line-height: 13px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; --mdc-icon-size: 14px; }
+
+  .banner { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 13px; background: color-mix(in oklab, var(--alert-hue, var(--alert-c)) 16%, transparent);
+    color: var(--alert-hue, var(--alert-c)); --mdc-icon-size: 20px; cursor: pointer; transform-origin: 50% 50%; }
+  .banner .bt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .banner .b1 { font-size: 14px; line-height: 17px; font-weight: 650; letter-spacing: -0.012em; }
+  .banner .b2 { font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: -0.003em; opacity: 0.85; }
+
+  .events { display: grid; grid-template-columns: repeat(auto-fit, minmax(124px, 1fr)); gap: 8px; }
+  .ev { --on: 0; --warn: 0; --hue: color-mix(in oklab, var(--warn-c) calc(var(--warn) * 100%), var(--primary-text-color));
+    position: relative; box-sizing: border-box; min-width: 0; display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 10px; align-items: center;
+    padding: 10px 12px 10px 10px; border-radius: 14px; background: color-mix(in oklab, var(--hue) calc(6% + var(--warn) * 8%), transparent); cursor: pointer; transform-origin: 50% 50%; }
+  .ev .disc { grid-row: span 2; width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; --mdc-icon-size: 19px;
+    background: color-mix(in oklab, var(--hue) calc(var(--on) * 16%), transparent); color: color-mix(in oklab, var(--hue) calc(var(--on) * 100%), var(--secondary-text-color)); }
+  .ev .l2 { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
+  .ev .st { font-size: 14px; line-height: 17px; font-weight: 650; letter-spacing: -0.012em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    color: color-mix(in oklab, var(--hue) calc(40% + var(--on) * 60%), var(--secondary-text-color)); }
+  .ev .when { flex: none; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: -0.003em; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ev .lbl { font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: -0.003em; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+  .ev .lbl::after { content: " ·"; }
+  .ev[data-off] { opacity: 0.55; }
+
+  /* equal shares, 8px apart like the tiles above; never below their content; an overfull row scrolls */
+  .reads { display: flex; gap: 8px; min-width: 0; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+  .reads::-webkit-scrollbar, .pills::-webkit-scrollbar { display: none; }
+  .reads[data-overflow], .pills[data-overflow] { mask-image: linear-gradient(to left, transparent 0, #000 26px); -webkit-mask-image: linear-gradient(to left, transparent 0, #000 26px); }
+  .rd { --al: 0; flex: 1 1 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 12px;
+    background: color-mix(in oklab, var(--rd-hue, var(--alert-c)) calc(var(--al) * 16%), var(--well)); cursor: pointer; transform-origin: 50% 50%; }
+  .rd .v { display: flex; align-items: center; gap: 5px; white-space: nowrap; font-size: 13.5px; line-height: 17px; font-weight: 650; letter-spacing: -0.012em;
+    color: color-mix(in oklab, var(--rd-hue, var(--alert-c)) calc(var(--al) * 100%), var(--primary-text-color)); }
+  .rd .v ha-icon { --mdc-icon-size: 15px; display: flex; flex: none; color: color-mix(in oklab, var(--rd-hue, var(--alert-c)) calc(var(--al) * 100%), var(--secondary-text-color)); }
+  .rd .c { font-size: 11px; line-height: 13px; font-weight: 550; letter-spacing: 0.006em; color: var(--secondary-text-color); white-space: nowrap; }
+  .rd[data-off] { opacity: 0.55; }
+
+  .pills { display: flex; gap: 6px; min-width: 0; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+  .pill { --on: 0; flex: none; display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px 0 9px; border-radius: 11px; box-sizing: border-box;
+    background: color-mix(in oklab, var(--chip-c, var(--primary-text-color)) calc(6% + var(--on) * 10%), transparent);
+    font-size: 12.5px; line-height: 16px; font-weight: 600; letter-spacing: -0.006em; color: color-mix(in oklab, var(--primary-text-color) calc(55% + var(--on) * 45%), transparent);
+    --mdc-icon-size: 17px; cursor: pointer; white-space: nowrap; transform-origin: 50% 50%; }
+  .pill ha-icon { display: flex; color: color-mix(in oklab, var(--chip-c, var(--primary-text-color)) calc(var(--on) * 100%), var(--secondary-text-color)); }
+  .pill[data-off] { opacity: 0.5; }
+  .empty { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); padding: 6px 2px; }
+
+  .glyphs { display: flex; align-items: center; gap: 4px; flex: none; }
+  .gl { --on: 0; --warn: 0; --hue: color-mix(in oklab, var(--warn-c) calc(var(--warn) * 100%), var(--primary-text-color));
+    width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; --mdc-icon-size: 17px; cursor: pointer; transform-origin: 50% 50%;
+    background: color-mix(in oklab, var(--hue) calc(var(--on) * 14%), transparent); color: color-mix(in oklab, var(--hue) calc(var(--on) * 100%), var(--secondary-text-color)); }
+  .gl[data-alert] { --hue: var(--alert-hue, var(--alert-c)); --on: 1; }
+  .gl[data-off] { opacity: 0.5; }
+  .temp { font-size: 13.5px; line-height: 17px; font-weight: 650; letter-spacing: -0.012em; padding: 0 4px 0 6px; white-space: nowrap; cursor: pointer; transform-origin: 50% 50%; }
+
+  /* the pager: now | history; the head stays put above it */
+  .pager { position: relative; overflow: hidden; margin: 0 calc(-1 * var(--pad)); touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+  .track { display: flex; align-items: stretch; width: 200%; }
+  .page { width: 50%; min-width: 0; box-sizing: border-box; padding: 0 var(--pad); display: flex; flex-direction: column; gap: 10px; }
+  .dots { display: flex; justify-content: center; gap: 2px; margin: -6px 0 -8px; }
+  .dot { appearance: none; border: 0; margin: 0; padding: 6px; box-sizing: content-box; width: 6px; height: 6px; border-radius: 50%; background: var(--primary-text-color);
+    background-clip: content-box; opacity: 0.22; cursor: pointer; }
+  .dot[data-sel] { opacity: 0.75; }
+
+  .hist { gap: 8px; }
+  .hhead { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .hsum { flex: 1; min-width: 0; font-size: 12px; line-height: 16px; font-weight: 550; letter-spacing: -0.003em; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ranges { position: relative; flex: none; display: flex; gap: 2px; padding: 3px; border-radius: 11px; background: var(--well); }
+  .ranges .sel { position: absolute; top: 3px; bottom: 3px; left: 0; border-radius: 8px; pointer-events: none; background: var(--ha-card-background, var(--card-background-color));
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.14), 0 0 0 0.5px rgb(0 0 0 / 0.04); }
+  :host([dark]) .ranges .sel { background: color-mix(in oklab, var(--primary-text-color) 14%, transparent); box-shadow: none; }
+  .rseg { position: relative; height: 24px; padding: 0 9px; border-radius: 8px; display: flex; align-items: center; cursor: pointer;
+    font-size: 11.5px; line-height: 16px; font-weight: 550; color: var(--secondary-text-color); transform-origin: 50% 50%; }
+  .rseg[data-sel] { color: var(--primary-text-color); }
+  .chart { position: relative; flex: 1; display: grid; grid-template-columns: 20px minmax(0, 1fr); column-gap: 8px; align-content: end; touch-action: pan-y; border-radius: 8px; }
+  .chart[data-loading] .gi, .chart[data-loading] .trk, .chart[data-loading] .line { visibility: hidden; }
+  .gi { grid-column: 1; display: grid; place-items: center; --mdc-icon-size: 16px; color: var(--secondary-text-color); }
+  .gi[data-on] { color: var(--primary-text-color); }
+  .gi[data-off] { opacity: 0.5; }
+  .line { grid-column: 2; position: relative; min-height: 44px; color: var(--primary-text-color); }
+  .line svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .trk { grid-column: 2; align-self: center; position: relative; height: 8px; border-radius: 4px; background: var(--well); }
+  .segs { position: absolute; inset: 0; clip-path: inset(0 calc((1 - var(--rv, 1)) * 100%) 0 0); }
+  .segs i { position: absolute; top: 0; bottom: 0; min-width: 3px; border-radius: 4px; background: color-mix(in oklab, var(--primary-text-color) 72%, transparent); }
+  .segs i[data-k="x"] { background: repeating-linear-gradient(135deg, color-mix(in oklab, var(--primary-text-color) 24%, transparent) 0 2px, transparent 2px 5px); }
+  .ov { grid-column: 2; position: relative; pointer-events: none; }
+  .cursor { position: absolute; top: 0; bottom: 0; left: 0; width: 1px; background: var(--primary-text-color); opacity: 0; }
+  .bubble { position: absolute; top: -4px; left: 0; display: flex; gap: 8px; align-items: center; padding: 4px 8px; border-radius: 9px;
+    background: color-mix(in oklab, var(--primary-text-color) 10%, var(--ha-card-background, var(--card-background-color))); box-shadow: 0 4px 14px rgb(0 0 0 / 0.16);
+    font-size: 11.5px; line-height: 15px; font-weight: 600; letter-spacing: -0.004em; white-space: nowrap; opacity: 0; }
+  .bubble .t { color: var(--secondary-text-color); font-weight: 550; }
+  .hempty { grid-column: 1 / -1; display: grid; place-items: center; text-align: center; min-height: 56px; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); padding: 0 16px; }
+  .axis { display: flex; justify-content: space-between; padding-inline-start: 28px; font-size: 10.5px; line-height: 13px; font-weight: 500; letter-spacing: 0.01em; color: var(--secondary-text-color); opacity: 0.8; }
+  :host([kbd]) .chart:focus-visible { outline-offset: 4px; }
+  @media (prefers-contrast: more) {
+    .status, .ev .when, .ev .lbl, .rd .c, .hsum, .axis { color: var(--primary-text-color); opacity: 0.85; }
+    .ev[data-off], .rd[data-off], .pill[data-off] { opacity: 0.75; }
+  }
+  @container (max-width: 300px) { .rd .c { display: none; } .rd { padding: 8px; } .armed .al { display: none; } }
+  @container (max-width: 270px) { .events { grid-template-columns: 1fr; } }
+  @container (max-width: 240px) { .roomIcon { display: none; } .glyphs .gl:nth-child(n+3) { display: none; } }
+`;
+
+class SavvySnapshotCard extends SavvyCard {
+  static getStubConfig(hass) {
+    const a = allAreas(hass).find((x) => areaEntities(hass, x.id).some((id) => domainOf(id) === "binary_sensor"));
+    return a ? { area: a.id } : {};
+  }
+  static getConfigElement() { return document.createElement(EDITOR); }
+
+  constructor() {
+    super();
+    this._onscreen = true;
+    this._nodes = new Map();
+    this._expect = new Map();
+  }
+
+  setConfig(config) {
+    if (!config?.area && !config?.entities?.length && !config?.extras?.length && !config?.chips?.length && !SLOTS.some((s) => config?.[s.key])) {
+      throw new Error('savvy-snapshot-card: set "area" (a room) or "entities" (a hand-picked list)');
+    }
+    this._compact = config.layout === "compact" || !!config.compact;
+    this._config = { ...config, exclude_kinds: config.exclude_kinds ?? config.ignore_sensors };
+    const hc = config.history;
+    this._histCfg = this._compact || hc === false ? null : { hours: 24, ranges: [6, 24, 72], ...(hc && typeof hc === "object" ? hc : {}) };
+    if (this._histCfg) {
+      const hours = Number(this._histCfg.hours) || 24;
+      const ranges = [].concat(this._histCfg.ranges || []).map(Number).filter((n) => n > 0);
+      this._ranges = ranges.includes(hours) ? ranges : [...ranges, hours].sort((a, b) => a - b);
+      this._hours = hours;
+    }
+    if (this._el) { this._build(); if (this._hass) this._update(); }
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._config) return;
+    if (!this._el) this._build();
+    this._update();
+  }
+
+  connectedCallback() {
+    this._observe();
+    if (!this._ticker) this._ticker = setInterval(() => { if (this._onscreen) this._tickTimes(); }, SNAP_TICK_MS);
+    this._wake();
+  }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._io?.disconnect();
+    clearInterval(this._ticker);
+    this._ticker = 0;
+  }
+  getCardSize() { return this._compact ? 1 : 3; }
+  getGridOptions() { return this._compact ? { columns: 6, min_columns: 3, rows: "auto" } : { columns: 12, min_columns: 4, rows: "auto" }; }
+
+  // ---------- build ----------
+  _build() {
+    const root = this.shadowRoot || this.attachShadow({ mode: "open" });
+    this._resetMotion();
+    this._first = true;
+    this._nodes.clear();
+    this._laneEls = new Map();
+    this._page = 0;
+    this._histOn = false;
+    this._histTargets = null;
+    this._targetsKey = null;
+    this._raw = null;
+    this._hist = null;
+    this._histKey = null;
+    this._revealKey = null;
+    this._loading = null;
+    this._snapTr = null;
+    this.toggleAttribute("compact", this._compact);
+    const cmp = this._compact;
+    root.innerHTML = `<style>${STYLE}</style>
+      <ha-card>
+        <div class="wash" id="wash" aria-hidden="true"></div>
+        <div class="glow" id="glow" aria-hidden="true"></div>
+        <div class="head">
+          <div class="name" id="name"><span class="roomIcon"><ha-icon id="roomIcon"></ha-icon></span>
+            <span class="names"><span class="title" id="title"></span><span class="status" id="status"></span></span></div>
+          <span class="armed" id="armed" hidden><ha-icon id="armedIcon"></ha-icon><span class="al" id="armedText"></span></span>
+          <span class="glyphs" id="glyphs" ${cmp ? "" : "hidden"}></span>
+        </div>
+        <div class="pager" id="pager">
+          <div class="track" id="track">
+            <section class="page" id="p0">
+              <div class="banner" id="banner" role="button" tabindex="0" hidden><ha-icon id="bannerIcon"></ha-icon>
+                <span class="bt"><span class="b1" id="b1"></span><span class="b2" id="b2"></span></span></div>
+              <div class="events" id="events" ${cmp ? "hidden" : ""}></div>
+              <div class="reads" id="reads" ${cmp ? "hidden" : ""}></div>
+              <div class="pills" id="pills" ${cmp ? "hidden" : ""}></div>
+              <div class="empty" id="empty" hidden></div>
+            </section>
+            <section class="page hist" id="p1" hidden inert aria-hidden="true">
+              <div class="hhead"><span class="hsum" id="hsum"></span>
+                <div class="ranges" id="ranges" role="group" aria-label="History range"><span class="sel"></span></div></div>
+              <div class="chart" id="chart" tabindex="0" role="group" data-loading>
+                <span class="gi" id="tIcon" title="Temperature"><ha-icon icon="mdi:thermometer"></ha-icon></span>
+                <div class="line" id="line"><svg id="svg" focusable="false" aria-hidden="true"></svg></div>
+                <div class="ov" id="ov"><span class="cursor" id="cursor"></span><span class="bubble" id="bubble" role="status" aria-live="polite"></span></div>
+                <div class="hempty" id="hempty"></div>
+              </div>
+              <div class="axis" aria-hidden="true"><span id="ax0"></span><span id="ax1"></span><span id="ax2"></span></div>
+            </section>
+          </div>
+        </div>
+        <div class="dots" id="dots" hidden></div>
+      </ha-card>`;
+    const $ = (id) => root.getElementById(id);
+    this._el = { card: root.querySelector("ha-card"), wash: $("wash"), glow: $("glow"), name: $("name"), roomIcon: $("roomIcon"), title: $("title"), status: $("status"),
+      armed: $("armed"), armedIcon: $("armedIcon"), armedText: $("armedText"), glyphs: $("glyphs"), banner: $("banner"), bannerIcon: $("bannerIcon"), b1: $("b1"), b2: $("b2"),
+      events: $("events"), reads: $("reads"), pills: $("pills"), empty: $("empty"), pager: $("pager"), track: $("track"), p0: $("p0"), p1: $("p1"), dots: $("dots"),
+      hsum: $("hsum"), ranges: $("ranges"), chart: $("chart"), tIcon: $("tIcon"), line: $("line"), svg: $("svg"), ov: $("ov"), cursor: $("cursor"), bubble: $("bubble"),
+      hempty: $("hempty"), ax: [$("ax0"), $("ax1"), $("ax2")] };
+
+    this._alert = this._spring(0, MOTION.ui, "alert");
+    this._glow = this._spring(0, MOTION.bloom, "alert");
+    this._wasAlert = null;
+    this._sp = {
+      page: this._spring(0, MOTION.page, "page", 1e-4),
+      rangeX: this._spring(0, MOTION.pill, "ranges", 0.02),
+      rangeW: this._spring(0, MOTION.pill, "ranges", 0.02),
+      reveal: this._spring(1, MOTION.graph, "chart", 0.002),
+      scrub: this._spring(0, MOTION.scrub, "chart", 0.002),
+      scrubX: this._spring(0, MOTION.scrub, "chart", 0.05),
+    };
+    if (this._histCfg) {
+      for (let i = 0; i < 2; i++) {
+        const dot = document.createElement("button");
+        dot.className = "dot";
+        dot.setAttribute("aria-label", i ? "History" : "Now");
+        dot.addEventListener("click", () => this._goto(i));
+        this._el.dots.appendChild(dot);
+      }
+      for (const hours of this._ranges) {
+        const seg = document.createElement("span");
+        seg.className = "rseg";
+        seg.__hours = hours;
+        attr(seg, "role", "button");
+        attr(seg, "tabindex", "0");
+        text(seg, hours < 48 ? `${hours}h` : `${Math.round(hours / 24)}d`);
+        this._pressable(seg, { onTap: () => this._setRange(hours), haptic: null }, 0.035);
+        this._el.ranges.appendChild(seg);
+      }
+      this._el.ranges.hidden = this._ranges.length < 2;
+      this._syncRanges();
+      this._swipe();
+      this._histScrub();
+      this._histKeys();
+      this._syncPage();
+    }
+    const c = this._config;
+    if (c.navigation_path || c.tap_action) {
+      attr(this._el.name, "role", "button");
+      attr(this._el.name, "tabindex", "0");
+      this._pressable(this._el.name, { onTap: () => runAction(this, this._hass, c.tap_action || { action: "navigate", navigation_path: c.navigation_path }, {}) }, 0.035);
+    }
+    this._pressable(this._el.banner, { onTap: () => moreInfo(this, this._bannerEntity), haptic: null }, 0.035);
+    this._ro?.disconnect();
+    this._ro = new ResizeObserver(() => { this._fitRows(); this._measure(); });
+    for (const n of [this._el.reads, this._el.pills, this._el.pager, this._el.line]) this._ro.observe(n);
+    this._observe();
+  }
+
+  _observe() {
+    if (!this._el || !this.isConnected) return;
+    this._io = this._io || new IntersectionObserver(([e]) => {
+      this._onscreen = e.isIntersecting;
+      // springs step offscreen without painting: repaint everything on the way back
+      if (this._onscreen) { this._tickTimes(); this._paintAll(null); this._wake(); }
+    });
+    this._io.disconnect();
+    this._io.observe(this);
+  }
+
+  // ---------- discovery ----------
+  // A kind's override: an id, a list, {entity, name, icon} objects, or false.
+  _items(slot) {
+    const h = this._hass, c = this._config;
+    const conf = c[slot.key];
+    if (conf === false || [].concat(c.exclude_kinds || []).includes(slot.key)) return [];
+    if (conf != null) return asItems(conf);
+    if (!c.area) return [];
+    let ids = pick(h, areaEntities(h, c.area), { domains: slot.domain, deviceClasses: slot.dc, exclude: asItems(c.exclude).map((i) => i.entity) });
+    if (slot.single && ids.length > 1) ids = rankBy(h, ids, slot.dc).slice(0, 1);
+    return ids.map((entity) => ({ entity }));
+  }
+
+  // Hand-picked: `chips` (the one chip spec), and the pre-Savvy `entities` / `extras`, each
+  // placed by what it is.
+  _manual() {
+    const c = this._config;
+    return asItems([].concat(c.chips || [], c.entities || [], c.extras || []));
+  }
+
+  _classify(item) {
+    const st = item.entity ? this._hass.states[item.entity] : null;
+    const d = domainOf(item.entity);
+    if (item.navigation_path || item.tap_action || CHIP_TOGGLES.has(d) || PRESSES.has(d) || TURN_ON.has(d)) return { kind: "chip" };
+    const dc = st?.attributes.device_class;
+    const slot = dc && SLOTS.find((s) => s.domain === d && s.dc.includes(dc));
+    return slot ? { kind: slot.kind, slot } : { kind: "read", slot: null };
+  }
+
+  // "Living Room Entrance Door Sensor Contact" -> "Entrance": only when a room has two of
+  // a kind; otherwise the kind's own label reads better.
+  _shortName(id, slotLabel) {
+    let name = shortName(this._hass, id, this._config.area);
+    name = name.replace(/\s+(sensor\s+)?(contact|occupancy|presence)$/i, "") || name;
+    const noun = slotLabel && new RegExp(`\\s+${slotLabel}$`, "i");
+    return (noun && name.replace(noun, "")) || name;
+  }
+
+  _areaName() {
+    const c = this._config;
+    return c.name || (c.area ? areaInfo(this._hass, c.area).name : "Home");
+  }
+
+  // The alarm: the one config names, else the house's (false: none).
+  _alarmState() {
+    const a = this._config.alarm;
+    if (a === false) return null;
+    const id = typeof a === "string" ? a : Object.keys(this._hass.states).find((x) => x.startsWith("alarm_control_panel."));
+    return id ? this._hass.states[id]?.state : null;
+  }
+
+  // A door or window escalates whenever armed; presence only when armed away (people
+  // are expected to move around at home or at night).
+  _escalates(slot, on, alarm) {
+    if (!on || !alarm) return false;
+    if (!(alarm.startsWith("armed_") || alarm === "triggered")) return false;
+    if (slot.key === "door" || slot.key === "window") return true;
+    if (slot.key === "presence") return alarm === "triggered" || [].concat(this._config.alarm_presence_states || ["armed_away", "armed_vacation"]).includes(alarm);
+    return false;
+  }
+
+  // ---------- update ----------
+  _update() {
+    const h = this._hass;
+    if (!h || !this._el) return;
+    this.toggleAttribute("dark", !!h.themes?.darkMode);
+    const c = this._config, el = this._el;
+    text(el.title, this._areaName());
+    attr(el.roomIcon, "icon", c.icon || (c.area && areaInfo(h, c.area).icon) || (c.area ? "mdi:home-outline" : "mdi:home"));
+    const alarm = this._alarmState();
+    const seen = new Set();
+    const summary = { active: [], warn: false, alerts: [], offline: 0, count: 0, watch: 0 };
+    const tally = (slot, item, st) => {
+      summary.count++;
+      const on = st?.state === "on";
+      if (item.entity && (!st || isOff(st))) summary.offline++;
+      if (slot?.kind === "event" || slot?.kind === "alert") summary.watch++;
+      if (slot?.kind === "alert" && on) summary.alerts.push({ slot, item, st });
+      if (slot?.kind === "event" && on) {
+        summary.active.push(slot.key);
+        if (this._escalates(slot, on, alarm)) summary.warn = true;
+      }
+    };
+    const lanes = [];
+    let temp = null;
+    for (const slot of SLOTS) {
+      const items = this._items(slot);
+      for (const item of items) {
+        const key = `${slot.key}|${item.entity}`;
+        seen.add(key);
+        tally(slot, item, h.states[item.entity]);
+        if (slot.kind === "event") lanes.push(this._lane(slot, item, items.length));
+        if (slot.key === "temperature" && !temp) temp = item;
+        if (this._compact) {
+          if (slot.kind === "event" || slot.kind === "alert") this._renderGlyph(key, slot, item, items.length, alarm);
+          else if (slot.key === "temperature") this._renderTemp(key, item);
+        } else if (slot.kind === "event") this._renderEvent(key, slot, item, items.length, alarm);
+        else this._renderRead(key, slot, item);
+      }
+    }
+    const manual = this._manual().map((item) => ({ item, ...this._classify(item) }));
+    for (const { item, kind, slot } of manual) {
+      const key = `m|${item.entity || item.navigation_path}`;
+      const st = item.entity ? h.states[item.entity] : null;
+      if (kind !== "chip") tally(slot, item, st);
+      else if (item.entity && (!st || isOff(st))) summary.offline++;
+      const siblings = manual.filter((m) => m.slot === slot).length;
+      if (this._compact) {
+        if (kind !== "event" && kind !== "alert") continue;
+        seen.add(key);
+        this._renderGlyph(key, slot, item, siblings, alarm);
+        continue;
+      }
+      seen.add(key);
+      if (kind === "chip") this._renderPill(key, item);
+      else if (kind === "event") { this._renderEvent(key, slot, item, siblings, alarm); lanes.push(this._lane(slot, item, siblings)); }
+      else this._renderRead(key, slot, item);
+    }
+    if (!this._compact) this._setHistTargets(lanes, temp);
+    for (const [key, node] of this._nodes) {
+      if (seen.has(key)) continue;
+      this._dropNode(node);
+      this._nodes.delete(key);
+    }
+    // DOM order follows reading order
+    for (const key of seen) {
+      const node = this._nodes.get(key);
+      if (node) node.__parent.appendChild(node);
+    }
+    this._renderSummary(summary, alarm);
+    el.empty.hidden = summary.count > 0 || manual.length > 0;
+    if (!el.empty.hidden) text(el.empty, c.area ? `No sensors found in ${this._areaName()}.` : "No sensors configured.");
+    if (!this._compact) {
+      el.events.hidden = !el.events.children.length;
+      el.reads.hidden = !el.reads.children.length;
+      el.pills.hidden = !el.pills.children.length;
+    }
+    this._fitRows();
+    if (this._first) { this._first = false; requestAnimationFrame(() => this._paintAll(null)); }
+    this._wake();
+  }
+
+  _node(key, parent, className, html) {
+    let node = this._nodes.get(key);
+    if (node) return node;
+    node = document.createElement("div");
+    node.className = className;
+    node.innerHTML = html;
+    node.__parent = parent;
+    node.__key = key;
+    node.__springs = [];
+    node.__enter = this._spring(0, MOTION.ui, `enter:${key}`).to(1, MOTION.ui);
+    node.__springs.push(node.__enter);
+    this._nodes.set(key, node);
+    parent.appendChild(node);
+    return node;
+  }
+
+  _nodeSpring(node, name, value, motion) {
+    if (node[name]) return node[name];
+    const s = this._spring(value, motion, `${name}:${node.__key}`);
+    node[name] = s;
+    node.__springs.push(s);
+    return s;
+  }
+
+  _dropNode(node) {
+    for (const s of [...node.__springs, node.__spring]) { const i = this._springs.indexOf(s); if (i >= 0) this._springs.splice(i, 1); }
+    const p = this._pressNodes.indexOf(node);
+    if (p >= 0) this._pressNodes.splice(p, 1);
+    node.remove();
+  }
+
+  _iconFor(slot, item, on) { return item.icon || (on ? slot.icon : (slot.iconOff || slot.icon)); }
+
+  _stateWord(slot, st) {
+    if (!st) return "Not found";
+    if (isOff(st)) return "Offline";
+    if (slot && st.state === "on" && slot.on) return slot.on;
+    if (slot && st.state === "off" && slot.off) return slot.off;
+    if (slot?.kind === "alert") return st.state === "on" ? "Detected" : "Clear";
+    return stateText(this._hass, st);
+  }
+
+  _wire(node, item) {
+    if (node.__wired) return;
+    node.__wired = true;
+    attr(node, "role", "button");
+    attr(node, "tabindex", "0");
+    this._pressable(node, { onTap: () => moreInfo(this, node.__item.entity), onHold: () => moreInfo(this, node.__item.entity) }, 0.035);
+  }
+
+  _renderEvent(key, slot, item, siblings, alarm) {
+    const st = this._hass.states[item.entity];
+    const node = this._node(key, this._el.events, "ev", `<span class="disc"><ha-icon></ha-icon></span><span class="st"></span><span class="l2"><span class="lbl"></span><span class="when"></span></span>`);
+    if (!node.__el) node.__el = { icon: node.querySelector("ha-icon"), st: node.querySelector(".st"), when: node.querySelector(".when"), lbl: node.querySelector(".lbl") };
+    node.__item = item;
+    this._wire(node, item);
+    const on = st?.state === "on";
+    node.__slot = slot; node.__st = st; node.__isOn = on;
+    attr(node, "data-off", !st || isOff(st));
+    attr(node.__el.icon, "icon", this._iconFor(slot, item, on));
+    text(node.__el.st, this._stateWord(slot, st));
+    // the icon already says presence or door: the label only earns its space when a room
+    // has two of a kind (or config names it)
+    const label = item.name || (siblings > 1 ? this._shortName(item.entity, slot.label) : slot.label);
+    node.__label = label;
+    text(node.__el.lbl, label);
+    node.__el.lbl.hidden = !(item.name || siblings > 1);
+    this._nodeSpring(node, "__onS", on ? 1 : 0, MOTION.ui).to(on ? 1 : 0, MOTION.ui);
+    this._nodeSpring(node, "__warn", 0, MOTION.ui).to(this._escalates(slot, on, alarm) ? 1 : 0, MOTION.ui);
+    this._timeText(node);
+  }
+
+  _renderGlyph(key, slot, item, siblings, alarm) {
+    const st = this._hass.states[item.entity];
+    const on = st?.state === "on";
+    // a quiet alert sensor stays out of the compact row entirely
+    if (slot.kind === "alert" && !on) {
+      const old = this._nodes.get(key);
+      if (old) { this._dropNode(old); this._nodes.delete(key); }
+      return;
+    }
+    const node = this._node(key, this._el.glyphs, "gl", "<ha-icon></ha-icon>");
+    if (!node.__el) node.__el = { icon: node.querySelector("ha-icon") };
+    node.__item = item;
+    this._wire(node, item);
+    node.__slot = slot; node.__st = st; node.__isOn = on;
+    attr(node, "data-off", !st || isOff(st));
+    attr(node, "data-alert", slot.kind === "alert");
+    if (slot.color) put(node, "--alert-hue", slot.color);
+    attr(node.__el.icon, "icon", this._iconFor(slot, item, on));
+    this._nodeSpring(node, "__onS", on ? 1 : 0, MOTION.ui).to(on ? 1 : 0, MOTION.ui);
+    this._nodeSpring(node, "__warn", 0, MOTION.ui).to(this._escalates(slot, on, alarm) ? 1 : 0, MOTION.ui);
+    node.__label = item.name || (siblings > 1 ? this._shortName(item.entity, slot.label) : slot.label);
+    this._timeText(node);
+  }
+
+  _renderTemp(key, item) {
+    const st = this._hass.states[item.entity];
+    const node = this._node(key, this._el.glyphs, "temp", "");
+    node.__item = item;
+    this._wire(node, item);
+    this._readValue(node, item, st, (s) => text(node, s));
+    attr(node, "aria-label", `Temperature ${node.__display || "unavailable"}`);
+  }
+
+  // numeric states roll through a spring; anything else is formatted text
+  _readValue(node, item, st, write) {
+    const h = this._hass;
+    const v = st && !isOff(st) ? parseFloat(st.state) : NaN;
+    if (Number.isFinite(v) && /^-?[\d.]+$/.test(String(st.state).trim())) {
+      const prec = h.entities?.[item.entity]?.display_precision;
+      node.__dec = Number.isFinite(prec) ? prec : decimalsOf(st.state);
+      node.__unit = item.unit ?? st.attributes.unit_of_measurement ?? "";
+      const s = this._nodeSpring(node, "__val", v, MOTION.text);
+      s.to(v, MOTION.text);
+      node.__write = write;
+      node.__numeric = true;
+      node.__display = `${v.toFixed(node.__dec)}${node.__unit}`;
+      write(this._fmt(node, s.x));
+    } else {
+      node.__numeric = false;
+      node.__display = !st || isOff(st) ? "—" : this._stateWord(null, st);
+      write(node.__display);
+    }
+  }
+
+  _fmt(node, x) { return withUnit(x.toFixed(node.__dec), node.__unit); }
+
+  _renderRead(key, slot, item) {
+    const st = this._hass.states[item.entity];
+    const node = this._node(key, this._el.reads, "rd", `<span class="v"><ha-icon></ha-icon><span class="n"></span></span><span class="c"></span>`);
+    if (!node.__el) node.__el = { icon: node.querySelector("ha-icon"), n: node.querySelector(".n"), c: node.querySelector(".c") };
+    node.__item = item;
+    this._wire(node, item);
+    const on = st?.state === "on";
+    attr(node, "data-off", !st || isOff(st));
+    if (slot?.color) put(node, "--rd-hue", slot.color);
+    attr(node.__el.icon, "icon", slot ? this._iconFor(slot, item, on) : item.icon || this._guessIcon(st));
+    if (slot?.kind === "alert") {
+      node.__numeric = false;
+      text(node.__el.n, this._stateWord(slot, st));
+      this._nodeSpring(node, "__al", on ? 1 : 0, MOTION.ui).to(on ? 1 : 0, MOTION.ui);
+    } else this._readValue(node, item, st, (s) => text(node.__el.n, s));
+    let caption = item.name || slot?.label || st?.attributes.friendly_name || title(item.entity.split(".")[1] || "");
+    if (slot?.key === "illuminance" && !item.name) caption = this._luxWord(st) || caption;
+    text(node.__el.c, caption);
+    attr(node, "aria-label", `${caption}, ${node.__display ?? node.__el.n.textContent}`);
+  }
+
+  _luxWord(st) {
+    const cfg = this._config.lux_labels;
+    if (cfg === false || !st) return null;
+    const v = parseFloat(st.state);
+    if (!Number.isFinite(v)) return null;
+    const { dark = 10, dim = 150 } = cfg || {};
+    return v < dark ? "Dark" : v < dim ? "Dim" : "Bright";
+  }
+
+  _guessIcon(st) {
+    if (!st) return "mdi:help-circle-outline";
+    if (st.attributes.icon) return st.attributes.icon;
+    const dc = st.attributes.device_class;
+    if (dc === "temperature") return "mdi:thermometer";
+    if (dc === "humidity") return "mdi:water-percent";
+    if (dc === "illuminance") return "mdi:brightness-5";
+    if (/people|person/.test(st.entity_id)) return "mdi:account-multiple";
+    return "mdi:eye-outline";
+  }
+
+  _renderPill(key, item) {
+    const st = item.entity ? this._hass.states[item.entity] : null;
+    const node = this._node(key, this._el.pills, "pill", `<ha-icon></ha-icon><span class="cn"></span>`);
+    if (!node.__el) {
+      node.__el = { icon: node.querySelector("ha-icon"), n: node.querySelector(".cn") };
+      attr(node, "role", "button");
+      attr(node, "tabindex", "0");
+      this._pressable(node, { onTap: () => this._runPill(node.__item, "tap"), onHold: () => this._runPill(node.__item, "hold"), haptic: null }, 0.035);
+    }
+    node.__item = item;
+    if (item.color) put(node, "--chip-c", colorOf(item.color));
+    const on = this._pillOn(item, st);
+    attr(node, "data-off", !!item.entity && (!st || isOff(st)));
+    const name = item.name || st?.attributes.friendly_name || title(item.entity?.split(".")[1] || "");
+    text(node.__el.n, name);
+    attr(node.__el.icon, "icon", item.icon || st?.attributes.icon || (on ? "mdi:toggle-switch" : "mdi:toggle-switch-off-outline"));
+    const toggle = this._pillAction(item)?.action === "toggle";
+    attr(node, "aria-pressed", toggle ? String(on) : null);
+    attr(node, "aria-label", toggle ? `${name}, ${on ? "on" : "off"}` : name);
+    this._nodeSpring(node, "__onS", on ? 1 : 0, MOTION.ui).to(on ? 1 : 0, MOTION.ui);
+  }
+
+  _pillAction(item) {
+    if (item.tap_action !== undefined) return chipAction(item.tap_action, item.entity);
+    if (item.navigation_path) return { action: "navigate", navigation_path: item.navigation_path };
+    return item.entity ? defaultTapAction(item.entity) : null;
+  }
+
+  // Optimism (CARD-DESIGN.md 4): a toggle shows the result the moment it's tapped and
+  // reconciles when HA reports back; a guess HA never confirms expires.
+  _pillOn(item, st) {
+    const exp = this._expect.get(item.entity);
+    if (exp) {
+      if (Date.now() > exp.until || st?.state === exp.state) this._expect.delete(item.entity);
+      else return exp.state === "on";
+    }
+    return st?.state === "on";
+  }
+
+  _runPill(item, kind) {
+    const h = this._hass, st = item.entity ? h.states[item.entity] : null;
+    const a = kind === "tap" ? this._pillAction(item) : item.hold_action !== undefined ? chipAction(item.hold_action, item.entity) : { action: "more-info" };
+    if (!a || a.action === "none") return;
+    haptic("light");
+    if (a.action === "toggle") {
+      if (!st || isOff(st)) return;
+      const next = this._pillOn(item, st) ? "off" : "on";
+      this._expect.set(item.entity, { state: next, until: Date.now() + SNAP_PREDICT_MS });
+      setTimeout(() => this._update(), SNAP_PREDICT_MS + 50);
+      toggleEntity(h, item.entity);
+      return this._update();
+    }
+    if (st && isOff(st) && a.action !== "more-info") return;
+    runAction(this, h, a, { entity: item.entity });
+  }
+
+  // ---------- summary: status line, alarm pill, banner, wash ----------
+  _renderSummary(sum, alarm) {
+    const el = this._el;
+    const armed = alarm && (alarm.startsWith("armed_") || alarm === "triggered");
+    el.armed.hidden = !armed;
+    if (armed) {
+      attr(el.armedIcon, "icon", ARM_ICONS[alarm] || "mdi:shield-check");
+      const word = alarm === "triggered" ? "Triggered" : title(alarm.replace(/^armed_/, ""));
+      text(el.armedText, word);
+      attr(el.armed, "aria-label", `Alarm ${alarm === "triggered" ? "triggered" : `armed ${word.toLowerCase()}`}`);
+    }
+    // the banner: the first tripped alert, the rest counted
+    const first = sum.alerts[0];
+    el.banner.hidden = !first || this._compact;
+    if (first) {
+      this._bannerEntity = first.item.entity;
+      this._bannerNode = { __st: first.st };
+      put(el.card, "--alert-hue", first.slot.color || SNAP_COLORS.alert);
+      attr(el.bannerIcon, "icon", first.slot.icon);
+      const more = sum.alerts.length > 1 ? ` · +${sum.alerts.length - 1}` : "";
+      text(el.b1, `${first.item.name || first.slot.label} detected${more}`);
+      attr(el.banner, "aria-label", `${first.slot.label} detected. Open details.`);
+    } else { this._bannerEntity = null; this._bannerNode = null; }
+    const alerting = !!first;
+    this._alert.to(alerting ? 1 : 0, MOTION.ui);
+    if (alerting && !this._wasAlert) bloom(this._glow, 1, MOTION.bloom);
+    this._wasAlert = alerting;
+    let level = null, words;
+    if (alerting) {
+      level = "alert";
+      words = sum.alerts.map((a) => `${a.item.name || a.slot.label} detected`).join(" · ");
+    } else {
+      const parts = [];
+      if (sum.active.includes("presence")) parts.push("Occupied");
+      for (const k of ["door", "window"]) {
+        const n = sum.active.filter((a) => a === k).length;
+        if (n === 1) parts.push(`${SLOT[k].label} open`);
+        else if (n > 1) parts.push(`${n} ${k}s open`);
+      }
+      if (sum.warn) level = "warn";
+      words = parts.length ? parts.join(" · ") : (sum.watch ? "All quiet" : "");
+    }
+    if (sum.offline) words = words ? `${words} · ${sum.offline} offline` : `${sum.offline} offline`;
+    attr(el.status, "data-level", level);
+    text(el.status, words);
+    el.status.hidden = !words;
+    attr(el.name, "aria-label", `${this._areaName()}${words ? `, ${words}` : ""}`);
+    this._tickTimes();
+  }
+
+  // ---------- relative times ----------
+  _timeText(node) {
+    const st = node.__st;
+    const t = st ? Date.parse(st.last_changed) : NaN;
+    const label = since(t, node.__isOn);
+    if (node.__el?.when) {
+      text(node.__el.when, label);
+      attr(node.__el.when, "title", Number.isFinite(t) ? clockTime(t, langOf(this._hass)) : null);
+    }
+    if (node.classList.contains("ev")) attr(node, "aria-label", `${node.__label}, ${node.__el.st.textContent}${label ? `, ${label}` : ""}`);
+    else if (node.classList.contains("gl")) {
+      const word = this._stateWord(node.__slot, st);
+      attr(node, "aria-label", `${node.__label}, ${word}${label ? `, ${label}` : ""}`);
+      attr(node, "title", `${node.__label}: ${word}${label ? ` · ${label}` : ""}`);
+    }
+  }
+
+  _tickTimes() {
+    if (!this._el) return;
+    for (const node of this._nodes.values()) if (node.classList.contains("ev") || node.classList.contains("gl")) this._timeText(node);
+    const b = this._bannerNode;
+    if (b) {
+      const t = Date.parse(b.__st.last_changed);
+      const when = Number.isFinite(t) ? since(t, true) : "";
+      text(this._el.b2, when ? `${when === "just now" ? "Just now" : `Going ${when}`} · tap for details` : "Tap for details");
+    }
+    // an open history page keeps "now" at its right edge, and refetches now and then
+    if (this._page === 1 && this._histTargets) {
+      if (this._raw && Date.now() - (this._histAt || 0) > HIST_POLL_MS) this._loadHistory(true);
+      else this._buildHistory();
+    }
+  }
+
+  _fitRows() {
+    for (const row of [this._el?.reads, this._el?.pills]) {
+      if (!row || row.hidden) continue;
+      row.toggleAttribute("data-overflow", row.scrollWidth > row.clientWidth + 1);
+    }
+  }
+
+  // ---------- the history page ----------
+  _lane(slot, item, siblings) {
+    return { key: `${slot.key}|${item.entity}`, entity: item.entity, slot, label: item.name || (siblings > 1 ? this._shortName(item.entity, slot.label) : slot.label) };
+  }
+
+  _setHistTargets(lanes, temp) {
+    const on = !!this._histCfg && (lanes.length > 0 || !!temp);
+    const key = on ? [...lanes.map((l) => `${l.key}:${l.label}`), temp?.entity || ""].join("|") : "";
+    this._histTargets = on ? { lanes, temp } : null;
+    if (on !== this._histOn) {
+      this._histOn = on;
+      this._el.p1.hidden = !on;
+      this._el.dots.hidden = !on;
+      if (!on && this._page) this._goto(0, true);
+    }
+    if (key !== this._targetsKey) {
+      this._targetsKey = key;
+      this._raw = null;
+      this._hist = null;
+      this._histKey = null;
+      this._renderHist();
+      if (this._page === 1) this._loadHistory(true);
+    }
+  }
+
+  _histIds() {
+    const tg = this._histTargets;
+    return tg ? [...new Set([...tg.lanes.map((l) => l.entity), ...(tg.temp ? [tg.temp.entity] : [])])] : [];
+  }
+
+  async _loadHistory(force = false) {
+    const ids = this._histIds();
+    if (!ids.length || !this._hass) return;
+    const key = `${ids.join(",")}|${this._hours}`;
+    if (!force && this._histKey === key && this._raw && Date.now() - (this._histAt || 0) < 60000) return;
+    if (this._loading === key) return;
+    this._loading = key;
+    let raw = null, err = null;
+    try { raw = await fetchHistory(this._hass, ids, this._hours); }
+    catch (e) { err = "History isn't available. The recorder may not be keeping these sensors."; }
+    if (this._loading !== key) return;                  // a newer request took over
+    this._loading = null;
+    if (`${this._histIds().join(",")}|${this._hours}` !== key) return;
+    this._histKey = key;
+    this._histAt = Date.now();
+    this._raw = raw;
+    this._histErr = err;
+    // the lanes draw themselves in once per range, not on every refresh
+    if (this._revealKey !== key) { this._revealKey = key; this._sp.reveal.snap(0).to(1, MOTION.graph); }
+    if (raw) this._buildHistory();
+    else { this._hist = null; this._renderHist(); }
+  }
+
+  _buildHistory() {
+    const tg = this._histTargets, h = this._hass;
+    if (!tg || !this._raw || !h) return;
+    // quantized, so a burst of state updates doesn't rebuild the lanes every time
+    const end = Math.ceil(Date.now() / 15000) * 15000;
+    const start = end - this._hours * 3600000;
+    const lanes = tg.lanes.map((l) => ({ ...l, runs: stateRuns(this._raw[l.entity], start, end, h.states[l.entity]) }));
+    const trans = [];
+    for (const l of lanes) l.runs.forEach((r, i) => { if (i > 0 || r.t0 > start) trans.push({ t: r.t0, lane: l, state: r.state }); });
+    trans.sort((a, b) => a.t - b.t);
+    let temp = null;
+    if (tg.temp) {
+      const st = h.states[tg.temp.entity];
+      const points = resample(numericPoints(this._raw[tg.temp.entity], st?.state, end), start, end);
+      if (points.length > 1) {
+        const s = seriesStats(points), prec = h.entities?.[tg.temp.entity]?.display_precision;
+        temp = { points, ...s, unit: tg.temp.unit ?? st?.attributes.unit_of_measurement ?? "", dec: Number.isFinite(prec) ? prec : 1 };
+      }
+    }
+    this._hist = { start, end, lanes, trans, temp };
+    if (this._snapTr) this._snapTr = trans.find((x) => x.t === this._snapTr.t && x.lane.key === this._snapTr.lane.key) || null;
+    this._renderHist();
+  }
+
+  _renderHist() {
+    const el = this._el, tg = this._histTargets, H = this._hist;
+    if (!el || !tg) return;
+    const lanes = H ? H.lanes : tg.lanes;
+    const hasTemp = !!tg.temp;
+    const rows = Math.max(1, lanes.length + (hasTemp ? 1 : 0));
+    put(el.chart, "gridTemplateRows", [hasTemp ? "minmax(44px, 1fr)" : "", lanes.length ? `repeat(${lanes.length}, 20px)` : ""].join(" ").trim());
+    el.tIcon.hidden = !hasTemp;
+    el.line.hidden = !hasTemp;
+    // explicit rows throughout: an auto-placed row would land after the lanes
+    put(el.tIcon, "gridRow", "1");
+    put(el.line, "gridRow", "1");
+    put(el.ov, "gridRow", `1 / span ${rows}`);
+    put(el.hempty, "gridRow", `1 / span ${rows}`);
+    const pct = (t) => (H ? ((t - H.start) / Math.max(1, H.end - H.start)) * 100 : 0);
+    const seen = new Set();
+    lanes.forEach((l, i) => {
+      let row = this._laneEls.get(l.key);
+      if (!row) {
+        const gi = document.createElement("span");
+        gi.className = "gi";
+        gi.innerHTML = "<ha-icon></ha-icon>";
+        const trk = document.createElement("div");
+        trk.className = "trk";
+        trk.innerHTML = `<div class="segs"></div>`;
+        el.chart.insertBefore(gi, el.ov);
+        el.chart.insertBefore(trk, el.ov);
+        row = { gi, icon: gi.firstElementChild, trk, segs: trk.firstElementChild };
+        this._laneEls.set(l.key, row);
+      }
+      seen.add(l.key);
+      const r = String(i + 1 + (hasTemp ? 1 : 0));
+      put(row.gi, "gridRow", r);
+      put(row.trk, "gridRow", r);
+      attr(row.gi, "title", l.label);
+      const segs = (l.runs || []).filter((x) => x.state !== "off");
+      const html = segs.map((x) => `<i${x.state === "on" ? "" : ' data-k="x"'} style="left:${pct(x.t0).toFixed(3)}%;width:${(pct(x.t1) - pct(x.t0)).toFixed(3)}%"></i>`).join("");
+      if (row.segs.__html !== html) { row.segs.__html = html; row.segs.innerHTML = html; }
+    });
+    for (const [key, row] of this._laneEls) {
+      if (seen.has(key)) continue;
+      row.gi.remove();
+      row.trk.remove();
+      this._laneEls.delete(key);
+    }
+    this._paintLaneIcons(null);
+    this._drawTemp();
+    attr(el.chart, "data-loading", !H);
+    el.hempty.hidden = !!H;
+    text(el.hempty, this._histErr || "Loading history…");
+    el.ov.hidden = !H;
+    const sum = H ? this._histSummary(H) : "";
+    text(el.hsum, sum);
+    attr(el.chart, "aria-label", `History, last ${this._rangeWords()}${sum ? `: ${sum}` : ""}. Arrow keys step through changes.`);
+    if (H) {
+      const lang = langOf(this._hass), span = H.end - H.start;
+      text(el.ax[0], axisLabel(H.start, span, lang));
+      text(el.ax[1], axisLabel((H.start + H.end) / 2, span, lang));
+      text(el.ax[2], "Now");
+    }
+    this._chartDirty = true;
+    this._wake();
+  }
+
+  _drawTemp() {
+    const el = this._el, H = this._hist, T = H?.temp;
+    const W = el?.line.clientWidth, Hh = el?.line.clientHeight;
+    if (!T || !W || !Hh) {
+      if (el && el.svg.__key !== "") { el.svg.__key = ""; el.svg.innerHTML = ""; }
+      this._tGeom = null;
+      return;
+    }
+    const PT = 15, PB = 14;
+    const pad = Math.max((T.max - T.min) * 0.1, 0.3);
+    const lo = T.min - pad, hi = T.max + pad;
+    const xOf = (t) => ((t - H.start) / Math.max(1, H.end - H.start)) * W;
+    const yOf = (v) => PT + (1 - (v - lo) / Math.max(1e-6, hi - lo)) * (Hh - PT - PB);
+    const d = linePath(T.points.map((p) => [xOf(p.t), yOf(p.v)]));
+    const f = (v) => v.toFixed(2);
+    let labels = "";
+    for (const ex of [{ p: T.maxAt, v: T.max, up: true }, { p: T.minAt, v: T.min, up: false }]) {
+      if (!ex.p || (!ex.up && T.max - T.min < 1e-6)) continue;
+      const x = xOf(ex.p.t), y = yOf(ex.v);
+      labels += `<circle cx="${f(x)}" cy="${f(y)}" r="2.5" fill="currentColor" fill-opacity="0.7"></circle>
+        <text x="${f(clamp(x, 20, W - 20))}" y="${f(ex.up ? y - 6 : y + 12)}" text-anchor="middle" fill="currentColor" fill-opacity="0.55" font-size="10.5" font-weight="600">${esc(this._fmtTemp(ex.v))}</text>`;
+    }
+    const key = `${W}|${Hh}|${d}|${labels}`;
+    if (el.svg.__key !== key) {
+      el.svg.__key = key;
+      el.svg.setAttribute("viewBox", `0 0 ${f(W)} ${f(Hh)}`);
+      el.svg.innerHTML = `<defs><clipPath id="reveal"><rect id="revealRect" x="-4" y="-20" width="${f(W + 8)}" height="${f(Hh + 40)}"></rect></clipPath>
+          <linearGradient id="tfill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="currentColor" stop-opacity="0.14"></stop><stop offset="1" stop-color="currentColor" stop-opacity="0"></stop></linearGradient></defs>
+        <g clip-path="url(#reveal)"><path d="${d} L${f(W)} ${f(Hh)} L0 ${f(Hh)} Z" fill="url(#tfill)"></path>
+          <path d="${d}" fill="none" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"></path>${labels}</g>
+        <g id="mk"></g>`;
+      el.svg.__mk = null;
+    }
+    this._tGeom = { W, xOf, yOf };
+  }
+
+  _fmtTemp(v) { const T = this._hist?.temp; return `${v.toFixed(T ? T.dec : 1)}${T?.unit || ""}`; }
+
+  // "Door opened 3× · Occupied 2 h 10 min" over the whole range
+  _histSummary(H) {
+    const parts = [];
+    const on = H.lanes.filter((l) => l.slot.key === "presence")
+      .reduce((ms, l) => ms + l.runs.filter((r) => r.state === "on").reduce((a, r) => a + (r.t1 - r.t0), 0), 0);
+    for (const kind of ["door", "window"]) {
+      const lanes = H.lanes.filter((l) => l.slot.key === kind);
+      const n = lanes.reduce((c, l) => c + l.runs.filter((r, i) => r.state === "on" && (i > 0 || r.t0 > H.start)).length, 0);
+      if (n) parts.push(`${lanes.length > 1 ? `${SLOT[kind].label}s` : lanes[0].label} opened ${n === 1 ? "once" : `${n}×`}`);
+    }
+    if (on >= 60000) parts.push(`Occupied ${duration(on)}`);
+    if (parts.length) return parts.join(" · ");
+    if (H.lanes.length) return "No activity";
+    return H.temp ? `${this._fmtTemp(H.temp.min)} – ${this._fmtTemp(H.temp.max)}` : "";
+  }
+
+  _rangeWords() { return this._hours < 48 ? `${this._hours} hours` : `${Math.round(this._hours / 24)} days`; }
+
+  _stateAt(lane, t) {
+    const runs = lane.runs || [];
+    for (const r of runs) if (t >= r.t0 && t < r.t1) return r.state;
+    const last = runs[runs.length - 1];
+    return last && t >= last.t1 ? last.state : null;
+  }
+
+  // "Door opened", "Occupied", "Balcony closed"
+  _edgeWord(lane, state) {
+    if (state === "unavailable" || state === "unknown") return `${lane.label} offline`;
+    const on = state === "on";
+    if (lane.slot.key === "presence") {
+      const w = on ? "Occupied" : "Cleared";
+      return lane.label === lane.slot.label ? w : `${lane.label} ${w.toLowerCase()}`;
+    }
+    return `${lane.label} ${on ? "opened" : "closed"}`;
+  }
+
+  _activeWord(lane) {
+    if (lane.slot.key === "presence") return lane.label === lane.slot.label ? "Occupied" : `${lane.label} occupied`;
+    return `${lane.label} open`;
+  }
+
+  // each lane's icon shows the state at the cursor while scrubbing, and now otherwise
+  _paintLaneIcons(t) {
+    for (const l of this._hist?.lanes || this._histTargets?.lanes || []) {
+      const row = this._laneEls.get(l.key);
+      if (!row) continue;
+      const state = t == null ? this._hass?.states[l.entity]?.state : this._stateAt(l, t);
+      const on = state === "on";
+      attr(row.icon, "icon", on ? l.slot.icon : (l.slot.iconOff || l.slot.icon));
+      attr(row.gi, "data-on", on);
+      attr(row.gi, "data-off", !state || state === "unavailable" || state === "unknown");
+    }
+  }
+
+  _syncRanges() {
+    [...this._el.ranges.querySelectorAll(".rseg")].forEach((seg, i) => {
+      const sel = seg.__hours === this._hours;
+      attr(seg, "data-sel", sel);
+      attr(seg, "aria-pressed", String(sel));
+      if (sel) this._rangeIdx = i;
+    });
+    this._rangeGeom();
+  }
+
+  _rangeGeom() {
+    const sel = this._el.ranges.querySelectorAll(".rseg")[this._rangeIdx];
+    if (!sel || !sel.offsetWidth) return;
+    const { rangeX, rangeW } = this._sp;
+    if (rangeW.x === 0) { rangeX.snap(sel.offsetLeft); rangeW.snap(sel.offsetWidth); }
+    else { rangeX.to(sel.offsetLeft, MOTION.pill); rangeW.to(sel.offsetWidth, MOTION.pill); }
+    this._wake();
+  }
+
+  _setRange(hours) {
+    if (hours === this._hours) return;
+    this._hours = hours;
+    haptic("selection");
+    this._syncRanges();
+    this._release();
+    this._raw = null;
+    this._hist = null;
+    this._renderHist();
+    this._loadHistory(true);
+  }
+
+  _measure() {
+    const el = this._el;
+    if (!el?.pager) return;
+    this._W = el.pager.clientWidth;
+    if (this._histOn) { this._rangeGeom(); this._drawTemp(); this._chartDirty = true; }
+    this._wake();
+  }
+
+  // The pager: a horizontal swipe between the pages. Vertical intent goes back to the
+  // dashboard, and a row that scrolls sideways keeps its own swipe.
+  _swipe() {
+    const sp = this._sp.page, el = this._el.pager;
+    let id = null, x0 = 0, y0 = 0, base = 0, axis = 0, hist = [];
+    el.addEventListener("pointerdown", (e) => {
+      if (!this._histOn || e.button > 0 || id !== null || this._dragging) return;
+      if (e.composedPath().some((n) => n.hasAttribute?.("data-overflow"))) return;
+      id = e.pointerId; x0 = e.clientX; y0 = e.clientY; axis = 0;
+      base = sp.x;
+      hist = [[performance.now(), sp.x]];
+    });
+    el.addEventListener("pointermove", (e) => {
+      if (e.pointerId !== id) return;
+      if (this._dragging) { id = null; sp.to(this._page, MOTION.page); this._wake(); return; }
+      const dx = e.clientX - x0, dy = e.clientY - y0;
+      if (!axis) {
+        if (Math.hypot(dx, dy) < SLOP) return;
+        axis = Math.abs(dx) > Math.abs(dy) ? 1 : -1;
+        if (axis < 0) { id = null; return; }
+        try { el.setPointerCapture(e.pointerId); } catch (err) { /* already lifted */ }
+        this._release();
+        // the press that started this is a swipe now, not a tap
+        for (const n of e.composedPath()) n.__spring?.swallow?.();
+      }
+      const W = this._W || 1;
+      let x = base - dx / W;
+      if (x < 0) x = -rubber(-x, 1);
+      else if (x > 1) x = 1 + rubber(x - 1, 1);
+      sp.snap(x);
+      hist.push([performance.now(), x]);
+      while (hist.length > 5) hist.shift();
+      this._wake();
+    });
+    const end = (e) => {
+      if (e.pointerId !== id) return;
+      id = null;
+      if (axis <= 0) return;
+      const [t0, p0] = hist[0], t1 = performance.now();
+      const v = t1 > t0 ? (sp.x - p0) / ((t1 - t0) / 1000) : 0;
+      // land where the flick is going, not where the finger left off
+      const target = clamp(Math.round(clamp(sp.x + project(v * 1000) / 1000, -0.4, 1.4)), 0, 1);
+      if (target !== this._page) haptic("light");
+      this._page = target;
+      sp.to(target, MOTION.page).kick(v - sp.v, 0);
+      this._syncPage();
+      this._wake();
+    };
+    el.addEventListener("pointerup", end);
+    el.addEventListener("pointercancel", end);
+    el.addEventListener("click", (e) => { if (axis > 0) { axis = 0; e.stopPropagation(); } }, true);
+  }
+
+  _goto(page, quiet = false) {
+    if (page === this._page) return;
+    this._page = page;
+    this._sp.page.to(page, MOTION.page);
+    this._syncPage();
+    if (!quiet) haptic("light");
+    this._wake();
+  }
+
+  _syncPage() {
+    const el = this._el;
+    [...el.dots.children].forEach((d, i) => { attr(d, "data-sel", i === this._page); attr(d, "aria-current", i === this._page ? "true" : null); });
+    el.p0.inert = this._page !== 0;
+    el.p1.inert = this._page !== 1;
+    attr(el.p0, "aria-hidden", this._page === 0 ? null : "true");
+    attr(el.p1, "aria-hidden", this._page === 1 ? null : "true");
+    if (this._page === 1) { this._loadHistory(); requestAnimationFrame(() => this._measure()); }
+    else this._release();
+  }
+
+  // Hover (mouse) or press and dwell (touch) to scrub; the cursor snaps onto a change
+  // within a few pixels of one. Moving before the dwell is a page swipe.
+  _histScrub() {
+    const el = this._el.chart;
+    let id = null, x0 = 0, y0 = 0, live = false, hover = false, timer = 0;
+    const show = (e) => { this._kb = false; this._track(e, true); this._sp.scrub.to(1, MOTION.scrub); this._wake(); };
+    el.addEventListener("pointerenter", (e) => { if (e.pointerType !== "mouse" || !this._hist || this._page !== 1) return; hover = true; show(e); });
+    el.addEventListener("pointerleave", (e) => { if (e.pointerType !== "mouse" || !hover) return; hover = false; this._release(); });
+    el.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "mouse" || e.button > 0 || !this._hist) return;
+      id = e.pointerId; x0 = e.clientX; y0 = e.clientY; live = false;
+      timer = setTimeout(() => {
+        if (id !== e.pointerId) return;
+        live = true;
+        this._dragging = true;
+        try { el.setPointerCapture(e.pointerId); } catch (err) { /* already lifted */ }
+        haptic("selection");
+        show(e);
+      }, SNAP_SCRUB_DWELL);
+    });
+    el.addEventListener("pointermove", (e) => {
+      if (e.pointerType === "mouse") { if (hover && this._hist) this._track(e); return; }
+      if (e.pointerId !== id) return;
+      if (!live) { if (Math.hypot(e.clientX - x0, e.clientY - y0) < SNAP_SCRUB_SLOP) return; clearTimeout(timer); id = null; return; }
+      this._track(e);
+    });
+    const end = (e) => {
+      if (e.pointerType === "mouse" || e.pointerId !== id) return;
+      id = null;
+      clearTimeout(timer);
+      if (!live) return;
+      live = false;
+      this._dragging = false;
+      this._release();
+    };
+    el.addEventListener("pointerup", end);
+    el.addEventListener("pointercancel", end);
+  }
+
+  _track(e, instant = false) {
+    const H = this._hist;
+    if (!H) return;
+    const r = this._el.ov.getBoundingClientRect(), W = r.width || 1;
+    let x = clamp(e.clientX - r.left, 0, W);
+    const xOf = (t) => ((t - H.start) / Math.max(1, H.end - H.start)) * W;
+    let best = null, bd = SNAP_PX;
+    for (const tr of H.trans) { const d = Math.abs(xOf(tr.t) - x); if (d <= bd) { bd = d; best = tr; } }
+    if (best) x = xOf(best.t);
+    if (best !== this._snapTr) { if (best) haptic("selection"); this._snapTr = best; }
+    if (instant) this._sp.scrubX.snap(x); else this._sp.scrubX.to(x, MOTION.scrub);
+    this._chartDirty = true;
+    this._wake();
+  }
+
+  _release() {
+    if (!this._sp || this._sp.scrub.target === 0) return;
+    this._sp.scrub.to(0, MOTION.scrub);
+    this._snapTr = null;
+    this._kb = false;
+    this._chartDirty = true;
+    this._wake();
+  }
+
+  // Keyboard: arrows step from change to change, Home / End jump, Escape lets go.
+  _histKeys() {
+    const el = this._el.chart;
+    el.addEventListener("keydown", (e) => {
+      const H = this._hist;
+      if (!H) return;
+      if (e.key === "Escape") { if (this._sp.scrub.target > 0) { e.stopPropagation(); this._release(); } return; }
+      const k = { ArrowLeft: -1, ArrowRight: 1, Home: "home", End: "end" }[e.key];
+      if (!k || !H.trans.length) return;
+      e.preventDefault();
+      const cur = this._sp.scrub.target > 0 && this._snapTr ? this._snapTr.t : H.end;
+      const tr = k === "home" ? H.trans[0] : k === "end" ? H.trans[H.trans.length - 1]
+        : k < 0 ? [...H.trans].reverse().find((x) => x.t < cur) : H.trans.find((x) => x.t > cur);
+      if (!tr) return;
+      const W = this._el.ov.clientWidth || 1;
+      const x = ((tr.t - H.start) / Math.max(1, H.end - H.start)) * W;
+      const was = this._sp.scrub.target > 0;
+      this._snapTr = tr;
+      this._kb = true;
+      if (was) this._sp.scrubX.to(x, MOTION.scrub); else this._sp.scrubX.snap(x);
+      this._sp.scrub.to(1, MOTION.scrub);
+      haptic("selection");
+      this._chartDirty = true;
+      this._wake();
+    });
+    el.addEventListener("blur", () => { if (this._kb) this._release(); });
+  }
+
+  _setMarker(html) {
+    const g = this.shadowRoot.getElementById("mk");
+    if (!g || this._el.svg.__mk === html) return;
+    this._el.svg.__mk = html;
+    g.innerHTML = html;
+  }
+
+  _paintHist() {
+    const el = this._el, H = this._hist, sp = this._sp;
+    put(el.chart, "--rv", clamp(sp.reveal.x).toFixed(4));
+    const rect = this.shadowRoot.getElementById("revealRect");
+    if (rect && this._tGeom) attr(rect, "width", (Math.max(0.01, clamp(sp.reveal.x) * (this._tGeom.W + 8))).toFixed(2));
+    const s = H ? clamp(sp.scrub.x) : 0;
+    put(el.cursor, "opacity", s < 1e-3 ? "0" : (s * 0.35).toFixed(3));
+    put(el.bubble, "opacity", s < 1e-3 ? "0" : s.toFixed(3));
+    if (s < 1e-3) {
+      if (this._scrubShown) { this._scrubShown = false; this._paintLaneIcons(null); this._setMarker(""); }
+      return;
+    }
+    this._scrubShown = true;
+    const W = el.ov.clientWidth || 1;
+    const x = clamp(sp.scrubX.x, 0, W);
+    const snap = this._snapTr, lang = langOf(this._hass), span = H.end - H.start;
+    const t = snap && sp.scrubX.idle ? snap.t : H.start + (x / W) * span;
+    put(el.cursor, "transform", `translateX(${x.toFixed(2)}px)`);
+    this._paintLaneIcons(t);
+    const parts = [];
+    if (snap) parts.push(`<span>${esc(this._edgeWord(snap.lane, snap.state))}</span>`, `<span class="t">${esc(momentLabel(snap.t, span, lang))}</span>`);
+    else {
+      parts.push(`<span class="t">${esc(momentLabel(t, span, lang))}</span>`);
+      const active = H.lanes.filter((l) => this._stateAt(l, t) === "on").map((l) => this._activeWord(l));
+      if (active.length) parts.push(...active.map((w) => `<span>${esc(w)}</span>`));
+      else if (H.lanes.length) parts.push("<span>All quiet</span>");
+    }
+    let marker = "";
+    if (H.temp && this._tGeom) {
+      let best = H.temp.points[0];
+      for (const p of H.temp.points) if (Math.abs(p.t - t) < Math.abs(best.t - t)) best = p;
+      parts.push(`<span class="t">${esc(this._fmtTemp(best.v))}</span>`);
+      marker = `<circle cx="${this._tGeom.xOf(best.t).toFixed(2)}" cy="${this._tGeom.yOf(best.v).toFixed(2)}" r="3.5" fill="currentColor"></circle>`;
+    }
+    this._setMarker(marker);
+    const html = parts.join("");
+    if (el.bubble.__html !== html) { el.bubble.__html = html; el.bubble.innerHTML = html; }
+    const bw = el.bubble.offsetWidth || 0;
+    put(el.bubble, "transform", `translateX(${clamp(x - bw / 2, 0, Math.max(0, W - bw)).toFixed(2)}px)`);
+  }
+
+  // ---------- frames ----------
+  _frame(now, dt) {
+    const stepped = super._frame(now, dt);
+    if (this._chartDirty && !stepped) { this._paintAll(new Set(["chart"])); return true; }
+    return stepped;
+  }
+
+  _paint(dirty, all, red) {
+    const el = this._el;
+    const chart = this._chartDirty || all || dirty.has("chart");
+    this._chartDirty = false;
+    if (this._histOn && (all || dirty.has("page"))) {
+      const x = this._sp.page.x, W = this._W || el.pager.clientWidth || 1;
+      put(el.track, "transform", Math.abs(x) < 1e-4 ? "" : `translate3d(${(-x * W).toFixed(2)}px,0,0)`);
+      // the page being left dims a little, so depth reads without a shadow
+      const away = Math.abs(x);
+      put(el.p0, "opacity", away > 0.002 ? (1 - 0.55 * clamp(away)).toFixed(3) : "");
+      put(el.p1, "opacity", away < 0.998 ? (0.45 + 0.55 * clamp(away)).toFixed(3) : "");
+    }
+    if (this._histOn && (all || dirty.has("ranges"))) {
+      const pill = el.ranges.querySelector(".sel"), w = Math.max(0, this._sp.rangeW.x);
+      put(pill, "opacity", w < 1 ? "0" : "");
+      put(pill, "width", `${w.toFixed(2)}px`);
+      put(pill, "transform", `translate3d(${this._sp.rangeX.x.toFixed(2)}px,0,0)`);
+    }
+    if (this._histOn && chart) this._paintHist();
+    for (const [key, node] of this._nodes) {
+      if (node.__enter && (all || dirty.has(`enter:${key}`))) {
+        const v = clamp(node.__enter.x);
+        put(node, "opacity", v > 0.999 ? "" : v.toFixed(3));
+        put(node, "translate", red || v > 0.999 ? "" : `0 ${((1 - v) * 4).toFixed(2)}px`);
+      }
+      if (node.__onS && (all || dirty.has(`__onS:${key}`))) put(node, "--on", clamp(node.__onS.x).toFixed(3));
+      if (node.__warn && (all || dirty.has(`__warn:${key}`))) put(node, "--warn", clamp(node.__warn.x).toFixed(3));
+      if (node.__al && (all || dirty.has(`__al:${key}`))) put(node, "--al", clamp(node.__al.x).toFixed(3));
+      if (node.__val && node.__numeric && node.__write && (all || dirty.has(`__val:${key}`))) node.__write(this._fmt(node, node.__val.x));
+    }
+    if (all || dirty.has("alert")) {
+      const a = clamp(this._alert.x), g = clamp(this._glow.x);
+      put(el.wash, "opacity", a < 1e-3 ? "0" : a.toFixed(3));
+      put(el.glow, "opacity", g < 1e-3 ? "0" : (g * 0.9).toFixed(3));
+    }
+  }
+}
+
+// ---------- editor ----------
+const EDITOR = defineEditor("savvy-snapshot-card", (hass, c) => [
+  S.area("area", "Area"),
+  S.grid(S.text("name", "Name"), S.icon("icon", "Icon")),
+  S.grid(S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (one row)" }]),
+    { name: "alarm", label: "Alarm", helper: "Found by itself. Doors and windows turn amber while it's armed.", selector: { entity: { domain: "alarm_control_panel" } } }),
+  S.nav("navigation_path", "Navigate to on tap", "Where tapping the name goes."),
+  { name: "exclude_kinds", label: "Don't show", selector: { select: { multiple: true, options: SLOTS.map((s) => ({ value: s.key, label: s.label })) } } },
+  { name: "exclude", label: "Never show", selector: { entity: { multiple: true } } },
+  S.section("Pick a sensor instead of discovering", SLOTS.map((s) => ({ name: s.key, label: s.label,
+    selector: { entity: { domain: s.domain, device_class: s.dc, multiple: !s.single } } }))),
+  S.section("History page", [
+    { name: "history", label: "", selector: { object: {} }, helper: "false turns it off; { hours: 24, ranges: [6, 24, 72] }" },
+  ]),
+  S.chips("chips", "Chips", "Toggles become chips; a door or a number takes its place with the rest."),
+]);
+
+registerCard("savvy-snapshot-card", SavvySnapshotCard, "Snapshot",
+  "A security glance at a room: presence and doors with how long ago, readouts, alerts, and a history page.");
 })();
 
 // ===== cards/tile.js =====
@@ -6981,7 +12222,7 @@ class SavvyRoomTile extends SavvyCard {
 const EDITOR = defineEditor("savvy-room-tile", (hass, c) => [
   S.area(),
   S.grid(S.text("name", "Name"), S.icon("icon", "Icon")),
-  { name: "navigation_path", label: "Tapping opens", helper: "A dashboard path, e.g. /lovelace/kitchen. Empty: tapping lists the room's lights.", selector: { text: {} } },
+  S.nav("navigation_path", "Navigate to on tap", "Empty: tapping lists the room's lights."),
   ...modeSchema(hass, c),
   { name: "temperature", label: "Temperature", helper: "Found from the area. Pick another to override.", selector: { entity: { domain: ["sensor", "climate"] } } },
   S.section("Lights", [
@@ -8662,7 +13903,8 @@ const EDITOR = defineEditor("savvy-vacuum-card", () => {
     S.entity("entity", "Vacuum", "vacuum"),
     S.grid(S.text("name", "Name"), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (one row)" }])),
     S.entity("start", "What Start runs", null, { helper: "A button, script or scene (e.g. an app routine). Empty: the vacuum's own start. Resume after a pause is always a real resume." }),
-    S.grid(S.text("start_name", "Start label"), S.text("navigation_path", "Tap the name to open")),
+    S.text("start_name", "Start label"),
+    S.nav("navigation_path", "Navigate to on tap", "Where tapping the name goes."),
     S.section("Parts", [
       { name: "map", label: "Map", helper: "Popup adds a Map button; inline shows it in the card. Or pick an image/camera entity.",
         selector: { select: { mode: "dropdown", custom_value: true, options: [

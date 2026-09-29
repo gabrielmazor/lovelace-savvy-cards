@@ -234,10 +234,10 @@ const autoSection = (key, what) => ({ type: "expandable", name: key, title: `${A
 
 const EDITOR = defineEditor("savvy-home-card", (hass, c) => [
   ...modeSchema(hass, c, { helper: "The house mode: any input_select or select. Never guessed; empty hides the chip." }),
-  { name: "home_path", label: "Home button opens", helper: "A dashboard path; empty hides the button.", selector: { text: {} } },
+  S.nav("home_path", "Home button navigates to", "Empty hides the button."),
   { name: "weather", label: "Weather", helper: "Empty: the first weather entity.", selector: { entity: { domain: "weather" } } },
   { type: "expandable", name: "health", title: "Health cog", schema: [
-    { name: "navigation_path", label: "Tapping opens", helper: "E.g. your admin page. Empty: tapping lists what needs attention (hold always does).", selector: { text: {} } },
+    S.nav("navigation_path", "Navigate to on tap", "E.g. your admin page. Empty: tapping lists what needs attention (hold always does)."),
     { name: "watchman", label: "Watchman sensors", selector: { entity: { multiple: true, domain: "sensor" } } },
     { type: "grid", name: "", schema: [
       { name: "battery_threshold", label: "Low battery below", selector: { number: { min: 1, max: 100, mode: "box", unit_of_measurement: "%" } } },

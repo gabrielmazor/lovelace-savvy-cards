@@ -12,10 +12,8 @@ same way: springs, not transitions; feedback the moment you touch; nothing that 
 - [Install](#install)
 - [How every Savvy card behaves](#how-every-savvy-card-behaves)
 - Cards: [Home](#home) · [Room](#room) · [Heading](#heading) · [Room tile](#room-tile) ·
-  [Lights](#lights) · [Climate](#climate) · [Vacuum](#vacuum) · [Health](#health)
-
-> Savvy is growing in waves. Media, cameras, the security snapshot, the entity card and
-> graphs come next.
+  [Lights](#lights) · [Climate](#climate) · [Media](#media) · [Camera](#camera) ·
+  [Snapshot](#snapshot) · [Vacuum](#vacuum) · [Entity](#entity) · [Graph](#graph) · [Health](#health)
 
 ## Install
 
@@ -282,6 +280,113 @@ area: living_room
 
 ---
 
+## Media
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/media-light.png">
+  <img src="docs/images/media-dark.png" width="460" alt="Savvy media card">
+</picture>
+
+A room's media, the way the hardware works: sources feed an output. Artwork of what's
+playing (it takes the poster's own shape), the video boxes as a picker with the picked
+one's transport, the speaker the room listens through with its volume, then presets, text
+to speech and the room's alarm clock. The volume only moves on a sideways drag, or with
+− and +.
+
+```yaml
+type: custom:savvy-media-card
+area: living_room
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `area` | **required** (or `video` / `audio`) | The room's players: speakers and receivers are the output, TVs and the rest the sources. |
+| `video` / `audio` | found | The players instead: `{ entity, name, icon, power, output, volume, artwork }`. `power`: a switch that powers it; `output`: where its sound comes out; `volume`: a helper that's its real volume; `artwork`: a binary sensor that says its artwork is worth showing. |
+| `video_output` | none | Where every video source's sound comes out (a soundbar). Its volume then sits under it. |
+| `name` | the area's | Title. |
+| `presets` | none | Chips for stations and playlists. |
+| `tts` | none | `{ action, data, placeholder }`: a text box; `$MSG` in `data` is where the text goes. |
+| `alarm` | none | `{ entity, time, name }`: an alarm clock that rings here, with its time. |
+| `chips` | none | The room's other controls. |
+| `labels` | none | `{ video, audio }`: small captions over each band. |
+| `artwork` / `artwork_max_height` | on / none | The artwork stage. |
+| `volume_step` / `volume_buttons` | `5` / on | The − and + buttons. |
+| `layout` | `full` | `compact`: one row, what's playing, its transport and the volume. |
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/media-compact-light.png">
+  <img src="docs/images/media-compact-dark.png" width="460" alt="Savvy media card, compact">
+</picture>
+
+---
+
+## Camera
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/camera-light.png">
+  <img src="docs/images/camera-dark.png" width="600" alt="Savvy camera card">
+</picture>
+
+Live cameras, side by side when there's room and a swipe apart when there isn't. With
+[Frigate](https://github.com/blakeblackshear/frigate-hass-integration), found by itself
+from the cameras: the day's alerts and detections, a motion timeline, and recordings that
+play in sync across every camera; swiping between cameras keeps the moment.
+
+```yaml
+type: custom:savvy-camera-card
+area: [living_room, kitchen]
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `area` | **required** (or `cameras`) | One or more areas: their cameras. |
+| `cameras` | found | Instead: `{ entity, name, area, frigate_camera }`, in this order. |
+| `frigate` | found | On when the cameras come from Frigate. `false` turns it off; `{ instance }` names another instance. |
+| `recordings` | `popup` | `inline` puts the timeline and reviews in the card; `false` hides them. |
+| `columns` | by width | Cameras side by side (`1`: always one at a time). |
+| `days` | `7` | Days of recordings to offer. |
+| `aspect_ratio` | `16/9` | The tiles' shape. |
+
+---
+
+## Snapshot
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/snapshot-light.png">
+  <img src="docs/images/snapshot-dark.png" width="460" alt="Savvy snapshot card">
+</picture>
+
+A security glance at a room: is anything happening, and when did it last happen?
+Presence, doors and windows with "for 12 min" or "4 min ago", the room's readings, smoke,
+gas and leak sensors that stay quiet until one trips (then a banner and a red wash). While
+the alarm is armed, an open door turns amber. Swipe left for the room's history: a lane
+per sensor over its temperature, and scrubbing snaps to each change.
+
+```yaml
+type: custom:savvy-snapshot-card
+area: living_room
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `area` | **required** (or `chips`) | The room: its sensors, by what they are. |
+| `presence` / `door` / `window` / `temperature` / `humidity` / `illuminance` / `smoke` / `gas` / `co` / `leak` | found | Name one (or several) instead, or `false` for none. |
+| `exclude_kinds` / `exclude` | none | Kinds, or entities, to leave out. |
+| `alarm` | found | The alarm panel (`false`: none). |
+| `chips` | none | Your own: a toggle becomes a chip, a door or a number takes its place with the rest. With no `area`, a hand-picked overview. |
+| `name` / `icon` | the area's | Title and icon. |
+| `navigation_path` | none | Tapping the name goes there. |
+| `history` | `{ hours: 24, ranges: [6, 24, 72] }` | The history page; `false` turns it off. |
+| `lux_labels` | `{ dark: 10, dim: 150 }` | Light reads as Dark, Dim or Bright; `false` for the number. |
+| `layout` | `full` | `compact`: one row of icons and the temperature. |
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/snapshot-compact-light.png">
+  <img src="docs/images/snapshot-compact-dark.png" width="400" alt="Savvy snapshot card, compact">
+</picture>
+
+---
+
 ## Vacuum
 
 <picture>
@@ -323,6 +428,71 @@ entity: vacuum.robot
 
 ---
 
+## Entity
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/entity-light.png">
+  <img src="docs/images/entity-dark.png" width="340" alt="Savvy entity card">
+</picture>
+
+One entity and the ones that belong with it. A person gets their picture (or initials),
+their zone and "Home · for 3 h"; anything else its icon, state and how long. Chips
+underneath: a toggle flips the moment it's tapped, a button presses, anything else shows
+its value.
+
+```yaml
+type: custom:savvy-entity-card
+entity: person.alex
+chips:
+  - entity: switch.scooter_plug
+    name: Scooter
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `entity` | **required** | The main entity. |
+| `name` / `icon` / `color` / `picture` | the entity's | Its look. |
+| `show_state` / `show_since` | on | The state, and how long. |
+| `navigation_path`, `tap_action` / `hold_action` / `double_tap_action` | more-info | The main entity's actions. |
+| `chips` | none | The entities that belong with it. |
+
+---
+
+## Graph
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/graph-light.png">
+  <img src="docs/images/graph-dark.png" width="560" alt="Savvy graph card">
+</picture>
+
+Tiles that know what they are: a number gets a graph (with its minimum, maximum and
+average, and a scrub bubble), anything else a small tile with its state. Past a week, a
+graph reads Home Assistant's long-term statistics, so a month of costs just works.
+
+```yaml
+type: custom:savvy-graph-card
+title: System
+entities:
+  - entity: sensor.processor_use
+    thresholds:
+      - value: 0
+        level: good
+      - value: 60
+        level: warn
+      - value: 85
+        level: bad
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `entities` | **required** | The tiles: `{ entity, name, icon, unit, hours_to_show, thresholds, state_color, tap_action, hold_action }`. `thresholds` colour a graph good / warn / bad; `state_color` makes an on/off tile green or red. |
+| `title` | none | Title. |
+| `hours_to_show` | `24` | Every graph's range, unless a tile sets its own. |
+| `ranges` | none | An hours selector in the header, e.g. `[24, 168, 720]`. |
+| `columns` | automatic | Small tiles per row. |
+
+---
+
 ## Health
 
 <picture>
@@ -332,8 +502,8 @@ entity: vacuum.robot
 
 What in the house needs attention: unavailable entities, low batteries, and (if you use
 [Watchman](https://github.com/dummylabs/thewatchman)) its missing entities and actions,
-with when Watchman last checked. One count; every category always shows, with its count
-or "All good"; tap a row for more-info.
+with when Watchman last checked. One count; every category always shows, with its count,
+or a ticked "All good" under its name; tap a row for more-info.
 
 ```yaml
 type: custom:savvy-health-card

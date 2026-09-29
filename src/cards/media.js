@@ -1,0 +1,966 @@
+// savvy-media-card: a room's media, organised the way the hardware works: sources feed an
+// output.
+//   stage    artwork of what's playing, with the title over it (and progress)
+//   sources  video boxes as a segmented picker, then the picked one's transport
+//   output   the speaker the room actually listens through, with its volume
+//   extras   presets, text to speech, the room's alarm clock, your chips
+// Bands with nothing in them aren't drawn.
+//
+// `area` finds the room's players: speakers and receivers are the audio, TVs and the rest
+// the video. `video` / `audio` name them instead (and add their own options).
+//
+//   type: custom:savvy-media-card
+//   area: living_room
+//   video_output: media_player.soundbar       where the video boxes' sound comes out
+//   presets: [{ entity: input_button.radio }]  tts: { action: tts.speak, data: { ... $MSG ... } }
+//   layout: compact                            one row: what's playing, its transport, the volume
+
+const VOL_THROTTLE = 400;     // ms between volume writes while dragging
+const VOL_PREDICT = 4000;     // how long an unconfirmed level outranks HA's own
+const OPTIMISTIC_MS = 4000;   // a console takes its time to wake: hold the guess this long
+const MEDIA_MOTION = { art: { response: 0.62, damping: 1 }, grab: { response: 0.4, damping: 1 } };
+
+// media_player supported_features
+const F = { PAUSE: 1, SEEK: 2, VOLUME_SET: 4, VOLUME_MUTE: 8, PREV: 16, NEXT: 32, TURN_ON: 128, TURN_OFF: 256,
+  PLAY_MEDIA: 512, VOLUME_STEP: 1024, SELECT_SOURCE: 2048, STOP: 4096, PLAY: 16384 };
+const has = (st, bit) => ((st?.attributes.supported_features || 0) & bit) === bit;
+const ACTIVE = new Set(["playing", "buffering"]);
+const DEAD = new Set(["off", "unavailable", "unknown", "standby"]);
+const PLAYER_ICONS = { tv: "mdi:television", speaker: "mdi:speaker", receiver: "mdi:audio-video", game: "mdi:gamepad-variant", default: "mdi:cast-variant" };
+const AUDIO_CLASSES = new Set(["speaker", "receiver"]);
+const mediaAction = (a, entity) => (a === "press" || a === "turn_on"
+  ? { action: "perform-action", perform_action: `${domainOf(entity)}.${a}`, target: { entity_id: entity } } : asAction(a));
+
+const STYLE = `${BASE_CSS}
+  ha-card { --accent: 154 120 214; display: flex; flex-direction: column; overflow: hidden; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  /* the stage takes the artwork's own proportions, so a poster shows whole */
+  .stage { position: relative; width: 100%; overflow: hidden; aspect-ratio: var(--ar, 16 / 9); min-height: 130px; max-height: var(--art-max, none);
+    background: color-mix(in oklab, var(--primary-text-color) 8%, transparent); cursor: pointer; }
+  .art { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border: 0; object-fit: cover; }
+  .veil { position: absolute; left: 0; right: 0; bottom: 0; height: 78px; background: linear-gradient(to top, rgb(0 0 0 / 0.74) 0%, rgb(0 0 0 / 0.42) 38%, rgb(0 0 0 / 0) 100%); }
+  .caption { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 13px 11px; color: #fff; }
+  .stage .t { display: block; font-size: 15px; line-height: 19px; font-weight: 650; letter-spacing: -0.014em; text-shadow: 0 1px 3px rgb(0 0 0 / 0.42); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stage .s { display: block; font-size: 12.5px; line-height: 16px; font-weight: 500; opacity: 0.88; text-shadow: 0 1px 3px rgb(0 0 0 / 0.36); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .progress { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: rgb(255 255 255 / 0.2); }
+  .progress i { display: block; height: 100%; background: #fff; transform-origin: 0 50%; }
+  header { padding: var(--pad) var(--pad) 10px; }
+  .name { display: block; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.014em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .body { display: flex; flex-direction: column; padding: var(--pad); gap: 10px; }
+  .band { display: flex; flex-direction: column; gap: 9px; }
+  .band + .band { padding-top: 10px; border-top: 1px solid var(--line); }
+  /* the first visible band never gets a divider, even with a hidden one before it */
+  .band[data-first] { padding-top: 0; border-top: 0; }
+  .cap { font-size: 10.5px; line-height: 13px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); opacity: 0.75; margin-bottom: -2px; }
+  .row .when { flex: none; font-size: 15px; line-height: 19px; font-weight: 650; letter-spacing: -0.016em; }
+  .row .when[data-off] { color: var(--secondary-text-color); }
+  /* the alarm isn't media: its own colour, so it never reads as a player */
+  #alarmBand { --alarm: 232 163 61; }
+  #alarmBand .icon[data-live] { background: rgb(var(--alarm) / 0.16); color: rgb(var(--alarm)); }
+  #alarmBand .tb[data-on] { background: rgb(var(--alarm) / 0.18); color: rgb(var(--alarm)); }
+  #alarmBand .meta { text-align: start; }
+  .segmented { position: relative; display: flex; gap: 2px; padding: 3px; border-radius: 14px; background: var(--well); }
+  .sel { position: absolute; top: 3px; bottom: 3px; left: 0; border-radius: 11px; background: var(--ha-card-background, var(--card-background-color));
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.14), 0 0 0 0.5px rgb(0 0 0 / 0.04); }
+  :host([dark]) .sel { background: color-mix(in oklab, var(--primary-text-color) 14%, transparent); box-shadow: none; }
+  .seg { position: relative; flex: 1; min-width: 0; height: 34px; display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: 11px;
+    color: var(--secondary-text-color); font-size: 13px; line-height: 16px; font-weight: 550; letter-spacing: -0.004em; }
+  .seg ha-icon { --mdc-icon-size: 18px; display: flex; }
+  .seg span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .seg[data-sel] { color: var(--primary-text-color); }
+  .seg[data-live] { color: color-mix(in oklab, rgb(var(--accent)) 70%, var(--secondary-text-color)); }
+  @container (max-width: 320px) { .seg span { display: none; } }
+  /* a narrow row keeps play and power; the stage still has the full transport */
+  @container (max-width: 330px) { .row .tb[data-k="prev"], .row .tb[data-k="next"] { display: none; } .vol[data-steps] .pct { display: none; } }
+  .row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .row .icon { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; background: var(--well); color: var(--secondary-text-color); }
+  .row .icon[data-live] { background: rgb(var(--accent) / 0.16); color: rgb(var(--accent)); }
+  .row .icon ha-icon { --mdc-icon-size: 19px; display: flex; }
+  .row .meta { flex: 1; min-width: 0; }
+  .row .n { display: block; font-size: 13.5px; line-height: 17px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .d { display: block; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .transport { flex: none; display: flex; align-items: center; gap: 4px; }
+  .tb { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; color: var(--secondary-text-color); }
+  .tb.solid { background: var(--well); color: var(--primary-text-color); }
+  .tb[data-on] { background: rgb(var(--accent) / 0.18); color: rgb(var(--accent)); }
+  .tb[disabled] { opacity: 0.3; cursor: default; }
+  .tb ha-icon { --mdc-icon-size: 20px; display: flex; }
+  .vol { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .vol .bar { position: absolute; left: 0; right: 0; top: 50%; height: 9px; margin-top: -4.5px; border-radius: 99px; background: var(--well); overflow: hidden; transform-origin: 50% 50%; }
+  .vol .mute { flex: none; display: grid; place-items: center; width: 34px; height: 32px; border-radius: 10px; color: var(--secondary-text-color); }
+  .vol .mute ha-icon { --mdc-icon-size: 19px; display: flex; }
+  .vol .mute[data-on] { color: #E8844F; background: rgb(232 132 79 / 0.16); }
+  /* − / + as one pair at the end, the climate card's steppers at the transport's size */
+  .vol .vsteps { flex: none; display: flex; gap: 4px; }
+  .vol .vstep { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: var(--well); color: var(--primary-text-color); transform-origin: 50% 50%; }
+  .vol .vstep ha-icon { --mdc-icon-size: 18px; display: flex; }
+  .vol .vstep[disabled] { opacity: 0.35; cursor: default; }
+  .slider { position: relative; flex: 1; height: 30px; touch-action: pan-y; cursor: grab; }
+  .slider:active { cursor: grabbing; }
+  .fill { position: absolute; inset: 0; border-radius: 99px; transform-origin: 0 50%; background: linear-gradient(90deg, rgb(var(--accent) / 0.55), rgb(var(--accent))); }
+  .pct { flex: none; min-width: 34px; text-align: end; font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: -0.004em; color: var(--secondary-text-color); }
+  .pills { display: flex; flex-wrap: wrap; gap: 8px; }
+  .pill { display: inline-flex; align-items: center; gap: 7px; min-width: 0; height: 34px; padding: 0 12px; border-radius: 12px; background: var(--well);
+    font-size: 13px; line-height: 16px; font-weight: 550; letter-spacing: -0.004em; color: var(--secondary-text-color); }
+  .pill ha-icon, .pill ha-state-icon { --mdc-icon-size: 18px; flex: none; display: flex; color: var(--cc, inherit); }
+  .pill span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pill[data-on] { background: color-mix(in oklab, var(--cc) 16%, transparent); color: var(--cc); }
+  /* compact: one row, a thumbnail of what's playing, its transport, the room's volume */
+  ha-card[data-compact] .body { padding: 12px; gap: 8px; }
+  ha-card[data-compact] .band + .band { padding-top: 0; border-top: 0; }
+  ha-card[data-compact] .row { gap: 11px; }
+  ha-card[data-compact] .row .icon { width: 46px; height: 46px; border-radius: 12px; overflow: hidden; padding: 0; }
+  ha-card[data-compact] .row .icon ha-icon { --mdc-icon-size: 22px; }
+  ha-card[data-compact] .thumb { width: 100%; height: 100%; object-fit: cover; display: block; border: 0; }
+  ha-card[data-compact] .row .n { font-size: 14px; line-height: 18px; }
+  ha-card[data-compact] .row .d { font-size: 12.5px; line-height: 17px; }
+  ha-card[data-compact] .vol { margin-top: 6px; }
+  .tts { display: flex; align-items: center; gap: 8px; }
+  .tts input { flex: 1; min-width: 0; height: 34px; box-sizing: border-box; padding: 0 12px; border-radius: 12px; border: 0; background: var(--well);
+    color: var(--primary-text-color); font: inherit; font-size: 13px; font-weight: 500; outline: none; user-select: text; -webkit-user-select: text; }
+  .tts input::placeholder { color: var(--secondary-text-color); opacity: 0.9; }
+  .tts input:focus-visible { box-shadow: 0 0 0 2px rgb(var(--accent)); }
+  .send { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 12px; background: rgb(var(--accent) / 0.18); color: rgb(var(--accent)); }
+  .send[disabled] { opacity: 0.35; cursor: default; }
+  .send ha-icon { --mdc-icon-size: 19px; display: flex; }
+  .empty { padding: 4px 0 2px; font-size: 12.5px; font-weight: 500; color: var(--secondary-text-color); }
+  @media (prefers-contrast: more) { .row .d, .pct, .pill { color: var(--primary-text-color); } }
+`;
+
+class SavvyMediaCard extends SavvyCard {
+  static getStubConfig(hass) {
+    const a = allAreas(hass).find((x) => areaEntities(hass, x.id).some((id) => domainOf(id) === "media_player"));
+    return a ? { area: a.id } : {};
+  }
+  static getConfigElement() { return document.createElement(EDITOR); }
+
+  constructor() {
+    super();
+    this._onscreen = true;
+    this._optimistic = new Map();
+  }
+
+  setConfig(config) {
+    const players = (list) => asItems(list).filter((p) => p.entity);
+    if (!config?.area && !players(config?.video).length && !players(config?.audio).length) throw new Error('savvy-media-card: set an "area" (or "video" / "audio" players)');
+    const alarm = typeof config.alarm === "string" ? { entity: config.alarm } : config.alarm;
+    this._compact = config.layout === "compact" || !!config.compact;
+    this._given = { video: players(config.video), audio: players(config.audio) };
+    this._config = { artwork: true, labels: {}, ...config, alarm: alarm || null,
+      presets: asItems(config.presets), chips: asItems(config.chips ?? config.actions), video: [], audio: [] };
+    this._picked = null;
+    this._discovered = null;
+    if (this._el) { this._build(); if (this._hass) this._update(); }
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._config) return;
+    this._discover();
+    if (!this._el) this._build();
+    this._update();
+  }
+
+  // The room's players, unless config lists them: a list that's given is used as it is.
+  _discover() {
+    const h = this._hass, c = this._config, g = this._given;
+    const key = h.entities;
+    if (this._discovered === key) return;
+    this._discovered = key;
+    let video = g.video, audio = g.audio;
+    if (c.area && (!video.length || !audio.length)) {
+      const skip = new Set([...video, ...audio].map((p) => p.entity).concat(asItems(c.exclude).map((i) => i.entity)));
+      const found = pick(h, areaEntities(h, c.area), { domains: "media_player" }).filter((id) => !skip.has(id) && !isGroup(h.states[id]))
+        .sort((a, b) => (h.states[a].attributes.friendly_name || a).localeCompare(h.states[b].attributes.friendly_name || b));
+      const isAudio = (id) => AUDIO_CLASSES.has(h.states[id].attributes.device_class);
+      if (!video.length && !g.audio.length) video = found.filter((id) => !isAudio(id)).map((entity) => ({ entity }));
+      else if (!video.length) video = found.filter((id) => !isAudio(id)).map((entity) => ({ entity }));
+      if (!audio.length) audio = found.filter(isAudio).map((entity) => ({ entity }));
+    }
+    c.video = video;
+    c.audio = audio;
+  }
+
+  connectedCallback() { this._observe(); this._wake(); }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._io?.disconnect();
+    clearInterval(this._tick);
+    for (const t of this._volTimers?.values() || []) clearTimeout(t);
+  }
+  getCardSize() { return this._compact ? 2 : this._config?.artwork ? 6 : 4; }
+  getGridOptions() { return this._compact ? { columns: 12, min_columns: 6, rows: "auto" } : { columns: 12, min_columns: 6, rows: "auto" }; }
+
+  // ---------- build ----------
+  _build() {
+    const root = this.shadowRoot || this.attachShadow({ mode: "open" });
+    this._resetMotion();
+    clearInterval(this._tick);
+    this._tick = 0;
+    this._first = true;
+    this._stageSrc = null;
+    this._bars = new Map();
+    this._volTimers = new Map();
+    const c = this._config;
+    root.innerHTML = `<style>${STYLE}</style>
+      <ha-card>
+        <header id="header"><span class="name" id="title"></span></header>
+        <section class="stage" id="stage" hidden>
+          <img class="art" id="art" alt=""><span class="veil"></span>
+          <div class="caption"><span class="t" id="stageT"></span><span class="s" id="stageS"></span></div>
+          <div class="progress" id="progress" hidden><i id="progressFill"></i></div>
+        </section>
+        <div class="body">
+          <div class="band" id="videoBand" hidden>
+            <span class="cap" id="videoCap" hidden></span>
+            <div class="segmented" id="sources" hidden><span class="sel"></span></div>
+            <div class="row" id="nowRow">
+              <span class="icon" id="nowIcon"></span>
+              <span class="meta"><span class="n" id="nowName"></span><span class="d" id="nowSub"></span></span>
+              <div class="transport" id="nowTransport"></div>
+            </div>
+            <div class="nowvol" id="nowVol"></div>
+          </div>
+          <div class="band" id="audioBand" hidden><span class="cap" id="audioCap" hidden></span></div>
+          <div class="band" id="alarmBand" hidden>
+            <div class="row">
+              <button class="icon" id="alarmIcon"><ha-icon id="alarmGlyph"></ha-icon></button>
+              <button class="meta" id="alarmMeta" style="text-align:start"><span class="n" id="alarmName"></span><span class="d" id="alarmSub"></span></button>
+              <span class="when" id="alarmWhen"></span>
+              <div class="transport"><button class="tb solid" id="alarmToggle"><ha-icon id="alarmToggleIcon"></ha-icon></button></div>
+            </div>
+          </div>
+          <div class="band" id="extras" hidden>
+            <div class="pills" id="presets" hidden></div>
+            <div class="tts" id="tts" hidden>
+              <input id="ttsInput" type="text" enterkeyhint="send" autocomplete="off" spellcheck="false">
+              <button class="send" id="ttsSend" aria-label="Speak"><ha-icon icon="mdi:send"></ha-icon></button>
+            </div>
+            <div class="pills" id="actions" hidden></div>
+          </div>
+        </div>
+      </ha-card>`;
+    if (this._compact) {
+      root.getElementById("nowIcon").innerHTML = `<img class="thumb" id="thumb" alt="" hidden><ha-icon id="nowGlyph"></ha-icon>`;
+      root.querySelector("ha-card").setAttribute("data-compact", "");
+      for (const id of ["stage", "sources", "audioBand", "alarmBand", "extras", "videoCap"]) root.getElementById(id).hidden = true;
+    }
+    const $ = (id) => root.getElementById(id);
+    this._el = { card: root.querySelector("ha-card"), header: $("header"), title: $("title"), stage: $("stage"), art: $("art"), thumb: $("thumb"), nowGlyph: $("nowGlyph"),
+      stageT: $("stageT"), stageS: $("stageS"), progress: $("progress"), progressFill: $("progressFill"), videoBand: $("videoBand"), sources: $("sources"),
+      nowRow: $("nowRow"), nowIcon: $("nowIcon"), nowName: $("nowName"), nowSub: $("nowSub"), nowTransport: $("nowTransport"), nowVol: $("nowVol"),
+      audioBand: $("audioBand"), videoCap: $("videoCap"), audioCap: $("audioCap"), alarmBand: $("alarmBand"), alarmIcon: $("alarmIcon"), alarmGlyph: $("alarmGlyph"),
+      alarmMeta: $("alarmMeta"), alarmName: $("alarmName"), alarmSub: $("alarmSub"), alarmWhen: $("alarmWhen"), alarmToggle: $("alarmToggle"),
+      alarmToggleIcon: $("alarmToggleIcon"), extras: $("extras"), presets: $("presets"), tts: $("tts"), ttsInput: $("ttsInput"), ttsSend: $("ttsSend"), actions: $("actions") };
+    this._sp = {
+      pill: this._spring(0, MOTION.pill, "sources", 0.02),
+      pillW: this._spring(0, MOTION.pill, "sources", 0.02),
+      art: this._spring(0, MEDIA_MOTION.art, "stage", 0.002),
+      swap: this._spring(1, SWAP_IN, "now"),
+      progress: this._spring(0, MOTION.value, "stage", 0.0005),
+    };
+    const P = (el, onTap, onHold) => this._pressable(el, { onTap, onHold, haptic: null }, 0.08);
+    P(this._el.stage, () => this._stageOwner && moreInfo(this, this._stageOwner.entity));
+    const alarmTime = () => moreInfo(this, this._config.alarm?.time || this._config.alarm?.entity);
+    P(this._el.alarmMeta, alarmTime);
+    P(this._el.alarmIcon, alarmTime);
+    P(this._el.alarmToggle, () => this._toggleAlarm(), () => moreInfo(this, this._config.alarm?.entity));
+    this._el.ttsInput.placeholder = c.tts?.placeholder || "Say something";
+    this._el.ttsInput.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") this._speak(); });
+    this._el.ttsInput.addEventListener("input", () => this._syncSend());
+    P(this._el.ttsSend, () => this._speak());
+    this._observe();
+  }
+
+  _observe() {
+    if (!this._el || !this.isConnected) return;
+    this._io = this._io || new IntersectionObserver(([e]) => { this._onscreen = e.isIntersecting; if (this._onscreen) { this._measure(); this._wake(); } });
+    this._ro?.disconnect();
+    this._ro = new ResizeObserver(() => { this._measure(); this._wake(); });
+    this._io.disconnect();
+    this._io.observe(this);
+    this._ro.observe(this._el.card);
+  }
+
+  _measure() {
+    const sel = this._el?.sources.querySelectorAll(".seg")[this._pickedIdx || 0];
+    if (!sel) return;
+    const first = this._first || this._sp.pillW.x === 0;
+    this._sp.pill[first ? "snap" : "to"](sel.offsetLeft);
+    this._sp.pillW[first ? "snap" : "to"](sel.offsetWidth);
+  }
+
+  // A volume bar. Nothing moves until a drag is clearly sideways, so a press, or a finger
+  // on its way to scrolling the page, never changes the volume (CARD-DESIGN.md 3.1); then
+  // the level follows the finger 1:1 from where it was, instead of jumping to it.
+  _bar(key, el) {
+    const group = `vol:${key}`;
+    const value = this._spring(0, MOTION.value, group, 0.002);
+    const grab = this._spring(0, MEDIA_MOTION.grab, group);
+    const bar = { el, value, grab, cfg: null, dragging: false, pending: null, last: 0 };
+    // an optimistic level, shown until HA reports it or it expires
+    bar.guess = (v) => {
+      bar.pending = v;
+      bar.pendingAt = Date.now();
+      clearTimeout(bar.expiry);
+      bar.expiry = setTimeout(() => { bar.pending = null; if (this._hass) this._update(); }, VOL_PREDICT + 50);
+    };
+    bar.write = (v) => this._volumeIO(bar.cfg)?.write(v);
+    this._bars.set(key, bar);
+    const slider = el.querySelector(".slider");
+    let id = null, x0 = 0, y0 = 0, xs = 0, from = 0, live = false;
+    const at = (clientX) => clamp(from + (clientX - xs) / Math.max(1, slider.getBoundingClientRect().width));
+    slider.addEventListener("pointerdown", (e) => {
+      if (e.button > 0) return;
+      e.stopPropagation();
+      id = e.pointerId; x0 = e.clientX; y0 = e.clientY; live = false;
+      try { slider.setPointerCapture(e.pointerId); } catch (err) { /* already lifted */ }
+    });
+    slider.addEventListener("pointermove", (e) => {
+      if (e.pointerId !== id) return;
+      if (!e.buttons && e.pointerType === "mouse") { id = null; return; }
+      if (!live) {
+        const dx = e.clientX - x0, dy = e.clientY - y0;
+        if (Math.hypot(dx, dy) < SLOP) return;
+        if (Math.abs(dy) >= Math.abs(dx)) { id = null; return; }   // vertical: the page scrolls
+        live = true;
+        bar.dragging = true;
+        grab.to(1);
+        xs = e.clientX;
+        from = clamp(bar.pending ?? value.x);
+        bar.last = Math.round(from * 10);
+      }
+      const v = at(e.clientX);
+      value.snap(v);
+      bar.guess(v);
+      const notch = Math.round(v * 10);     // a tick of feedback every 10%
+      if (notch !== bar.last) { bar.last = notch; haptic("selection"); }
+      this._send(bar, v, true);
+      this._wake();
+    });
+    const end = (e) => {
+      if (e.pointerId !== id) return;
+      id = null;
+      if (!live) return;
+      live = false;
+      bar.dragging = false;
+      grab.to(0);
+      this._send(bar, value.x);
+      this._wake();
+    };
+    slider.addEventListener("pointerup", end);
+    slider.addEventListener("pointercancel", end);
+    // one volume_step (default 5%), from the − / + buttons or the arrow keys
+    bar.step = (d) => {
+      const size = (Number(this._config.volume_step) || 5) / 100;
+      const v = clamp((bar.pending ?? value.target) + d * size);
+      if (Math.abs(v - (bar.pending ?? value.target)) < 1e-6) return;
+      bar.guess(v);
+      value.to(v);
+      haptic("selection");
+      this._send(bar, v);
+      this._wake();
+    };
+    slider.addEventListener("keydown", (e) => {
+      const d = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 }[e.key];
+      if (!d) return;
+      e.preventDefault();
+      bar.step(d);
+    });
+    return bar;
+  }
+
+  // writes are throttled while dragging; the release always lands
+  _send(bar, v, throttle = false) {
+    bar.queued = v;
+    if (throttle) {
+      if (this._volTimers.get(bar)) return;
+      this._volTimers.set(bar, setTimeout(() => { this._volTimers.delete(bar); this._flush(bar); }, VOL_THROTTLE));
+      return;
+    }
+    clearTimeout(this._volTimers.get(bar));
+    this._volTimers.delete(bar);
+    this._flush(bar);
+  }
+  _flush(bar) { if (bar.queued == null) return; bar.write(bar.queued); bar.queued = null; }
+
+  // ---------- actions ----------
+  _call(domain, service, data, entity) { this._hass.callService(domain, service, data || {}, { entity_id: entity }); }
+
+  _playerIcon(cfg, st) {
+    if (cfg.icon) return cfg.icon;
+    const dc = st?.attributes.device_class;
+    if (PLAYER_ICONS[dc]) return PLAYER_ICONS[dc];
+    if (/ps\d|playstation|xbox|switch_console/i.test(cfg.entity)) return PLAYER_ICONS.game;
+    return PLAYER_ICONS.default;
+  }
+
+  // a player may be powered by its own service or by a separate switch
+  _isOn(cfg) {
+    const guess = this._optimistic.get(cfg.entity);
+    if (guess && Date.now() - guess.at < OPTIMISTIC_MS) return guess.on;
+    if (cfg.power) { const p = this._hass.states[cfg.power]; if (p) return p.state === "on"; }
+    const st = this._hass.states[cfg.entity];
+    return !!st && !DEAD.has(st.state);
+  }
+
+  _togglePower(cfg) {
+    const on = this._isOn(cfg);
+    this._optimistic.set(cfg.entity, { on: !on, at: Date.now() });
+    haptic("light");
+    setTimeout(() => this._hass && this._update(), OPTIMISTIC_MS + 50);
+    if (cfg.power) return this._call(domainOf(cfg.power), "toggle", {}, cfg.power);
+    this._call("media_player", on ? "turn_off" : "turn_on", {}, cfg.entity);
+  }
+
+  _transport(cfg, action) { haptic("light"); this._call("media_player", action, {}, cfg.entity); }
+
+  _mute(cfg, target) {
+    const st = this._hass.states[target || cfg.entity];
+    haptic("light");
+    this._call("media_player", "volume_mute", { is_volume_muted: !st?.attributes.is_volume_muted }, target || cfg.entity);
+  }
+
+  // A room's real volume is sometimes a helper rather than the player's own level.
+  _volumeIO(cfg) {
+    const id = cfg.volume || cfg.entity;
+    const st = this._hass.states[id];
+    if (!st) return null;
+    if (id.startsWith("input_number.") || id.startsWith("number.")) {
+      const min = Number(st.attributes.min ?? 0), max = Number(st.attributes.max ?? 100);
+      const span = Math.max(1e-6, max - min);
+      return { id, level: clamp((parseFloat(st.state) - min) / span), write: (v) => this._call(domainOf(id), "set_value", { value: Math.round((min + v * span) * 100) / 100 }, id) };
+    }
+    if (!has(st, F.VOLUME_SET)) return null;
+    return { id, level: clamp(Number(st.attributes.volume_level) || 0), muted: !!st.attributes.is_volume_muted,
+      write: (v) => this._call("media_player", "volume_set", { volume_level: Math.round(v * 100) / 100 }, id) };
+  }
+
+  _runChip(cfg, kind) {
+    const a = kind === "hold" ? (cfg.hold_action !== undefined ? mediaAction(cfg.hold_action, cfg.entity) : { action: "more-info" })
+      : cfg.tap_action !== undefined ? mediaAction(cfg.tap_action, cfg.entity)
+      : cfg.navigation_path ? { action: "navigate", navigation_path: cfg.navigation_path }
+      : cfg.entity ? defaultTapAction(cfg.entity) : null;
+    if (!a || a.action === "none") return;
+    haptic("light");
+    runAction(this, this._hass, a, { entity: cfg.entity });
+  }
+
+  _speak() {
+    const cfg = this._config.tts, input = this._el.ttsInput;
+    const msg = input.value.trim();
+    if (!cfg || !msg) return;
+    const [domain, service] = String(cfg.action || "tts.speak").split(".");
+    // any value written as $MSG in the config is where the text goes
+    const fill = (v) => (typeof v === "string" ? v.replace(/\$MSG/g, msg) : Array.isArray(v) ? v.map(fill)
+      : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fill(x)])) : v);
+    const data = cfg.data ? fill({ ...cfg.data }) : { message: msg };
+    if (cfg.data && JSON.stringify(cfg.data) === JSON.stringify(data)) data.message = msg;
+    const target = data.entity_id;
+    delete data.entity_id;
+    this._hass.callService(domain, service, data, target ? { entity_id: target } : undefined);
+    haptic("light");
+    input.value = "";
+    this._syncSend();
+  }
+  _syncSend() { attr(this._el.ttsSend, "disabled", !this._el.ttsInput.value.trim()); }
+
+  // ---------- what's playing ----------
+  _mediaOf(cfg) {
+    const st = this._hass.states[cfg.entity];
+    if (!st) return { title: cfg.name || title(cfg.entity.split(".")[1]), sub: "Not found", missing: true };
+    const a = st.attributes;
+    const name = cfg.name || shortName(this._hass, cfg.entity, this._config.area);
+    if (!this._isOn(cfg)) return { name, st, title: name, sub: "Off", off: true };
+    let line = a.media_title || "", sub = "";
+    if (a.media_series_title) {
+      // a show reads as its name, then where you are in it
+      line = a.media_series_title;
+      const ep = [a.media_season != null ? `S${a.media_season}` : "", a.media_episode != null ? `E${a.media_episode}` : ""].join("");
+      sub = [ep, a.media_title].filter(Boolean).join(" · ");
+    } else if (a.media_artist) sub = [a.media_artist, a.media_album_name].filter(Boolean).join(" · ");
+    if (!sub) sub = a.app_name || a.source || "";
+    if (!line) line = a.app_name || a.source || (st.state === "playing" ? "Playing" : chipState(this._hass, st));
+    return { name, st, title: line, sub: sub || name, playing: ACTIVE.has(st.state) };
+  }
+
+  // the stage only appears with real artwork, where the room says it may show it
+  _artOf(cfg) {
+    if (!this._config.artwork || !cfg || cfg.artwork === false) return null;
+    const st = this._hass.states[cfg.entity];
+    if (!st || !ACTIVE.has(st.state)) return null;
+    if (typeof cfg.artwork === "string") { const gate = this._hass.states[cfg.artwork]; if (!gate || gate.state !== "on") return null; }
+    return st.attributes.entity_picture || null;
+  }
+
+  _position(st) {
+    const a = st?.attributes || {};
+    const dur = Number(a.media_duration);
+    if (!Number.isFinite(dur) || dur <= 0) return null;
+    let pos = Number(a.media_position) || 0;
+    if (st.state === "playing" && a.media_position_updated_at) pos += (Date.now() - Date.parse(a.media_position_updated_at)) / 1000;
+    return clamp(pos / dur);
+  }
+
+  // ---------- update ----------
+  _rowOf(parent, key, tag, cls, html) {
+    const cache = parent.__rows || (parent.__rows = new Map());
+    let el = cache.get(key);
+    if (!el) {
+      el = document.createElement(tag);
+      el.className = cls;
+      el.innerHTML = html;
+      cache.set(key, el);
+      parent.appendChild(el);
+    }
+    return el;
+  }
+
+  _update() {
+    const h = this._hass, c = this._config, el = this._el;
+    if (!h || !el) return;
+    const cap = c.artwork_max_height;
+    put(el.stage, "--art-max", cap ? (typeof cap === "number" ? `${cap}px` : String(cap)) : "none");
+    this.toggleAttribute("dark", !!h.themes?.darkMode);
+    if (c.accent) put(el.card, "--accent", this._rgb(c.accent));
+    text(el.title, c.name || (c.area ? areaInfo(h, c.area).name : "Media"));
+    this._sources();
+    if (!this._compact) this._stage();      // decides what the stage owns, so rows can defer
+    this._nowPlaying();
+    if (!this._compact) { this._outputs(); this._alarm(); this._chips(); }
+    const labels = c.labels || {};
+    for (const [key, node] of [["video", el.videoCap], ["audio", el.audioCap]]) {
+      node.hidden = !labels[key];
+      if (labels[key]) text(node, labels[key]);
+    }
+    let firstSeen = false;
+    for (const band of [el.videoBand, el.audioBand, el.alarmBand, el.extras]) {
+      attr(band, "data-first", !band.hidden && !firstSeen);
+      if (!band.hidden) firstSeen = true;
+    }
+    if (this._first) { this._first = false; requestAnimationFrame(() => { this._measure(); this._paintAll(null); }); }
+    this._syncTick();
+    this._wake();
+  }
+
+  _rgb(css) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(css).trim());
+    if (!m) return css;
+    const n = parseInt(m[1], 16);
+    return `${(n >> 16) & 255} ${(n >> 8) & 255} ${n & 255}`;
+  }
+
+  // Which video source the row and stage are about: the pick while it's still sensible,
+  // else whatever is actually playing. A pick is released only when something new starts.
+  _sources() {
+    const c = this._config, el = this._el;
+    if (this._compact) return this._primary();
+    el.videoBand.hidden = !c.video.length;
+    if (!c.video.length) { this._active = null; return; }
+    const live = c.video.filter((v) => ACTIVE.has(this._hass.states[v.entity]?.state));
+    const sig = live.map((v) => v.entity).join("|");
+    if (this._liveSig === undefined) this._liveSig = sig;
+    if (sig !== this._liveSig) { this._liveSig = sig; if (sig) this._picked = null; }
+    const on = c.video.filter((v) => this._isOn(v));
+    if (this._picked && !c.video.some((v) => v.entity === this._picked)) this._picked = null;
+    const auto = live[0] || on[0] || c.video[0];
+    const active = this._picked ? c.video.find((v) => v.entity === this._picked) : auto;
+    const changed = this._active && this._active.entity !== active.entity;
+    this._active = active;
+    this._pickedIdx = c.video.indexOf(active);
+    el.sources.hidden = c.video.length < 2;
+    if (!el.sources.hidden) {
+      c.video.forEach((v) => {
+        const st = this._hass.states[v.entity];
+        const seg = this._rowOf(el.sources, v.entity, "button", "seg", `<ha-icon></ha-icon><span></span>`);
+        if (!seg.__wired) {
+          seg.__wired = true;
+          this._pressable(seg, { onTap: () => this._pick(v), onHold: () => moreInfo(this, v.entity), haptic: null }, 0.08);
+        }
+        attr(seg.querySelector("ha-icon"), "icon", this._playerIcon(v, st));
+        text(seg.querySelector("span"), v.name || shortName(this._hass, v.entity, c.area));
+        attr(seg, "data-sel", v === active);
+        attr(seg, "data-live", this._isOn(v));
+        attr(seg, "aria-pressed", v === active ? "true" : "false");
+      });
+      this._measure();
+    }
+    if (changed && !MQ.reduced.matches) this._sp.swap.snap(0).to(1, SWAP_IN);
+  }
+
+  // compact: one row for the room, showing whatever is actually playing
+  _primary() {
+    const c = this._config, all = [...c.video, ...c.audio];
+    this._el.videoBand.hidden = !all.length;
+    if (!all.length) { this._active = null; return; }
+    const next = all.find((p) => ACTIVE.has(this._hass.states[p.entity]?.state)) || all.find((p) => this._isOn(p)) || all[0];
+    if (this._active && this._active.entity !== next.entity && !MQ.reduced.matches) this._sp.swap.snap(0).to(1, SWAP_IN);
+    this._active = next;
+  }
+
+  _pick(v) {
+    if (this._active?.entity === v.entity) return moreInfo(this, v.entity);
+    this._picked = v.entity;
+    haptic("selection");
+    this._update();
+  }
+
+  _nowPlaying() {
+    const el = this._el, v = this._active;
+    if (!v) return;
+    const info = this._mediaOf(v), st = info.st;
+    if (this._compact) {
+      // a piece of the artwork stands in for the whole stage
+      const url = this._config.artwork !== false ? this._artOf(v) : null;
+      el.thumb.hidden = !url;
+      el.nowGlyph.hidden = !!url;
+      if (url && el.thumb.getAttribute("src") !== url) el.thumb.src = url;
+      attr(el.nowGlyph, "icon", this._playerIcon(v, st));
+      attr(el.nowIcon, "data-live", !url && this._isOn(v));
+    } else {
+      attr(el.nowIcon, "data-live", this._isOn(v));
+      attr(this._rowOf(el.nowIcon, "i", "ha-icon", "", ""), "icon", this._playerIcon(v, st));
+    }
+    if (!el.nowIcon.__wired) {
+      el.nowIcon.__wired = true;
+      this._pressable(el.nowIcon, { onTap: () => moreInfo(this, el.nowIcon.__entity), haptic: null }, 0.08);
+    }
+    el.nowIcon.__entity = v.entity;
+    if (this._compact) {
+      // no stage here: the row leads with what's playing rather than which box
+      const dead = info.off || info.missing;
+      const primary = dead ? (info.name || info.title) : info.title;
+      const second = !dead && (!info.sub || info.sub === primary) ? info.name : info.sub;
+      text(el.nowName, primary);
+      text(el.nowSub, second === primary ? "" : second);
+    } else {
+      text(el.nowName, info.name || info.title);
+      text(el.nowSub, this._rowSub(v, info));
+    }
+    this._buildTransport(el.nowTransport, v, { power: true });
+    const owner = this._volumeOwner(v);
+    el.nowVol.hidden = !owner;
+    if (owner) this._mountVolume(el.nowVol, owner, "source");
+  }
+
+  // when the stage already shows this player's media, the row says where it comes from
+  _rowSub(cfg, info) {
+    if (info.off) return "Off";
+    if (info.missing) return info.sub;
+    const staged = this._stageOwner?.entity === cfg.entity && !this._el.stage.hidden;
+    const a = info.st?.attributes || {};
+    if (staged) return a.app_name || a.source || chipState(this._hass, info.st);
+    if (info.title === info.name) return info.sub;
+    const extra = info.sub !== info.name && info.sub !== info.title ? info.sub : "";
+    return [info.title, extra].filter(Boolean).join(" · ");
+  }
+
+  // transport buttons follow what the player says it supports
+  _buildTransport(parent, cfg, { power = false, solid = true } = {}) {
+    const st = this._hass.states[cfg.entity];
+    const on = this._isOn(cfg), playing = ACTIVE.has(st?.state);
+    const want = [];
+    if (has(st, F.PREV)) want.push({ key: "prev", icon: "mdi:skip-previous", act: () => this._transport(cfg, "media_previous_track") });
+    if (has(st, F.PAUSE) || has(st, F.PLAY)) want.push({ key: "play", solid, icon: playing ? "mdi:pause" : "mdi:play", act: () => this._transport(cfg, "media_play_pause") });
+    if (has(st, F.NEXT)) want.push({ key: "next", icon: "mdi:skip-next", act: () => this._transport(cfg, "media_next_track") });
+    if (power && (cfg.power || has(st, F.TURN_ON) || has(st, F.TURN_OFF))) want.push({ key: "power", icon: "mdi:power", on, act: () => this._togglePower(cfg) });
+    for (const b of want) {
+      const btn = this._rowOf(parent, b.key, "button", `tb${b.solid ? " solid" : ""}`, `<ha-icon></ha-icon>`);
+      if (!btn.__wired) { btn.__wired = true; this._pressable(btn, { onTap: () => btn.__act(), haptic: null }, 0.08); }
+      btn.__act = b.act;
+      attr(btn, "aria-label", b.key);
+      attr(btn, "data-k", b.key);
+      attr(btn, "data-on", !!b.on);
+      attr(btn, "disabled", !(on || b.key === "power"));
+      attr(btn.querySelector("ha-icon"), "icon", b.icon);
+    }
+    const keys = new Set(want.map((b) => b.key));
+    for (const [key, node] of parent.__rows || []) node.hidden = !keys.has(key);
+    parent.hidden = !want.length;
+  }
+
+  _outputs() {
+    const el = this._el, c = this._config;
+    el.audioBand.hidden = !c.audio.length;
+    for (const cfg of c.audio) {
+      const key = slug(cfg.entity);
+      const row = this._rowOf(el.audioBand, key, "div", "player", `<div class="row">
+          <span class="icon"><ha-icon></ha-icon></span>
+          <span class="meta"><span class="n"></span><span class="d"></span></span>
+          <div class="transport"></div></div>`);
+      const st = this._hass.states[cfg.entity];
+      const info = this._mediaOf(cfg);
+      const icon = row.querySelector(".icon");
+      attr(icon, "data-live", this._isOn(cfg));
+      attr(icon.querySelector("ha-icon"), "icon", this._playerIcon(cfg, st));
+      text(row.querySelector(".n"), info.name || info.title);
+      text(row.querySelector(".d"), this._rowSub(cfg, info));
+      this._buildTransport(row.querySelector(".transport"), cfg, { power: true });
+      if (!icon.__wired) { icon.__wired = true; this._pressable(icon, { onTap: () => moreInfo(this, cfg.entity), haptic: null }, 0.08); }
+      this._mountVolume(row, cfg, key);
+    }
+    const keys = new Set(c.audio.map((cfg) => slug(cfg.entity)));
+    for (const [key, node] of el.audioBand.__rows || []) node.hidden = !keys.has(key);
+  }
+
+  // the alarm clock that rings on this room's speaker: when it's set, and whether it's on
+  _alarm() {
+    const cfg = this._config.alarm, el = this._el, h = this._hass;
+    const st = cfg && h.states[cfg.entity];
+    el.alarmBand.hidden = !st;
+    if (!st) return;
+    const armed = st.state === "on";
+    const time = cfg.time && h.states[cfg.time];
+    attr(el.alarmIcon, "data-live", armed);
+    attr(el.alarmGlyph, "icon", cfg.icon || (armed ? "mdi:alarm" : "mdi:alarm-off"));
+    text(el.alarmName, cfg.name || st.attributes.friendly_name || "Alarm");
+    text(el.alarmSub, armed ? (time ? this._nextAlarm(time) : "Armed") : "Off");
+    text(el.alarmWhen, time ? this._clock(time.state) : "");
+    attr(el.alarmWhen, "data-off", !armed);
+    el.alarmWhen.hidden = !time;
+    attr(el.alarmToggle, "data-on", armed);
+    attr(el.alarmToggleIcon, "icon", armed ? "mdi:bell" : "mdi:bell-outline");
+    attr(el.alarmToggle, "aria-pressed", armed ? "true" : "false");
+    attr(el.alarmToggle, "aria-label", `Alarm ${armed ? "on" : "off"}`);
+    attr(el.alarmMeta, "aria-label", `Alarm time ${time ? this._clock(time.state) : "not set"}`);
+  }
+
+  _toggleAlarm() {
+    const id = this._config.alarm?.entity;
+    if (!id) return;
+    haptic("light");
+    this._call(domainOf(id), "toggle", {}, id);
+  }
+
+  // input_datetime says "07:15:00": shown the way this dashboard's locale writes time
+  _clock(value) {
+    const [hh, mm] = String(value || "").split(":");
+    if (hh == null || mm == null) return "";
+    const d = new Date();
+    d.setHours(Number(hh), Number(mm), 0, 0);
+    const fmt = this._hass.locale?.time_format, opts = { hour: "2-digit", minute: "2-digit" };
+    if (fmt === "12") opts.hour12 = true;
+    if (fmt === "24") opts.hour12 = false;
+    try { return new Intl.DateTimeFormat(langOf(this._hass), opts).format(d); } catch (err) { return `${hh}:${mm}`; }
+  }
+
+  // how long until it goes off, so the number means something at a glance
+  _nextAlarm(time) {
+    const [hh, mm] = String(time.state || "").split(":").map(Number);
+    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return "Armed";
+    const now = new Date(), at = new Date();
+    at.setHours(hh, mm, 0, 0);
+    if (at <= now) at.setDate(at.getDate() + 1);
+    const mins = Math.round((at - now) / 60000), h = Math.floor(mins / 60), m = mins % 60;
+    return h ? `in ${h}h ${m}m` : `in ${m}m`;
+  }
+
+  // a volume block, under a speaker, or under a TV that has no sound output of its own
+  _mountVolume(host, cfg, key) {
+    let vol = host.querySelector(".vol");
+    if (!vol) {
+      vol = document.createElement("div");
+      vol.className = "vol";
+      vol.innerHTML = `<button class="mute" aria-label="Mute"><ha-icon></ha-icon></button>
+        <div class="slider" role="slider" tabindex="0" aria-label="Volume"><div class="bar"><span class="fill"></span></div></div>
+        <span class="pct"></span>
+        <span class="vsteps"><button class="vstep" data-d="-1" aria-label="Volume down"><ha-icon icon="mdi:minus"></ha-icon></button>
+          <button class="vstep" data-d="1" aria-label="Volume up"><ha-icon icon="mdi:plus"></ha-icon></button></span>`;
+      host.appendChild(vol);
+    }
+    const io = this._volumeIO(cfg);
+    vol.hidden = !io;
+    if (!io) return;
+    let bar = this._bars.get(key);
+    if (!bar) bar = this._bar(key, vol);
+    if (bar.cfg && bar.cfg.entity !== cfg.entity) { bar.pending = null; bar.value.snap(io.level); }
+    bar.cfg = cfg;
+    if (bar.pending != null && (Math.abs(bar.pending - io.level) < 0.02 || Date.now() - bar.pendingAt > VOL_PREDICT)) bar.pending = null;
+    if (!bar.dragging && bar.pending == null) { if (this._first) bar.value.snap(io.level); else bar.value.to(io.level); }
+    const mute = vol.querySelector(".mute");
+    const muteable = has(this._hass.states[io.id], F.VOLUME_MUTE);
+    mute.hidden = !muteable;
+    if (muteable) {
+      attr(mute, "data-on", !!io.muted);
+      attr(mute.querySelector("ha-icon"), "icon", io.muted ? "mdi:volume-off" : "mdi:volume-high");
+      mute.__act = () => this._mute(bar.cfg, this._volumeIO(bar.cfg)?.id);
+      if (!mute.__wired) { mute.__wired = true; this._pressable(mute, { onTap: () => mute.__act(), haptic: null }, 0.08); }
+    }
+    const steps = this._config.volume_buttons !== false;
+    attr(vol, "data-steps", steps);
+    vol.querySelector(".vsteps").hidden = !steps;
+    for (const btn of vol.querySelectorAll(".vstep")) {
+      btn.__bar = bar;
+      if (steps && !btn.__wired) { btn.__wired = true; this._pressable(btn, { onTap: () => btn.__bar.step(Number(btn.dataset.d)), haptic: null }, 0.08); }
+    }
+    const slider = vol.querySelector(".slider");
+    attr(slider, "aria-valuenow", Math.round(io.level * 100));
+    attr(slider, "aria-valuemin", "0");
+    attr(slider, "aria-valuemax", "100");
+  }
+
+  // Where a source's sound comes out; nothing declared means the box plays its own.
+  _soundOutput(cfg) { return (cfg.output !== undefined ? cfg.output : this._config.video_output) || null; }
+
+  // Whose volume belongs under the picked source: nothing if its sound goes to a box with
+  // a row of its own (that row owns it); that box's if it has no row; otherwise its own.
+  _volumeOwner(cfg) {
+    if (cfg.volume === false) return null;
+    const out = this._soundOutput(cfg);
+    if (!out) return cfg;
+    const listed = this._config.audio.find((a) => a.entity === out);
+    if (listed) return this._compact ? listed : null;      // compact has no speaker row: it borrows
+    const named = this._config.video.find((v) => v.entity === out);
+    return named ? { ...named } : { entity: out };
+  }
+
+  _chips() {
+    const el = this._el, c = this._config, h = this._hass;
+    const fill = (parent, list) => {
+      const keys = new Set();
+      for (const cfg of list) {
+        const st = cfg.entity && h.states[cfg.entity];
+        if (cfg.entity && !st && !cfg.navigation_path) continue;
+        const key = cfg.entity || cfg.navigation_path || cfg.name;
+        keys.add(key);
+        const chip = this._rowOf(parent, key, "button", "pill", `${cfg.icon ? "<ha-icon></ha-icon>" : "<ha-state-icon></ha-state-icon>"}<span></span>`);
+        if (!chip.__wired) {
+          chip.__wired = true;
+          this._pressable(chip, { onTap: () => this._runChip(chip.__cfg, "tap"), onHold: () => this._runChip(chip.__cfg, "hold"), haptic: null }, 0.08);
+        }
+        chip.__cfg = cfg;
+        put(chip, "--cc", colorOf(cfg.color) || "rgb(var(--accent))");
+        attr(chip, "data-on", !!st && ["on", "playing", "home", "open"].includes(st.state));
+        text(chip.querySelector("span"), cfg.name || st?.attributes.friendly_name || title(String(key).split(".").pop()));
+        const sIcon = chip.querySelector("ha-state-icon");
+        if (sIcon && sIcon.stateObj !== st) { sIcon.hass = h; sIcon.stateObj = st; }
+        const iIcon = chip.querySelector("ha-icon");
+        if (iIcon) attr(iIcon, "icon", cfg.icon);
+      }
+      for (const [key, node] of parent.__rows || []) node.hidden = !keys.has(key);
+      parent.hidden = !keys.size;
+    };
+    fill(el.presets, c.presets);
+    fill(el.actions, c.chips);
+    el.tts.hidden = !c.tts;
+    if (c.tts) this._syncSend();
+    el.extras.hidden = el.presets.hidden && el.actions.hidden && el.tts.hidden;
+  }
+
+  _stage() {
+    const el = this._el, c = this._config;
+    // the stage follows the picked source first, then anything else that's playing
+    let src = null, owner = null;
+    for (const cfg of [this._active, ...c.video, ...c.audio].filter(Boolean)) {
+      const url = this._artOf(cfg);
+      if (url) { src = url; owner = cfg; break; }
+    }
+    el.stage.hidden = !src;
+    if (!src) { this._sp.art.snap(0); this._stageOwner = null; return; }
+    if (this._stageSrc !== src) {
+      this._stageSrc = src;
+      this._sp.art.snap(0);
+      // the stage takes the artwork's shape first, then the artwork arrives into it
+      el.art.onload = () => {
+        const r = el.art.naturalWidth / el.art.naturalHeight;
+        if (Number.isFinite(r) && r > 0.05) put(el.stage, "--ar", clamp(r, 0.56, 2.6).toFixed(4));
+        this._sp.art.to(1, MEDIA_MOTION.art);
+        this._wake();
+      };
+      el.art.onerror = () => { this._sp.art.to(1, MEDIA_MOTION.art); this._wake(); };
+      el.art.src = src;
+    }
+    this._stageOwner = owner;
+    const info = this._mediaOf(owner);
+    text(el.stageT, info.title);
+    text(el.stageS, info.sub);
+    const pos = this._position(this._hass.states[owner.entity]);
+    el.progress.hidden = pos == null;
+    if (pos != null) {
+      if (this._first || Math.abs(pos - this._sp.progress.x) > 0.08) this._sp.progress.snap(pos);
+      else this._sp.progress.to(pos);
+    }
+  }
+
+  // one ticking clock, only while something is actually running on screen
+  _syncTick() {
+    const owner = this._stageOwner;
+    const need = !!owner && ACTIVE.has(this._hass.states[owner.entity]?.state) && this._position(this._hass.states[owner.entity]) != null;
+    if (need === !!this._tick) return;
+    clearInterval(this._tick);
+    this._tick = need ? setInterval(() => {
+      if (!this._onscreen || !this._stageOwner) return;
+      const p = this._position(this._hass.states[this._stageOwner.entity]);
+      if (p != null) { this._sp.progress.to(p); this._wake(); }
+    }, 1000) : 0;
+  }
+
+  _paint(dirty, all, red) {
+    const sp = this._sp, el = this._el;
+    if (all || dirty.has("sources")) {
+      const pill = el.sources.querySelector(".sel"), w = Math.max(0, sp.pillW.x);
+      put(pill, "opacity", w < 1 ? "0" : "");
+      put(pill, "width", `${w.toFixed(2)}px`);
+      put(pill, "transform", `translate3d(${sp.pill.x.toFixed(2)}px,0,0)`);
+    }
+    if (all || dirty.has("now")) {
+      const s = clamp(sp.swap.x);
+      put(el.nowRow, "opacity", s > 0.999 ? "" : s.toFixed(3));
+      put(el.nowRow, "transform", red || s > 0.999 ? "" : `translateY(${((1 - s) * 5).toFixed(2)}px)`);
+    }
+    if (all || dirty.has("stage")) {
+      const a = clamp(sp.art.x);
+      // blur and scale together, so the artwork arrives as a material
+      put(el.art, "opacity", a.toFixed(3));
+      put(el.art, "filter", red || a > 0.995 ? "" : `blur(${((1 - a) * 14).toFixed(2)}px)`);
+      put(el.art, "transform", red || a > 0.995 ? "" : `scale(${(1.04 - 0.04 * a).toFixed(4)})`);
+      put(el.progressFill, "transform", `scaleX(${clamp(sp.progress.x).toFixed(4)})`);
+    }
+    for (const [, bar] of this._bars) {
+      if (!all && !dirty.has(bar.value.group)) continue;
+      const v = clamp(bar.value.x), g = clamp(bar.grab.x);
+      put(bar.el.querySelector(".fill"), "transform", `scaleX(${v.toFixed(4)})`);
+      put(bar.el.querySelector(".bar"), "transform", red ? "" : `scaleY(${(1 + 0.45 * g).toFixed(3)})`);
+      text(bar.el.querySelector(".pct"), `${Math.round(v * 100)}%`);
+      const [down, up] = bar.el.querySelectorAll(".vstep");
+      if (down) attr(down, "disabled", v <= 0.001);
+      if (up) attr(up, "disabled", v >= 0.999);
+    }
+  }
+}
+
+// ---------- editor ----------
+const playerList = (name, label, helper) => ({ name, label, helper, type: "list", add: { selector: { entity: { domain: "media_player" } }, label: "Add a player" },
+  item: [
+    { name: "entity", label: "Player", selector: { entity: { domain: "media_player" } } },
+    { type: "grid", name: "", schema: [{ name: "name", label: "Name", selector: { text: {} } }, { name: "icon", label: "Icon", selector: { icon: {} } }] },
+    { name: "power", label: "Powered by", helper: "A switch that powers it, when the player can't turn itself on.", selector: { entity: { domain: ["switch", "input_boolean"] } } },
+    { name: "output", label: "Its sound comes out of", selector: { entity: { domain: "media_player" } } },
+    { name: "volume", label: "Its volume is", helper: "A helper that is the real volume, when the player's own isn't.", selector: { entity: { domain: ["input_number", "number"] } } },
+    { name: "artwork", label: "Show artwork only while", helper: "A binary sensor that says the artwork is worth showing.", selector: { entity: { domain: "binary_sensor" } } },
+  ] });
+
+const EDITOR = defineEditor("savvy-media-card", (hass, c) => [
+  S.area(),
+  S.grid(S.text("name", "Name"), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (one row)" }])),
+  playerList("video", "Video sources", "Empty: the area's players (not its speakers)."),
+  playerList("audio", "Speakers", "Empty: the area's speakers and receivers."),
+  { name: "video_output", label: "The video's sound comes out of", selector: { entity: { domain: "media_player" } } },
+  S.grid(S.bool("artwork", "Show artwork", null, true), S.bool("volume_buttons", "Volume − / + buttons", null, true)),
+  S.grid(S.number("volume_step", "Volume step", 1, 25, 1, "%"), S.number("artwork_max_height", "Artwork max height", 80, 800, 10, "px")),
+  { type: "expandable", name: "labels", title: "Captions", schema: [S.text("video", "Over the video"), S.text("audio", "Over the speakers")] },
+  { type: "expandable", name: "alarm", title: "Alarm clock", schema: [
+    { name: "entity", label: "On / off", selector: { entity: { domain: ["input_boolean", "switch"] } } },
+    { name: "time", label: "Time", selector: { entity: { domain: "input_datetime" } } },
+    { name: "name", label: "Name", selector: { text: {} } },
+  ] },
+  { type: "expandable", name: "tts", title: "Text to speech", schema: [
+    { name: "action", label: "Action", helper: "e.g. tts.speak, or notify.alexa_media_…", selector: { text: {} } },
+    { name: "data", label: "Data", helper: "$MSG is where the text goes.", selector: { object: {} } },
+    { name: "placeholder", label: "Placeholder", selector: { text: {} } },
+  ] },
+  S.chips("presets", "Presets", "Stations, playlists: a button presses, a script runs."),
+  S.chips("chips", "Chips", "The room's other media controls."),
+]);
+
+registerCard("savvy-media-card", SavvyMediaCard, "Media",
+  "A room's media: artwork, its sources and the speaker they play through, volume, presets and text to speech.");

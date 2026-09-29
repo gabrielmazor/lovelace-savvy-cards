@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.0
+
+The rest of the collection: five more cards on the Savvy core.
+
+- **Media**: a room's players found from the area (speakers the output, the rest the
+  sources): artwork, a source picker, transport, volume that only moves on a sideways
+  drag, presets, text to speech, an alarm clock; a compact layout.
+- **Camera**: the area's cameras, side by side or a swipe apart. Frigate turns itself on
+  when the cameras come from it: alerts, a motion timeline, synced recordings.
+- **Snapshot**: a security glance at a room, with how long ago everything happened, alerts
+  that wash the card, and a history page to scrub; a compact layout.
+- **Entity**: one entity (a person gets their picture and zone) with its chips.
+- **Graph**: tiles that graph numbers and read out everything else; long-term statistics
+  past a week.
+- **Health**: an empty category says "All good" with a tick, under its name, as a single
+  list does.
+- **Editors**: every "where to go" field is Home Assistant's own page picker, called
+  "Navigate to on tap".
+
 ## 0.2.2
 
 - **Popups sit above the whole page.** They were drawn inside the card, and dashboards

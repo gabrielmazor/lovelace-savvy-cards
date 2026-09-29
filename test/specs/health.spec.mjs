@@ -14,7 +14,8 @@ export default async function ({ browser, base, check }) {
         action: { label: "Generate report", service: "watchman.report", data: { create_file: true } } }, width);
       await new Promise((res) => setTimeout(res, 400));
       const read = (el) => ({ pill: el.shadowRoot.getElementById("pill").textContent, name: el.shadowRoot.getElementById("name").textContent,
-        groups: [...el.shadowRoot.querySelectorAll(".group")].map((g) => `${g.querySelector(".gt").textContent} ${g.querySelector(".gs").textContent}${g.querySelector(".gw").textContent ? " | " + g.querySelector(".gw").textContent : ""}`),
+        groups: [...el.shadowRoot.querySelectorAll(".group, .rows .ok")].map((g) => g.classList.contains("ok") ? "✓ All good"
+          : `${g.querySelector(".gt").textContent}${g.querySelector(".gs").textContent ? " " + g.querySelector(".gs").textContent : ""}${g.querySelector(".gw").textContent ? " | " + g.querySelector(".gw").textContent : ""}`),
         when: el.shadowRoot.getElementById("when").hidden ? "" : el.shadowRoot.getElementById("when").textContent,
         rows: [...el.shadowRoot.querySelectorAll(".row .n")].map((n) => n.textContent) });
       const core = window.__savvy.healthSummary(window.hass, { watchman: W });
@@ -45,9 +46,10 @@ export default async function ({ browser, base, check }) {
     await page.evaluate(() => window.setStates({ "sensor.front_door_battery": "80", "light.hallway_broken": "off" }));
     await page.waitForTimeout(300);
     const live = await page.evaluate(() => ({ pill: window.cards[0].shadowRoot.getElementById("pill").textContent,
-      groups: [...window.cards[0].shadowRoot.querySelectorAll(".group")].map((g) => `${g.querySelector(".gt").textContent} ${g.querySelector(".gs").textContent}`) }));
-    check(`${tag} counts follow the house live; an empty category stays, All good`, live.pill === "1 ISSUE"
-      && JSON.stringify(live.groups) === JSON.stringify(["Unavailable · 1", "Low batteries · All good"]), JSON.stringify(live));
+      groups: [...window.cards[0].shadowRoot.querySelectorAll(".group, .rows .ok")].map((g) => g.classList.contains("ok") ? "✓ All good"
+        : `${g.querySelector(".gt").textContent}${g.querySelector(".gs").textContent ? " " + g.querySelector(".gs").textContent : ""}`) }));
+    check(`${tag} counts follow the house live; an empty category stays, with All good below its title`, live.pill === "1 ISSUE"
+      && JSON.stringify(live.groups) === JSON.stringify(["Unavailable · 1", "Low batteries", "✓ All good"]), JSON.stringify(live));
 
     if (width === 420) await shot(page, `health-${theme}`, 0);
     check(`${tag} springs idle`, await idle(page));
