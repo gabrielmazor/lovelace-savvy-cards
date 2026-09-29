@@ -1,0 +1,287 @@
+// ---------------------------------------------------------------------------------------
+// core/editor: the visual editor every card gets. A card describes its options as a schema;
+// scalar options render through HA's own <ha-form> (native look, standard selectors),
+// list options through <savvy-list-editor> (add, remove, reorder, a sub-form per item).
+//
+// A card's editor:
+//   class LightsEditor extends SavvyEditor {
+//     schema(hass, config) { return [ ...ha-form schema entries..., { name: "chips", type: "list", ... } ] }
+//   }
+// Schema entries are HA's ha-form format, plus two Savvy extras:
+//   { name, type: "list", label, item: [sub-schema], add: { selector }, summary(item) }
+//   label / helper on any entry (turned into computeLabel / computeHelper)
+// ---------------------------------------------------------------------------------------
+
+// ha-form is only loaded once some HA editor has been opened. Creating an entities card's
+// editor forces it, the way custom cards commonly do.
+let formReady = null;
+const ensureHaForm = () => formReady || (formReady = (async () => {
+  if (customElements.get("ha-form") && customElements.get("ha-entity-picker")) return;
+  try {
+    const helpers = await window.loadCardHelpers?.();
+    const card = await helpers?.createCardElement({ type: "entities", entities: [] });
+    await card?.constructor?.getConfigElement?.();
+  } catch (err) { /* the editor falls back to YAML in the card editor */ }
+})());
+
+const EDITOR_CSS = `
+  :host { display: block; }
+  .sv-ed { display: flex; flex-direction: column; gap: 16px; }
+  .sv-section { display: flex; flex-direction: column; gap: 8px; }
+  .sv-label { font-size: 14px; font-weight: 500; color: var(--primary-text-color); }
+  .sv-help { font-size: 12px; color: var(--secondary-text-color); margin-top: -4px; }
+  .sv-item { border: 1px solid var(--divider-color, rgba(0,0,0,.12)); border-radius: 12px; overflow: hidden; }
+  .sv-item-head { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; min-height: 40px; }
+  .sv-item-head .t { flex: 1; min-width: 0; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sv-item-head .t small { color: var(--secondary-text-color); margin-inline-start: 6px; }
+  .sv-item-body { padding: 4px 12px 12px; border-top: 1px solid var(--divider-color, rgba(0,0,0,.12)); }
+  .sv-ibtn { width: 32px; height: 32px; border: 0; border-radius: 8px; background: none; color: var(--secondary-text-color);
+    display: grid; place-items: center; cursor: pointer; --mdc-icon-size: 20px; }
+  .sv-ibtn:hover { background: color-mix(in oklab, var(--primary-text-color) 8%, transparent); }
+  .sv-ibtn[disabled] { opacity: 0.3; cursor: default; }
+  .sv-add { display: flex; gap: 8px; align-items: center; }
+  .sv-add > * { flex: 1; }
+  .sv-empty { font-size: 13px; color: var(--secondary-text-color); padding: 4px 2px; }
+`;
+
+// Drop keys the user cleared, so the YAML stays as short as the choices made.
+const cleanConfig = (obj) => {
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === undefined || v === "" || v === null) continue;
+    if (Array.isArray(v) && !v.length) continue;
+    out[k] = v;
+  }
+  return out;
+};
+
+class SavvyEditor extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" });
+    this._open = new Set();
+  }
+  setConfig(config) {
+    this._config = { ...config };
+    this._render();
+  }
+  set hass(hass) {
+    const first = !this._hass;
+    this._hass = hass;
+    if (first) ensureHaForm().then(() => this._render());
+    for (const f of this.shadowRoot.querySelectorAll("ha-form")) f.hass = hass;
+    for (const l of this.shadowRoot.querySelectorAll("savvy-list-editor")) l.hass = hass;
+  }
+  // Cards override: returns the schema for the current config (may depend on hass, e.g.
+  // climate lists the area's climate entities).
+  schema() { return []; }
+
+  _emit(config) {
+    this._config = cleanConfig(config);
+    // HA answers config-changed with setConfig, but the forms mustn't show stale values
+    // meanwhile (or where nothing answers)
+    for (const f of this.shadowRoot.querySelectorAll("ha-form")) f.data = this._config;
+    this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: this._config }, bubbles: true, composed: true }));
+  }
+
+  _render() {
+    if (!this._config) return;
+    const root = this.shadowRoot;
+    if (!root.__style) { root.__style = document.createElement("style"); root.__style.textContent = EDITOR_CSS; root.appendChild(root.__style); }
+    let wrap = root.querySelector(".sv-ed");
+    if (!wrap) { wrap = document.createElement("div"); wrap.className = "sv-ed"; root.appendChild(wrap); }
+    const schema = this.schema(this._hass, this._config) || [];
+    // consecutive scalar entries share one ha-form; each list gets its own editor
+    const groups = [];
+    for (const entry of schema) {
+      if (entry.type === "list") groups.push(entry);
+      else if (groups.length && Array.isArray(groups[groups.length - 1])) groups[groups.length - 1].push(entry);
+      else groups.push([entry]);
+    }
+    const nodes = [];
+    groups.forEach((g, i) => {
+      const key = Array.isArray(g) ? `form:${i}` : `list:${g.name}`;
+      let node = wrap.querySelector(`[data-key="${CSS.escape(key)}"]`);
+      if (Array.isArray(g)) {
+        if (!node) {
+          node = document.createElement("ha-form");
+          node.dataset.key = key;
+          node.addEventListener("value-changed", (e) => {
+            e.stopPropagation();
+            this._emit({ ...this._config, ...e.detail.value });
+          });
+        }
+        const labels = new Map(), helps = new Map();
+        const walk = (list) => list.forEach((s) => {
+          if (s.name && s.label) labels.set(s.name, s.label);
+          if (s.name && s.helper) helps.set(s.name, s.helper);
+          if (s.schema) walk(s.schema);
+        });
+        walk(g);
+        node.computeLabel = (s) => labels.get(s.name) || title(s.name);
+        node.computeHelper = (s) => helps.get(s.name) || "";
+        node.schema = g;
+        node.data = this._config;
+        node.hass = this._hass;
+      } else {
+        if (!node) {
+          node = document.createElement("savvy-list-editor");
+          node.dataset.key = key;
+          node.addEventListener("list-changed", (e) => {
+            e.stopPropagation();
+            this._emit({ ...this._config, [g.name]: e.detail.items });
+          });
+        }
+        node.hass = this._hass;
+        node.setup(g, this._config[g.name]);
+      }
+      nodes.push(node);
+    });
+    for (const n of [...wrap.children]) if (!nodes.includes(n)) n.remove();
+    nodes.forEach((n) => wrap.appendChild(n));
+  }
+}
+
+// An ordered list of items (strings or objects): add, remove, reorder, edit one at a time.
+class SavvyListEditor extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" });
+    this._openIdx = -1;
+  }
+  set hass(h) {
+    this._hass = h;
+    for (const f of this.shadowRoot.querySelectorAll("ha-form, ha-entity-picker, ha-selector")) f.hass = h;
+  }
+  setup(spec, items) {
+    this._spec = spec;
+    this._items = [].concat(items || []);
+    this._render();
+  }
+  _emit() {
+    // a copy: listeners keep what they were given, later edits don't rewrite it
+    this.dispatchEvent(new CustomEvent("list-changed", { detail: { items: [...this._items] }, bubbles: true, composed: true }));
+    this._render();
+  }
+  _summary(item) {
+    if (this._spec.summary) return this._spec.summary(item, this._hass);
+    const o = typeof item === "string" ? { entity: item } : item;
+    const st = o.entity && this._hass?.states[o.entity];
+    return { title: o.name || st?.attributes.friendly_name || o.entity || o.navigation_path || "Item", sub: o.entity || "" };
+  }
+  _render() {
+    const root = this.shadowRoot, spec = this._spec;
+    if (!spec) return;
+    root.innerHTML = `<style>${EDITOR_CSS}</style>
+      <div class="sv-section">
+        <div class="sv-label"></div>${spec.helper ? '<div class="sv-help"></div>' : ""}
+        <div class="sv-list"></div>
+        <div class="sv-add"></div>
+      </div>`;
+    root.querySelector(".sv-label").textContent = spec.label || title(spec.name);
+    if (spec.helper) root.querySelector(".sv-help").textContent = spec.helper;
+    const list = root.querySelector(".sv-list");
+    if (!this._items.length) {
+      const e = document.createElement("div");
+      e.className = "sv-empty";
+      e.textContent = spec.empty || "Nothing added.";
+      list.appendChild(e);
+    }
+    this._items.forEach((item, i) => {
+      const row = document.createElement("div");
+      row.className = "sv-item";
+      const s = this._summary(item);
+      row.innerHTML = `<div class="sv-item-head"><span class="t"></span>
+        <button class="sv-ibtn" data-a="up" aria-label="Move up"><ha-icon icon="mdi:arrow-up"></ha-icon></button>
+        <button class="sv-ibtn" data-a="down" aria-label="Move down"><ha-icon icon="mdi:arrow-down"></ha-icon></button>
+        ${spec.item ? '<button class="sv-ibtn" data-a="edit" aria-label="Edit"><ha-icon icon="mdi:pencil"></ha-icon></button>' : ""}
+        <button class="sv-ibtn" data-a="remove" aria-label="Remove"><ha-icon icon="mdi:close"></ha-icon></button></div>`;
+      const t = row.querySelector(".t");
+      t.textContent = s.title;
+      if (s.sub && s.sub !== s.title) { const sm = document.createElement("small"); sm.textContent = s.sub; t.appendChild(sm); }
+      row.querySelector('[data-a="up"]').disabled = i === 0;
+      row.querySelector('[data-a="down"]').disabled = i === this._items.length - 1;
+      row.querySelector(".sv-item-head").addEventListener("click", (e) => {
+        const a = e.target.closest("[data-a]")?.dataset.a;
+        if (!a) return;
+        if (a === "up" && i > 0) [this._items[i - 1], this._items[i]] = [this._items[i], this._items[i - 1]];
+        else if (a === "down" && i < this._items.length - 1) [this._items[i + 1], this._items[i]] = [this._items[i], this._items[i + 1]];
+        else if (a === "remove") { this._items.splice(i, 1); if (this._openIdx === i) this._openIdx = -1; }
+        else if (a === "edit") { this._openIdx = this._openIdx === i ? -1 : i; this._render(); return; }
+        this._emit();
+      });
+      if (spec.item && this._openIdx === i) {
+        const body = document.createElement("div");
+        body.className = "sv-item-body";
+        const form = document.createElement("ha-form");
+        const obj = typeof item === "string" ? { entity: item } : item;
+        form.schema = spec.item;
+        form.data = obj;
+        form.hass = this._hass;
+        form.computeLabel = (sch) => sch.label || title(sch.name);
+        form.addEventListener("value-changed", (e) => {
+          e.stopPropagation();
+          this._items[i] = cleanConfig(e.detail.value);
+          this.dispatchEvent(new CustomEvent("list-changed", { detail: { items: [...this._items] }, bubbles: true, composed: true }));
+        });
+        body.appendChild(form);
+        row.appendChild(body);
+      }
+      list.appendChild(row);
+    });
+    // add: an entity picker (or whatever selector the spec asks for)
+    const add = root.querySelector(".sv-add");
+    const picker = document.createElement("ha-selector");
+    picker.hass = this._hass;
+    picker.selector = spec.add?.selector || { entity: {} };
+    picker.label = spec.add?.label || "Add";
+    picker.value = "";
+    picker.addEventListener("value-changed", (e) => {
+      const v = e.detail.value;
+      if (!v) return;
+      this._items.push(spec.add?.make ? spec.add.make(v) : (spec.item ? { entity: v } : v));
+      this._emit();
+    });
+    add.appendChild(picker);
+  }
+}
+if (!customElements.get("savvy-list-editor")) customElements.define("savvy-list-editor", SavvyListEditor);
+
+// Defines `<type>-editor` for a card from a schema function.
+const defineEditor = (type, schemaFn) => {
+  const name = `${type}-editor`;
+  if (!customElements.get(name)) {
+    customElements.define(name, class extends SavvyEditor { schema(hass, config) { return schemaFn(hass, config); } });
+  }
+  return name;
+};
+
+// Schema snippets every card reuses.
+const S = {
+  area: (name = "area", label = "Area") => ({ name, label, selector: { area: {} } }),
+  entity: (name, label, domain, extra = {}) => ({ name, label, selector: { entity: domain ? { domain } : {} }, ...extra }),
+  bool: (name, label, helper) => ({ name, label, helper, selector: { boolean: {} } }),
+  text: (name, label, helper) => ({ name, label, helper, selector: { text: {} } }),
+  icon: (name = "icon", label = "Icon") => ({ name, label, selector: { icon: {} } }),
+  number: (name, label, min, max, step = 1, unit) => ({ name, label, selector: { number: { min, max, step, mode: "box", unit_of_measurement: unit } } }),
+  select: (name, label, options) => ({ name, label, selector: { select: { mode: "dropdown", options } } }),
+  action: (name, label) => ({ name, label, selector: { ui_action: {} } }),
+  color: (name = "color", label = "Colour") => ({ name, label, selector: { text: {} }, helper: "An HA colour name (blue, amber…) or a hex like #F5B83D" }),
+  grid: (...schema) => ({ type: "grid", name: "", schema }),
+  section: (label, schema, expanded = false) => ({ type: "expandable", name: "", title: label, expanded, schema }),
+  // the one chip spec, as a list editor
+  chips: (name = "chips", label = "Chips", helper = "Extra entities shown as chips, each with its own actions.") => ({
+    name, label, helper, type: "list",
+    item: [
+      { name: "entity", label: "Entity", selector: { entity: {} } },
+      { type: "grid", name: "", schema: [
+        { name: "name", label: "Name", selector: { text: {} } },
+        { name: "icon", label: "Icon", selector: { icon: {} } },
+      ] },
+      { name: "color", label: "Colour", selector: { text: {} } },
+      { name: "show_state", label: "Show state", selector: { boolean: {} } },
+      { name: "tap_action", label: "Tap", selector: { ui_action: {} } },
+      { name: "hold_action", label: "Hold", selector: { ui_action: {} } },
+    ],
+  }),
+};

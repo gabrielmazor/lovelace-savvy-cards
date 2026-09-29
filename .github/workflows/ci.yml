@@ -1,0 +1,29 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: dist is built from the committed sources
+        run: node build.mjs --check
+      - name: syntax
+        run: node --check dist/savvy-cards.js
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Playwright (test-only, nothing is added to the repo)
+        run: npm install --no-save playwright && npx playwright install --with-deps chromium
+      - run: node test/run.mjs
+  hacs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: hacs/action@main
+        with: { category: plugin }

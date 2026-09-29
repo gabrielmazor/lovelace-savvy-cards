@@ -1,0 +1,46 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { background: #1c1c1e; margin: 0; padding: 16px; font-family: system-ui; color: #999; }
+  body.light { background: #f2f2f7; }
+  #stage { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script>window.__SAVVY_TEST__ = true;</script>
+<script src="icons.js"></script>
+<script src="ha-stubs.js"></script>
+<script src="house.js"></script>
+<script src="../dist/savvy-cards.js"></script>
+<script>
+  // A live house every spec can drive: window.hass, window.log (service calls),
+  // window.mount(type, config, width) -> the card element, window.setStates(patch).
+  const house = window.makeHouse();
+  window.house = house;
+  window.log = [];
+  const dark = !document.body.classList.contains("light");
+  window.hass = window.makeHass({ ...house, dark, log: window.log });
+  window.cards = [];
+  window.mount = (type, config, width = 420) => {
+    const el = document.createElement(type);
+    el.setConfig(config);
+    el.style.cssText = `display:block;width:${width}px`;
+    document.getElementById("stage").appendChild(el);
+    el.hass = window.hass;
+    window.cards.push(el);
+    return el;
+  };
+  window.setStates = (patch) => {
+    for (const [id, v] of Object.entries(patch)) {
+      const next = typeof v === "string" ? { state: v } : v;
+      house.states[id] = { ...house.states[id], ...next, last_changed: next.last_changed || new Date().toISOString() };
+    }
+    window.hass = { ...window.hass, states: { ...house.states } };
+    for (const c of window.cards) c.hass = window.hass;
+  };
+</script>
+</body>
+</html>
