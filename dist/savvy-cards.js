@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.0.1 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.1.0 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.0.1";
+const SAVVY_VERSION = "0.1.0";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
