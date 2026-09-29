@@ -321,3 +321,27 @@ const S = {
     ],
   }),
 };
+
+// The mode chip's options: the entity, then an icon and a colour for each of its options
+// (found from the mode dictionary until set).
+const modeSchema = (hass, c, { name = "mode", label = "Mode", helper } = {}) => {
+  const opts = (hass && c[name] && hass.states[c[name]]?.attributes.options) || [];
+  return [
+    { name, label, helper: helper || "Any input_select or select: a house mode, a room's scenes. Tapping the chip lists its options.",
+      selector: { entity: { domain: ["input_select", "select"] } } },
+    { name: "mode_label", label: "Mode caption", selector: { text: {} } },
+    ...(opts.length ? [
+      { type: "expandable", name: "mode_icons", title: "Mode icons", schema: opts.map((o) => ({ name: o, label: o, selector: { icon: { placeholder: modeLook(o).icon } } })) },
+      { type: "expandable", name: "mode_colors", title: "Mode colours", schema: opts.map((o) => ({ name: o, label: o, helper: modeLook(o).color || "No colour", selector: { text: {} } })) },
+    ] : []),
+  ];
+};
+
+// The badge row: pinned entities, then what the area has.
+const badgeSchema = ({ pinnedLabel = "Pinned", pinnedHelp = "Always shown, first and in this order: a lights helper, presence, a door." } = {}) => [
+  S.chips("entities", pinnedLabel, pinnedHelp),
+  S.bool("auto_discover", "Also show what the area has", "Presence and doors always; media, locks, climate, fans, covers, windows, leaks and alarms while active.", true),
+  { name: "exclude_kinds", label: "Don't discover", selector: { select: { multiple: true, options: BADGE_KINDS.map((k) => ({ value: k.key, label: k.name })) } } },
+  { name: "include", label: "Also discover", helper: "Entities to treat as if they were in this area (a lock with no area).", selector: { entity: { multiple: true } } },
+  { name: "exclude", label: "Never show", selector: { entity: { multiple: true } } },
+];

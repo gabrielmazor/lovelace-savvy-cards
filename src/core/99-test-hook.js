@@ -10,5 +10,6 @@ if (window.__SAVVY_TEST__) {
     duration, since, relativeTime, axisLabel, momentLabel, fmtNumber, withUnit, isTimestamp,
     fetchHistory, fetchRange, fetchAttributeHistory, resample, seriesStats, stateRuns, numericPoints, linePath,
     Sheet, EntityListSheet, SavvyEditor, defineEditor, S, version: SAVVY_VERSION,
+    roomBadges, roomTemperature, areaLights, houseLights, housePlaying, houseTemperature, houseSecurity, modeInfo, legacyBadges,
   };
 }

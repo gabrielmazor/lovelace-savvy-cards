@@ -103,7 +103,7 @@
     if (domain === "binary_sensor") {
       if (["motion", "occupancy", "presence"].includes(dc)) return st.state === "on" ? "mdi:motion-sensor" : "mdi:motion-sensor-off";
       if (dc === "door") return st.state === "on" ? "mdi:door-open" : "mdi:door-closed";
-      if (dc === "window") return "mdi:window-shutter-open";
+      if (dc === "window") return st.state === "on" ? "mdi:window-open" : "mdi:window-closed";
       if (dc === "moisture") return "mdi:water-alert";
       if (["smoke", "gas", "carbon_monoxide"].includes(dc)) return "mdi:smoke-detector-alert";
       if (dc === "connectivity") return st.state === "on" ? "mdi:check-network-outline" : "mdi:close-network-outline";

@@ -18,6 +18,8 @@ const VACUUM_WS = `window.hass.callWS = async (m) => {
   if (m.type === "vacuum/get_segments") return { segments: [] };
   throw new Error("unmocked " + m.type);
 };`;
+// the tiles: three rooms side by side (the first is mounted by the loop)
+const TILES = `window.__tiles = () => { for (const area of ["bedroom", "office"]) window.mount("savvy-room-tile", { area }, 260); };`;
 const SHOTS = [
   ["lights", "savvy-lights-card", { area: "living_room", featured: ["light.living_room_ceiling"], chips: [{ entity: "switch.living_room_plug", name: "Plug" }] }, 520],
   ["lights-compact", "savvy-lights-card", { area: "living_room", layout: "compact" }, 520],
@@ -27,6 +29,12 @@ const SHOTS = [
   ["vacuum-compact", "savvy-vacuum-card", { entity: "vacuum.robot", layout: "compact" }, 460, VACUUM_WS],
   ["health", "savvy-health-card", { watchman: ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"], max_rows: 10 }, 420],
   ["health-batteries", "savvy-health-card", { source: "battery" }, 420],
+  ["home", "savvy-home-card", { mode: "input_select.house_mode", home_path: "/lovelace/home",
+    health: { watchman: ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"] } }, 600],
+  ["room", "savvy-room-card", { area: "living_room", mode: "input_select.living_room_scene", home_path: "/lovelace/home", room_path: "/lovelace/{slug}",
+    entities: [{ entity: "input_boolean.movie_mode", name: "Movie", icon: "mdi:movie-open" }] }, 600],
+  ["heading", "savvy-heading-card", { area: "living_room", mode: "input_select.living_room_scene" }, 520],
+  ["tiles", "savvy-room-tile", { area: "living_room", mode: "input_select.living_room_scene" }, 260, TILES],
 ];
 
 const TYPES = { ".html": "text/html", ".js": "application/javascript" };
@@ -43,7 +51,7 @@ const browser = await chromium.launch();
 const errors = [];
 for (const [name, type, config, width, setup] of SHOTS) {
   for (const theme of ["dark", "light"]) {
-    const page = await browser.newPage({ viewport: { width: width + 80, height: 1200 }, deviceScaleFactor: 2 });
+    const page = await browser.newPage({ viewport: { width: (name === "tiles" ? 3 * width + 24 : width) + 80, height: 1200 }, deviceScaleFactor: 2 });
     page.on("pageerror", (e) => errors.push(`${name}/${theme}: ${e}`));
     if (theme === "light") {
       await page.addInitScript(() => new MutationObserver((_, o) => { if (document.body) { document.body.classList.add("light"); o.disconnect(); } })
@@ -55,10 +63,11 @@ for (const [name, type, config, width, setup] of SHOTS) {
     await page.evaluate(({ type, config, width }) => {
       document.getElementById("stage").style.cssText = "padding:16px;display:block";
       window.mount(type, config, width);
+      if (window.__tiles) { document.getElementById("stage").style.cssText = "padding:16px;display:flex;gap:12px"; window.__tiles(); }
     }, { type, config, width });
     await page.waitForTimeout(900);
     for (let i = 0; i < 30; i++) {
-      if (!(await page.evaluate(() => window.cards.some((c) => (c._springs || []).some((s) => !s.idle))))) break;
+      if (!(await page.evaluate(() => window.cards.some((c) => (c._springs || []).some((s) => !s.idle && s.group !== "liquid"))))) break;
       await page.waitForTimeout(150);
     }
     await page.locator("#stage").screenshot({ path: path.join(OUT, `${name}-${theme}.png`) });

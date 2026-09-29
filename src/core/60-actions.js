@@ -107,7 +107,9 @@ function bindPress(el, { spring, wake, onTap, onHold, onDouble, haptic: tapHapti
     if (taps >= 2) { taps = 0; haptic("medium"); onDouble(); return; }
     tapTimer = setTimeout(() => { taps = 0; if (tapHaptic) haptic(tapHaptic); onTap?.(); }, DOUBLE_MS);
   });
+  // only keys aimed at this element: a focused child with its own press handles its own
   el.addEventListener("keydown", (e) => {
+    if (e.target !== el && e.composedPath()[0] !== el) return;
     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); el.click(); }
   });
   // a gesture that turned into something else (a scrub) must not also fire the tap

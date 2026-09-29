@@ -11,10 +11,11 @@ same way: springs, not transitions; feedback the moment you touch; nothing that 
 
 - [Install](#install)
 - [How every Savvy card behaves](#how-every-savvy-card-behaves)
-- Cards: [Lights](#lights) · [Climate](#climate) · [Vacuum](#vacuum) · [Health](#health)
+- Cards: [Home](#home) · [Room](#room) · [Heading](#heading) · [Room tile](#room-tile) ·
+  [Lights](#lights) · [Climate](#climate) · [Vacuum](#vacuum) · [Health](#health)
 
-> Savvy is growing in waves. Home, room, heading and tile cards come next, then media,
-> cameras, the security snapshot, the entity card and graphs.
+> Savvy is growing in waves. Media, cameras, the security snapshot, the entity card and
+> graphs come next.
 
 ## Install
 
@@ -44,8 +45,157 @@ Then edit a dashboard, add a card, and search for **Savvy**.
 - **Sliders only move when you drag sideways.** A tap, or a finger on its way to
   scrolling the page, never changes a value.
 - **`layout: compact`** gives the smaller version of a card.
+- **Modes.** `mode:` puts any `input_select` or `select` (a house mode, a room's scenes)
+  on a card as a chip; tap it for a picker of every option. Each option gets an icon and
+  a colour from a built-in dictionary of a few hundred words ("Movie Night" is a movie,
+  "Guests" a group of people, "Sleep" a moon); set your own with `mode_icons` /
+  `mode_colors`, or per option in the editor. Hold the chip for its more-info.
+- **Badges: pinned, then discovered.** The home, room, heading and tile cards show what a
+  room has. `entities:` pins yours first, always shown, in your order (a lights helper,
+  a presence sensor). Then, with `auto_discover` on (the default), what the area has: one
+  badge per kind, presence and doors always, media, locks, climate, fans, covers,
+  windows, leaks and smoke while they're active. `exclude_kinds`, `exclude` and
+  `include` fine-tune it. Hold a kind with several members for a list of them.
 - **Keyboard:** everything is reachable with Tab and the arrow keys; focus rings only
   appear when you use the keyboard.
+
+---
+
+## Home
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/home-light.png">
+  <img src="docs/images/home-dark.png" width="600" alt="Savvy home card">
+</picture>
+
+The header for your home dashboard. On top, the house mode (tap to change it), the
+weather, and the health cog: its number is exactly what the [Health](#health) card
+lists, and holding it shows that list. Below, four chips that count by themselves, with
+no helper sensors: lights on, the average indoor temperature (the fan spins while an A/C
+runs), what's playing, and security (the alarm panel; with none, what's open or
+unlocked). Hold any of them for the entities behind it, each with its switch.
+
+```yaml
+type: custom:savvy-home-card
+mode: input_select.house_mode
+health:
+  navigation_path: /lovelace/admin
+lights:
+  tap_action:
+    action: navigate
+    navigation_path: /lovelace/lights
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `mode` | none | The house mode. Never guessed; hidden when unset. |
+| `mode_label` | `Home mode` | The caption under it. |
+| `mode_icons` / `mode_colors` | the dictionary | Per option, one line each under the key: `Movie Night: mdi:popcorn`. |
+| `home_path` | none | A home button that opens this path. |
+| `weather` | the first weather entity | A weather entity, or `false`. |
+| `health` | on | The cog: `navigation_path` (where a tap goes; without one a tap lists the issues), and the Health card's `watchman`, `battery_threshold`, `exclude_platforms`, `warn_above`. `false` hides it. |
+| `lights` / `climate` / `media` / `security` | on | Each chip: `false` hides it; or `{ entity, name, icon, color, tap_action, hold_action }`, where `entity` shows that entity's state instead of the count. Tap and hold list what's counted unless set. |
+| `chips` | none | Your own chips after the four. |
+
+---
+
+## Room
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/room-light.png">
+  <img src="docs/images/room-dark.png" width="600" alt="Savvy room card">
+</picture>
+
+The header at the top of a room's page: its mode and temperature, a row of everything
+the room has (pinned first, then everything the area has, on or off, idle ones dimmed),
+your chips, and a row to jump to every other room.
+
+```yaml
+type: custom:savvy-room-card
+area: living_room
+mode: input_select.living_room_scene
+room_path: /lovelace/{slug}
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `area` | **required** | The room. |
+| `mode`, `mode_label`, `mode_icons`, `mode_colors` | none, `Room mode` | The room's mode or scenes (see [Modes](#how-every-savvy-card-behaves)). |
+| `temperature` | found | The area's temperature sensor, else its climate unit's reading. An entity, or `false`. |
+| `home_path` | none | A home button that opens this path. |
+| `entities`, `auto_discover`, `exclude_kinds`, `include`, `exclude` | discovered | The row (see [Badges](#how-every-savvy-card-behaves)). Here every kind the room has shows, active or not. |
+| `icons_only` | `false` | Just the coloured icons. |
+| `chips` | none | Your own chips, in a row of their own. |
+| `room_path` | none | Turns on the rooms row: where each room goes. `{area}` is the area id, `{slug}` the same with dashes: `/lovelace/{slug}`. |
+| `room_order` | by name | Rooms listed first, in this order. The editor starts it as the discovered order. |
+| `exclude_rooms` | none | Rooms to leave out. |
+| `rooms` | none | Per room: `{ area, name, icon, navigation_path }`. |
+
+---
+
+## Heading
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/heading-light.png">
+  <img src="docs/images/heading-dark.png" width="520" alt="Savvy heading card">
+</picture>
+
+The first card in a room's section: its name and icon (from the area), its mode, its
+temperature (warming in colour when it's hot, cooling when it's cold) and its badges. A
+heading, not a panel: no background unless `filled: true`.
+
+```yaml
+type: custom:savvy-heading-card
+area: living_room
+navigation_path: /lovelace/living-room
+mode: input_select.living_room_scene
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `area` | **required** (or `name`) | The room. |
+| `name` / `icon` | the area's | Title and icon. |
+| `navigation_path` | none | Tapping the name opens it (or set `tap_action` / `hold_action`). |
+| `mode`, `mode_label`, `mode_icons`, `mode_colors` | none | The room's mode. |
+| `temperature` | found | As on the Room card. |
+| `entities`, `auto_discover`, `exclude_kinds`, `include`, `exclude` | discovered | The badges. |
+| `heading_style` | `title` | `subtitle` for a smaller one. |
+| `filled` | `false` | Sit on a card background. |
+
+---
+
+## Room tile
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/tiles-light.png">
+  <img src="docs/images/tiles-dark.png" width="780" alt="Savvy room tiles">
+</picture>
+
+A room at a glance. Its icon sits in a small drop that fills with the room's light:
+brighter as its lights are brighter, tinted by the first coloured bulb, and wobbling like
+water when a light switches. Tap to go to the room (or list its lights), double tap to
+turn its lights off or on, hold for its lights, each with its switch.
+
+```yaml
+type: custom:savvy-room-tile
+area: kitchen
+navigation_path: /lovelace/kitchen
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `area` | **required** | The room: its name, icon, lights, temperature, badges. |
+| `name` / `icon` | the area's | Title and icon. |
+| `navigation_path` | none | Where a tap goes. Without it a tap lists the room's lights. |
+| `mode`, `mode_icons`, `mode_colors` | none | Shown under the name, with its colour. Hold it for more-info. |
+| `temperature` | found | As on the Room card. |
+| `toggle` | none | An entity (a helper wired to your automations) that the double tap switches instead of the lights. With one, lights on while it's off show as a dimmer drop. |
+| `lights` | the area's | Only these lights. |
+| `count` | counted | A sensor with the number of lights on. |
+| `color_lights` | `lights` | Lights whose colour tints the drop. |
+| `tint` | `#F5B83D` | The drop's colour for white light. |
+| `entities`, `auto_discover`, `exclude_kinds`, `include`, `exclude` | discovered | The badges. A pinned `toggle` entity glows in the drop's colour. |
+| `tap_action` / `double_tap_action` / `hold_action` | as above | Override any gesture. |
 
 ---
 

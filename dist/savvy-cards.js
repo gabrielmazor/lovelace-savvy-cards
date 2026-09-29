@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.1.2 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.2.0 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.1.2";
+const SAVVY_VERSION = "0.2.0";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -447,6 +447,197 @@ function shortName(hass, id, area) {
 function asItems(v) {
   if (v === false || v == null) return [];
   return [].concat(v).map((x) => (typeof x === "string" ? { entity: x } : x)).filter((x) => x && (x.entity || x.navigation_path || x.tap_action));
+}
+
+// ===== core/25-rooms.js =====
+// ---------------------------------------------------------------------------------------
+// core/rooms: what a room has and what the house is doing, for the home, room, heading and
+// tile cards. All of it is computed from states and the registries: no helper needed.
+//
+// Badges (a room's row of little status icons) follow one rule everywhere:
+//   entities:       pinned, in this order, always shown (dimmed when idle)
+//   auto_discover:  true (default) adds what the area has, one badge per kind; presence and
+//                   doors always show, the rest only while they're doing something.
+//                   A kind you pinned an entity of is yours: it isn't discovered again.
+//   include:        entities discovered as if they were in the area (a lock that has none)
+//   exclude:        entities never discovered;  exclude_kinds: kinds never discovered
+// ---------------------------------------------------------------------------------------
+
+const BADGE_KINDS = [
+  { key: "presence", name: "Presence", domain: "binary_sensor", dc: ["occupancy", "motion", "presence"], always: true },
+  { key: "door", name: "Door", domain: "binary_sensor", dc: ["door", "garage_door", "opening"], always: true },
+  { key: "media", name: "Media", domain: "media_player", color: "#C98BD9" },
+  { key: "lock", name: "Lock", domain: "lock", color: "#E6C48F" },
+  { key: "climate", name: "Climate", domain: "climate", color: "#7FC4E8", icon: "mdi:fan", spin: true },
+  { key: "fan", name: "Fan", domain: "fan", color: "#7FC4E8" },
+  { key: "cover", name: "Cover", domain: "cover" },
+  { key: "window", name: "Window", domain: "binary_sensor", dc: ["window"] },
+  { key: "leak", name: "Leak", domain: "binary_sensor", dc: ["moisture"], color: "#5FA8E0", critical: true },
+  { key: "alarm", name: "Smoke / gas", domain: "binary_sensor", dc: ["smoke", "gas", "carbon_monoxide"], color: "#E06666", critical: true },
+];
+const LIGHT_COLOR = "#F5B83D";
+// a pinned entity's colour when active, by domain (a kind's colour wins when it matches)
+const DOMAIN_COLOR = { light: LIGHT_COLOR, switch: LIGHT_COLOR, input_boolean: LIGHT_COLOR, media_player: "#C98BD9",
+  lock: "#E6C48F", climate: "#7FC4E8", fan: "#7FC4E8", alarm_control_panel: "#E6C48F" };
+
+const kindOf = (hass, id) => {
+  const d = domainOf(id), dc = hass.states[id]?.attributes.device_class;
+  return BADGE_KINDS.find((k) => k.domain === d && (!k.dc || k.dc.includes(dc))) || null;
+};
+
+// A group entity (a light group, a media group) lists its members in `entity_id`:
+// counting it too would count its lights twice.
+const isGroup = (st) => Array.isArray(st?.attributes.entity_id);
+
+// The badge row for an area: [{ key, entity, ids, kind, on, pinned, cfg }]
+// opts.idle: every kind the area has, active or not (the room card's full sensor row)
+function roomBadges(hass, area, cfg = {}, opts = {}) {
+  const out = [], pinnedIds = new Set(), pinnedKinds = new Set();
+  for (const item of asItems(cfg.entities)) {
+    const st = hass.states[item.entity];
+    if (!st) continue;
+    const kind = kindOf(hass, item.entity);
+    pinnedIds.add(item.entity);
+    if (kind) pinnedKinds.add(kind.key);
+    out.push({ key: `pin:${item.entity}`, entity: item.entity, ids: [item.entity], kind, on: isActive(st), pinned: true, cfg: item });
+  }
+  if (cfg.auto_discover === false || (!area && !cfg.include)) return out;
+  const skip = new Set([...asItems(cfg.exclude).map((i) => i.entity), ...pinnedIds]);
+  const skipKinds = new Set([].concat(cfg.exclude_kinds || []));
+  const ids = [...new Set([...areaEntities(hass, area), ...asItems(cfg.include).map((i) => i.entity)])];
+  for (const kind of BADGE_KINDS) {
+    if (skipKinds.has(kind.key) || pinnedKinds.has(kind.key)) continue;
+    const found = pick(hass, ids, { domains: kind.domain, deviceClasses: kind.dc, exclude: [...skip] }).filter((id) => !isGroup(hass.states[id]));
+    if (!found.length) continue;
+    const active = found.find((id) => isActive(hass.states[id]));
+    if (!active && !kind.always && !opts.idle) continue;
+    out.push({ key: kind.key, entity: active || found[0], ids: found, kind, on: !!active, pinned: false, cfg: {} });
+  }
+  return out;
+}
+
+// The look of a badge: icon (null: the entity's own state icon), colour when active.
+const badgeLook = (b) => ({
+  icon: b.cfg.icon || b.kind?.icon || null,
+  color: colorOf(b.cfg.color) || b.kind?.color || DOMAIN_COLOR[domainOf(b.entity)] || "",
+  spin: !!b.kind?.spin && !b.cfg.icon,
+  critical: !!b.kind?.critical,
+});
+
+// What a badge does when config says nothing: pinned entities do their domain's obvious
+// thing (a helper toggles, a sensor opens more-info); a discovered kind with several
+// members lists them on hold.
+const badgeDefaults = (b) => ({
+  tap: b.pinned ? defaultTapAction(b.entity) : { action: "more-info" },
+  hold: b.ids.length > 1 ? { action: "list" } : { action: "more-info" },
+});
+
+// Is a climate unit actually blowing? hvac_action when it reports one, else its state.
+const climateRunning = (st) => {
+  if (!st || isOff(st) || st.state === "off") return false;
+  const a = st.attributes.hvac_action;
+  return a === undefined || !["off", "idle"].includes(a);
+};
+// Turns per second for a spinning fan icon, by the unit's fan speed.
+const SPIN = { low: 1 / 6.5, medium: 1 / 4.4, high: 1 / 3.1 };
+const fanRate = (st) => {
+  const mode = norm(st?.attributes.fan_mode);
+  for (const key in SPIN) if (mode.includes(key)) return SPIN[key];
+  if (/quiet|silent|eco|min|low/.test(mode)) return SPIN.low;
+  if (/turbo|max|strong|high/.test(mode)) return SPIN.high;
+  return SPIN.medium;
+};
+
+// The room's temperature: the one config names (false: none), else the area's temperature
+// sensor, else its climate unit's own reading. -> { entity, value, unit } or null
+function roomTemperature(hass, area, cfg = {}) {
+  const given = cfg.temperature;
+  if (given === false) return null;
+  const read = (id) => {
+    const st = hass.states[id];
+    const v = st ? parseFloat(st.state) : NaN;
+    return Number.isFinite(v) ? { entity: id, value: v, unit: st.attributes.unit_of_measurement || "°C" } : null;
+  };
+  if (typeof given === "string") return read(given);
+  if (!area) return null;
+  const ids = areaEntities(hass, area);
+  const sensor = pick(hass, ids, { domains: "sensor", deviceClasses: "temperature" }).find((id) => read(id));
+  if (sensor) return read(sensor);
+  for (const id of pick(hass, ids, { domains: "climate" })) {
+    const st = hass.states[id], v = Number(st.attributes.current_temperature);
+    if (st.attributes.current_temperature != null && Number.isFinite(v)) {
+      return { entity: id, value: v, unit: hass.config?.unit_system?.temperature || "°C" };
+    }
+  }
+  return null;
+}
+
+// The lights of an area (groups left out), by name.
+const areaLights = (hass, area) => pick(hass, areaEntities(hass, area), { domains: "light" })
+  .filter((id) => !isGroup(hass.states[id]))
+  .sort((a, b) => (hass.states[a].attributes.friendly_name || a).localeCompare(hass.states[b].attributes.friendly_name || b));
+
+// ---- the house: what the home card's four chips count
+
+// Every light and every media player in the house that sits in an area (integration and
+// cloud entities without a room aren't the house's lights).
+const houseOf = (hass, domain) => houseEntities(hass, { inArea: true })
+  .filter((id) => domainOf(id) === domain && !isGroup(hass.states[id]));
+
+function houseLights(hass) {
+  const all = houseOf(hass, "light");
+  return { all, on: all.filter((id) => hass.states[id].state === "on") };
+}
+function housePlaying(hass) {
+  const all = houseOf(hass, "media_player");
+  return { all, on: all.filter((id) => hass.states[id].state === "playing") };
+}
+
+// The average indoor temperature: climate units' own readings, else the temperature
+// sensors assigned to an area. -> { value, unit, ids, running: [climates blowing] }
+function houseTemperature(hass) {
+  const inside = houseEntities(hass, { inArea: true });
+  const climates = inside.filter((id) => domainOf(id) === "climate");
+  const running = climates.filter((id) => climateRunning(hass.states[id]));
+  let ids = climates.filter((id) => Number.isFinite(Number(hass.states[id].attributes.current_temperature)) && hass.states[id].attributes.current_temperature != null);
+  let values = ids.map((id) => Number(hass.states[id].attributes.current_temperature));
+  let unit = hass.config?.unit_system?.temperature || "°C";
+  if (!ids.length) {
+    ids = pick(hass, inside, { domains: "sensor", deviceClasses: "temperature" }).filter((id) => Number.isFinite(parseFloat(hass.states[id].state)));
+    values = ids.map((id) => parseFloat(hass.states[id].state));
+    if (ids.length) unit = hass.states[ids[0]].attributes.unit_of_measurement || unit;
+  }
+  const value = values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
+  return { value, unit, ids: [...new Set([...climates, ...ids])], running };
+}
+
+// Security: the alarm panel when there is one; otherwise what's open or unlocked.
+// -> { entity, state, open: [ids], ids: [everything relevant] }
+function houseSecurity(hass) {
+  const inside = houseEntities(hass);
+  const alarm = inside.find((id) => domainOf(id) === "alarm_control_panel") || null;
+  const locks = inside.filter((id) => domainOf(id) === "lock");
+  const openings = pick(hass, houseEntities(hass, { inArea: true }), { domains: "binary_sensor", deviceClasses: ["door", "window", "garage_door", "opening"] });
+  const open = [...locks, ...openings].filter((id) => isActive(hass.states[id]));
+  return { entity: alarm, open, ids: [...(alarm ? [alarm] : []), ...locks, ...openings] };
+}
+
+// The pre-Savvy badge keys, for the room / heading / tile cards: `locks: lock.x` (or any
+// kind's own key) named entities to show as that kind; `light_state` was the room's
+// lights helper, shown first and toggled on tap; `ignore_sensors` hid kinds.
+function legacyBadges(c) {
+  const out = { ...c };
+  const include = asItems(c.include).map((i) => i.entity);
+  for (const k of BADGE_KINDS) {
+    for (const key of [k.key, `${k.key}s`]) {
+      const v = c[key];
+      if (typeof v === "string" || (Array.isArray(v) && v.every((x) => typeof x === "string"))) { include.push(...[].concat(v)); delete out[key]; }
+    }
+  }
+  if (include.length) out.include = [...new Set(include)];
+  if (c.light_state && c.entities === undefined) out.entities = [{ entity: c.light_state, name: "Light", icon: "mdi:light-switch" }];
+  if (c.ignore_sensors && c.exclude_kinds === undefined) out.exclude_kinds = c.ignore_sensors;
+  return out;
 }
 
 // ===== core/30-history.js =====
@@ -973,7 +1164,9 @@ function bindPress(el, { spring, wake, onTap, onHold, onDouble, haptic: tapHapti
     if (taps >= 2) { taps = 0; haptic("medium"); onDouble(); return; }
     tapTimer = setTimeout(() => { taps = 0; if (tapHaptic) haptic(tapHaptic); onTap?.(); }, DOUBLE_MS);
   });
+  // only keys aimed at this element: a focused child with its own press handles its own
   el.addEventListener("keydown", (e) => {
+    if (e.target !== el && e.composedPath()[0] !== el) return;
     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); el.click(); }
   });
   // a gesture that turned into something else (a scrub) must not also fire the tap
@@ -1218,6 +1411,507 @@ class EntityListSheet {
     }
     for (const [id, row] of box.__rows) if (!seen.has(id)) { row.remove(); box.__rows.delete(id); }
   }
+}
+
+// ===== core/75-mode.js =====
+// ---------------------------------------------------------------------------------------
+// core/mode: the mode chip every card shares. `mode:` names any input_select or select
+// (a house mode, a room's scene); it's never guessed. Each option gets its icon and colour
+// from the mode dictionary (core/palette), overridable with mode_icons / mode_colors.
+// Tapping the chip opens a picker that grows out of it, one row per option.
+// ---------------------------------------------------------------------------------------
+
+const SWAP_OUT = { response: 0.14, damping: 1 };
+const SWAP_IN = { response: 0.32, damping: 1 };
+
+// Everything a card shows about its mode. -> null when there's no such entity.
+function modeInfo(hass, id, cfg = {}) {
+  const st = id && hass.states[id];
+  if (!st) return null;
+  const looks = { icons: keyed(cfg.mode_icons), colors: keyed(cfg.mode_colors) };
+  const label = (value) => {
+    if (hass.formatEntityState) { try { return hass.formatEntityState(st, value); } catch (err) { /* older core */ } }
+    return title(value);
+  };
+  const options = (st.attributes.options || []).map((o) => ({ value: o, label: label(o), ...modeLook(o, looks) }));
+  return { entity: id, st, value: st.state, label: label(st.state), ...modeLook(st.state, looks), options };
+}
+
+const selectOption = (hass, id, option) => {
+  const d = domainOf(id);
+  hass.callService(d === "select" ? "select" : "input_select", "select_option", { option }, { entity_id: id });
+};
+
+// A value that changes by lifting the old one away and bringing the new one in. The card
+// steps `spring` with its others and calls paint() each frame.
+class Swap {
+  constructor(el, apply, group = "swap") {
+    this.el = el;
+    this.apply = apply;
+    this.spring = new Spring(1, SWAP_IN, group);
+    this.value = undefined;
+    this.pending = undefined;
+  }
+  set(value) {
+    if (this.value === undefined) { this.value = value; this.apply(value); return; }
+    if (value === this.value) { this.pending = undefined; this.spring.to(1, SWAP_IN); return; }
+    if (value === this.pending) return;
+    this.pending = value;
+    this.spring.to(0, SWAP_OUT);
+  }
+  paint(reduced) {
+    if (this.pending !== undefined && this.spring.x < 0.06) {
+      this.value = this.pending;
+      this.pending = undefined;
+      this.apply(this.value);
+      this.spring.to(1, SWAP_IN);
+    }
+    const s = clamp(this.spring.x);
+    put(this.el, "opacity", s > 0.999 ? "" : s.toFixed(3));
+    put(this.el, "transform", reduced || s > 0.999 ? "" : `translateY(${((this.pending !== undefined ? -1 : 1) * (1 - s) * 4).toFixed(2)}px)`);
+  }
+}
+
+const PICKER_CSS = `
+  .sv-pick-scrim { position: fixed; inset: 0; z-index: 996; }
+  .sv-pick {
+    --line: color-mix(in oklab, var(--primary-text-color) 9%, transparent);
+    position: fixed; z-index: 997; box-sizing: border-box;
+    padding: 8px; border-radius: 16px;
+    background: color-mix(in oklab, var(--primary-text-color) 7%, var(--card-background-color, #fff));
+    color: var(--primary-text-color);
+    box-shadow: 0 12px 34px rgb(0 0 0 / 0.26), 0 0 0 0.5px var(--line);
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px;
+    transform-origin: var(--ox, 50%) 0; opacity: 0;
+    font-family: var(--savvy-font-family, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", Roboto, sans-serif);
+    -webkit-font-smoothing: antialiased; user-select: none; -webkit-user-select: none;
+  }
+  .sv-pick[data-wide] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .sv-pick[data-wider] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .sv-pick[data-up] { transform-origin: var(--ox, 50%) 100%; }
+  .sv-pick .cap { grid-column: 1 / -1; padding: 2px 4px 3px; font-size: 10.5px; line-height: 13px; font-weight: 650;
+    letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); opacity: 0.8; }
+  .sv-opt { display: flex; align-items: center; gap: 8px; min-width: 0; height: 38px; padding: 0 10px; border-radius: 11px;
+    color: var(--secondary-text-color); font: inherit; font-size: 13px; line-height: 16px; font-weight: 550; letter-spacing: -0.004em;
+    background: none; border: 0; margin: 0; cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; text-align: start; }
+  .sv-opt ha-icon { --mdc-icon-size: 18px; flex: none; display: flex; color: var(--oc, var(--secondary-text-color)); }
+  .sv-opt span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sv-opt[data-sel] { background: color-mix(in oklab, var(--oc, var(--primary-text-color)) 16%, transparent); color: var(--oc, var(--primary-text-color)); }
+  @media (hover: hover) { .sv-opt:not([data-sel]):hover { background: color-mix(in oklab, var(--primary-text-color) 6%, transparent); } }
+  :host([kbd]) .sv-opt:focus-visible { outline: 2px solid var(--oc, rgb(88 142 233)); outline-offset: 1px; }
+`;
+
+// The picker: anchored to the chip that opened it, as wide as the card, closed by a pick,
+// a tap outside, Escape, or anything that moves the page.
+class ModePicker {
+  constructor(host, { onPick } = {}) {
+    this.host = host;
+    this.onPick = onPick;
+    const root = host.shadowRoot;
+    if (!root.__savvyPickCss) {
+      const style = document.createElement("style");
+      style.textContent = PICKER_CSS;
+      root.appendChild(style);
+      root.__savvyPickCss = style;
+    }
+    this.scrim = document.createElement("div");
+    this.scrim.className = "sv-pick-scrim";
+    this.el = document.createElement("div");
+    this.el.className = "sv-pick";
+    this.el.setAttribute("role", "listbox");
+    this.el.innerHTML = `<span class="cap"></span>`;
+    this.cap = this.el.firstChild;
+    this.rows = new Map();
+    this.spring = new Spring(0, MOTION.sheetIn, "picker", 0.002);
+    this.press = [];
+    this.job = (now, dt) => this.frame(dt);
+    this.isOpen = false;
+  }
+
+  open(anchor, bounds, info, caption) {
+    if (this.isOpen || !info) return;
+    this.isOpen = true;
+    this.anchor = anchor;
+    this.host.shadowRoot.append(this.scrim, this.el);
+    this.render(info, caption);
+    this.place(anchor, bounds);
+    this.returnTo = anchor;
+    this.onKey = (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); this.close(); } };
+    this.onMove = () => this.close();
+    window.addEventListener("keydown", this.onKey, true);
+    window.addEventListener("scroll", this.onMove, true);
+    window.addEventListener("resize", this.onMove);
+    // a frame later, so the tap that opened it doesn't close it
+    requestAnimationFrame(() => { if (this.isOpen) this.scrim.addEventListener("pointerdown", this.onScrim = (e) => { e.stopPropagation(); this.close(); }); });
+    attr(anchor, "aria-expanded", "true");
+    this.spring.to(1, MOTION.sheetIn);
+    haptic("light");
+    Clock.add(this.job);
+    (this.el.querySelector(".sv-opt[data-sel]") || this.el.querySelector(".sv-opt"))?.focus({ preventScroll: true });
+  }
+
+  close() {
+    if (!this.isOpen) return;
+    this.isOpen = false;
+    window.removeEventListener("keydown", this.onKey, true);
+    window.removeEventListener("scroll", this.onMove, true);
+    window.removeEventListener("resize", this.onMove);
+    this.scrim.removeEventListener("pointerdown", this.onScrim);
+    this.scrim.remove();
+    attr(this.anchor, "aria-expanded", "false");
+    if (this.host.shadowRoot.activeElement && this.el.contains(this.host.shadowRoot.activeElement)) this.returnTo?.focus?.({ preventScroll: true });
+    this.spring.to(0, MOTION.sheetOut);
+    if (MQ.reduced.matches || !this.host.isConnected) { this.spring.snap(0); this.frame(0); }
+    else Clock.add(this.job);
+  }
+
+  // Width follows the card; it opens below the chip, or above it near the bottom of the screen.
+  place(anchor, bounds) {
+    const a = anchor.getBoundingClientRect(), b = (bounds || anchor).getBoundingClientRect();
+    const width = Math.max(200, Math.min(520, b.width - 8));
+    let left = Math.max(b.left + 4, Math.min(a.left + a.width / 2 - width / 2, b.right - width - 4));
+    left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
+    put(this.el, "width", `${Math.round(width)}px`);
+    put(this.el, "left", `${Math.round(left)}px`);
+    put(this.el, "--ox", `${Math.round(a.left + a.width / 2 - left)}px`);
+    this.el.toggleAttribute("data-wide", width >= 330 && width < 450);
+    this.el.toggleAttribute("data-wider", width >= 450);
+    const h = this.el.getBoundingClientRect().height;
+    const up = a.bottom + 6 + h > window.innerHeight - 8 && a.top - 6 - h > 8;
+    this.el.toggleAttribute("data-up", up);
+    put(this.el, "top", `${Math.round(up ? a.top - 6 - h : a.bottom + 6)}px`);
+  }
+
+  // live: the selection follows the entity while it's open
+  render(info, caption) {
+    if (!info) return this.close();
+    this.info = info;
+    this.cap.hidden = !caption;
+    text(this.cap, caption || "");
+    const keep = new Set();
+    for (const o of info.options) {
+      keep.add(o.value);
+      let row = this.rows.get(o.value);
+      if (!row) {
+        row = document.createElement("button");
+        row.className = "sv-opt";
+        row.setAttribute("role", "option");
+        row.innerHTML = "<ha-icon></ha-icon><span></span>";
+        const spring = new Spring(0, MOTION.press, "pick-press");
+        row.__spring = spring;
+        this.press.push(row);
+        bindPress(row, { spring, wake: () => Clock.add(this.job), onTap: () => this.pick(o.value), haptic: null });
+        this.rows.set(o.value, row);
+      }
+      const sel = o.value === info.value;
+      put(row, "--oc", o.color || "");
+      attr(row.querySelector("ha-icon"), "icon", o.icon);
+      text(row.querySelector("span"), o.label);
+      attr(row, "data-sel", sel);
+      attr(row, "aria-selected", sel ? "true" : "false");
+      this.el.appendChild(row);
+    }
+    for (const [k, row] of this.rows) if (!keep.has(k)) { row.remove(); this.rows.delete(k); }
+  }
+
+  pick(value) {
+    const info = this.info;
+    this.close();
+    if (!info || info.value === value) return;
+    haptic("light");
+    this.onPick?.(info.entity, value);
+  }
+
+  frame(dt) {
+    const s = this.spring, red = MQ.reduced.matches;
+    let busy = false;
+    for (const sp of [s, ...this.press.map((r) => r.__spring)]) {
+      if (sp.idle) continue;
+      if (red) sp.snap(); else sp.step(dt);
+      busy = true;
+    }
+    const v = clamp(s.x);
+    put(this.el, "opacity", v.toFixed(3));
+    put(this.el, "pointer-events", this.isOpen ? "auto" : "none");
+    put(this.el, "transform", red ? "" : `scale(${(0.92 + 0.08 * v).toFixed(4)}) translateY(${((1 - v) * (this.el.hasAttribute("data-up") ? 6 : -6)).toFixed(2)}px)`);
+    for (const row of this.press) {
+      const p = row.__spring.x;
+      put(row, "transform", red || Math.abs(p) < 1e-4 ? "" : `scale(${(1 - 0.05 * p).toFixed(4)})`);
+    }
+    if (!this.isOpen && v < 0.01) { this.el.remove(); return false; }
+    return busy;
+  }
+}
+
+// ===== core/80-card.js =====
+// ---------------------------------------------------------------------------------------
+// core/card: the frame the home, room, heading and tile cards share. Springs, the press
+// feedback every tappable thing gets, spinning fan icons, and the entity-list popup, so a
+// card only writes what it shows.
+//
+//   this._spring(value, motion, group, eps)   a spring the card's frame loop steps
+//   this._pressable(el, handlers, depth)      tap / hold / double-tap with press feedback
+//   this._chipActions(el, getCtx, defaults)   the same, from a chip's action config
+//   this._spinner(key, el)                    a rotating icon; set .s.to(turnsPerSecond)
+//   this._showList(title, ids, color, from)   the popup of the entities a chip stands for
+//   _paint(dirty, all)                        the card's own painting, after the shared part
+// ---------------------------------------------------------------------------------------
+
+class SavvyCard extends HTMLElement {
+  constructor() {
+    super();
+    watchKeyboard(this);
+    this._job = (now, dt) => this._frame(now, dt);
+    this._resetMotion();
+  }
+
+  _resetMotion() {
+    this._springs = [];
+    this._pressNodes = [];
+    this._spins = new Map();
+  }
+
+  _spring(value, motion, group, eps) {
+    const s = new Spring(value, motion, group, eps);
+    this._springs.push(s);
+    return s;
+  }
+
+  _pressable(el, handlers = {}, depth = 0.06) {
+    const spring = this._spring(0, MOTION.press, `p${this._springs.length}`);
+    el.__spring = spring;
+    el.__depth = depth;
+    this._pressNodes.push(el);
+    bindPress(el, { spring, wake: () => this._wake(), ...handlers });
+    return spring;
+  }
+
+  // getCtx() -> { config, entity, list }: the chip's action config and what `list` opens
+  _chipActions(el, getCtx, defaults = {}, depth = 0.06) {
+    const spring = this._spring(0, MOTION.press, `p${this._springs.length}`);
+    el.__spring = spring;
+    el.__depth = depth;
+    this._pressNodes.push(el);
+    bindActions(this, el, () => ({ hass: this._hass, ...getCtx() }), { spring, wake: () => this._wake(), defaults });
+    return spring;
+  }
+
+  _spinner(key, el) {
+    let spin = this._spins.get(key);
+    if (!spin) {
+      spin = { s: this._spring(0, MOTION.spin, `spin:${key}`, 1e-4), angle: 0, el };
+      this._spins.set(key, spin);
+    }
+    spin.el = el;
+    return spin;
+  }
+
+  _showList(heading, ids, color, from) {
+    if (!this._list) this._list = new EntityListSheet(this, { title: heading });
+    this._list.sheet.setTitle(heading);
+    this._list.color = color;
+    this._list.show(this._hass, ids, from);
+  }
+
+  _wake() { if (this.shadowRoot && this.isConnected) Clock.add(this._job); }
+
+  disconnectedCallback() {
+    Clock.remove(this._job);
+    this._picker?.close();
+    this._ro?.disconnect();
+  }
+
+  _frame(now, dt) {
+    const dirty = new Set(), red = MQ.reduced.matches;
+    for (const s of this._springs) {
+      if (s.idle) continue;
+      if (red) s.snap(); else s.step(dt);
+      dirty.add(s.group);
+    }
+    for (const [key, spin] of this._spins) {
+      if (spin.s.x < 1e-4) continue;
+      spin.angle = (spin.angle + spin.s.x * 360 * dt) % 360;
+      dirty.add(`spin:${key}`);
+    }
+    if (!dirty.size) return false;
+    this._paintAll(dirty);
+    return true;
+  }
+
+  _paintAll(dirty) {
+    const all = !dirty, red = MQ.reduced.matches;
+    for (const node of this._pressNodes) {
+      const s = node.__spring;
+      if (!s || (!all && !dirty.has(s.group))) continue;
+      const p = s.x;
+      put(node, "transform", red || Math.abs(p) < 1e-4 ? "" : `scale(${(1 - node.__depth * p).toFixed(4)})`);
+      put(node, "opacity", Math.abs(p) > 1e-3 ? (1 - (red ? 0.25 : 0.12) * clamp(p)).toFixed(3) : "");
+    }
+    for (const [key, spin] of this._spins) {
+      if ((!all && !dirty.has(`spin:${key}`)) || !spin.el) continue;
+      put(spin.el, "transform", spin.angle ? `rotate(${spin.angle.toFixed(1)}deg)` : "");
+    }
+    this._paint?.(dirty, all, red);
+  }
+}
+
+// The mode chip's gestures, the same on every card: tap opens the picker, hold opens
+// more-info. `card._modeInfo()` returns the current modeInfo.
+function wireModeChip(card, chip, bounds, caption) {
+  card._picker = card._picker || new ModePicker(card, { onPick: (id, v) => selectOption(card._hass, id, v) });
+  card._pressable(chip, {
+    onTap: () => { const info = card._modeInfo(); if (info?.options.length) card._picker.open(chip, bounds(), info, caption()); },
+    onHold: () => moreInfo(card, card._modeInfo()?.entity),
+  });
+  attr(chip, "aria-haspopup", "listbox");
+  attr(chip, "aria-expanded", "false");
+}
+
+// ---- the header and chip rows the home and room cards share
+
+const HEADER_CSS = `
+  ha-card { --mode: var(--secondary-text-color); display: flex; flex-direction: column; gap: 12px; padding: var(--pad); overflow: hidden;
+    user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  .top { display: flex; align-items: center; gap: 8px; }
+  .glyph { flex: none; position: relative; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 13px;
+    background: var(--well); color: var(--secondary-text-color); }
+  .glyph ha-icon { --mdc-icon-size: 19px; display: flex; }
+  .glyph[data-alert] { background: color-mix(in oklab, var(--ac) 18%, transparent); color: var(--ac); }
+  .count { position: absolute; top: -4px; inset-inline-end: -4px; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box;
+    border-radius: 8px; background: var(--ac); color: #fff; font-size: 10.5px; line-height: 16px; font-weight: 700; text-align: center;
+    box-shadow: 0 0 0 2px var(--ha-card-background, var(--card-background-color)); }
+  .pill { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: flex-start; gap: 9px; height: 44px; padding: 0 13px; border-radius: 13px;
+    background: color-mix(in oklab, var(--mode) 14%, transparent); color: color-mix(in oklab, var(--mode) 72%, var(--primary-text-color));
+    font-size: 13.5px; line-height: 17px; font-weight: 600; letter-spacing: -0.008em; }
+  .pill ha-icon { --mdc-icon-size: 18px; flex: none; display: flex; }
+  .pill .col { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; }
+  .pill .pre { font-size: 10.5px; line-height: 13px; font-weight: 500; letter-spacing: 0.012em; color: var(--secondary-text-color); white-space: nowrap; }
+  .pill .swap { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+  .pill .val { font-size: 15px; line-height: 19px; font-weight: 650; letter-spacing: -0.012em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .spacer { flex: 1; }
+  /* a readout, not a panel */
+  .wx { flex: none; display: flex; align-items: center; gap: 5px; height: 44px; padding: 0 12px 0 10px; border-radius: 13px;
+    background: var(--well); color: var(--secondary-text-color); }
+  .wx ha-icon, .wx ha-state-icon { --mdc-icon-size: 19px; display: flex; }
+  .wx .deg { font-size: 13.5px; line-height: 17px; font-weight: 650; letter-spacing: -0.012em; color: var(--primary-text-color); }
+  :host([kbd]) :focus-visible { outline-color: color-mix(in oklab, var(--mode) 80%, var(--primary-text-color)); }
+`;
+
+const CHIP_ROW_CSS = `
+  /* one row always: the chips share the width, and slide when there isn't enough of it */
+  .chips { display: flex; gap: 8px; margin: 0 -2px; padding: 0 2px; overflow-x: auto; overscroll-behavior-x: contain; touch-action: pan-x;
+    scrollbar-width: none; scroll-snap-type: x proximity; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chips[data-overflow] { -webkit-mask-image: linear-gradient(to left, transparent 0, #000 26px); mask-image: linear-gradient(to left, transparent 0, #000 26px); }
+  /* no plate: the disc carries the colour, the text sits beside it. The dim lives on .body,
+     so a state's opacity and the press feedback's never fight over one node. */
+  .chip { flex: none; scroll-snap-align: start; padding: 2px 4px; border-radius: 13px; text-align: start; }
+  .chip .body { display: flex; align-items: center; gap: 9px; }
+  .chip .disc { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%;
+    background: color-mix(in oklab, var(--tc) 18%, transparent); color: var(--tc); }
+  .chip .disc ha-icon, .chip .disc ha-state-icon { --mdc-icon-size: 17px; display: flex; }
+  .chip .col { display: flex; flex-direction: column; }
+  .chip .v { font-size: 12.5px; line-height: 16px; font-weight: 650; letter-spacing: -0.01em; white-space: nowrap; }
+  .chip .k { font-size: 10.5px; line-height: 13px; font-weight: 500; letter-spacing: 0.012em; color: var(--secondary-text-color); white-space: nowrap; }
+  .chips[data-icon-only] { gap: 4px; }
+  .chips[data-icon-only] .chip { padding: 2px; }
+  /* navigation chips: a plate per room, no colour disc */
+  .chips.nav .chip { background: var(--well); border-radius: 12px; padding: 4px 12px 4px 4px; }
+  .chips.nav .chip .body { gap: 5px; }
+  .chips.nav .chip .disc { width: auto; height: auto; min-width: 26px; border-radius: 0; background: none; color: var(--secondary-text-color); }
+  .sep { height: 1px; margin: 1px 0; background: var(--line); }
+  @media (prefers-contrast: more) { .chip .k { color: var(--primary-text-color); } }
+`;
+
+// A row of chips. items: [{ key, icon (null: the entity's state icon), stateObj, color, dim,
+// value, caption, aria, spin: turns/s or 0, config (actions), entity, defaults, list() }]
+SavvyCard.prototype._chipRow = function (row, items, { iconOnly = false } = {}) {
+  row.__nodes = row.__nodes || new Map();
+  attr(row, "data-icon-only", iconOnly);
+  const seen = new Set();
+  for (const item of items) {
+    seen.add(item.key);
+    let node = row.__nodes.get(item.key);
+    const wantState = !item.icon;
+    if (node && node.__state !== wantState) { node.remove(); row.__nodes.delete(item.key); node = null; }
+    if (!node) {
+      node = document.createElement("button");
+      node.className = "chip";
+      node.__state = wantState;
+      node.innerHTML = `<span class="body"><span class="disc">${wantState ? "<ha-state-icon></ha-state-icon>" : "<ha-icon></ha-icon>"}</span>
+        <span class="col"><span class="v"></span><span class="k"></span></span></span>`;
+      node.__icon = node.querySelector(".disc > *");
+      node.__item = item;     // bindActions reads it while wiring
+      const cur = () => node.__item;
+      this._chipActions(node, () => ({ config: cur().config || {}, entity: cur().entity, list: () => cur().list?.(node) }),
+        { get tap() { return cur().defaults?.tap; }, get hold() { return cur().defaults?.hold; }, get double_tap() { return cur().defaults?.double_tap; } });
+      row.__nodes.set(item.key, node);
+    }
+    node.__item = item;
+    put(node, "--tc", item.color || "var(--primary-text-color)");
+    put(node.querySelector(".body"), "opacity", item.dim ? (MQ.contrast.matches ? "0.7" : "0.45") : "");
+    if (wantState) {
+      if (node.__icon.stateObj !== item.stateObj) { node.__icon.hass = this._hass; node.__icon.stateObj = item.stateObj; }
+    } else attr(node.__icon, "icon", item.icon);
+    const col = node.querySelector(".col");
+    col.hidden = iconOnly;
+    text(node.querySelector(".v"), item.value ?? "");
+    const k = node.querySelector(".k");
+    k.hidden = !item.caption;
+    text(k, item.caption || "");
+    attr(node, "aria-label", item.aria || [item.caption, item.value].filter(Boolean).join(", "));
+    if (item.spin !== undefined) {
+      const spin = this._spinner(`${row.id}:${item.key}`, node.__icon);
+      spin.s.to(MQ.reduced.matches ? 0 : item.spin || 0);
+      if (MQ.reduced.matches) spin.s.snap();
+    }
+    row.appendChild(node);      // keeps the DOM in the items' order
+  }
+  for (const [key, node] of row.__nodes) {
+    if (seen.has(key)) continue;
+    node.remove();
+    row.__nodes.delete(key);
+    const i = this._pressNodes.indexOf(node);
+    if (i >= 0) this._pressNodes.splice(i, 1);
+  }
+  row.hidden = !items.length;
+  this._fitRow(row);
+};
+
+SavvyCard.prototype._fitRow = function (row) {
+  if (row && !row.hidden) row.toggleAttribute("data-overflow", row.scrollWidth > row.clientWidth + 1);
+};
+
+// The mode pill of the home and room cards: icon, value and a caption under it.
+SavvyCard.prototype._renderPill = function (info, caption) {
+  const el = this._el;
+  el.pill.hidden = !info;
+  if (!info) return;
+  put(el.card, "--mode", info.color || "var(--secondary-text-color)");
+  attr(el.pill, "aria-label", `${caption || "Mode"} ${info.label}`);
+  el.pill.disabled = !info.options.length;
+  el.pre.hidden = !caption;
+  text(el.pre, caption || "");
+  this._swap.set(info.value);
+};
+
+// A chip from the one chip spec: { entity, name, icon, color, show_state, navigation_path,
+// tap_action, hold_action, double_tap_action, spin }. The state is the value, the name
+// the caption under it; with show_state: false the name alone.
+function chipItem(hass, x, i) {
+  const st = x.entity ? hass.states[x.entity] : null;
+  const name = x.name || (st ? shortName(hass, x.entity) : x.entity ? title(x.entity.split(".")[1]) : "");
+  const showState = x.show_state !== false && !!x.entity;
+  const value = showState ? (st ? stateText(hass, st) : "Unavailable") : name;
+  const spinning = x.spin === "climate" ? houseTemperature(hass).running.length > 0
+    : x.spin === true ? climateRunning(st) || isActive(st) : false;
+  return {
+    key: `c${i}:${x.entity || x.name || ""}`, icon: x.icon ? x.icon : st ? null : "mdi:gesture-tap", stateObj: st, entity: x.entity,
+    color: colorOf(x.color) || "var(--primary-text-color)", value, caption: showState ? name : "",
+    spin: x.spin ? (spinning ? SPIN.medium : 0) : undefined,
+    config: { ...x, tap_action: x.tap_action ?? (x.navigation_path ? { action: "navigate", navigation_path: x.navigation_path } : undefined) },
+    defaults: { tap: x.entity ? defaultTapAction(x.entity) : null, hold: x.entity ? { action: "more-info" } : null },
+  };
 }
 
 // ===== core/90-editor.js =====
@@ -1545,6 +2239,30 @@ const S = {
   }),
 };
 
+// The mode chip's options: the entity, then an icon and a colour for each of its options
+// (found from the mode dictionary until set).
+const modeSchema = (hass, c, { name = "mode", label = "Mode", helper } = {}) => {
+  const opts = (hass && c[name] && hass.states[c[name]]?.attributes.options) || [];
+  return [
+    { name, label, helper: helper || "Any input_select or select: a house mode, a room's scenes. Tapping the chip lists its options.",
+      selector: { entity: { domain: ["input_select", "select"] } } },
+    { name: "mode_label", label: "Mode caption", selector: { text: {} } },
+    ...(opts.length ? [
+      { type: "expandable", name: "mode_icons", title: "Mode icons", schema: opts.map((o) => ({ name: o, label: o, selector: { icon: { placeholder: modeLook(o).icon } } })) },
+      { type: "expandable", name: "mode_colors", title: "Mode colours", schema: opts.map((o) => ({ name: o, label: o, helper: modeLook(o).color || "No colour", selector: { text: {} } })) },
+    ] : []),
+  ];
+};
+
+// The badge row: pinned entities, then what the area has.
+const badgeSchema = ({ pinnedLabel = "Pinned", pinnedHelp = "Always shown, first and in this order: a lights helper, presence, a door." } = {}) => [
+  S.chips("entities", pinnedLabel, pinnedHelp),
+  S.bool("auto_discover", "Also show what the area has", "Presence and doors always; media, locks, climate, fans, covers, windows, leaks and alarms while active.", true),
+  { name: "exclude_kinds", label: "Don't discover", selector: { select: { multiple: true, options: BADGE_KINDS.map((k) => ({ value: k.key, label: k.name })) } } },
+  { name: "include", label: "Also discover", helper: "Entities to treat as if they were in this area (a lock with no area).", selector: { entity: { multiple: true } } },
+  { name: "exclude", label: "Never show", selector: { entity: { multiple: true } } },
+];
+
 // ===== core/99-test-hook.js =====
 // ---------------------------------------------------------------------------------------
 // core/test-hook: test pages set window.__SAVVY_TEST__ before loading the bundle to reach
@@ -1558,6 +2276,7 @@ if (window.__SAVVY_TEST__) {
     duration, since, relativeTime, axisLabel, momentLabel, fmtNumber, withUnit, isTimestamp,
     fetchHistory, fetchRange, fetchAttributeHistory, resample, seriesStats, stateRuns, numericPoints, linePath,
     Sheet, EntityListSheet, SavvyEditor, defineEditor, S, version: SAVVY_VERSION,
+    roomBadges, roomTemperature, areaLights, houseLights, housePlaying, houseTemperature, houseSecurity, modeInfo, legacyBadges,
   };
 }
 
@@ -3319,6 +4038,320 @@ registerCard("savvy-climate-card", ClimateCard, "Climate",
   "An A/C or thermostat: drag the target, pick the mode, and swipe for its history. Finds the room's unit for you.");
 })();
 
+// ===== cards/heading.js =====
+(() => {
+// savvy-heading-card: the first card in a room's section. The room's name and icon (from
+// the area), its mode, its temperature, and a row of badges for what's going on in it:
+// pinned entities first, then what the area has (presence and doors always, the rest while
+// active). A heading, not a panel: no plate unless `filled: true`.
+//
+//   type: custom:savvy-heading-card
+//   area: living_room            name / icon: from the area
+//   navigation_path: /lovelace/living-room      (or tap_action on the title)
+//   mode: input_select.living_room_mode
+//   entities: [binary_sensor.front_door]        auto_discover: true
+//   temperature: sensor.x | false               heading_style: title | subtitle
+
+const BADGE_W = 30;          // icon plus spacing
+
+const STYLE = `${BASE_CSS}
+  ha-card { --mode: var(--secondary-text-color); display: block; background: none; border: 0; box-shadow: none;
+    padding: 6px 4px 2px; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  ha-card::after { display: none; }
+  ha-card[data-filled] { padding: 12px 14px; border-radius: var(--radius);
+    border: var(--ha-card-border-width, 1px) solid var(--ha-card-border-color, var(--line));
+    background: var(--ha-card-background, var(--card-background-color)); box-shadow: var(--ha-card-box-shadow, none); }
+  @supports (corner-shape: squircle) { ha-card[data-filled] { corner-shape: squircle; border-radius: calc(var(--radius) * 1.7); } }
+
+  .row { display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 100%; }
+  .title { display: inline-flex; align-items: center; gap: 8px; min-width: 0; flex: 0 1 auto; max-width: 58%;
+    padding: 2px 4px; margin: -2px -4px; border-radius: 9px; transform-origin: 0 50%; cursor: default; }
+  .title[data-act] { cursor: pointer; }
+  .title ha-icon { --mdc-icon-size: 20px; flex: none; display: flex; color: var(--secondary-text-color); }
+  .title .n { min-width: 0; font-size: 20px; line-height: 26px; font-weight: 650; letter-spacing: -0.022em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  ha-card[data-style="subtitle"] .title .n { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.014em; }
+  ha-card[data-style="subtitle"] .title ha-icon { --mdc-icon-size: 17px; }
+
+  /* the mode chip: the overview pill, compressed to one line */
+  .mode { flex: none; display: inline-flex; align-items: center; gap: 5px; min-width: 0; height: 26px; padding: 0 7px 0 6px; border-radius: 9px;
+    background: color-mix(in oklab, var(--mode) 15%, transparent); color: color-mix(in oklab, var(--mode) 74%, var(--primary-text-color));
+    font-size: 12px; line-height: 15px; font-weight: 600; letter-spacing: -0.004em; }
+  .mode:not([data-c]) { background: var(--well); color: var(--secondary-text-color); }
+  .mode ha-icon { --mdc-icon-size: 15px; flex: none; display: flex; }
+  .mode .chev { --mdc-icon-size: 13px; opacity: 0.55; margin-inline-start: -2px; }
+  .mode .swap { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+  .mode .swap span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  @container (max-width: 300px) { .mode .swap span { display: none; } }
+
+  /* Right-aligned while everything fits; once it doesn't, the row scrolls from the start
+     (flex-end in a scroll container leaves the first items unreachable) and rests at the end. */
+  .badges { position: relative; flex: 1 1 0; min-width: 34px; display: flex; align-items: center; justify-content: flex-end;
+    height: 28px; padding: 6px 0; margin: -6px 0; overflow: hidden; }
+  .badges[data-overflow] { justify-content: flex-start; overflow-x: auto; overscroll-behavior-x: contain; touch-action: pan-x;
+    scrollbar-width: none; -webkit-mask-image: linear-gradient(to right, transparent 0, #000 26px); mask-image: linear-gradient(to right, transparent 0, #000 26px); }
+  .badges::-webkit-scrollbar { display: none; }
+  .badge { position: relative; flex: none; width: 0; height: 28px; outline: none; }
+  .chip { position: absolute; top: 0; inset-inline-start: 0; width: 28px; height: 28px; border-radius: 50%;
+    display: grid; place-items: center; color: var(--secondary-text-color); opacity: 0; }
+  .chip::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: color-mix(in oklab, var(--bc) 22%, transparent); opacity: 0; }
+  .badge[data-critical] .chip::before { opacity: var(--on, 0); }
+  .chip ha-icon, .chip ha-state-icon { --mdc-icon-size: 19px; position: relative; display: flex; }
+  :host([kbd]) .badge:focus-visible .chip { box-shadow: 0 0 0 2px var(--bc); }
+
+  /* the temperature is a reading, so it keeps its number */
+  .temp { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 2px 5px; margin-inline-end: 2px; border-radius: 8px;
+    color: var(--secondary-text-color); font-size: 12.5px; line-height: 16px; font-weight: 600; letter-spacing: -0.006em; }
+  .temp ha-icon { --mdc-icon-size: 17px; display: flex; color: var(--tc, var(--secondary-text-color)); }
+  :host([kbd]) :focus-visible { outline-color: color-mix(in oklab, var(--mode) 80%, var(--primary-text-color)); }
+  @media (prefers-contrast: more) { .temp { color: var(--primary-text-color); } }
+`;
+
+// A reading worth noticing warms up; a comfortable one stays quiet.
+const tempColor = (t) => {
+  const c = /F/.test(t.unit) ? (t.value - 32) * 5 / 9 : t.value;
+  return c >= 30 ? "#EE7B4D" : c >= 26 ? "#E8B44F" : c <= 18 ? "#4F93DE" : "";
+};
+const tempText = (t) => `${t.value.toFixed(1)}${t.unit.includes("°") ? "°" : ` ${t.unit}`}`;
+
+class SavvyHeadingCard extends SavvyCard {
+  static getStubConfig(hass) {
+    const a = allAreas(hass).find((x) => areaEntities(hass, x.id).length);
+    return a ? { area: a.id } : { name: "Heading" };
+  }
+  static getConfigElement() { return document.createElement(EDITOR); }
+
+  setConfig(config) {
+    if (!config || (!config.area && !config.name && !config.heading)) throw new Error("savvy-heading-card: set an area (or a name)");
+    this._config = legacyBadges({ heading_style: "title", ...config, name: config.name || config.heading });
+    if (this.shadowRoot && this._el) { this._build(); if (this._hass) this._update(); }
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._config) return;
+    if (!this._el) this._build();
+    this._update();
+    this._list?.render(hass);
+    if (this._picker?.isOpen) this._picker.render(this._modeInfo(), this._caption());
+  }
+
+  connectedCallback() { this._observe(); this._wake(); }
+  getCardSize() { return 1; }
+  getGridOptions() { return { columns: 12, rows: "auto", min_columns: 4 }; }
+
+  _modeInfo() { return this._hass && modeInfo(this._hass, this._config.mode, this._config); }
+  _caption() { return this._config.mode_label ?? "Mode"; }
+
+  _build() {
+    const root = this.shadowRoot || this.attachShadow({ mode: "open" });
+    this._resetMotion();
+    this._picker?.close();
+    this._picker = null;
+    this._first = true;
+    this._lastWidth = 0;
+    this._badges = new Map();
+    root.innerHTML = `<style>${STYLE}</style>
+      <ha-card>
+        <div class="row">
+          <div class="title" id="title"><ha-icon id="icon" hidden></ha-icon><span class="n" id="name"></span></div>
+          <button class="mode" id="mode" hidden>
+            <span class="swap" id="modeSwap"><ha-icon id="modeIcon"></ha-icon><span id="modeText"></span></span>
+            <ha-icon class="chev" icon="mdi:chevron-down"></ha-icon>
+          </button>
+          <div class="badges" id="badges"><span class="temp" id="temp" role="button" tabindex="0" hidden><ha-icon icon="mdi:thermometer"></ha-icon><span id="tempText"></span></span></div>
+        </div>
+      </ha-card>`;
+    const $ = (id) => root.getElementById(id);
+    this._el = { card: root.querySelector("ha-card"), title: $("title"), icon: $("icon"), name: $("name"), mode: $("mode"),
+      modeSwap: $("modeSwap"), modeIcon: $("modeIcon"), modeText: $("modeText"), badges: $("badges"), temp: $("temp"), tempText: $("tempText") };
+    const c = this._config, el = this._el;
+    attr(el.card, "data-style", c.heading_style === "subtitle" ? "subtitle" : "title");
+    attr(el.card, "data-filled", !!c.filled);
+
+    // the title: navigates (navigation_path) or whatever tap_action says
+    const tap = c.tap_action || (c.navigation_path ? { action: "navigate", navigation_path: c.navigation_path } : null);
+    if (tap || c.hold_action) {
+      attr(el.title, "data-act", true);
+      attr(el.title, "role", "button");
+      attr(el.title, "tabindex", "0");
+      this._chipActions(el.title, () => ({ config: { tap_action: tap, hold_action: c.hold_action, double_tap_action: c.double_tap_action } }), {}, 0.04);
+    }
+
+    this._swap = new Swap(el.modeSwap, (v) => {
+      const info = this._modeInfo();
+      text(el.modeText, info?.label || v);
+      attr(el.modeIcon, "icon", info?.icon);
+    }, "mode");
+    this._springs.push(this._swap.spring);
+    wireModeChip(this, el.mode, () => el.card, () => this._caption());
+    this._pressable(el.temp, { onTap: () => moreInfo(this, this._temp?.entity) });
+    this._observe();
+  }
+
+  _observe() {
+    if (!this._el || !this.isConnected) return;
+    this._ro?.disconnect();
+    this._ro = new ResizeObserver(() => { this._fitBadges(); this._wake(); });
+    this._ro.observe(this._el.badges);
+  }
+
+  _update() {
+    const h = this._hass, c = this._config, el = this._el;
+    if (!h || !el) return;
+    const area = c.area ? areaInfo(h, c.area) : null;
+    text(el.name, c.name || area?.name || "");
+    const icon = c.icon ?? area?.icon;
+    el.icon.hidden = !icon;
+    if (icon) attr(el.icon, "icon", icon);
+    attr(el.title, "aria-label", c.name || area?.name);
+
+    // mode
+    const info = this._modeInfo();
+    el.mode.hidden = !info;
+    if (info) {
+      put(el.card, "--mode", info.color || "var(--secondary-text-color)");
+      attr(el.mode, "data-c", !!info.color);
+      attr(el.mode, "aria-label", `${this._caption()} ${info.label}`);
+      el.mode.disabled = !info.options.length;
+      this._swap.set(info.value);
+    }
+
+    // temperature
+    const t = roomTemperature(h, c.area, c);
+    this._temp = t;
+    el.temp.hidden = !t;
+    if (t) {
+      text(el.tempText, tempText(t));
+      put(el.temp, "--tc", tempColor(t) || "var(--secondary-text-color)");
+      attr(el.temp, "aria-label", `Temperature ${t.value.toFixed(1)} ${t.unit}`);
+    }
+
+    this._renderBadges();
+    if (this._first) {
+      this._first = false;
+      this._paintAll(null);
+      requestAnimationFrame(() => this._fitBadges());
+    }
+    this._wake();
+  }
+
+  _renderBadges() {
+    const h = this._hass, list = roomBadges(h, this._config.area, this._config);
+    const seen = new Set(), red = MQ.reduced.matches;
+    for (const b of list) {
+      seen.add(b.key);
+      let item = this._badges.get(b.key);
+      const look = badgeLook(b);
+      if (!item) {
+        const node = document.createElement("span");
+        node.className = "badge";
+        node.setAttribute("role", "button");
+        node.innerHTML = `<span class="chip">${look.icon ? "<ha-icon></ha-icon>" : "<ha-state-icon></ha-state-icon>"}</span>`;
+        item = { el: node, chip: node.querySelector(".chip"), icon: node.querySelector("ha-icon, ha-state-icon"),
+          shown: this._spring(0, MOTION.ui, `badge:${b.key}`, 0.002), on: this._spring(0, MOTION.ui, `badge:${b.key}`, 0.002) };
+        item.b = b;
+        this._chipActions(node, () => ({ config: item.b.cfg, entity: item.b.entity,
+          list: () => this._showList(item.b.kind?.name || shortName(h, item.b.entity), item.b.ids, badgeLook(item.b).color, node) }), badgeDefaults(b), 0.12);
+        this._badges.set(b.key, item);
+      }
+      item.b = b;
+      const st = h.states[b.entity];
+      if (look.icon) attr(item.icon, "icon", look.icon);
+      else if (item.icon.stateObj !== st) { item.icon.hass = h; item.icon.stateObj = st; }
+      put(item.el, "--bc", look.color || "var(--primary-text-color)");
+      attr(item.el, "data-critical", look.critical);
+      attr(item.el, "aria-label", `${b.cfg.name || shortName(h, b.entity, this._config.area)}, ${stateText(h, st)}`);
+      if (look.spin) {
+        const spin = this._spinner(b.key, item.icon);
+        spin.s.to(b.on && climateRunning(st) && !red ? fanRate(st) : 0);
+        if (red) spin.s.snap();
+      }
+      if (item.shown.target !== 1) this._rowDirty = true;
+      item.shown.to(1);
+      item.on.to(b.on ? 1 : 0);
+      if (this._first || red) { item.shown.snap(); item.on.snap(); }
+      item.el.tabIndex = 0;
+      attr(item.el, "aria-hidden", "false");
+    }
+    for (const [key, item] of this._badges) {
+      if (seen.has(key)) continue;
+      if (item.shown.target !== 0) this._rowDirty = true;
+      item.shown.to(0);
+      item.on.to(0);
+      if (red) { item.shown.snap(); item.on.snap(); }
+      this._spins.get(key)?.s.to(0);
+      item.el.tabIndex = -1;
+      attr(item.el, "aria-hidden", "true");
+    }
+    // DOM order follows the list: the temperature, pinned, then kinds in reading order
+    const want = [this._el.temp, ...list.map((b) => this._badges.get(b.key).el)];
+    const leaving = [...this._badges.values()].filter((i) => !seen.has(i.b.key)).map((i) => i.el);
+    const kids = [...this._el.badges.children];
+    if (want.some((n, i) => kids[i] !== n)) for (const n of [...want, ...leaving]) this._el.badges.appendChild(n);
+  }
+
+  _fitBadges() {
+    const row = this._el?.badges;
+    if (!row) return;
+    // right-aligned content that overflows spills off the start, where no scroll area
+    // exists, so scrollWidth can't be trusted: add the children up
+    let content = 0;
+    for (const child of row.children) {
+      if (child.hidden) continue;
+      const cs = getComputedStyle(child);
+      content += child.getBoundingClientRect().width + (parseFloat(cs.marginInlineStart) || 0) + (parseFloat(cs.marginInlineEnd) || 0);
+    }
+    const over = content > row.clientWidth + 1;
+    row.toggleAttribute("data-overflow", over);
+    if (over && Math.abs(this._lastWidth - content) > 1) {
+      const go = () => { row.scrollLeft = row.scrollWidth; };
+      requestAnimationFrame(go);
+      clearTimeout(this._pinTimer);
+      this._pinTimer = setTimeout(go, 180);
+    }
+    this._lastWidth = over ? content : 0;
+  }
+
+  _paint(dirty, all, red) {
+    if (all || dirty.has("mode")) this._swap.paint(red);
+    const idle = MQ.contrast.matches ? 0.7 : 0.45;
+    for (const [key, item] of this._badges) {
+      if (!all && !dirty.has(`badge:${key}`)) continue;
+      const shown = clamp(item.shown.x), on = clamp(item.on.x);
+      // joining: visible early; leaving: transparent while it travels
+      const vis = item.shown.target === 1 ? Math.sqrt(shown) : shown * shown;
+      put(item.el, "width", `${(shown * BADGE_W).toFixed(2)}px`);
+      put(item.chip, "opacity", (vis * (idle + (1 - idle) * on)).toFixed(3));
+      put(item.chip, "transform", red ? "" : `scale(${(0.6 + 0.4 * shown).toFixed(4)})`);
+      put(item.chip, "--on", on.toFixed(3));
+      put(item.chip, "color", on > 1e-3 ? `color-mix(in oklab, var(--bc) ${(on * 100).toFixed(1)}%, var(--secondary-text-color))` : "");
+    }
+    if (this._rowDirty && [...this._badges.values()].every((i) => i.shown.idle)) {
+      this._rowDirty = false;
+      this._fitBadges();
+    }
+  }
+}
+
+// ---------- editor ----------
+const EDITOR = defineEditor("savvy-heading-card", (hass, c) => [
+  S.area(),
+  S.grid(S.text("name", "Name"), S.icon("icon", "Icon")),
+  { name: "navigation_path", label: "Tapping the name opens", helper: "A dashboard path, e.g. /lovelace/living-room. Or set a tap action below.", selector: { text: {} } },
+  S.grid(S.select("heading_style", "Style", [{ value: "title", label: "Title" }, { value: "subtitle", label: "Subtitle" }]),
+    S.bool("filled", "On a card background", null, false)),
+  ...modeSchema(hass, c),
+  { name: "temperature", label: "Temperature", helper: "Found from the area (a temperature sensor, else its climate unit). Pick another to override.",
+    selector: { entity: { domain: ["sensor", "climate"] } } },
+  ...badgeSchema(),
+  S.section("Title actions", [S.action("tap_action", "Tap"), S.action("hold_action", "Hold")]),
+]);
+
+registerCard("savvy-heading-card", SavvyHeadingCard, "Heading",
+  "A room's section heading: its name, mode, temperature and live status badges.");
+})();
+
 // ===== cards/health.js =====
 (() => {
 // savvy-health-card: what in the house needs attention, with a count pill.
@@ -3634,6 +4667,269 @@ const EDITOR = defineEditor("savvy-health-card", (hass, c) => [
 
 registerCard("savvy-health-card", SavvyHealthCard, "Health",
   "What needs attention: unavailable entities, low batteries and Watchman issues, with a count.");
+})();
+
+// ===== cards/home.js =====
+(() => {
+// savvy-home-card: the header at the top of the home dashboard. Two big chips on top, the
+// house's mode (tap to change it) and its health (the cog, with a count); the weather; and
+// four chips that count by themselves, no helpers needed: lights on, the average indoor
+// temperature, what's playing, and security. Hold any of them for the entities behind it.
+//
+//   type: custom:savvy-home-card
+//   mode: input_select.house_mode                   (never guessed; hidden when unset)
+//   weather: auto | weather.home | false
+//   health: { navigation_path: /lovelace/admin, watchman: [...], battery_threshold: 20 } | false
+//   lights / climate / media / security: false | { entity, name, icon, color, tap_action, hold_action }
+//   chips: [...]                                     your own, after the four
+
+const STYLE = `${BASE_CSS}${HEADER_CSS}${CHIP_ROW_CSS}
+  .health-sheet savvy-health-card { --ha-card-border-width: 0px; --ha-card-background: transparent; --ha-card-box-shadow: none; margin: -14px -14px 0; }
+`;
+
+// The four chips: how each counts, and its look.
+const AUTO = {
+  lights: { name: "Lights", icon: "mdi:lightbulb", color: "#F5B83D" },
+  climate: { name: "Climate", icon: "mdi:fan", color: "#7FC4E8" },
+  media: { name: "Media", icon: "mdi:multimedia", color: "#C98BD9" },
+  security: { name: "Security", icon: "mdi:shield-home", color: "#E6C48F" },
+};
+
+class SavvyHomeCard extends SavvyCard {
+  static getStubConfig(hass) {
+    const mode = Object.keys(hass?.states || {}).find((id) => /^input_select\.(home|house)_mode$/.test(id));
+    return mode ? { mode } : {};
+  }
+  static getConfigElement() { return document.createElement(EDITOR); }
+
+  setConfig(config) {
+    const c = { mode_label: "Home mode", ...config };
+    // the pre-Savvy names: home_mode, weather as { entity }, admin, tiles
+    c.mode = config.mode ?? config.home_mode;
+    if (config.weather && typeof config.weather === "object") c.weather = config.weather.entity;
+    if (config.show_home === false) c.home_path = null;
+    if (config.health === undefined && config.admin) {
+      const a = config.admin;
+      c.health = { navigation_path: a.path, watchman: a.watchman ?? a.entities, battery_threshold: a.battery_threshold,
+        exclude_platforms: a.exclude_platforms, warn_above: a.warn_above };
+    }
+    if (config.tiles) {
+      c.chips = [...[].concat(config.tiles).map((t) => (typeof t === "string" ? { entity: t } : t)), ...asItems(config.chips)];
+      for (const k of Object.keys(AUTO)) if (config[k] === undefined) c[k] = false;
+    }
+    this._config = c;
+    if (this._el) { this._build(); if (this._hass) this._update(); }
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._config) return;
+    if (!this._el) this._build();
+    this._update();
+    this._list?.render(hass);
+    if (this._healthCard) this._healthCard.hass = hass;
+    if (this._picker?.isOpen) this._picker.render(this._modeInfo(), this._config.mode_label);
+  }
+
+  connectedCallback() { this._observe(); this._wake(); }
+  getCardSize() { return 2; }
+  getGridOptions() { return { columns: 12, min_columns: 6, rows: "auto" }; }
+
+  _modeInfo() { return this._hass && modeInfo(this._hass, this._config.mode, this._config); }
+  _healthCfg() { const hc = this._config.health; return hc === false ? null : hc || {}; }
+
+  _build() {
+    const root = this.shadowRoot || this.attachShadow({ mode: "open" });
+    this._resetMotion();
+    this._picker?.close();
+    this._picker = null;
+    root.innerHTML = `<style>${STYLE}</style>
+      <ha-card>
+        <div class="top">
+          <button class="glyph" id="home" aria-label="Home" hidden><ha-icon icon="mdi:home"></ha-icon></button>
+          <button class="pill" id="pill" hidden>
+            <span class="swap" id="swap"><ha-icon id="pillIcon"></ha-icon><span class="col"><span class="val" id="val"></span><span class="pre" id="pre"></span></span></span>
+          </button>
+          <span class="spacer" id="spacer"></span>
+          <button class="wx" id="weather" hidden><ha-state-icon id="wicon"></ha-state-icon><span class="deg" id="wtemp"></span></button>
+          <button class="glyph" id="health" aria-label="System health" hidden><ha-icon icon="mdi:cog"></ha-icon><span class="count" id="count" hidden></span></button>
+        </div>
+        <div class="chips" id="chips"></div>
+      </ha-card>`;
+    const $ = (id) => root.getElementById(id);
+    this._el = { card: root.querySelector("ha-card"), home: $("home"), pill: $("pill"), swap: $("swap"), pillIcon: $("pillIcon"), val: $("val"), pre: $("pre"),
+      spacer: $("spacer"), weather: $("weather"), wicon: $("wicon"), wtemp: $("wtemp"), health: $("health"), count: $("count"), chips: $("chips") };
+    const el = this._el;
+    this._swap = new Swap(el.swap, (v) => {
+      const info = this._modeInfo();
+      text(el.val, info?.label || v);
+      attr(el.pillIcon, "icon", info?.icon);
+    }, "pill");
+    this._springs.push(this._swap.spring);
+    this._pressable(el.home, { onTap: () => navigate(this._config.home_path) });
+    wireModeChip(this, el.pill, () => el.card, () => this._config.mode_label);
+    this._pressable(el.weather, { onTap: () => moreInfo(this, this._weather) });
+    // the cog: tap goes to its page (or lists what needs attention), hold always lists
+    const hc = this._healthCfg() || {};
+    this._chipActions(el.health, () => ({ config: { tap_action: hc.tap_action, hold_action: hc.hold_action }, list: () => this._showHealth() }),
+      { tap: hc.navigation_path ? { action: "navigate", navigation_path: hc.navigation_path } : { action: "list" }, hold: { action: "list" } });
+    this._observe();
+  }
+
+  _observe() {
+    if (!this._el || !this.isConnected) return;
+    this._ro?.disconnect();
+    this._ro = new ResizeObserver(() => this._fitRow(this._el.chips));
+    this._ro.observe(this._el.chips);
+  }
+
+  // The same list savvy-health-card shows, with the same options: its count is the cog's.
+  _showHealth() {
+    if (!this._healthSheet) {
+      this._healthSheet = new Sheet(this, { title: "Health", onClose: () => { this._healthCard?.remove(); this._healthCard = null; } });
+      this._healthSheet.el.classList.add("health-sheet");
+    }
+    const card = document.createElement("savvy-health-card");
+    const { navigation_path, tap_action, hold_action, ...opts } = this._healthCfg() || {};
+    card.setConfig({ ...opts, source: "all", max_rows: 30, title: " " });
+    this._healthSheet.body.replaceChildren(card);
+    card.hass = this._hass;
+    this._healthCard = card;
+    this._healthSheet.open(this._el.health);
+  }
+
+  _update() {
+    const h = this._hass, c = this._config, el = this._el;
+    if (!h || !el) return;
+    this.toggleAttribute("dark", !!h.themes?.darkMode);
+    el.home.hidden = !c.home_path;
+    const info = this._modeInfo();
+    this._renderPill(info, c.mode_label);
+    el.spacer.hidden = !!info;
+    this._renderWeather();
+    this._renderHealth();
+    this._renderChips();
+    this._wake();
+  }
+
+  _renderWeather() {
+    const h = this._hass, w = this._config.weather, el = this._el;
+    const id = w === false ? null : typeof w === "string" && w !== "auto" ? w : Object.keys(h.states).find((x) => x.startsWith("weather."));
+    const st = id && h.states[id];
+    this._weather = st ? id : null;
+    el.weather.hidden = !st;
+    if (!st) return;
+    if (el.wicon.stateObj !== st) { el.wicon.hass = h; el.wicon.stateObj = st; }
+    const t = Number(st.attributes.temperature);
+    text(el.wtemp, Number.isFinite(t) ? `${Math.round(t)}°` : "–");
+    const cond = stateText(h, st);
+    attr(el.weather, "aria-label", Number.isFinite(t) ? `Weather, ${cond}, ${Math.round(t)} degrees` : `Weather, ${cond}`);
+  }
+
+  // Exactly what savvy-health-card counts: Watchman, unavailable, low batteries.
+  _renderHealth() {
+    const hc = this._healthCfg(), el = this._el;
+    el.health.hidden = !hc;
+    if (!hc) return;
+    const h = this._hass;
+    if (this._sumFor !== h.states || this._sumReg !== h.entities) {
+      this._sumFor = h.states;
+      this._sumReg = h.entities;
+      this._sum = healthSummary(h, hc);
+    }
+    const total = this._sum.total, warn = hc.warn_above ?? 6;
+    put(el.health, "--ac", total === 0 ? "var(--secondary-text-color)" : total < warn ? "var(--lvl-warn)" : "var(--lvl-bad)");
+    attr(el.health, "data-alert", total > 0);
+    el.count.hidden = !total;
+    text(el.count, String(total));
+    attr(el.health, "aria-label", total ? `System health, ${total} need attention` : "System health, all good");
+  }
+
+  // The four that count by themselves (each can be false, or point at an entity), then yours.
+  _renderChips() {
+    const h = this._hass, c = this._config;
+    const items = [];
+    for (const key of Object.keys(AUTO)) {
+      const cfg = c[key];
+      if (cfg === false || cfg?.hide) continue;
+      items.push(this._auto(key, cfg && typeof cfg === "object" ? cfg : typeof cfg === "string" ? { entity: cfg } : {}));
+    }
+    asItems(c.chips).forEach((x, i) => items.push(chipItem(h, x, i)));
+    this._chipRow(this._el.chips, items);
+  }
+
+  _auto(key, cfg) {
+    const h = this._hass, base = AUTO[key];
+    const own = cfg.entity && h.states[cfg.entity];
+    let value, ids, spin, listTitle = cfg.name || base.name;
+    if (key === "lights") {
+      const l = houseLights(h);
+      value = l.on.length ? `${l.on.length} on` : "Off";
+      ids = l.on.length ? l.on : l.all;
+      listTitle = l.on.length ? "Lights on" : "Lights";
+    } else if (key === "media") {
+      const m = housePlaying(h);
+      value = m.on.length ? `${m.on.length} playing` : "Idle";
+      ids = m.on.length ? m.on : m.all;
+    } else if (key === "climate") {
+      const t = houseTemperature(h);
+      value = t.value == null ? "–" : `${t.value.toFixed(1)}${t.unit}`;
+      ids = t.ids;
+      spin = t.running.length ? fanRate(h.states[t.running[0]]) : 0;
+    } else {
+      const s = houseSecurity(h);
+      value = s.entity ? stateText(h, h.states[s.entity]) : s.open.length ? `${s.open.length} open` : "Secure";
+      ids = s.open.length ? [...(s.entity ? [s.entity] : []), ...s.open] : s.ids;
+    }
+    if (own) value = stateText(h, own);
+    const snapshot = [...ids];     // what was counted when opened: turning one off keeps its row
+    return {
+      key, icon: cfg.icon || base.icon, entity: cfg.entity, color: colorOf(cfg.color) || base.color,
+      value, caption: cfg.name || base.name, aria: `${cfg.name || base.name}, ${value}`,
+      spin: key === "climate" ? spin : undefined,
+      config: { ...cfg, tap_action: cfg.tap_action ?? (cfg.navigation_path ? { action: "navigate", navigation_path: cfg.navigation_path } : undefined) },
+      defaults: { tap: { action: "list" }, hold: { action: "list" } },
+      list: (from) => this._showList(listTitle, snapshot, cfg.color ? colorOf(cfg.color) : base.color, from),
+    };
+  }
+
+  _paint(dirty, all, red) {
+    if (all || dirty.has("pill")) this._swap.paint(red);
+  }
+}
+
+// ---------- editor ----------
+const autoSection = (key, what) => ({ type: "expandable", name: key, title: `${AUTO[key].name} chip`, schema: [
+  { name: "hide", label: "Hide this chip", selector: { boolean: {} } },
+  { name: "entity", label: "Show this entity instead", helper: `Empty: ${what}`, selector: { entity: {} } },
+  { type: "grid", name: "", schema: [{ name: "name", label: "Name", selector: { text: {} } }, { name: "icon", label: "Icon", selector: { icon: { placeholder: AUTO[key].icon } } }] },
+  { name: "color", label: "Colour", selector: { text: {} } },
+  { name: "tap_action", label: "Tap (default: list them)", selector: { ui_action: {} } },
+  { name: "hold_action", label: "Hold (default: list them)", selector: { ui_action: {} } },
+] });
+
+const EDITOR = defineEditor("savvy-home-card", (hass, c) => [
+  ...modeSchema(hass, c, { helper: "The house mode: any input_select or select. Never guessed; empty hides the chip." }),
+  { name: "home_path", label: "Home button opens", helper: "A dashboard path; empty hides the button.", selector: { text: {} } },
+  { name: "weather", label: "Weather", helper: "Empty: the first weather entity.", selector: { entity: { domain: "weather" } } },
+  { type: "expandable", name: "health", title: "Health cog", schema: [
+    { name: "navigation_path", label: "Tapping opens", helper: "E.g. your admin page. Empty: tapping lists what needs attention (hold always does).", selector: { text: {} } },
+    { name: "watchman", label: "Watchman sensors", selector: { entity: { multiple: true, domain: "sensor" } } },
+    { type: "grid", name: "", schema: [
+      { name: "battery_threshold", label: "Low battery below", selector: { number: { min: 1, max: 100, mode: "box", unit_of_measurement: "%" } } },
+      { name: "warn_above", label: "Red from", selector: { number: { min: 1, max: 99, mode: "box" } } },
+    ] },
+    { name: "exclude_platforms", label: "Ignore integrations", selector: { select: { multiple: true, custom_value: true, options: ["mobile_app"] } } },
+  ] },
+  autoSection("lights", "counts the lights that are on."),
+  autoSection("climate", "the average indoor temperature."),
+  autoSection("media", "counts what's playing."),
+  autoSection("security", "the alarm panel; with none, what's open or unlocked."),
+  S.chips("chips", "Your chips", "After the four."),
+]);
+
+registerCard("savvy-home-card", SavvyHomeCard, "Home",
+  "The home dashboard's header: the house mode, health, weather, and chips that count lights, climate, media and security by themselves.");
 })();
 
 // ===== cards/lights.js =====
@@ -4829,6 +6125,819 @@ const EDITOR = defineEditor("savvy-lights-card", (hass, c) => [
 
 registerCard("savvy-lights-card", LightsCard, "Lights",
   "Every light in a room, found for you, each with only the controls it supports. Reorder in the editor.");
+})();
+
+// ===== cards/room.js =====
+(() => {
+// savvy-room-card: the header at the top of a room's own page. The room's mode (tap to
+// change it) and temperature; a row of what the room has, pinned entities first, then
+// everything the area has, on or off (dimmed when idle); your own chips; and a row to
+// jump to every other room.
+//
+//   type: custom:savvy-room-card
+//   area: living_room
+//   mode: input_select.living_room_mode      home_path: /lovelace/home
+//   entities: [input_boolean.living_room_lights, …]     auto_discover: true
+//   chips: [...]                              room_path: /lovelace/{slug}
+
+const STYLE = `${BASE_CSS}${HEADER_CSS}${CHIP_ROW_CSS}`;
+
+class SavvyRoomCard extends SavvyCard {
+  static getStubConfig(hass) {
+    const a = allAreas(hass).find((x) => areaEntities(hass, x.id).length);
+    return a ? { area: a.id } : {};
+  }
+  static getConfigElement() { return document.createElement(EDITOR); }
+
+  setConfig(config) {
+    if (!config?.area) throw new Error("savvy-room-card: set an area");
+    const c = legacyBadges({ mode_label: "Room mode", ...config });
+    if (config.sensor_icons_only !== undefined && c.icons_only === undefined) c.icons_only = config.sensor_icons_only;
+    c.room_order = config.room_order ?? config.order;
+    if (config.tiles && !config.chips) c.chips = config.tiles;
+    this._config = c;
+    if (this._el) { this._build(); if (this._hass) this._update(); }
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._config) return;
+    if (!this._el) this._build();
+    this._update();
+    this._list?.render(hass);
+    if (this._picker?.isOpen) this._picker.render(this._modeInfo(), this._config.mode_label);
+  }
+
+  connectedCallback() { this._observe(); this._wake(); }
+  getCardSize() { return 3; }
+  getGridOptions() { return { columns: 12, min_columns: 6, rows: "auto" }; }
+
+  _modeInfo() { return this._hass && modeInfo(this._hass, this._config.mode, this._config); }
+
+  _build() {
+    const root = this.shadowRoot || this.attachShadow({ mode: "open" });
+    this._resetMotion();
+    this._picker?.close();
+    this._picker = null;
+    root.innerHTML = `<style>${STYLE}</style>
+      <ha-card>
+        <div class="top">
+          <button class="glyph" id="home" aria-label="Home" hidden><ha-icon icon="mdi:home"></ha-icon></button>
+          <button class="pill" id="pill" hidden>
+            <span class="swap" id="swap"><ha-icon id="pillIcon"></ha-icon><span class="col"><span class="val" id="val"></span><span class="pre" id="pre"></span></span></span>
+          </button>
+          <span class="spacer" id="spacer"></span>
+          <button class="wx" id="temp" hidden><ha-icon icon="mdi:thermometer"></ha-icon><span class="deg" id="deg"></span></button>
+        </div>
+        <div class="chips" id="sensors"></div>
+        <div class="chips" id="chips" hidden></div>
+        <div class="sep" id="sep"></div>
+        <div class="chips nav" id="rooms"></div>
+      </ha-card>`;
+    const $ = (id) => root.getElementById(id);
+    this._el = { card: root.querySelector("ha-card"), home: $("home"), pill: $("pill"), swap: $("swap"), pillIcon: $("pillIcon"), val: $("val"), pre: $("pre"),
+      spacer: $("spacer"), temp: $("temp"), deg: $("deg"), sensors: $("sensors"), chips: $("chips"), sep: $("sep"), rooms: $("rooms") };
+    const el = this._el;
+    this._swap = new Swap(el.swap, (v) => {
+      const info = this._modeInfo();
+      text(el.val, info?.label || v);
+      attr(el.pillIcon, "icon", info?.icon);
+    }, "pill");
+    this._springs.push(this._swap.spring);
+    this._pressable(el.home, { onTap: () => navigate(this._config.home_path) });
+    wireModeChip(this, el.pill, () => el.card, () => this._config.mode_label);
+    this._pressable(el.temp, { onTap: () => moreInfo(this, this._temp?.entity) });
+    this._observe();
+  }
+
+  _observe() {
+    if (!this._el || !this.isConnected) return;
+    this._ro?.disconnect();
+    this._ro = new ResizeObserver(() => { for (const r of [this._el.sensors, this._el.chips, this._el.rooms]) this._fitRow(r); });
+    for (const r of [this._el.sensors, this._el.chips, this._el.rooms]) this._ro.observe(r);
+  }
+
+  _update() {
+    const h = this._hass, c = this._config, el = this._el;
+    if (!h || !el) return;
+    this.toggleAttribute("dark", !!h.themes?.darkMode);
+    el.home.hidden = !c.home_path;
+    const info = this._modeInfo();
+    this._renderPill(info, c.mode_label);
+    el.spacer.hidden = !!info;
+
+    const t = roomTemperature(h, c.area, c);
+    this._temp = t;
+    el.temp.hidden = !t;
+    if (t) {
+      text(el.deg, `${t.value.toFixed(1)}${t.unit.includes("°") ? t.unit : ` ${t.unit}`}`);
+      attr(el.temp, "aria-label", `Temperature ${t.value.toFixed(1)} ${t.unit}`);
+    }
+
+    this._sensors();
+    this._customChips();
+    this._rooms();
+    this._wake();
+  }
+
+  // Everything the room has, on or off: active ones in their colour, idle ones dimmed.
+  _sensors() {
+    const h = this._hass, c = this._config;
+    const items = roomBadges(h, c.area, c, { idle: true }).map((b) => {
+      const look = badgeLook(b), st = h.states[b.entity];
+      const caption = b.cfg.name || b.kind?.name || shortName(h, b.entity, c.area);
+      const value = stateText(h, st);
+      return {
+        key: b.key, icon: look.icon, stateObj: st, entity: b.entity,
+        color: b.on ? (look.color || "var(--primary-text-color)") : "var(--secondary-text-color)",
+        dim: !b.on, value, caption, aria: `${caption}, ${value}`,
+        spin: look.spin ? (b.on && climateRunning(st) ? fanRate(st) : 0) : undefined,
+        config: b.cfg, defaults: badgeDefaults(b),
+        list: (from) => this._showList(caption, b.ids, look.color, from),
+      };
+    });
+    this._chipRow(this._el.sensors, items, { iconOnly: !!c.icons_only });
+  }
+
+  _customChips() {
+    const h = this._hass;
+    const items = asItems(this._config.chips).map((x, i) => chipItem(h, x, i));
+    this._chipRow(this._el.chips, items);
+  }
+
+  // Every other room, each a way there. Shown when rooms have somewhere to go: room_path
+  // ("/lovelace/{slug}": {area} is the area id, {slug} the same with dashes), or a room's own.
+  _rooms() {
+    const h = this._hass, c = this._config;
+    const overrides = new Map([].concat(c.rooms || []).filter((r) => r && typeof r === "object" && r.area).map((r) => [r.area, r]));
+    const skip = new Set([c.area, ...[].concat(c.exclude_rooms || [])]);
+    const rank = new Map([].concat(c.room_order || []).map((a, i) => [a, i]));
+    const items = [];
+    if (c.rooms !== false) {
+      const areas = allAreas(h).filter((a) => !skip.has(a.id) && (areaEntities(h, a.id).length || overrides.has(a.id)));
+      areas.sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity) || (overrides.get(a.id)?.name || a.name).localeCompare(overrides.get(b.id)?.name || b.name));
+      for (const a of areas) {
+        const o = overrides.get(a.id) || {};
+        const path = o.navigation_path || (c.room_path ? c.room_path.replace(/\{area\}/g, a.id).replace(/\{slug\}/g, a.id.replace(/_/g, "-")) : null);
+        if (!path) continue;
+        const name = o.name || a.name;
+        items.push({ key: a.id, icon: o.icon || a.icon || "mdi:home-outline", value: name, aria: name,
+          config: { tap_action: { action: "navigate", navigation_path: path } } });
+      }
+    }
+    this._el.sep.hidden = !items.length;
+    this._chipRow(this._el.rooms, items);
+  }
+
+  _paint(dirty, all, red) {
+    if (all || dirty.has("pill")) this._swap.paint(red);
+  }
+}
+
+// ---------- editor ----------
+const areasOf = (hass, c) => allAreas(hass).filter((a) => a.id !== c.area && areaEntities(hass, a.id).length).map((a) => a.id);
+
+const EDITOR = defineEditor("savvy-room-card", (hass, c) => [
+  S.area(),
+  ...modeSchema(hass, c, { helper: "The room's mode or scenes: any input_select or select." }),
+  { name: "home_path", label: "Home button opens", helper: "A dashboard path; empty hides the button.", selector: { text: {} } },
+  { name: "temperature", label: "Temperature", helper: "Found from the area. Pick another to override.", selector: { entity: { domain: ["sensor", "climate"] } } },
+  ...badgeSchema({ pinnedHelp: "Always shown first, in this order: a lights helper, presence, a door. The rest of the room follows." }),
+  S.bool("icons_only", "Icons only", "Just the coloured icons, no names or states.", false),
+  S.chips("chips", "Chips", "Your own chips, in a row under the room's."),
+  { name: "room_path", label: "Rooms row: each room opens", helper: "E.g. /lovelace/{slug} ({area}: the area id, {slug}: with dashes). Empty hides the row.", selector: { text: {} } },
+  { name: "room_order", label: "Rooms order", type: "list", helper: "Rooms listed first, in this order; the rest follow by name.",
+    initial: (h, cfg) => (h ? areasOf(h, cfg) : []), add: { selector: { area: {} }, label: "Add a room" },
+    summary: (a, h) => ({ title: areaInfo(h, a).name, sub: a }) },
+  { name: "exclude_rooms", label: "Rooms to leave out", selector: { area: { multiple: true } } },
+]);
+
+registerCard("savvy-room-card", SavvyRoomCard, "Room",
+  "A room page's header: its mode, temperature, everything it has, and the way to every other room.");
+})();
+
+// ===== cards/tile.js =====
+(() => {
+// savvy-room-tile: a room at a glance. The icon sits in a small liquid drop that fills
+// with the room's light: brighter as its lights are brighter, tinted by the first coloured
+// bulb, wobbling like water when a light switches. Below, the room's badges.
+//
+// Everything comes from the area: its lights (the drop), its temperature, its badges.
+//   type: custom:savvy-room-tile
+//   area: kitchen
+//   navigation_path: /lovelace/kitchen     tap: go there (else: list the room's lights)
+//   double tap: the room's lights on/off   hold: list the room's lights
+//   mode: input_select.kitchen_mode        toggle: input_boolean.kitchen_lights (optional)
+//   lights / count / color_lights: overrides    entities / auto_discover: the badges
+//
+// The drop's outline is a circle plus three lobes (2, 3 and 4 around the rim), each its
+// own spring; like a real droplet the higher lobes ring faster and settle sooner.
+
+const HUE_MODES = new Set(["hs", "xy", "rgb", "rgbw", "rgbww"]);
+const PREDICT_MS = 1500;     // how long an optimistic switch waits for HA to agree
+const TILE_BADGE = 30;
+const TILE_MOTION = {
+  light: { response: 0.75, damping: 1 },
+  wander: { response: 1.4, damping: 1 },
+  bloomOn: { response: 1.3, damping: 1 },
+  bloomOff: { response: 1.0, damping: 1 },
+  halo: { response: 0.9, damping: 1 },
+  swell: { response: 0.55, damping: 0.45 },
+  text: { response: 0.55, damping: 1 },
+};
+// Rayleigh drop: lobe k rings at roughly sqrt(k(k-1)(k+2)) and loses energy faster as k grows
+const DROP = [
+  { k: 2, response: 0.74, damping: 0.3, kick: 0.8, wander: 0.034 },
+  { k: 3, response: 0.38, damping: 0.4, kick: 0.72, wander: 0.017 },
+  { k: 4, response: 0.25, damping: 0.52, kick: 0.5, wander: 0 },
+];
+// liquid material per theme: [base, extra at full brightness]
+const LIQUID = {
+  dark: { core: [0.26, 0.5], rim: [0.14, 0.26], sheen: 1, icon: 76, spill: 0.85 },
+  light: { core: [0.22, 0.38], rim: [0.12, 0.22], sheen: 0.5, icon: 58, spill: 0.45 },
+};
+const rand = (a, b) => a + Math.random() * (b - a);
+const smooth = (v) => { v = clamp(v); return v * v * (3 - 2 * v); };
+const scaleBy = (x, depth) => (Math.abs(x) < 1e-4 ? "" : `scale(${(1 - depth * x).toFixed(4)})`);
+
+let paint2d;
+const toRgb = (css) => {
+  const hex = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(css).trim());
+  if (hex) {
+    const h = hex[1].length === 3 ? hex[1].replace(/./g, "$&$&") : hex[1];
+    const n = parseInt(h, 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  paint2d = paint2d || document.createElement("canvas").getContext("2d");
+  paint2d.fillStyle = "#000";
+  paint2d.fillStyle = css;
+  const out = paint2d.fillStyle;
+  if (out[0] === "#") return toRgb(out);
+  const n = out.match(/[\d.]+/g);
+  return n ? n.slice(0, 3).map(Number) : [245, 184, 61];
+};
+// Pull a bulb colour into a band that reads as light on both themes; near-white isn't a
+// colour choice, so it returns null and the card's tint wins.
+const legible = ([r, g, b]) => {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  const l = (max + min) / 2;
+  const s = d ? d / (1 - Math.abs(2 * l - 1)) : 0;
+  if (s < 0.12) return null;
+  let hue = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  hue = (hue * 60 + 360) % 360;
+  const S2 = clamp(s, 0.45, 1), L = clamp(l, 0.5, 0.72);
+  const a = S2 * Math.min(L, 1 - L);
+  const f = (n) => { const k = (n + hue / 30) % 12; return Math.round((L - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))) * 255); };
+  return [f(0), f(8), f(4)];
+};
+
+const STYLE = `${BASE_CSS}
+  ha-card { --well: 42px; --gap: 12px; --chip: 28px; --tint: 245 184 61;
+    display: flex; flex-direction: column; gap: 4px; padding: var(--pad); overflow: hidden; cursor: pointer;
+    user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation; outline: none; }
+  :host([dark]) ha-card::after { z-index: 2; }
+  @media (hover: hover) { ha-card:hover { background: color-mix(in oklab, var(--primary-text-color) 2.5%, var(--ha-card-background, var(--card-background-color))); } }
+  :host([kbd]) ha-card:focus-visible { outline: 2px solid rgb(var(--tint)); outline-offset: 2px; }
+
+  /* light spilling from the drop into the card; only ever seen when a switch happens */
+  .spill { position: absolute; z-index: 0; inset-inline-start: calc(var(--pad) + var(--well) / 2); top: calc(var(--pad) + var(--well) / 2);
+    width: 320px; height: 320px; margin: -160px 0 0 -160px; border-radius: 50%; pointer-events: none; opacity: 0;
+    background: radial-gradient(closest-side, rgb(var(--tint) / 0.9), rgb(var(--tint) / 0.42) 13%, rgb(var(--tint) / 0.16) 30%, rgb(var(--tint) / 0.05) 54%, rgb(var(--tint) / 0)); }
+  :host([dark]) .spill { mix-blend-mode: plus-lighter; }
+  .top { position: relative; z-index: 1; display: flex; align-items: center; gap: var(--gap); min-width: 0; }
+  .well { position: relative; flex: none; width: var(--well); height: var(--well); display: grid; place-items: center; }
+  .well > svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  :host([dark]) .well > svg { mix-blend-mode: plus-lighter; }
+  .well ha-icon { --mdc-icon-size: 22px; position: relative; display: flex; color: var(--icon, var(--secondary-text-color)); }
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .name { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.016em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* the secondary line: the mode carries the colour, the temperature stays quiet */
+  .sub { display: flex; align-items: center; gap: 12px; min-width: 0; font-size: 12.5px; line-height: 18px; }
+  .sub > [role="button"] { display: inline-flex; align-items: center; min-width: 0; padding: 3px 5px; margin: -3px -5px; border-radius: 7px; outline: none; transform-origin: 20% 50%; }
+  :host([kbd]) .sub > [role="button"]:focus-visible { box-shadow: 0 0 0 2px rgb(var(--tint)); }
+  .swap { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+  .dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--mode); }
+  .mode:not([data-c]) .dot { display: none; }
+  .label { font-weight: 500; letter-spacing: -0.004em; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mode[data-c] .label { color: color-mix(in oklab, var(--mode) 64%, var(--primary-text-color)); }
+  .temp { flex: none; color: var(--secondary-text-color); letter-spacing: 0; }
+
+  /* breathing room so halos aren't cut off */
+  .badges { position: relative; z-index: 1; display: flex; align-items: center; height: var(--chip); padding: 8px; margin: -8px; margin-inline-start: -13px; overflow: hidden; }
+  .badges[data-overflow] { -webkit-mask-image: linear-gradient(to left, transparent 8px, #000 40px); mask-image: linear-gradient(to left, transparent 8px, #000 40px); }
+  @container (min-width: 300px) { .badges { padding-inline-start: calc(8px + var(--well) + var(--gap)); } }
+  .badge { position: relative; flex: none; width: 0; height: var(--chip); outline: none; }
+  .chip { position: absolute; top: 0; inset-inline-start: 0; width: var(--chip); height: var(--chip); border-radius: 50%;
+    display: grid; place-items: center; color: var(--secondary-text-color); opacity: 0; }
+  .chip::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: color-mix(in oklab, var(--bc) 22%, transparent); opacity: 0; }
+  .badge[data-critical] .chip::before { opacity: var(--on, 0); }
+  :host([kbd]) .badge:focus-visible .chip { box-shadow: 0 0 0 2px rgb(var(--tint)); }
+  .chip ha-icon, .chip ha-state-icon { --mdc-icon-size: 18px; position: relative; display: flex; }
+  .halo { position: absolute; top: 50%; inset-inline-start: calc(var(--chip) / 2); width: 60px; height: 60px; margin: -30px 0 0 -30px;
+    border-radius: 50%; pointer-events: none; opacity: 0; background: radial-gradient(closest-side, color-mix(in oklab, var(--bc) 42%, transparent), transparent); }
+  @media (prefers-contrast: more) { .temp { color: var(--primary-text-color); } }
+`;
+
+class SavvyRoomTile extends SavvyCard {
+  static getStubConfig(hass) {
+    const a = allAreas(hass).find((x) => areaLights(hass, x.id).length) || allAreas(hass)[0];
+    return a ? { area: a.id } : {};
+  }
+  static getConfigElement() { return document.createElement(EDITOR); }
+
+  constructor() {
+    super();
+    this._onscreen = true;
+    this._painted = 0;
+  }
+
+  setConfig(config) {
+    if (!config || (!config.area && !config.name)) throw new Error("savvy-room-tile: set an area");
+    // pre-Savvy keys: light_group / light_counter / color_light / light_state
+    const c = legacyBadges({ tint: LIGHT_COLOR, ...config });
+    c.lights = config.lights ?? config.light_group;
+    c.count = config.count ?? config.light_counter;
+    c.color_lights = config.color_lights ?? config.color_light;
+    c.toggle = config.toggle ?? config.light_state;
+    this._config = c;
+    this._baseTint = toRgb(colorOf(c.tint).replace(/^var\(--[^,]+,\s*([^)]+)\)$/, "$1"));
+    if (this._el) { this._build(); if (this._hass) this._update(); }
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._config) return;
+    if (!this._el) this._build();
+    this._update();
+    this._list?.render(hass);
+  }
+
+  connectedCallback() { this._observe(); this._wake(); }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._io?.disconnect();
+    clearTimeout(this._optTimer);
+  }
+  getCardSize() { return 2; }
+  getGridOptions() { return { columns: 6, rows: 2, min_rows: 2, max_rows: 2 }; }
+
+  _modeInfo() { return this._hass && modeInfo(this._hass, this._config.mode, this._config); }
+
+  _lights() {
+    const c = this._config, h = this._hass;
+    if (c.lights) return asItems(c.lights).map((i) => i.entity).filter((id) => h.states[id]);
+    return c.area ? areaLights(h, c.area) : [];
+  }
+
+  // tap: the room's page if there is one, else its lights; double tap: lights on/off;
+  // hold: the lights, each with its switch
+  _actions() {
+    const c = this._config;
+    return {
+      tap_action: c.tap_action || (c.navigation_path ? { action: "navigate", navigation_path: c.navigation_path } : { action: "list" }),
+      double_tap_action: c.double_tap_action || { action: "savvy-lights" },
+      hold_action: c.hold_action || { action: "list" },
+    };
+  }
+
+  _build() {
+    const root = this.shadowRoot || this.attachShadow({ mode: "open" });
+    this._resetMotion();
+    this._first = true;
+    this._prev = {};
+    this._optimistic = null;
+    this._predicted = null;
+    this._hadTemp = false;
+    this._badges = new Map();
+    // each tile wanders on its own clock so a dashboard never moves in lockstep
+    this._seed = DROP.map(() => [rand(0, TAU), rand(0, TAU), rand(8, 12), rand(10, 15)]);
+    this._X = new Float32Array(18);
+    this._Y = new Float32Array(18);
+    root.innerHTML = `<style>${STYLE}</style>
+      <ha-card tabindex="0" role="button">
+        <span class="spill" id="spill" aria-hidden="true"></span>
+        <div class="top">
+          <div class="well" aria-hidden="true">
+            <svg viewBox="0 0 100 100" focusable="false">
+              <defs>
+                <radialGradient id="liquid-fill" cx="50%" cy="46%" r="60%"><stop id="core" offset="0"></stop><stop id="rim" offset="1"></stop></radialGradient>
+                <radialGradient id="sheen-fill" cx="50%" cy="8%" r="42%"><stop offset="0" stop-color="#fff" stop-opacity="0.14"></stop><stop offset="1" stop-color="#fff" stop-opacity="0"></stop></radialGradient>
+              </defs>
+              <path id="liquid" fill="url(#liquid-fill)"></path><path id="sheen" fill="url(#sheen-fill)" opacity="0"></path>
+            </svg>
+            <ha-icon id="icon"></ha-icon>
+          </div>
+          <div class="main">
+            <span class="name" id="name"></span>
+            <div class="sub">
+              <span class="mode" id="mode" role="button" tabindex="0" hidden><span class="swap" id="swap"><i class="dot"></i><span class="label" id="label"></span></span></span>
+              <span class="temp" id="temp" role="button" tabindex="0" hidden></span>
+            </div>
+          </div>
+        </div>
+        <div class="badges" id="badges"></div>
+      </ha-card>`;
+    const $ = (id) => root.getElementById(id);
+    const card = root.querySelector("ha-card");
+    this._el = { card, spill: $("spill"), liquid: $("liquid"), sheen: $("sheen"), core: $("core"), rim: $("rim"), icon: $("icon"),
+      name: $("name"), mode: $("mode"), swap: $("swap"), label: $("label"), temp: $("temp"), badges: $("badges") };
+
+    const [r, g, b] = this._baseTint;
+    const L = TILE_MOTION;
+    this._sp = {
+      temp: this._spring(0, L.text, "temp", 0.002),
+      intensity: this._spring(0, L.light, "liquid"),
+      r: this._spring(r, L.light, "liquid", 0.3), g: this._spring(g, L.light, "liquid", 0.3), b: this._spring(b, L.light, "liquid", 0.3),
+      glow: this._spring(0, L.bloomOn, "liquid"),
+      scale: this._spring(0, L.swell, "liquid", 5e-4),
+      wander: this._spring(0, L.wander, "liquid"),
+      drop: DROP.map((d) => ({ a: this._spring(0, d, "liquid", 5e-4), b: this._spring(0, d, "liquid", 5e-4) })),
+    };
+
+    // the card: its actions, with the lights toggle as a Savvy action of its own
+    const ctx = () => ({ config: this._actions(), entity: this._config.toggle || this._lights()[0],
+      list: () => this._showList(this._name(), this._lights(), `rgb(${this._tint().join(" ")})`, card) });
+    const spring = this._spring(0, MOTION.press, "card");
+    card.__spring = spring;
+    card.__depth = 0.02;
+    this._pressNodes.push(card);
+    const act = (kind) => () => {
+      const a = asAction(this._actions()[`${kind}_action`]);
+      if (a?.action === "savvy-lights") return this._toggleLights();
+      runAction(this, this._hass, a, ctx());
+    };
+    bindPress(card, { spring, wake: () => this._wake(), onTap: act("tap"), onHold: act("hold"),
+      onDouble: asAction(this._actions().double_tap_action)?.action === "none" ? null : act("double_tap") });
+
+    // the secondary line: tap does the card's tap, hold opens the entity behind it
+    const line = (node, entity) => {
+      node.addEventListener("pointerdown", (e) => e.stopPropagation());     // never also presses the card
+      this._pressable(node, { onTap: act("tap"), onHold: () => moreInfo(this, entity()) }, 0.08);
+    };
+    line(this._el.mode, () => this._config.mode);
+    line(this._el.temp, () => this._temp?.entity);
+    this._swap = new Swap(this._el.swap, (v) => {
+      const info = this._modeInfo();
+      text(this._el.label, info?.label || v);
+      put(this._el.mode, "--mode", info?.color || "");
+      attr(this._el.mode, "data-c", !!info?.color);
+    }, "mode");
+    this._springs.push(this._swap.spring);
+    this._observe();
+  }
+
+  _observe() {
+    if (!this._el || !this.isConnected) return;
+    this._io?.disconnect();
+    this._io = new IntersectionObserver(([e]) => { this._onscreen = e.isIntersecting; if (this._onscreen) this._wake(); });
+    this._io.observe(this);
+    this._ro?.disconnect();
+    this._ro = new ResizeObserver(() => this._fitBadges());
+    this._ro.observe(this._el.badges);
+  }
+
+  _name() {
+    const c = this._config;
+    return c.name || (c.area ? areaInfo(this._hass, c.area).name : "Room");
+  }
+
+  // The room's lights, on or off. With a toggle entity (a helper wired to your own
+  // automations) that's what switches; otherwise the lights themselves: any on -> all off.
+  // The card answers first (the drop reacts now), then HA confirms or the guess expires.
+  _toggleLights() {
+    const c = this._config, h = this._hass;
+    const lights = this._lights();
+    let from;
+    if (c.toggle && h.states[c.toggle]) {
+      from = h.states[c.toggle].state === "on";
+      toggleEntity(h, c.toggle);
+    } else {
+      if (!lights.length) return;
+      from = lights.some((id) => h.states[id].state === "on");
+      h.callService("light", from ? "turn_off" : "turn_on", {}, { entity_id: lights });
+    }
+    haptic("light");
+    const dir = from ? -1 : 1;
+    this._optimistic = { from, dir };
+    clearTimeout(this._optTimer);
+    this._optTimer = setTimeout(() => { this._optimistic = null; this._update(); }, PREDICT_MS * 2);
+    this._switched(dir);
+    this._predicted = { dir, t: performance.now() };
+    this._update();
+  }
+
+  _isOn() {
+    const c = this._config, h = this._hass;
+    if (c.toggle && h.states[c.toggle]) return h.states[c.toggle].state === "on";
+    return this._lights().some((id) => h.states[id].state === "on");
+  }
+
+  _count() {
+    const h = this._hass, s = this._config.count && h.states[this._config.count];
+    if (s) { const m = s.state.match(/\d+/); return m ? parseInt(m[0], 10) : 0; }
+    return this._lights().filter((id) => h.states[id].state === "on").length;
+  }
+
+  _tint() {
+    const h = this._hass;
+    const ids = this._config.color_lights ? asItems(this._config.color_lights).map((i) => i.entity) : this._lights();
+    for (const id of ids) {
+      const st = h.states[id];
+      if (!st || st.state !== "on" || !HUE_MODES.has(st.attributes.color_mode)) continue;
+      const rgb = st.attributes.rgb_color && legible(st.attributes.rgb_color);
+      if (rgb) return rgb;
+    }
+    return this._baseTint;
+  }
+
+  _update() {
+    const h = this._hass, c = this._config, el = this._el;
+    if (!h || !el) return;
+    this._reduced = MQ.reduced.matches;
+    this._dark = !!h.themes?.darkMode;
+    this.toggleAttribute("dark", this._dark);
+    const area = c.area ? areaInfo(h, c.area) : null;
+    text(el.name, this._name());
+    attr(el.icon, "icon", c.icon || area?.icon || "mdi:home-outline");
+    attr(el.card, "aria-label", this._name());
+
+    const info = this._modeInfo();
+    el.mode.hidden = !info;
+    if (info) { attr(el.mode, "aria-label", `${info.label} mode`); this._swap.set(info.value); }
+
+    const t = roomTemperature(h, c.area, c);
+    this._temp = t;
+    el.temp.hidden = !t;
+    if (t) {
+      this._unit = t.unit.includes("°") ? "°" : ` ${t.unit}`;
+      attr(el.temp, "aria-label", `Temperature ${t.value.toFixed(1)} ${t.unit}`);
+      if (!this._hadTemp || this._reduced) this._sp.temp.snap(t.value); else this._sp.temp.to(t.value);
+    }
+    this._hadTemp = !!t;
+
+    this._light();
+    this._renderBadges();
+    if (this._first) {
+      this._first = false;
+      this._paintAll(null);
+      this._fitBadges();
+    }
+    this._wake();
+  }
+
+  _light() {
+    const h = this._hass, c = this._config, sp = this._sp;
+    const hasToggle = !!(c.toggle && h.states[c.toggle]);
+    const stateOn = this._isOn();
+    const count = this._count();
+    let sum = 0, lit = 0;
+    for (const id of this._lights()) {
+      const st = h.states[id];
+      if (st.state !== "on") continue;
+      lit++;
+      sum += (st.attributes.brightness ?? 255) / 255;
+    }
+    const lum = lit ? sum / lit : 0;
+    // with a toggle entity, lights on while it's off read as "partly lit"
+    const mode = stateOn ? "on" : hasToggle && (count > 0 || lum > 0) ? "partial" : "off";
+    const level = lum > 0 ? lum : mode === "on" ? 0.6 : 0.35;
+
+    const opt = this._optimistic;
+    if (opt && stateOn !== opt.from) { this._optimistic = null; clearTimeout(this._optTimer); }
+    const shown = this._optimistic ? (this._optimistic.dir > 0 ? "on" : "off") : mode;
+    let I = 0;
+    if (shown === "on") I = 0.5 + 0.5 * level;
+    else if (shown === "partial") I = 0.18 + 0.22 * level;
+    this._level = shown === "off" ? 0 : level;
+
+    // a dark drop has no colour to travel from, so a new tint lands instantly
+    if (shown !== "off") {
+      const tint = this._tint();
+      const jump = this._first || sp.intensity.x < 0.03;
+      [sp.r, sp.g, sp.b].forEach((s, i) => (jump ? s.snap(tint[i]) : s.to(tint[i])));
+    }
+    if (this._first) sp.intensity.snap(this._reduced ? I : 0);    // the room's light comes up once, on load
+    sp.intensity.to(I);
+    sp.wander.to(shown !== "off" && !this._reduced ? 1 : 0);
+    if (this._reduced) sp.wander.snap();
+
+    // every light switch: a bulb joining or leaving, or the room switch flipping
+    const prev = this._prev;
+    if (prev.count !== undefined) {
+      let dir = 0;
+      if (count !== prev.count) dir = count > prev.count ? 1 : -1;
+      else if ((prev.mode === "on") !== (mode === "on")) dir = mode === "on" ? 1 : -1;
+      if (dir) this._switched(dir);
+    }
+    prev.count = count;
+    prev.mode = mode;
+  }
+
+  _switched(dir) {
+    const p = this._predicted;
+    this._predicted = null;
+    if (p && p.dir === dir && performance.now() - p.t < PREDICT_MS) return;     // already played it
+    const sp = this._sp, up = dir > 0;
+    bloom(sp.glow, up ? 0.5 + 0.45 * this._level : 0.26, up ? TILE_MOTION.bloomOn : TILE_MOTION.bloomOff);
+    if (!this._reduced) {
+      // on swells outward, off draws in; the lobes get a fresh random shape every time
+      sp.scale.kick(up ? 0.9 : -0.7, 0.3);
+      sp.drop.forEach((m, i) => {
+        const amp = rand(0.55, 1) * DROP[i].kick * (up ? 1 : 0.8), phi = rand(0, TAU);
+        m.a.kick(amp * Math.cos(phi), 0.3);
+        m.b.kick(amp * Math.sin(phi), 0.3);
+      });
+    }
+    this._wake();
+  }
+
+  _renderBadges() {
+    const h = this._hass, c = this._config, list = roomBadges(h, c.area, c);
+    const seen = new Set(), red = this._reduced, first = this._first;
+    for (const b of list) {
+      seen.add(b.key);
+      const look = badgeLook(b);
+      // the room's own lights toggle glows in the drop's colour
+      const isToggle = b.entity === c.toggle;
+      const color = !b.cfg.color && (isToggle || look.color === LIGHT_COLOR) ? "rgb(var(--tint))" : look.color;
+      let item = this._badges.get(b.key);
+      if (!item) {
+        const node = document.createElement("span");
+        node.className = "badge";
+        node.setAttribute("role", "button");
+        node.innerHTML = `<span class="halo"></span><span class="chip">${look.icon ? "<ha-icon></ha-icon>" : "<ha-state-icon></ha-state-icon>"}</span>`;
+        const group = `badge:${b.key}`;
+        item = { el: node, chip: node.querySelector(".chip"), halo: node.querySelector(".halo"), icon: node.querySelector("ha-icon, ha-state-icon"),
+          shown: this._spring(0, MOTION.ui, group, 0.002), on: this._spring(0, MOTION.ui, group, 0.002),
+          glow: this._spring(0, TILE_MOTION.halo, group), press: this._spring(0, MOTION.press, group), b };
+        // a badge tap is its own: it never also taps the card
+        node.addEventListener("pointerdown", (e) => e.stopPropagation());
+        const act = (kind) => () => {
+          const cur = item.b, cfgA = cur.cfg[`${kind}_action`];
+          // the room's toggle, tapped: the same optimistic switch as the card's double tap
+          if (kind === "tap" && cur.entity === this._config.toggle && cfgA === undefined) return this._toggleLights();
+          runAction(this, this._hass, cfgA !== undefined ? cfgA : badgeDefaults(cur)[kind], { entity: cur.entity,
+            list: () => this._showList(cur.kind?.name || shortName(this._hass, cur.entity), cur.ids, badgeLook(cur).color, node) });
+        };
+        bindPress(node, { spring: item.press, wake: () => this._wake(), onTap: act("tap"), onHold: act("hold") });
+        this._badges.set(b.key, item);
+      }
+      item.b = b;
+      const st = h.states[b.entity];
+      let on = b.on;
+      if (isToggle && this._optimistic) on = this._optimistic.dir > 0;
+      if (look.icon) attr(item.icon, "icon", look.icon);
+      else if (item.icon.stateObj !== st) { item.icon.hass = h; item.icon.stateObj = st; }
+      put(item.el, "--bc", color || "var(--primary-text-color)");
+      attr(item.el, "data-critical", look.critical);
+      attr(item.el, "aria-label", `${b.cfg.name || shortName(h, b.entity, c.area)}, ${stateText(h, st)}`);
+      const wasShown = item.shown.target === 1, wasOn = item.on.target === 1;
+      if (!wasShown) this._rowDirty = true;
+      item.shown.to(1);
+      item.on.to(on ? 1 : 0);
+      if (first) { item.shown.snap(); item.on.snap(); } else if (red) item.shown.snap();
+      // a soft bloom when something joins the row or wakes up; never on first paint
+      if (!first && !red && (!wasShown || (on && !wasOn))) bloom(item.glow, 0.8, TILE_MOTION.halo);
+      if (look.spin) {
+        const spin = this._spinner(b.key, item.icon);
+        spin.s.to(on && climateRunning(st) && !red ? fanRate(st) : 0);
+        if (red) spin.s.snap();
+      }
+      item.el.tabIndex = 0;
+      attr(item.el, "aria-hidden", "false");
+    }
+    for (const [key, item] of this._badges) {
+      if (seen.has(key)) continue;
+      if (item.shown.target !== 0) this._rowDirty = true;
+      item.shown.to(0);
+      item.on.to(0);
+      if (red) item.shown.snap();
+      this._spins.get(key)?.s.to(0);
+      item.el.tabIndex = -1;
+      attr(item.el, "aria-hidden", "true");
+    }
+    const want = list.map((b) => this._badges.get(b.key).el);
+    const kids = [...this._el.badges.children];
+    if (want.some((n, i) => kids[i] !== n)) {
+      for (const n of want) this._el.badges.appendChild(n);
+      for (const [key, item] of this._badges) if (!seen.has(key)) this._el.badges.appendChild(item.el);
+    }
+  }
+
+  _fitBadges() {
+    const row = this._el?.badges;
+    if (row) row.toggleAttribute("data-overflow", row.scrollWidth > row.clientWidth + 1);
+  }
+
+  // Idle drift is sub-pixel per frame: 30fps is indistinguishable, and offscreen it stops.
+  _frame(now, dt) {
+    const wandering = this._sp && this._sp.wander.x > 1e-3;
+    const stepping = this._springs.some((s) => !s.idle) || [...this._spins.values()].some((s) => s.s.x >= 1e-4);
+    if (!stepping && wandering) {
+      if (!this._onscreen) return false;
+      if (now - this._painted < 33) return true;
+      this._paintAll(new Set(["liquid"]));
+      return true;
+    }
+    return super._frame(now, dt) || wandering;
+  }
+
+  _paint(dirty, all, red) {
+    const sp = this._sp, e = this._el;
+    this._painted = performance.now();
+    if (this._sp.wander.x > 1e-3) dirty?.add("liquid");
+    if (all || dirty.has("mode")) this._swap.paint(red);
+    if ((all || dirty.has("temp")) && !e.temp.hidden) {
+      const n = Math.round(sp.temp.x * 10) / 10;
+      text(e.temp, `${(n || 0).toFixed(1)}${this._unit}`);
+    }
+    if (all || dirty.has("liquid")) this._paintLiquid(performance.now());
+    const idle = MQ.contrast.matches ? 0.66 : 0.42;
+    for (const [key, item] of this._badges) {
+      if (!all && !dirty.has(`badge:${key}`)) continue;
+      const shown = clamp(item.shown.x), on = clamp(item.on.x), press = item.press.x, g = Math.max(0, item.glow.x);
+      const vis = item.shown.target === 1 ? Math.sqrt(shown) : shown * shown;
+      put(item.el, "width", `${(shown * TILE_BADGE).toFixed(2)}px`);
+      put(item.chip, "opacity", (vis * lerp(idle, 1, on) * (1 - (red ? 0.3 : 0.06) * clamp(press))).toFixed(3));
+      put(item.chip, "transform", red ? "" : `scale(${((0.6 + 0.4 * shown) * (1 - 0.14 * press)).toFixed(4)})`);
+      put(item.chip, "--on", on.toFixed(3));
+      put(item.chip, "color", on > 1e-3 ? `color-mix(in oklab, var(--bc) ${(on * 100).toFixed(1)}%, var(--secondary-text-color))` : "");
+      put(item.halo, "opacity", g.toFixed(3));
+      put(item.halo, "transform", g < 1e-3 ? "" : `scale(${(0.5 + 0.7 * Math.min(1, g)).toFixed(3)})`);
+    }
+    if (this._rowDirty && [...this._badges.values()].every((i) => i.shown.idle)) {
+      this._rowDirty = false;
+      this._fitBadges();
+    }
+  }
+
+  _paintLiquid(now) {
+    const sp = this._sp, e = this._el, look = this._dark ? LIQUID.dark : LIQUID.light;
+    const I = clamp(sp.intensity.x), lit = smooth(I / 0.2);
+    const tint = [sp.r.x, sp.g.x, sp.b.x].map((v) => Math.round(clamp(v, 0, 255)));
+    put(e.card, "--tint", tint.join(" "));
+    // material: neutral still water when dark, tinted light when lit
+    const mix = tint.map((v) => Math.round(lerp(127, v, lit))).join(" ");
+    attr(e.core, "stop-color", `rgb(${mix})`);
+    attr(e.rim, "stop-color", `rgb(${mix})`);
+    attr(e.core, "stop-opacity", lerp(0.1, look.core[0] + look.core[1] * I, lit).toFixed(3));
+    attr(e.rim, "stop-opacity", lerp(0.1, look.rim[0] + look.rim[1] * I, lit).toFixed(3));
+    attr(e.sheen, "opacity", (lit * (0.3 + 0.7 * I) * look.sheen).toFixed(3));
+    const pct = Math.round(lit * 50) * 2;
+    put(e.icon, "--icon", pct ? `color-mix(in oklab, color-mix(in oklab, rgb(${tint.join(" ")}) ${look.icon}%, var(--primary-text-color)) ${pct}%, var(--secondary-text-color))` : "");
+    const swell = sp.scale.x;
+    put(e.icon, "transform", Math.abs(swell) < 1e-4 ? "" : `scale(${(1 + swell * 0.6).toFixed(4)})`);
+    // the event glow: kicked by a switch, fades by itself
+    const g = Math.max(0, sp.glow.x);
+    put(e.spill, "opacity", g < 1e-3 ? "0" : (g * look.spill).toFixed(3));
+    put(e.spill, "transform", this._reduced || g < 1e-3 ? "" : `scale(${(0.7 + 0.45 * Math.min(1, g)).toFixed(3)})`);
+    // outline: circle + lobes (spring motion + slow wander), through a closed Catmull-Rom spline
+    const t = now / 1000, W = sp.wander.x, R = 50 * (1 + swell);
+    const coef = DROP.map((d, i) => {
+      const s = this._seed[i];
+      return [d.k, sp.drop[i].a.x + W * d.wander * Math.cos((TAU * t) / s[2] + s[0]), sp.drop[i].b.x + W * d.wander * Math.sin((TAU * t) / s[3] + s[1])];
+    });
+    const X = this._X, Y = this._Y, N = X.length;
+    for (let i = 0; i < N; i++) {
+      const th = (i / N) * TAU;
+      let r = 1;
+      for (const [k, a, b] of coef) r += a * Math.cos(k * th) + b * Math.sin(k * th);
+      X[i] = 50 + R * r * Math.cos(th);
+      Y[i] = 50 + R * r * Math.sin(th);
+    }
+    const f = (v) => v.toFixed(2);
+    let d = `M${f(X[0])} ${f(Y[0])}`;
+    for (let i = 0; i < N; i++) {
+      const i0 = (i + N - 1) % N, i2 = (i + 1) % N, i3 = (i + 2) % N;
+      d += `C${f(X[i] + (X[i2] - X[i0]) / 6)} ${f(Y[i] + (Y[i2] - Y[i0]) / 6)} ${f(X[i2] - (X[i3] - X[i]) / 6)} ${f(Y[i2] - (Y[i3] - Y[i]) / 6)} ${f(X[i2])} ${f(Y[i2])}`;
+    }
+    d += "Z";
+    attr(e.liquid, "d", d);
+    attr(e.sheen, "d", d);
+  }
+}
+
+// ---------- editor ----------
+const EDITOR = defineEditor("savvy-room-tile", (hass, c) => [
+  S.area(),
+  S.grid(S.text("name", "Name"), S.icon("icon", "Icon")),
+  { name: "navigation_path", label: "Tapping opens", helper: "A dashboard path, e.g. /lovelace/kitchen. Empty: tapping lists the room's lights.", selector: { text: {} } },
+  ...modeSchema(hass, c),
+  { name: "temperature", label: "Temperature", helper: "Found from the area. Pick another to override.", selector: { entity: { domain: ["sensor", "climate"] } } },
+  S.section("Lights", [
+    { name: "toggle", label: "Lights switch", helper: "Empty: a double tap turns the room's lights off (or on). A helper here is what switches instead.", selector: { entity: {} } },
+    { name: "lights", label: "Lights", helper: "Found from the area. Pick to use only these.", selector: { entity: { domain: "light", multiple: true } } },
+    { name: "count", label: "Count from", helper: "A sensor with the number of lights on, instead of counting.", selector: { entity: { domain: "sensor" } } },
+    { name: "color_lights", label: "Colour from", helper: "Lights whose colour tints the drop. Empty: any of the room's lights.", selector: { entity: { domain: "light", multiple: true } } },
+    S.color("tint", "Tint when the lights are white"),
+  ]),
+  ...badgeSchema(),
+  S.section("Actions", [S.action("tap_action", "Tap"), S.action("double_tap_action", "Double tap"), S.action("hold_action", "Hold")]),
+]);
+
+registerCard("savvy-room-tile", SavvyRoomTile, "Room tile",
+  "A room at a glance: a drop that fills with its light, its mode, temperature and live badges.");
 })();
 
 // ===== cards/vacuum.js =====

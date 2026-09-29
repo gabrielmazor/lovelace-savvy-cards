@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.0
+
+The room cards: four more on the Savvy core.
+
+- **Home**: the home dashboard's header. The house mode (a picker of its options), the
+  weather, the health cog (exactly what the Health card lists, which holding it shows),
+  and four chips that count by themselves, no helpers needed: lights on, the average
+  indoor temperature, what's playing, security (the alarm, else what's open). Each can be
+  turned off or pointed at an entity; hold one for the entities it counts.
+- **Room**: a room page's header: mode, temperature, everything the room has (pinned
+  first, the rest discovered, idle ones dimmed), your chips, and a row to every other room.
+- **Heading**: a room's section heading: name and icon from the area, mode, temperature,
+  and badges for what's going on.
+- **Room tile**: a room at a glance, with the liquid drop that fills with the room's
+  light, from the area's own lights; double tap for the lights, hold for their list.
+- **Modes, everywhere**: `mode:` takes any input_select or select. Every option gets an
+  icon and colour from the mode dictionary; the editor lists the options to set your own.
+- **Badges: pinned, then discovered**: `entities:` always shows, in your order;
+  `auto_discover` adds what the area has; `exclude_kinds`, `include`, `exclude`.
+- **Keyboard**: Enter on something inside a tappable card (a badge on a tile) now only
+  presses that, not the card too.
+
 ## 0.1.2
 
 - **Health: every category always shows** in the default `all` list, with its count or
