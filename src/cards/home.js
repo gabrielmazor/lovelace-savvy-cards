@@ -23,10 +23,9 @@ const AUTO = {
 };
 
 class SavvyHomeCard extends SavvyCard {
-  static getStubConfig(hass) {
-    const mode = Object.keys(hass?.states || {}).find((id) => /^input_select\.(home|house)_mode$/.test(id));
-    return mode ? { mode } : {};
-  }
+  // the mode is never guessed: its options (and their icons in the editor) only appear
+  // once an input_select is chosen
+  static getStubConfig() { return {}; }
   static getConfigElement() { return document.createElement(EDITOR); }
 
   setConfig(config) {

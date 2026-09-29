@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.2.0 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.2.1 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.2.0";
+const SAVVY_VERSION = "0.2.1";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -4696,10 +4696,9 @@ const AUTO = {
 };
 
 class SavvyHomeCard extends SavvyCard {
-  static getStubConfig(hass) {
-    const mode = Object.keys(hass?.states || {}).find((id) => /^input_select\.(home|house)_mode$/.test(id));
-    return mode ? { mode } : {};
-  }
+  // the mode is never guessed: its options (and their icons in the editor) only appear
+  // once an input_select is chosen
+  static getStubConfig() { return {}; }
   static getConfigElement() { return document.createElement(EDITOR); }
 
   setConfig(config) {

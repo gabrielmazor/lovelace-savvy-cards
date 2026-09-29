@@ -59,6 +59,24 @@ export default async function ({ browser, base, check }) {
     }
     return out;
   });
+  check("no stub config guesses a mode", Object.values(stubs).every((s) => !s.cfg.mode), JSON.stringify(stubs));
+  // with no mode chosen the editor has no mode options to show; choosing one fills them from it
+  const modeFields = await page.evaluate(async () => {
+    const ed = document.createElement("savvy-home-card-editor");
+    document.body.appendChild(ed);
+    const names = () => [...ed.shadowRoot.querySelectorAll(".stub-field")].map((f) => f.dataset.name);
+    ed.setConfig({ type: "custom:savvy-home-card" });
+    ed.hass = window.hass;
+    await new Promise((r) => setTimeout(r, 60));
+    const before = names();
+    ed.setConfig({ type: "custom:savvy-home-card", mode: "input_select.living_room_scene" });
+    await new Promise((r) => setTimeout(r, 60));
+    const after = names();
+    ed.remove();
+    return { before, after };
+  });
+  check("mode icons and colours: none until a mode is chosen, then exactly its options", !modeFields.before.some((n) => ["Home", "Away", "Relax"].includes(n))
+    && ["Auto", "Relax", "Reading", "Movie", "Party"].every((o) => modeFields.after.includes(o)) && !modeFields.after.includes("Away"), JSON.stringify(modeFields));
   check("every card's stub config mounts with something to show", Object.values(stubs).every((s) => s.h > 20), JSON.stringify(stubs));
   check("no errors", errors.length === 0, errors.join(" | "));
   await page.close();

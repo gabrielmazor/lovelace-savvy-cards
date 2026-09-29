@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1
+
+- **Home: the mode is never guessed.** A new home card started with a mode picked by its
+  entity id, so the editor listed that entity's options before any was chosen. It now
+  starts empty; the mode icons and colours appear once you choose an input_select, filled
+  from its options.
+
 ## 0.2.0
 
 The room cards: four more on the Savvy core.
