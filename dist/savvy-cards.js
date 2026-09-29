@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.1.1 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.1.2 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.1.1";
+const SAVVY_VERSION = "0.1.2";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -707,6 +707,20 @@ function healthSummary(hass, cfg) {
     counts: { battery: low, unavailable: unavailable.length, watchman: watchman.total },
     total: low + unavailable.length + watchman.total,
   };
+}
+
+// When Watchman last checked the configuration: its "last parse" timestamp sensor, found
+// through the registry (an entity of the watchman integration with a timestamp state,
+// preferring the one named for the parse), or the one config names, or none (false).
+function watchmanLastRun(hass, cfg = {}) {
+  if (cfg.watchman_last_run === false) return null;
+  if (typeof cfg.watchman_last_run === "string") return hass.states[cfg.watchman_last_run] ? cfg.watchman_last_run : null;
+  if (!hass.entities) return null;
+  const found = Object.values(hass.entities)
+    .filter((e) => e.platform === "watchman" && hass.states[e.entity_id]?.attributes.device_class === "timestamp")
+    .map((e) => e.entity_id);
+  const named = (re) => found.find((id) => re.test(hass.entities[id].translation_key || "") || re.test(hass.states[id].attributes.friendly_name || ""));
+  return named(/parse/i) || named(/updat/i) || found[0] || null;
 }
 
 // ===== core/50-palette.js =====
@@ -3342,6 +3356,11 @@ const STYLE = `${BASE_CSS}
   .rows::-webkit-scrollbar { display: none; }
   .rows[data-overflow] { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent 100%);
     mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent 100%); }
+  .titles { display: flex; flex-direction: column; min-width: 0; }
+  .when { font-size: 11.5px; line-height: 15px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .group { display: flex; align-items: baseline; gap: 6px; }
+  .group .gs[data-ok] { color: var(--lvl-good); }
+  .group .gw { margin-inline-start: auto; font-weight: 500; letter-spacing: 0; text-transform: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .group { flex: none; margin: 8px 4px 2px; font-size: 11px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em;
     text-transform: uppercase; color: var(--secondary-text-color); }
   .group:first-child { margin-top: 0; }
@@ -3392,8 +3411,29 @@ class SavvyHealthCard extends HTMLElement {
     this._update();
   }
 
-  connectedCallback() { this._wake(); }
-  disconnectedCallback() { Clock.remove(this._job); this._ro?.disconnect(); }
+  connectedCallback() {
+    this._wake();
+    this._ticker = this._ticker || setInterval(() => this._tickWhen(), 30000);
+  }
+  disconnectedCallback() { Clock.remove(this._job); this._ro?.disconnect(); clearInterval(this._ticker); this._ticker = 0; }
+
+  // "Checked 2 h ago": under the title for the Watchman source, on its group in "all"
+  _tickWhen() {
+    if (!this._el) return;
+    const st = this._lastRun && this._hass?.states[this._lastRun];
+    const t = st ? Date.parse(st.state) : NaN;
+    const words = Number.isFinite(t) ? `Checked ${since(t, false)}` : "";
+    const tip = Number.isFinite(t) ? clockTime(t, langOf(this._hass)) : null;
+    const under = this._config.source === "watchman";
+    this._el.when.hidden = !under || !words;
+    text(this._el.when, under ? words : "");
+    attr(this._el.when, "title", under ? tip : null);
+    for (const node of this._rows.values()) {
+      if (!node.__lastRun) continue;
+      text(node.querySelector(".gw"), words);
+      attr(node.querySelector(".gw"), "title", tip);
+    }
+  }
   getCardSize() { return 3; }
   getGridOptions() { return { columns: 6, min_columns: 4, rows: "auto" }; }
 
@@ -3404,13 +3444,13 @@ class SavvyHealthCard extends HTMLElement {
     this._rows.clear();
     this._root.innerHTML = `<style>${STYLE}</style>
       <ha-card>
-        <div class="head"><span class="name" id="name"></span><span class="pill" id="pill"></span></div>
+        <div class="head"><span class="titles"><span class="name" id="name"></span><span class="when" id="when" hidden></span></span><span class="pill" id="pill"></span></div>
         <div class="empty" id="empty" hidden><ha-icon icon="mdi:check-circle-outline"></ha-icon><span>All good</span></div>
         <div class="rows" id="rows"></div>
         <button class="action" id="action" hidden></button>
       </ha-card>`;
     const $ = (id) => this._root.getElementById(id);
-    this._el = { card: this._root.querySelector("ha-card"), name: $("name"), pill: $("pill"), empty: $("empty"), rows: $("rows"), action: $("action") };
+    this._el = { card: this._root.querySelector("ha-card"), name: $("name"), when: $("when"), pill: $("pill"), empty: $("empty"), rows: $("rows"), action: $("action") };
     const c = this._config;
     put(this._el.rows, "--max-rows", c.max_rows);
     text(this._el.name, c.title || SOURCES[c.source].title);
@@ -3445,11 +3485,12 @@ class SavvyHealthCard extends HTMLElement {
     if (src === "watchman") return { total: sum.counts.watchman, rows: sum.watchman };
     if (src === "unavailable") return { total: sum.counts.unavailable, rows: sum.unavailable };
     if (src === "battery") return { total: sum.counts.battery, rows: c.show_all_batteries === false ? sum.battery.filter((r) => r.alert) : sum.battery };
+    // every category shows, with its count or All good (Watchman when its sensors are set)
     const rows = [];
     for (const key of ["watchman", "unavailable", "battery"]) {
+      if (key === "watchman" && !sum.opts.watchman.length) continue;
       const list = key === "battery" ? sum.battery.filter((r) => r.alert) : sum[key];
-      if (!list.length) continue;
-      rows.push({ key: `g:${key}`, group: `${GROUP_TITLE[key]} · ${sum.counts[key]}` });
+      rows.push({ key: `g:${key}`, group: GROUP_TITLE[key], count: sum.counts[key], lastRun: key === "watchman" });
       rows.push(...list.map((r) => ({ ...r, groupStart: false, dim: false })));
     }
     return { total: sum.total, rows };
@@ -3468,7 +3509,9 @@ class SavvyHealthCard extends HTMLElement {
     attr(this._el.card, "aria-label", `${c.title || label.title}, ${total === 0 ? "all good" : `${total} ${label.nouns.toLowerCase()}`}`);
     this._el.empty.hidden = rows.length > 0;
     this._el.rows.hidden = rows.length === 0;
+    this._lastRun = c.source === "all" || c.source === "watchman" ? watchmanLastRun(h, c) : null;
     this._renderRows(rows);
+    this._tickWhen();     // after the rows: the Watchman group shows it too
     this._wake();
   }
 
@@ -3479,7 +3522,10 @@ class SavvyHealthCard extends HTMLElement {
       let node = this._rows.get(r.key);
       if (!node) {
         node = document.createElement("div");
-        if (r.group) node.className = "group";
+        if (r.group) {
+          node.className = "group";
+          node.innerHTML = `<span class="gt"></span><span class="gs"></span><span class="gw"></span>`;
+        }
         else {
           node.className = "row";
           node.innerHTML = `<span class="disc"><ha-icon></ha-icon></span><span class="col"><span class="n"></span><span class="s"></span></span><span class="v" hidden></span>`;
@@ -3489,7 +3535,14 @@ class SavvyHealthCard extends HTMLElement {
         }
         this._rows.set(r.key, node);
       }
-      if (r.group) { text(node, r.group); box.appendChild(node); continue; }
+      if (r.group) {
+        text(node.querySelector(".gt"), r.group);
+        text(node.querySelector(".gs"), r.count ? `· ${r.count}` : "· All good");
+        attr(node.querySelector(".gs"), "data-ok", !r.count);
+        node.__lastRun = r.lastRun;
+        box.appendChild(node);
+        continue;
+      }
       attr(node.__el.icon, "icon", r.icon);
       text(node.__el.n, r.name);
       text(node.__el.s, r.secondary || "");
@@ -3569,6 +3622,8 @@ const EDITOR = defineEditor("savvy-health-card", (hass, c) => [
     selector: { select: { multiple: true, custom_value: true, options: ["mobile_app"] } } },
   { name: "watchman", label: "Watchman sensors", helper: "Watchman's missing-entities and missing-actions sensors.",
     selector: { entity: { multiple: true, domain: "sensor" } } },
+  { name: "watchman_last_run", label: "Watchman's last-run sensor", helper: "Found automatically (Watchman's last parse). Pick another to override.",
+    selector: { entity: { domain: "sensor", device_class: "timestamp" } } },
   ...(c.source === "battery" ? [S.bool("show_all_batteries", "Show every battery", "Low ones first, the rest dimmed.")] : []),
   // nested under `action`: ha-form's expandable with a name keeps its fields in that key
   { type: "expandable", name: "action", title: "Footer button", schema: [

@@ -180,8 +180,9 @@ entity: vacuum.robot
 </picture>
 
 What in the house needs attention: unavailable entities, low batteries, and (if you use
-[Watchman](https://github.com/dummylabs/thewatchman)) its missing entities and actions.
-One count, grouped lists, tap a row for more-info.
+[Watchman](https://github.com/dummylabs/thewatchman)) its missing entities and actions,
+with when Watchman last checked. One count; every category always shows, with its count
+or "All good"; tap a row for more-info.
 
 ```yaml
 type: custom:savvy-health-card
@@ -194,6 +195,7 @@ type: custom:savvy-health-card
 | `battery_threshold` | `20` | A battery below this % is low. |
 | `exclude_platforms` | `[mobile_app]` | Integrations to ignore (phones, by default). |
 | `watchman` | none | Watchman's summary sensors. |
+| `watchman_last_run` | found | Watchman's "last parse" timestamp, shown as "Checked 2 h ago". Found from the Watchman integration; name another sensor, or `false` to hide it. |
 | `warn_above` | `6` | The count turns red at this many. |
 | `max_rows` | `7` | Rows before the list scrolls. |
 | `show_all_batteries` | `true` | With `source: battery`: every battery, low ones first. |

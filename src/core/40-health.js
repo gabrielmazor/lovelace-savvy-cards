@@ -93,3 +93,17 @@ function healthSummary(hass, cfg) {
     total: low + unavailable.length + watchman.total,
   };
 }
+
+// When Watchman last checked the configuration: its "last parse" timestamp sensor, found
+// through the registry (an entity of the watchman integration with a timestamp state,
+// preferring the one named for the parse), or the one config names, or none (false).
+function watchmanLastRun(hass, cfg = {}) {
+  if (cfg.watchman_last_run === false) return null;
+  if (typeof cfg.watchman_last_run === "string") return hass.states[cfg.watchman_last_run] ? cfg.watchman_last_run : null;
+  if (!hass.entities) return null;
+  const found = Object.values(hass.entities)
+    .filter((e) => e.platform === "watchman" && hass.states[e.entity_id]?.attributes.device_class === "timestamp")
+    .map((e) => e.entity_id);
+  const named = (re) => found.find((id) => re.test(hass.entities[id].translation_key || "") || re.test(hass.states[id].attributes.friendly_name || ""));
+  return named(/parse/i) || named(/updat/i) || found[0] || null;
+}

@@ -93,7 +93,10 @@
       entities: [{ id: "light.old_lamp", state: "missing", occurrences: "/config/automations.yaml:12" },
         { id: "sensor.gone", state: "unavail", occurrences: "/config/scenes.yaml:4" }] }, {});
     add("sensor.watchman_missing_actions", 1, { friendly_name: "Watchman Missing Actions",
-      services: [{ id: "script.old_script", state: "missing", occurrences: "/config/automations.yaml:40" }] }, {});
+      services: [{ id: "script.old_script", state: "missing", occurrences: "/config/automations.yaml:40" }] }, { platform: "watchman" });
+    // Watchman's own timestamps: the card should find "last parse" (when the report ran)
+    add("sensor.watchman_last_updated", ago(5 * MIN), { friendly_name: "Watchman Last Updated", device_class: "timestamp" }, { platform: "watchman", tk: "last_updated", category: "diagnostic" });
+    add("sensor.watchman_last_parse", ago(2 * HOUR), { friendly_name: "Watchman Last Parse", device_class: "timestamp" }, { platform: "watchman", tk: "last_parse", category: "diagnostic" });
 
     // ---- a robot vacuum, Roborock-shaped: everything on its device, by translation_key
     devices.dev_robot = { id: "dev_robot", area_id: null };

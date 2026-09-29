@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.2
+
+- **Health: every category always shows** in the default `all` list, with its count or
+  "All good" (Watchman when its sensors are set), so an empty list reads as good news
+  rather than a missing section.
+- **Health: when Watchman last checked** ("Checked 2 h ago"), from Watchman's own "last
+  parse" sensor, found through the registry; `watchman_last_run` names another or hides it.
+
 ## 0.1.1
 
 - **Editor: typing no longer loses the cursor after every character** (most visible in
