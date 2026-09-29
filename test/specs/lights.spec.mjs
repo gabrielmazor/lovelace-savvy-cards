@@ -57,7 +57,7 @@ export default async function ({ browser, base, check }) {
     // hold the built-in pill: the list of the card's lights
     const pp = await centerOf(page, 0, "#master");
     await page.mouse.move(pp.x, pp.y); await page.mouse.down(); await page.waitForTimeout(700); await page.mouse.up(); await page.waitForTimeout(500);
-    const listed = await page.evaluate(() => [...window.cards[0].shadowRoot.querySelectorAll(".sv-row .sv-name")].map((n) => n.textContent));
+    const listed = await page.evaluate(() => [...window.__savvy.portalRoot().querySelectorAll(".sv-row .sv-name")].map((n) => n.textContent));
     check(`${tag} hold the pill: the list of its lights`, listed.length === 3, JSON.stringify(listed));
     await page.keyboard.press("Escape"); await page.waitForTimeout(500);
 

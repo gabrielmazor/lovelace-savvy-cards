@@ -115,7 +115,7 @@ class SavvyRoomCard extends SavvyCard {
     const items = roomBadges(h, c.area, c, { idle: true }).map((b) => {
       const look = badgeLook(b), st = h.states[b.entity];
       const caption = b.cfg.name || b.kind?.name || shortName(h, b.entity, c.area);
-      const value = stateText(h, st);
+      const value = chipState(h, st);
       return {
         key: b.key, icon: look.icon, stateObj: st, entity: b.entity,
         color: b.on ? (look.color || "var(--primary-text-color)") : "var(--secondary-text-color)",

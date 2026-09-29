@@ -54,22 +54,52 @@ const SHEET_CSS = `
   .sv-empty { padding: 18px 8px; text-align: center; font-size: 13px; color: var(--secondary-text-color); }
   .sv-group { margin: 8px 6px 2px; font-size: 11.5px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em;
     text-transform: uppercase; color: var(--secondary-text-color); }
+  .sv-scrim { touch-action: none; }
+  /* the home card's health list, inside a popup */
+  .sv-sheet savvy-health-card { --ha-card-border-width: 0px; --ha-card-background: transparent; --ha-card-box-shadow: none; margin: -14px -14px 0; }
 `;
 
-const SHEET_STYLE_KEY = "__savvySheetCss";
+// Popups live in one layer at the top of the page, not inside the card: dashboards wrap
+// cards in containers (transforms, containment) that would clip a "full screen" layer to
+// the card, so a tap or scroll outside the popup would reach the page instead of closing it.
+let portalEl = null;
+function portalRoot() {
+  if (!portalEl || !portalEl.isConnected) {
+    portalEl = document.createElement("div");
+    portalEl.className = "savvy-portal";
+    const root = portalEl.attachShadow({ mode: "open" });
+    const style = document.createElement("style");
+    style.textContent = SHEET_CSS + PICKER_CSS;
+    root.appendChild(style);
+    watchKeyboard(portalEl);
+    document.body.appendChild(portalEl);
+  }
+  return portalEl.shadowRoot;
+}
+
+// While a popup is open the page underneath stays put: a press on the backdrop closes it
+// (and goes no further), a scroll on the backdrop closes it without scrolling, and a
+// scroll inside the popup never carries on into the page.
+function guardBackdrop(scrim, panel, close) {
+  const swallow = (e) => { e.preventDefault(); e.stopPropagation(); };
+  scrim.addEventListener("pointerdown", (e) => { swallow(e); close(); });
+  for (const t of ["click", "pointerup", "contextmenu"]) scrim.addEventListener(t, swallow);
+  for (const t of ["wheel", "touchmove"]) scrim.addEventListener(t, (e) => { swallow(e); close(); }, { passive: false });
+  const stuck = (e) => {
+    const box = e.target.closest?.(".sv-body");
+    if (!box || box.scrollHeight <= box.clientHeight + 1) { e.preventDefault(); return; }
+    // at an end, a wheel that would go further is kept in
+    if (e.type === "wheel" && ((e.deltaY < 0 && box.scrollTop <= 0) || (e.deltaY > 0 && box.scrollTop + box.clientHeight >= box.scrollHeight - 1))) e.preventDefault();
+  };
+  panel.addEventListener("wheel", stuck, { passive: false });
+  panel.addEventListener("touchmove", stuck, { passive: false });
+}
 
 class Sheet {
   // host: the card element (its shadow root holds the sheet). opts: { title, wide, onClose }
   constructor(host, { title: heading = "", wide = false, onClose } = {}) {
     this.host = host;
     this.onClose = onClose;
-    const root = host.shadowRoot;
-    if (!root[SHEET_STYLE_KEY]) {
-      const style = document.createElement("style");
-      style.textContent = SHEET_CSS;
-      root.appendChild(style);
-      root[SHEET_STYLE_KEY] = style;
-    }
     this.scrim = document.createElement("div");
     this.scrim.className = "sv-scrim";
     this.el = document.createElement("div");
@@ -86,21 +116,20 @@ class Sheet {
     this.spring = new Spring(0, MOTION.sheetIn, "sheet");
     this.job = (now, dt) => this.frame(false, dt);
     this.returnTo = null;
+    guardBackdrop(this.scrim, this.el, () => this.close());
+    this.el.querySelector(".sv-close").addEventListener("click", (e) => { e.stopPropagation(); this.close(); });
   }
 
   setTitle(t) { text(this.el.querySelector(".sv-title"), t); this.el.setAttribute("aria-label", t); }
 
   open(returnTo) {
-    this.returnTo = returnTo || this.host.shadowRoot.activeElement || null;
-    this.host.shadowRoot.append(this.scrim, this.el);
+    this.returnTo = returnTo || this.host.shadowRoot?.activeElement || null;
+    portalRoot().append(this.scrim, this.el);
     this.place = () => this.el.toggleAttribute("data-bottom", window.innerWidth < 600);
     this.place();
     this.onKey = (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); this.close(); } };
     window.addEventListener("keydown", this.onKey, true);
     window.addEventListener("resize", this.place);
-    this.el.querySelector(".sv-close").addEventListener("click", (e) => { e.stopPropagation(); this.close(); });
-    // a frame later, so the tap that opened it doesn't close it straight away
-    requestAnimationFrame(() => this.scrim.addEventListener("pointerdown", () => this.close()));
     this.isOpen = true;
     this.closing = false;
     this.spring.snap(0).to(1, MOTION.sheetIn);
@@ -118,8 +147,8 @@ class Sheet {
     window.removeEventListener("resize", this.place);
     this.returnTo?.focus?.({ preventScroll: true });
     if (now || !this.host.isConnected || MQ.reduced.matches) return this.remove();
+    // the backdrop stays until the popup has gone: the rest of that tap lands on it
     this.closing = true;
-    this.scrim.style.pointerEvents = "none";
     this.spring.to(0, MOTION.sheetOut);
     Clock.add(this.job);
   }
@@ -140,7 +169,7 @@ class Sheet {
     put(this.el, "opacity", clamp(v * 1.6).toFixed(3));
     put(this.el, "transform", bottom ? `translateY(${((1 - v) * 60).toFixed(2)}px)`
       : `translate(-50%, calc(-50% + ${((1 - v) * 18).toFixed(2)}px)) scale(${(0.97 + 0.03 * v).toFixed(4)})`);
-    if (this.closing && v < 0.02 && s.idle) { this.remove(); return false; }
+    if (this.closing && v < 0.02) { this.remove(); return false; }     // gone: the backdrop goes too
     return !s.idle;
   }
 }
@@ -152,6 +181,24 @@ class EntityListSheet {
     this.host = host;
     this.color = color;
     this.sheet = new Sheet(host, { title: heading, onClose: () => { this.open = false; } });
+    // A/C rows show a fan that turns while the unit runs
+    this.spinJob = (now, dt) => {
+      if (!this.open) return false;
+      let busy = false;
+      for (const row of this.rows.__rows?.values() || []) {
+        const sp = row.__spin;
+        if (!sp) continue;
+        if (!sp.idle) { if (MQ.reduced.matches) sp.snap(); else sp.step(dt); }
+        if (sp.x > 1e-4) {
+          row.__angle = (row.__angle + sp.x * 360 * dt) % 360;
+          busy = true;
+        }
+        // a fan that winds down stops where it is, never jumps back
+        put(row.__icon, "transform", row.__angle ? `rotate(${row.__angle.toFixed(1)}deg)` : "");
+        if (!sp.idle) busy = true;
+      }
+      return busy;
+    };
     this.rows = document.createElement("div");
     this.rows.className = "sv-rows";
     this.sheet.body.appendChild(this.rows);
@@ -184,10 +231,12 @@ class EntityListSheet {
         row.className = "sv-row";
         row.setAttribute("role", "button");
         row.setAttribute("tabindex", "0");
-        row.innerHTML = `<span class="sv-ic"><ha-state-icon></ha-state-icon></span>
+        const fan = domainOf(id) === "climate";
+        row.innerHTML = `<span class="sv-ic">${fan ? '<ha-icon icon="mdi:fan"></ha-icon>' : "<ha-state-icon></ha-state-icon>"}</span>
           <span class="sv-txt"><span class="sv-name"></span><span class="sv-sub"></span></span>
           <span class="sv-val"></span><button class="sv-tog" hidden></button>`;
-        row.__icon = row.querySelector("ha-state-icon");
+        row.__icon = row.querySelector(".sv-ic > *");
+        if (fan) { row.__spin = new Spring(0, MOTION.spin, "spin", 1e-4); row.__angle = 0; }
         row.__tog = row.querySelector(".sv-tog");
         bindPress(row, { onTap: () => moreInfo(this.host, id), haptic: null });
         bindPress(row.__tog, { onTap: () => toggleEntity(this.hass, id) });
@@ -198,7 +247,10 @@ class EntityListSheet {
       if (this.color) put(row, "--row-c", colorOf(this.color));
       attr(row, "data-on", on);
       attr(row, "data-off", !st || isOff(st));
-      if (st && row.__icon.stateObj !== st) { row.__icon.hass = hass; row.__icon.stateObj = st; }
+      if (row.__spin) {
+        row.__spin.to(climateRunning(st) && !MQ.reduced.matches ? fanRate(st) : 0);
+        if (!row.__spin.idle || row.__spin.x > 1e-4) Clock.add(this.spinJob);
+      } else if (st && row.__icon.stateObj !== st) { row.__icon.hass = hass; row.__icon.stateObj = st; }
       text(row.querySelector(".sv-name"), shortName(hass, id, null));
       const area = entityArea(hass, id);
       text(row.querySelector(".sv-sub"), area ? areaInfo(hass, area).name : "");

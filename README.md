@@ -71,7 +71,8 @@ Then edit a dashboard, add a card, and search for **Savvy**.
 The header for your home dashboard. On top, the house mode (tap to change it), the
 weather, and the health cog: its number is exactly what the [Health](#health) card
 lists, and holding it shows that list. Below, four chips that count by themselves, with
-no helper sensors: lights on, the average indoor temperature (the fan spins while an A/C
+no helper sensors: lights on (every light in the house, groups left out so nothing counts
+twice), the average indoor temperature (the fan spins while an A/C
 runs), what's playing, and security (the alarm panel; with none, what's open or
 unlocked). Hold any of them for the entities behind it, each with its switch.
 

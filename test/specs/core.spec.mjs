@@ -150,18 +150,18 @@ export default async function ({ browser, base, check }) {
     const list = new s.EntityListSheet(host, { title: "Lights on" });
     list.show(window.hass, (h) => Object.keys(h.states).filter((id) => id.startsWith("light.") && h.states[id].state === "on"), host.shadowRoot.getElementById("opener"));
     await new Promise((r) => setTimeout(r, 500));
-    const rows = [...host.shadowRoot.querySelectorAll(".sv-row .sv-name")].map((n) => n.textContent);
-    const toggles = [...host.shadowRoot.querySelectorAll(".sv-tog")].filter((t) => !t.hidden).length;
+    const rows = [...window.__savvy.portalRoot().querySelectorAll(".sv-row .sv-name")].map((n) => n.textContent);
+    const toggles = [...window.__savvy.portalRoot().querySelectorAll(".sv-tog")].filter((t) => !t.hidden).length;
     window.log.length = 0;
-    host.shadowRoot.querySelector(".sv-tog:not([hidden])").click();
+    window.__savvy.portalRoot().querySelector(".sv-tog:not([hidden])").click();
     const call = window.log[0];
     window.__host = host;
-    return { rows, toggles, call, open: !!host.shadowRoot.querySelector(".sv-sheet") };
+    return { rows, toggles, call, open: !!window.__savvy.portalRoot().querySelector(".sv-sheet") };
   });
   check("entity list: live rows with toggles, toggling calls the service",
-    sheet.open && sheet.rows.length === 4 && sheet.toggles === 4 && /light\.toggle/.test(sheet.call), JSON.stringify(sheet));
+    sheet.open && sheet.rows.length === 6 && sheet.toggles === 6 && /light\.toggle/.test(sheet.call), JSON.stringify(sheet));
   await page.keyboard.press("Escape"); await page.waitForTimeout(600);
-  check("sheet closes on Escape", await page.evaluate(() => !window.__host.shadowRoot.querySelector(".sv-sheet")));
+  check("sheet closes on Escape", await page.evaluate(() => !window.__savvy.portalRoot().querySelector(".sv-sheet")));
 
   // ---- editor kit
   const ed = await page.evaluate(async () => {

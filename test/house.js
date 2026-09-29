@@ -39,6 +39,9 @@
     add("light.office_desk", "off", { friendly_name: "Office Desk Lamp", supported_color_modes: ["onoff"] }, { area: "office" });
     add("light.porch", "on", { friendly_name: "Porch Light", supported_color_modes: ["onoff"] }, {});           // no area
     add("light.hallway_broken", "unavailable", { friendly_name: "Hallway Light" }, { area: "hallway" });
+    // a garden group made in HA with its members hidden: the member counts, the group doesn't
+    add("light.garden_string", "on", { friendly_name: "Garden String", supported_color_modes: ["onoff"] }, { hidden: true });
+    add("light.garden", "on", { friendly_name: "Garden", entity_id: ["light.garden_string"], supported_color_modes: ["onoff"] }, {});
 
     // ---- switches and helpers
     add("switch.living_room_plug", "on", { friendly_name: "Living Room Plug" }, { area: "living_room" });

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.2
+
+- **Popups sit above the whole page.** They were drawn inside the card, and dashboards
+  that wrap cards in transformed boxes (Home Assistant's do) clipped the backdrop to the
+  card: a tap outside didn't close the popup, and could press what was underneath. Now a
+  tap outside closes it and goes no further, a scroll outside closes it without moving
+  the page, and scrolling inside a list never carries on into the page. The same for the
+  mode picker. A popup also goes when its card leaves the page.
+- **The climate list shows a fan per unit, turning while the unit runs** (and stopping
+  where it is when it's switched off).
+- **Home: the Lights chip counts every light**: with an area or without, lights set up
+  in YAML, and hidden group members; light groups (HA's and Hue's) are left out so
+  nothing counts twice. It used to count only lights assigned to an area.
+- **Media reads "Not playing"** whenever a player isn't playing (idle, paused, on,
+  standby, off): the Media chip, the room header's row and the badges.
+
 ## 0.2.1
 
 - **Home: the mode is never guessed.** A new home card started with a mode picked by its

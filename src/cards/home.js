@@ -10,9 +10,7 @@
 //   lights / climate / media / security: false | { entity, name, icon, color, tap_action, hold_action }
 //   chips: [...]                                     your own, after the four
 
-const STYLE = `${BASE_CSS}${HEADER_CSS}${CHIP_ROW_CSS}
-  .health-sheet savvy-health-card { --ha-card-border-width: 0px; --ha-card-background: transparent; --ha-card-box-shadow: none; margin: -14px -14px 0; }
-`;
+const STYLE = `${BASE_CSS}${HEADER_CSS}${CHIP_ROW_CSS}`;
 
 // The four chips: how each counts, and its look.
 const AUTO = {
@@ -195,7 +193,7 @@ class SavvyHomeCard extends SavvyCard {
       listTitle = l.on.length ? "Lights on" : "Lights";
     } else if (key === "media") {
       const m = housePlaying(h);
-      value = m.on.length ? `${m.on.length} playing` : "Idle";
+      value = m.on.length ? `${m.on.length} playing` : "Not playing";
       ids = m.on.length ? m.on : m.all;
     } else if (key === "climate") {
       const t = houseTemperature(h);
@@ -207,7 +205,7 @@ class SavvyHomeCard extends SavvyCard {
       value = s.entity ? stateText(h, h.states[s.entity]) : s.open.length ? `${s.open.length} open` : "Secure";
       ids = s.open.length ? [...(s.entity ? [s.entity] : []), ...s.open] : s.ids;
     }
-    if (own) value = stateText(h, own);
+    if (own) value = chipState(h, own);
     const snapshot = [...ids];     // what was counted when opened: turning one off keeps its row
     return {
       key, icon: cfg.icon || base.icon, entity: cfg.entity, color: colorOf(cfg.color) || base.color,

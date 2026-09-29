@@ -471,7 +471,7 @@ class SavvyRoomTile extends SavvyCard {
       else if (item.icon.stateObj !== st) { item.icon.hass = h; item.icon.stateObj = st; }
       put(item.el, "--bc", color || "var(--primary-text-color)");
       attr(item.el, "data-critical", look.critical);
-      attr(item.el, "aria-label", `${b.cfg.name || shortName(h, b.entity, c.area)}, ${stateText(h, st)}`);
+      attr(item.el, "aria-label", `${b.cfg.name || shortName(h, b.entity, c.area)}, ${chipState(h, st)}`);
       const wasShown = item.shown.target === 1, wasOn = item.on.target === 1;
       if (!wasShown) this._rowDirty = true;
       item.shown.to(1);

@@ -333,6 +333,7 @@ class LightsCard extends HTMLElement {
   connectedCallback() { this._observe(); this._wake(); }
   disconnectedCallback() {
     Clock.remove(this._job);
+    this._list?.sheet.close(true);
     clearTimeout(this._tapTimer);
     this._io?.disconnect();
     this._watchOutside(false);

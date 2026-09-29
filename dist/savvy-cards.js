@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.2.1 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.2.2 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.2.1";
+const SAVVY_VERSION = "0.2.2";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -320,6 +320,14 @@ function stateText(hass, st) {
   try { return hass.formatEntityState ? hass.formatEntityState(st) : title(st.state); } catch (err) { return title(st.state); }
 }
 
+// What a chip or badge says. A media player is either playing or not: paused, idle, on,
+// standby and off all read "Not playing" (unavailable stays unavailable).
+function chipState(hass, st) {
+  if (st && String(st.entity_id).startsWith("media_player.") && st.state !== "playing"
+    && st.state !== "unavailable" && st.state !== "unknown") return "Not playing";
+  return stateText(hass, st);
+}
+
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/;
 // A timestamp by device_class, or by shape: some integrations don't expose device_class,
 // and parseFloat("2026-09-26T…") would otherwise read the year as a number.
@@ -487,7 +495,8 @@ const kindOf = (hass, id) => {
 
 // A group entity (a light group, a media group) lists its members in `entity_id`:
 // counting it too would count its lights twice.
-const isGroup = (st) => Array.isArray(st?.attributes.entity_id);
+const isGroup = (st) => Array.isArray(st?.attributes.entity_id) || st?.attributes.is_hue_group === true
+  || (String(st?.entity_id).startsWith("light.") && Array.isArray(st?.attributes.lights));
 
 // The badge row for an area: [{ key, entity, ids, kind, on, pinned, cfg }]
 // opts.idle: every kind the area has, active or not (the room card's full sensor row)
@@ -584,8 +593,15 @@ const areaLights = (hass, area) => pick(hass, areaEntities(hass, area), { domain
 const houseOf = (hass, domain) => houseEntities(hass, { inArea: true })
   .filter((id) => domainOf(id) === domain && !isGroup(hass.states[id]));
 
+// Every light in the house: with an area or not, hidden or not (a group's members are
+// often hidden), in the registry or not (YAML lights). Groups are left out so nothing
+// counts twice, and so are disabled lights and config/diagnostic ones.
 function houseLights(hass) {
-  const all = houseOf(hass, "light");
+  const all = Object.keys(hass.states).filter((id) => {
+    if (!id.startsWith("light.")) return false;
+    const e = hass.entities?.[id];
+    return !(e && (e.disabled_by || e.entity_category)) && !isGroup(hass.states[id]);
+  }).sort((a, b) => (hass.states[a].attributes.friendly_name || a).localeCompare(hass.states[b].attributes.friendly_name || b));
   return { all, on: all.filter((id) => hass.states[id].state === "on") };
 }
 function housePlaying(hass) {
@@ -1254,22 +1270,52 @@ const SHEET_CSS = `
   .sv-empty { padding: 18px 8px; text-align: center; font-size: 13px; color: var(--secondary-text-color); }
   .sv-group { margin: 8px 6px 2px; font-size: 11.5px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em;
     text-transform: uppercase; color: var(--secondary-text-color); }
+  .sv-scrim { touch-action: none; }
+  /* the home card's health list, inside a popup */
+  .sv-sheet savvy-health-card { --ha-card-border-width: 0px; --ha-card-background: transparent; --ha-card-box-shadow: none; margin: -14px -14px 0; }
 `;
 
-const SHEET_STYLE_KEY = "__savvySheetCss";
+// Popups live in one layer at the top of the page, not inside the card: dashboards wrap
+// cards in containers (transforms, containment) that would clip a "full screen" layer to
+// the card, so a tap or scroll outside the popup would reach the page instead of closing it.
+let portalEl = null;
+function portalRoot() {
+  if (!portalEl || !portalEl.isConnected) {
+    portalEl = document.createElement("div");
+    portalEl.className = "savvy-portal";
+    const root = portalEl.attachShadow({ mode: "open" });
+    const style = document.createElement("style");
+    style.textContent = SHEET_CSS + PICKER_CSS;
+    root.appendChild(style);
+    watchKeyboard(portalEl);
+    document.body.appendChild(portalEl);
+  }
+  return portalEl.shadowRoot;
+}
+
+// While a popup is open the page underneath stays put: a press on the backdrop closes it
+// (and goes no further), a scroll on the backdrop closes it without scrolling, and a
+// scroll inside the popup never carries on into the page.
+function guardBackdrop(scrim, panel, close) {
+  const swallow = (e) => { e.preventDefault(); e.stopPropagation(); };
+  scrim.addEventListener("pointerdown", (e) => { swallow(e); close(); });
+  for (const t of ["click", "pointerup", "contextmenu"]) scrim.addEventListener(t, swallow);
+  for (const t of ["wheel", "touchmove"]) scrim.addEventListener(t, (e) => { swallow(e); close(); }, { passive: false });
+  const stuck = (e) => {
+    const box = e.target.closest?.(".sv-body");
+    if (!box || box.scrollHeight <= box.clientHeight + 1) { e.preventDefault(); return; }
+    // at an end, a wheel that would go further is kept in
+    if (e.type === "wheel" && ((e.deltaY < 0 && box.scrollTop <= 0) || (e.deltaY > 0 && box.scrollTop + box.clientHeight >= box.scrollHeight - 1))) e.preventDefault();
+  };
+  panel.addEventListener("wheel", stuck, { passive: false });
+  panel.addEventListener("touchmove", stuck, { passive: false });
+}
 
 class Sheet {
   // host: the card element (its shadow root holds the sheet). opts: { title, wide, onClose }
   constructor(host, { title: heading = "", wide = false, onClose } = {}) {
     this.host = host;
     this.onClose = onClose;
-    const root = host.shadowRoot;
-    if (!root[SHEET_STYLE_KEY]) {
-      const style = document.createElement("style");
-      style.textContent = SHEET_CSS;
-      root.appendChild(style);
-      root[SHEET_STYLE_KEY] = style;
-    }
     this.scrim = document.createElement("div");
     this.scrim.className = "sv-scrim";
     this.el = document.createElement("div");
@@ -1286,21 +1332,20 @@ class Sheet {
     this.spring = new Spring(0, MOTION.sheetIn, "sheet");
     this.job = (now, dt) => this.frame(false, dt);
     this.returnTo = null;
+    guardBackdrop(this.scrim, this.el, () => this.close());
+    this.el.querySelector(".sv-close").addEventListener("click", (e) => { e.stopPropagation(); this.close(); });
   }
 
   setTitle(t) { text(this.el.querySelector(".sv-title"), t); this.el.setAttribute("aria-label", t); }
 
   open(returnTo) {
-    this.returnTo = returnTo || this.host.shadowRoot.activeElement || null;
-    this.host.shadowRoot.append(this.scrim, this.el);
+    this.returnTo = returnTo || this.host.shadowRoot?.activeElement || null;
+    portalRoot().append(this.scrim, this.el);
     this.place = () => this.el.toggleAttribute("data-bottom", window.innerWidth < 600);
     this.place();
     this.onKey = (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); this.close(); } };
     window.addEventListener("keydown", this.onKey, true);
     window.addEventListener("resize", this.place);
-    this.el.querySelector(".sv-close").addEventListener("click", (e) => { e.stopPropagation(); this.close(); });
-    // a frame later, so the tap that opened it doesn't close it straight away
-    requestAnimationFrame(() => this.scrim.addEventListener("pointerdown", () => this.close()));
     this.isOpen = true;
     this.closing = false;
     this.spring.snap(0).to(1, MOTION.sheetIn);
@@ -1318,8 +1363,8 @@ class Sheet {
     window.removeEventListener("resize", this.place);
     this.returnTo?.focus?.({ preventScroll: true });
     if (now || !this.host.isConnected || MQ.reduced.matches) return this.remove();
+    // the backdrop stays until the popup has gone: the rest of that tap lands on it
     this.closing = true;
-    this.scrim.style.pointerEvents = "none";
     this.spring.to(0, MOTION.sheetOut);
     Clock.add(this.job);
   }
@@ -1340,7 +1385,7 @@ class Sheet {
     put(this.el, "opacity", clamp(v * 1.6).toFixed(3));
     put(this.el, "transform", bottom ? `translateY(${((1 - v) * 60).toFixed(2)}px)`
       : `translate(-50%, calc(-50% + ${((1 - v) * 18).toFixed(2)}px)) scale(${(0.97 + 0.03 * v).toFixed(4)})`);
-    if (this.closing && v < 0.02 && s.idle) { this.remove(); return false; }
+    if (this.closing && v < 0.02) { this.remove(); return false; }     // gone: the backdrop goes too
     return !s.idle;
   }
 }
@@ -1352,6 +1397,24 @@ class EntityListSheet {
     this.host = host;
     this.color = color;
     this.sheet = new Sheet(host, { title: heading, onClose: () => { this.open = false; } });
+    // A/C rows show a fan that turns while the unit runs
+    this.spinJob = (now, dt) => {
+      if (!this.open) return false;
+      let busy = false;
+      for (const row of this.rows.__rows?.values() || []) {
+        const sp = row.__spin;
+        if (!sp) continue;
+        if (!sp.idle) { if (MQ.reduced.matches) sp.snap(); else sp.step(dt); }
+        if (sp.x > 1e-4) {
+          row.__angle = (row.__angle + sp.x * 360 * dt) % 360;
+          busy = true;
+        }
+        // a fan that winds down stops where it is, never jumps back
+        put(row.__icon, "transform", row.__angle ? `rotate(${row.__angle.toFixed(1)}deg)` : "");
+        if (!sp.idle) busy = true;
+      }
+      return busy;
+    };
     this.rows = document.createElement("div");
     this.rows.className = "sv-rows";
     this.sheet.body.appendChild(this.rows);
@@ -1384,10 +1447,12 @@ class EntityListSheet {
         row.className = "sv-row";
         row.setAttribute("role", "button");
         row.setAttribute("tabindex", "0");
-        row.innerHTML = `<span class="sv-ic"><ha-state-icon></ha-state-icon></span>
+        const fan = domainOf(id) === "climate";
+        row.innerHTML = `<span class="sv-ic">${fan ? '<ha-icon icon="mdi:fan"></ha-icon>' : "<ha-state-icon></ha-state-icon>"}</span>
           <span class="sv-txt"><span class="sv-name"></span><span class="sv-sub"></span></span>
           <span class="sv-val"></span><button class="sv-tog" hidden></button>`;
-        row.__icon = row.querySelector("ha-state-icon");
+        row.__icon = row.querySelector(".sv-ic > *");
+        if (fan) { row.__spin = new Spring(0, MOTION.spin, "spin", 1e-4); row.__angle = 0; }
         row.__tog = row.querySelector(".sv-tog");
         bindPress(row, { onTap: () => moreInfo(this.host, id), haptic: null });
         bindPress(row.__tog, { onTap: () => toggleEntity(this.hass, id) });
@@ -1398,7 +1463,10 @@ class EntityListSheet {
       if (this.color) put(row, "--row-c", colorOf(this.color));
       attr(row, "data-on", on);
       attr(row, "data-off", !st || isOff(st));
-      if (st && row.__icon.stateObj !== st) { row.__icon.hass = hass; row.__icon.stateObj = st; }
+      if (row.__spin) {
+        row.__spin.to(climateRunning(st) && !MQ.reduced.matches ? fanRate(st) : 0);
+        if (!row.__spin.idle || row.__spin.x > 1e-4) Clock.add(this.spinJob);
+      } else if (st && row.__icon.stateObj !== st) { row.__icon.hass = hass; row.__icon.stateObj = st; }
       text(row.querySelector(".sv-name"), shortName(hass, id, null));
       const area = entityArea(hass, id);
       text(row.querySelector(".sv-sub"), area ? areaInfo(hass, area).name : "");
@@ -1507,13 +1575,6 @@ class ModePicker {
   constructor(host, { onPick } = {}) {
     this.host = host;
     this.onPick = onPick;
-    const root = host.shadowRoot;
-    if (!root.__savvyPickCss) {
-      const style = document.createElement("style");
-      style.textContent = PICKER_CSS;
-      root.appendChild(style);
-      root.__savvyPickCss = style;
-    }
     this.scrim = document.createElement("div");
     this.scrim.className = "sv-pick-scrim";
     this.el = document.createElement("div");
@@ -1526,23 +1587,21 @@ class ModePicker {
     this.press = [];
     this.job = (now, dt) => this.frame(dt);
     this.isOpen = false;
+    guardBackdrop(this.scrim, this.el, () => this.close());
   }
 
   open(anchor, bounds, info, caption) {
     if (this.isOpen || !info) return;
     this.isOpen = true;
     this.anchor = anchor;
-    this.host.shadowRoot.append(this.scrim, this.el);
+    portalRoot().append(this.scrim, this.el);
     this.render(info, caption);
     this.place(anchor, bounds);
     this.returnTo = anchor;
     this.onKey = (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); this.close(); } };
     this.onMove = () => this.close();
     window.addEventListener("keydown", this.onKey, true);
-    window.addEventListener("scroll", this.onMove, true);
     window.addEventListener("resize", this.onMove);
-    // a frame later, so the tap that opened it doesn't close it
-    requestAnimationFrame(() => { if (this.isOpen) this.scrim.addEventListener("pointerdown", this.onScrim = (e) => { e.stopPropagation(); this.close(); }); });
     attr(anchor, "aria-expanded", "true");
     this.spring.to(1, MOTION.sheetIn);
     haptic("light");
@@ -1554,14 +1613,12 @@ class ModePicker {
     if (!this.isOpen) return;
     this.isOpen = false;
     window.removeEventListener("keydown", this.onKey, true);
-    window.removeEventListener("scroll", this.onMove, true);
     window.removeEventListener("resize", this.onMove);
-    this.scrim.removeEventListener("pointerdown", this.onScrim);
-    this.scrim.remove();
     attr(this.anchor, "aria-expanded", "false");
-    if (this.host.shadowRoot.activeElement && this.el.contains(this.host.shadowRoot.activeElement)) this.returnTo?.focus?.({ preventScroll: true });
+    const active = portalRoot().activeElement;
+    if (active && this.el.contains(active)) this.returnTo?.focus?.({ preventScroll: true });
     this.spring.to(0, MOTION.sheetOut);
-    if (MQ.reduced.matches || !this.host.isConnected) { this.spring.snap(0); this.frame(0); }
+    if (MQ.reduced.matches || !this.host.isConnected) { this.spring.snap(0); this.frame(0); this.scrim.remove(); }
     else Clock.add(this.job);
   }
 
@@ -1638,7 +1695,8 @@ class ModePicker {
       const p = row.__spring.x;
       put(row, "transform", red || Math.abs(p) < 1e-4 ? "" : `scale(${(1 - 0.05 * p).toFixed(4)})`);
     }
-    if (!this.isOpen && v < 0.01) { this.el.remove(); return false; }
+    // the backdrop goes with the picker, so the rest of the closing tap lands on it
+    if (!this.isOpen && v < 0.01) { this.el.remove(); this.scrim.remove(); return false; }
     return busy;
   }
 }
@@ -1717,7 +1775,10 @@ class SavvyCard extends HTMLElement {
 
   disconnectedCallback() {
     Clock.remove(this._job);
+    // popups live at page level: they go when their card does
     this._picker?.close();
+    this._list?.sheet.close(true);
+    this._healthSheet?.close(true);
     this._ro?.disconnect();
   }
 
@@ -1902,7 +1963,7 @@ function chipItem(hass, x, i) {
   const st = x.entity ? hass.states[x.entity] : null;
   const name = x.name || (st ? shortName(hass, x.entity) : x.entity ? title(x.entity.split(".")[1]) : "");
   const showState = x.show_state !== false && !!x.entity;
-  const value = showState ? (st ? stateText(hass, st) : "Unavailable") : name;
+  const value = showState ? (st ? chipState(hass, st) : "Unavailable") : name;
   const spinning = x.spin === "climate" ? houseTemperature(hass).running.length > 0
     : x.spin === true ? climateRunning(st) || isActive(st) : false;
   return {
@@ -2276,7 +2337,7 @@ if (window.__SAVVY_TEST__) {
     duration, since, relativeTime, axisLabel, momentLabel, fmtNumber, withUnit, isTimestamp,
     fetchHistory, fetchRange, fetchAttributeHistory, resample, seriesStats, stateRuns, numericPoints, linePath,
     Sheet, EntityListSheet, SavvyEditor, defineEditor, S, version: SAVVY_VERSION,
-    roomBadges, roomTemperature, areaLights, houseLights, housePlaying, houseTemperature, houseSecurity, modeInfo, legacyBadges,
+    roomBadges, roomTemperature, areaLights, houseLights, housePlaying, houseTemperature, houseSecurity, modeInfo, legacyBadges, chipState, portalRoot,
   };
 }
 
@@ -4261,7 +4322,7 @@ class SavvyHeadingCard extends SavvyCard {
       else if (item.icon.stateObj !== st) { item.icon.hass = h; item.icon.stateObj = st; }
       put(item.el, "--bc", look.color || "var(--primary-text-color)");
       attr(item.el, "data-critical", look.critical);
-      attr(item.el, "aria-label", `${b.cfg.name || shortName(h, b.entity, this._config.area)}, ${stateText(h, st)}`);
+      attr(item.el, "aria-label", `${b.cfg.name || shortName(h, b.entity, this._config.area)}, ${chipState(h, st)}`);
       if (look.spin) {
         const spin = this._spinner(b.key, item.icon);
         spin.s.to(b.on && climateRunning(st) && !red ? fanRate(st) : 0);
@@ -4683,9 +4744,7 @@ registerCard("savvy-health-card", SavvyHealthCard, "Health",
 //   lights / climate / media / security: false | { entity, name, icon, color, tap_action, hold_action }
 //   chips: [...]                                     your own, after the four
 
-const STYLE = `${BASE_CSS}${HEADER_CSS}${CHIP_ROW_CSS}
-  .health-sheet savvy-health-card { --ha-card-border-width: 0px; --ha-card-background: transparent; --ha-card-box-shadow: none; margin: -14px -14px 0; }
-`;
+const STYLE = `${BASE_CSS}${HEADER_CSS}${CHIP_ROW_CSS}`;
 
 // The four chips: how each counts, and its look.
 const AUTO = {
@@ -4868,7 +4927,7 @@ class SavvyHomeCard extends SavvyCard {
       listTitle = l.on.length ? "Lights on" : "Lights";
     } else if (key === "media") {
       const m = housePlaying(h);
-      value = m.on.length ? `${m.on.length} playing` : "Idle";
+      value = m.on.length ? `${m.on.length} playing` : "Not playing";
       ids = m.on.length ? m.on : m.all;
     } else if (key === "climate") {
       const t = houseTemperature(h);
@@ -4880,7 +4939,7 @@ class SavvyHomeCard extends SavvyCard {
       value = s.entity ? stateText(h, h.states[s.entity]) : s.open.length ? `${s.open.length} open` : "Secure";
       ids = s.open.length ? [...(s.entity ? [s.entity] : []), ...s.open] : s.ids;
     }
-    if (own) value = stateText(h, own);
+    if (own) value = chipState(h, own);
     const snapshot = [...ids];     // what was counted when opened: turning one off keeps its row
     return {
       key, icon: cfg.icon || base.icon, entity: cfg.entity, color: colorOf(cfg.color) || base.color,
@@ -5268,6 +5327,7 @@ class LightsCard extends HTMLElement {
   connectedCallback() { this._observe(); this._wake(); }
   disconnectedCallback() {
     Clock.remove(this._job);
+    this._list?.sheet.close(true);
     clearTimeout(this._tapTimer);
     this._io?.disconnect();
     this._watchOutside(false);
@@ -6245,7 +6305,7 @@ class SavvyRoomCard extends SavvyCard {
     const items = roomBadges(h, c.area, c, { idle: true }).map((b) => {
       const look = badgeLook(b), st = h.states[b.entity];
       const caption = b.cfg.name || b.kind?.name || shortName(h, b.entity, c.area);
-      const value = stateText(h, st);
+      const value = chipState(h, st);
       return {
         key: b.key, icon: look.icon, stateObj: st, entity: b.entity,
         color: b.on ? (look.color || "var(--primary-text-color)") : "var(--secondary-text-color)",
@@ -6790,7 +6850,7 @@ class SavvyRoomTile extends SavvyCard {
       else if (item.icon.stateObj !== st) { item.icon.hass = h; item.icon.stateObj = st; }
       put(item.el, "--bc", color || "var(--primary-text-color)");
       attr(item.el, "data-critical", look.critical);
-      attr(item.el, "aria-label", `${b.cfg.name || shortName(h, b.entity, c.area)}, ${stateText(h, st)}`);
+      attr(item.el, "aria-label", `${b.cfg.name || shortName(h, b.entity, c.area)}, ${chipState(h, st)}`);
       const wasShown = item.shown.target === 1, wasOn = item.on.target === 1;
       if (!wasShown) this._rowDirty = true;
       item.shown.to(1);

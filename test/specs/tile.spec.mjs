@@ -38,11 +38,12 @@ export default async function ({ browser, base, check }) {
     const mode = await centerOf(page, 0, "#mode");
     await page.mouse.move(mode.x, mode.y); await page.mouse.down(); await page.waitForTimeout(650); await page.mouse.up();
     await page.waitForTimeout(300);
+    await page.evaluate(() => { window.sheetAfterHold = !!window.__savvy.portalRoot().querySelector(".sv-sheet"); });
     const office0 = await centerOf(page, 1, ".name");
     await page.mouse.click(office0.x, office0.y);
     await page.waitForTimeout(500);
     const g = await page.evaluate(() => ({ nav: window.nav, info: window.info, log: [...window.log],
-      sheet0: !!window.cards[0].shadowRoot.querySelector(".sv-sheet"), sheet: !!window.cards[1].shadowRoot.querySelector(".sv-sheet"), rows: [...window.cards[1].shadowRoot.querySelectorAll(".sv-row .sv-name")].map((n) => n.textContent) }));
+      sheet0: window.sheetAfterHold, sheet: !!window.__savvy.portalRoot().querySelector(".sv-sheet"), rows: [...window.__savvy.portalRoot().querySelectorAll(".sv-row .sv-name")].map((n) => n.textContent) }));
     check(`${tag} tap goes to the room`, g.nav[0] === "/lovelace/living-room", JSON.stringify(g.nav));
     check(`${tag} double tap: every light in the room off`, g.log[0] === "light.turn_off {} 3 entities", JSON.stringify(g.log));
     check(`${tag} holding the mode line opens its more-info, not the card's hold`, g.info[0] === "input_select.living_room_scene" && g.info.length === 1 && !g.sheet0, JSON.stringify(g.info));

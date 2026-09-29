@@ -71,7 +71,10 @@ class SavvyCard extends HTMLElement {
 
   disconnectedCallback() {
     Clock.remove(this._job);
+    // popups live at page level: they go when their card does
     this._picker?.close();
+    this._list?.sheet.close(true);
+    this._healthSheet?.close(true);
     this._ro?.disconnect();
   }
 
@@ -256,7 +259,7 @@ function chipItem(hass, x, i) {
   const st = x.entity ? hass.states[x.entity] : null;
   const name = x.name || (st ? shortName(hass, x.entity) : x.entity ? title(x.entity.split(".")[1]) : "");
   const showState = x.show_state !== false && !!x.entity;
-  const value = showState ? (st ? stateText(hass, st) : "Unavailable") : name;
+  const value = showState ? (st ? chipState(hass, st) : "Unavailable") : name;
   const spinning = x.spin === "climate" ? houseTemperature(hass).running.length > 0
     : x.spin === true ? climateRunning(st) || isActive(st) : false;
   return {

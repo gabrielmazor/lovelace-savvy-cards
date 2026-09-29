@@ -28,6 +28,17 @@ export default async function ({ browser, base, check }) {
     check(`${tag} pinned first, then everything the room has, on or off`, JSON.stringify(lr.sensors.map((s) => s.split(",")[0])) ===
       JSON.stringify(["Movie", "Presence", "Door", "Media", "Climate"]), JSON.stringify(lr.sensors));
     check(`${tag} idle ones dimmed (the pinned helper, the closed door)`, lr.dim[0] !== "1" && lr.dim[2] !== "1" && lr.dim[1] === "1", JSON.stringify(lr.dim));
+    const media = await page.evaluate(() => {
+      const out = {};
+      for (const state of ["paused", "idle", "on", "off", "standby", "playing", "unavailable"]) {
+        window.setStates({ "media_player.living_room_tv": state, "media_player.living_room_speaker": "off" });
+        out[state] = [...window.cards[0].shadowRoot.querySelectorAll("#sensors .chip")].find((c) => c.getAttribute("aria-label").startsWith("Media")).getAttribute("aria-label");
+      }
+      window.setStates({ "media_player.living_room_tv": "playing", "media_player.living_room_speaker": "idle" });
+      return out;
+    });
+    check(`${tag} media: anything but playing reads "Not playing"`, ["paused", "idle", "on", "off", "standby"].every((k) => media[k] === "Media, Not playing")
+      && media.playing === "Media, Playing" && media.unavailable === "Media, Unavailable", JSON.stringify(media));
     check(`${tag} your chips, their own row`, JSON.stringify(lr.chips) === JSON.stringify(["Plug, On"]), JSON.stringify(lr.chips));
     check(`${tag} rooms row: every other room with something in it, ordered, alphabetical after`, JSON.stringify(lr.rooms) ===
       JSON.stringify(["Office", "Bedroom", "Hallway", "Kitchen"]) && lr.sep, JSON.stringify(lr.rooms));
@@ -50,7 +61,7 @@ export default async function ({ browser, base, check }) {
       && g.info[0] === "binary_sensor.living_room_presence" && g.nav[0] === "/lovelace/office" && g.nav[1] === "/lovelace/home", JSON.stringify(g));
     await page.mouse.click(...Object.values(await centerOf(page, 0, "#pill")));
     await page.waitForTimeout(450);
-    const opts = await page.evaluate(() => [...window.cards[0].shadowRoot.querySelectorAll(".sv-opt")].map((o) => o.textContent));
+    const opts = await page.evaluate(() => [...window.__savvy.portalRoot().querySelectorAll(".sv-opt")].map((o) => o.textContent));
     check(`${tag} the mode picker lists the room's options`, JSON.stringify(opts) === JSON.stringify(["Auto", "Relax", "Reading", "Movie", "Party"]), JSON.stringify(opts));
     await page.keyboard.press("Escape");
     await page.waitForTimeout(450);

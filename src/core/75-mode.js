@@ -91,13 +91,6 @@ class ModePicker {
   constructor(host, { onPick } = {}) {
     this.host = host;
     this.onPick = onPick;
-    const root = host.shadowRoot;
-    if (!root.__savvyPickCss) {
-      const style = document.createElement("style");
-      style.textContent = PICKER_CSS;
-      root.appendChild(style);
-      root.__savvyPickCss = style;
-    }
     this.scrim = document.createElement("div");
     this.scrim.className = "sv-pick-scrim";
     this.el = document.createElement("div");
@@ -110,23 +103,21 @@ class ModePicker {
     this.press = [];
     this.job = (now, dt) => this.frame(dt);
     this.isOpen = false;
+    guardBackdrop(this.scrim, this.el, () => this.close());
   }
 
   open(anchor, bounds, info, caption) {
     if (this.isOpen || !info) return;
     this.isOpen = true;
     this.anchor = anchor;
-    this.host.shadowRoot.append(this.scrim, this.el);
+    portalRoot().append(this.scrim, this.el);
     this.render(info, caption);
     this.place(anchor, bounds);
     this.returnTo = anchor;
     this.onKey = (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); this.close(); } };
     this.onMove = () => this.close();
     window.addEventListener("keydown", this.onKey, true);
-    window.addEventListener("scroll", this.onMove, true);
     window.addEventListener("resize", this.onMove);
-    // a frame later, so the tap that opened it doesn't close it
-    requestAnimationFrame(() => { if (this.isOpen) this.scrim.addEventListener("pointerdown", this.onScrim = (e) => { e.stopPropagation(); this.close(); }); });
     attr(anchor, "aria-expanded", "true");
     this.spring.to(1, MOTION.sheetIn);
     haptic("light");
@@ -138,14 +129,12 @@ class ModePicker {
     if (!this.isOpen) return;
     this.isOpen = false;
     window.removeEventListener("keydown", this.onKey, true);
-    window.removeEventListener("scroll", this.onMove, true);
     window.removeEventListener("resize", this.onMove);
-    this.scrim.removeEventListener("pointerdown", this.onScrim);
-    this.scrim.remove();
     attr(this.anchor, "aria-expanded", "false");
-    if (this.host.shadowRoot.activeElement && this.el.contains(this.host.shadowRoot.activeElement)) this.returnTo?.focus?.({ preventScroll: true });
+    const active = portalRoot().activeElement;
+    if (active && this.el.contains(active)) this.returnTo?.focus?.({ preventScroll: true });
     this.spring.to(0, MOTION.sheetOut);
-    if (MQ.reduced.matches || !this.host.isConnected) { this.spring.snap(0); this.frame(0); }
+    if (MQ.reduced.matches || !this.host.isConnected) { this.spring.snap(0); this.frame(0); this.scrim.remove(); }
     else Clock.add(this.job);
   }
 
@@ -222,7 +211,8 @@ class ModePicker {
       const p = row.__spring.x;
       put(row, "transform", red || Math.abs(p) < 1e-4 ? "" : `scale(${(1 - 0.05 * p).toFixed(4)})`);
     }
-    if (!this.isOpen && v < 0.01) { this.el.remove(); return false; }
+    // the backdrop goes with the picker, so the rest of the closing tap lands on it
+    if (!this.isOpen && v < 0.01) { this.el.remove(); this.scrim.remove(); return false; }
     return busy;
   }
 }

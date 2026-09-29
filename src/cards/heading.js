@@ -219,7 +219,7 @@ class SavvyHeadingCard extends SavvyCard {
       else if (item.icon.stateObj !== st) { item.icon.hass = h; item.icon.stateObj = st; }
       put(item.el, "--bc", look.color || "var(--primary-text-color)");
       attr(item.el, "data-critical", look.critical);
-      attr(item.el, "aria-label", `${b.cfg.name || shortName(h, b.entity, this._config.area)}, ${stateText(h, st)}`);
+      attr(item.el, "aria-label", `${b.cfg.name || shortName(h, b.entity, this._config.area)}, ${chipState(h, st)}`);
       if (look.spin) {
         const spin = this._spinner(b.key, item.icon);
         spin.s.to(b.on && climateRunning(st) && !red ? fanRate(st) : 0);

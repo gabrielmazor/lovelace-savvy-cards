@@ -35,7 +35,8 @@ const kindOf = (hass, id) => {
 
 // A group entity (a light group, a media group) lists its members in `entity_id`:
 // counting it too would count its lights twice.
-const isGroup = (st) => Array.isArray(st?.attributes.entity_id);
+const isGroup = (st) => Array.isArray(st?.attributes.entity_id) || st?.attributes.is_hue_group === true
+  || (String(st?.entity_id).startsWith("light.") && Array.isArray(st?.attributes.lights));
 
 // The badge row for an area: [{ key, entity, ids, kind, on, pinned, cfg }]
 // opts.idle: every kind the area has, active or not (the room card's full sensor row)
@@ -132,8 +133,15 @@ const areaLights = (hass, area) => pick(hass, areaEntities(hass, area), { domain
 const houseOf = (hass, domain) => houseEntities(hass, { inArea: true })
   .filter((id) => domainOf(id) === domain && !isGroup(hass.states[id]));
 
+// Every light in the house: with an area or not, hidden or not (a group's members are
+// often hidden), in the registry or not (YAML lights). Groups are left out so nothing
+// counts twice, and so are disabled lights and config/diagnostic ones.
 function houseLights(hass) {
-  const all = houseOf(hass, "light");
+  const all = Object.keys(hass.states).filter((id) => {
+    if (!id.startsWith("light.")) return false;
+    const e = hass.entities?.[id];
+    return !(e && (e.disabled_by || e.entity_category)) && !isGroup(hass.states[id]);
+  }).sort((a, b) => (hass.states[a].attributes.friendly_name || a).localeCompare(hass.states[b].attributes.friendly_name || b));
   return { all, on: all.filter((id) => hass.states[id].state === "on") };
 }
 function housePlaying(hass) {

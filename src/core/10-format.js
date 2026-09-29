@@ -86,6 +86,14 @@ function stateText(hass, st) {
   try { return hass.formatEntityState ? hass.formatEntityState(st) : title(st.state); } catch (err) { return title(st.state); }
 }
 
+// What a chip or badge says. A media player is either playing or not: paused, idle, on,
+// standby and off all read "Not playing" (unavailable stays unavailable).
+function chipState(hass, st) {
+  if (st && String(st.entity_id).startsWith("media_player.") && st.state !== "playing"
+    && st.state !== "unavailable" && st.state !== "unknown") return "Not playing";
+  return stateText(hass, st);
+}
+
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/;
 // A timestamp by device_class, or by shape: some integrations don't expose device_class,
 // and parseFloat("2026-09-26T…") would otherwise read the year as a number.
