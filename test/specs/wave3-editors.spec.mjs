@@ -1,4 +1,4 @@
-// The entity, graph, snapshot, media and camera editors: every option is there; each
+// The entity, graph, snapshot, media, camera and scene editors: every option is there; each
 // card's stub config mounts; navigation fields use HA's page picker.
 import { openPage } from "./_util.mjs";
 
@@ -7,6 +7,7 @@ const EDITORS = {
   "savvy-graph-card": { config: { entities: ["sensor.living_room_temperature"] }, want: ["title", "hours_to_show", "columns", "ranges"], lists: ["entities"] },
   "savvy-snapshot-card": { config: { area: "living_room" }, want: ["area", "name", "icon", "layout", "alarm", "navigation_path", "exclude_kinds", "exclude", "presence", "door", "window", "temperature", "humidity", "illuminance", "smoke", "gas", "co", "leak", "history"], lists: ["chips"] },
   "savvy-media-card": { config: { area: "living_room" }, want: ["area", "name", "layout", "video_output", "artwork", "volume_buttons", "volume_step", "artwork_max_height", "video", "audio", "entity", "time", "action", "data", "placeholder"], lists: ["video", "audio", "presets", "chips"] },
+  "savvy-scene-card": { config: { area: "office" }, want: ["area", "title", "layout", "columns", "color", "show_icon", "strip", "navigation_path", "auto_discover", "exclude"], lists: ["entities"] },
   "savvy-camera-card": { config: { area: "living_room" }, want: ["area", "recordings", "columns", "days", "aspect_ratio", "instance"], lists: ["cameras"] },
 };
 
@@ -33,7 +34,7 @@ export default async function ({ browser, base, check }) {
   }
   const stubs = await page.evaluate(async () => {
     const out = {};
-    for (const type of ["savvy-entity-card", "savvy-graph-card", "savvy-snapshot-card", "savvy-media-card", "savvy-camera-card"]) {
+    for (const type of ["savvy-entity-card", "savvy-graph-card", "savvy-snapshot-card", "savvy-media-card", "savvy-camera-card", "savvy-scene-card"]) {
       const cfg = customElements.get(type).getStubConfig(window.hass);
       const el = window.mount(type, cfg, 400);
       await new Promise((r) => setTimeout(r, 150));
@@ -41,7 +42,7 @@ export default async function ({ browser, base, check }) {
     }
     return out;
   });
-  check("every wave-3 card's stub config mounts with something to show", Object.values(stubs).every((s) => s.h > 20), JSON.stringify(stubs));
+  check("every wave-3 (and scene) card's stub config mounts with something to show", Object.values(stubs).every((s) => s.h > 20), JSON.stringify(stubs));
   const real = errors.filter((e) => !/Failed to load resource|callWS not implemented/.test(e));
   check("no errors", real.length === 0, real.join(" | "));
   await page.close();

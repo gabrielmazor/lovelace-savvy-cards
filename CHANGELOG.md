@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.0
+
+- **Scenes**: a new card. Point it at an area (or several) and it lists every scene
+  there as a tile: tap runs it, hold opens its details, and a scene lights for a few
+  seconds after it runs. Names lose the room's name by default, or whatever `strip` (a
+  regular expression) matches. Pin scenes from elsewhere, exclude some, one row of pills
+  with `layout: compact`. Full visual editor.
+- **Graph**: a tile can chart one attribute of an entity (`attribute: humidity` on a
+  weather entity), with its own history.
+- **Scrolling**: the health, graph, entity, snapshot and scene cards no longer re-append
+  every row and tile on each state update. On a busy system that pulled the element under
+  a finger or a wheel out of the page several times a second and could cancel a scroll.
+
 ## 0.3.0
 
 The rest of the collection: five more cards on the Savvy core.

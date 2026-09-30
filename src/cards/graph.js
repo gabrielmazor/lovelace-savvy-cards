@@ -164,17 +164,26 @@ class SavvyGraphCard extends SavvyCard {
     return Number.isFinite(parseFloat(st.state));
   }
   _hoursFor(item) { return Number(item.hours_to_show) || this._hours; }
+  // a tile can chart one attribute of an entity (a weather entity's humidity)
+  _sk(item) { return item.attribute ? `${item.entity}#${item.attribute}` : item.entity; }
+  _stateOf(h, item) {
+    const st = h.states[item.entity];
+    if (!item.attribute || !st) return st;
+    const v = st.attributes[item.attribute];
+    return { ...st, state: v == null ? "unavailable" : String(v), attributes: { ...st.attributes, unit_of_measurement: item.unit ?? "" } };
+  }
 
   // Graphs sharing a range share one round-trip; each answer is kept for a minute, so
   // flipping the selector back and forth doesn't refetch.
   async _loadHistory() {
-    const h = this._hass, groups = new Map();
+    const h = this._hass, groups = new Map(), attrs = [];
     for (const item of this._config.entities) {
-      if (!this._isGraph(h.states[item.entity])) continue;
+      if (!this._isGraph(this._stateOf(h, item))) continue;
       const hours = this._hoursFor(item);
+      if (item.attribute) { attrs.push({ id: item.entity, attribute: item.attribute, hours }); continue; }
       (groups.get(hours) || groups.set(hours, []).get(hours)).push(item.entity);
     }
-    const key = [...groups].map(([hours, ids]) => `${hours}:${ids.join(",")}`).join("|");
+    const key = [...[...groups].map(([hours, ids]) => `${hours}:${ids.join(",")}`), ...attrs.map((a) => `${a.hours}:${a.id}#${a.attribute}`)].join("|");
     if (!key) return;
     const cached = this._rawBy.get(key);
     if (cached && Date.now() - cached.at < 60000) {
@@ -186,7 +195,9 @@ class SavvyGraphCard extends SavvyCard {
     const raw = {};
     await Promise.all([...groups].map(async ([hours, ids]) => {
       try { Object.assign(raw, await fetchRange(h, ids, hours)); } catch (err) { /* that group shows no history */ }
-    }));
+    }).concat(attrs.map(async (a) => {
+      try { raw[`${a.id}#${a.attribute}`] = await fetchAttributeHistory(h, a.id, a.attribute, a.hours); } catch (err) { /* no history for it */ }
+    })));
     if (this._loading !== key) return;
     this._loading = null;
     this._rawBy.set(key, { raw, at: Date.now() });
@@ -198,12 +209,12 @@ class SavvyGraphCard extends SavvyCard {
   _buildSeries() {
     const h = this._hass, end = Date.now(), out = {};
     for (const item of this._config.entities) {
-      const rows = this._raw?.[item.entity];
+      const rows = this._raw?.[this._sk(item)];
       if (!rows) continue;
       const start = end - this._hoursFor(item) * 3600000;
-      const pts = numericPoints(rows, h.states[item.entity]?.state, end);
+      const pts = numericPoints(rows, this._stateOf(h, item)?.state, end);
       const sampled = pts.length < 2 ? [] : resample(pts, start, end);
-      out[item.entity] = sampled.length < 2 ? null : { points: sampled, span: [start, end], ...seriesStats(sampled) };
+      out[this._sk(item)] = sampled.length < 2 ? null : { points: sampled, span: [start, end], ...seriesStats(sampled) };
     }
     this._series = out;
   }
@@ -249,11 +260,11 @@ class SavvyGraphCard extends SavvyCard {
 
   _renderTiles() {
     const h = this._hass, cfg = this._config, el = this._el, seen = new Set();
-    let graphs = 0, small = 0;
+    let graphs = 0, small = 0, gi = 0, si = 0;
     for (const item of cfg.entities) {
-      const key = item.entity;
+      const key = this._sk(item);
       seen.add(key);
-      const graph = this._isGraph(h.states[key]);
+      const graph = this._isGraph(this._stateOf(h, item));
       if (graph) graphs++; else small++;
       const box = graph ? el.graphs : el.grid;
       let node = this._tiles.get(key);
@@ -283,7 +294,7 @@ class SavvyGraphCard extends SavvyCard {
       }
       this._renderTile(item, node);
       attr(node, "data-graph", graph);
-      if (node.parentElement !== box || node.nextSibling) box.appendChild(node);
+      place(box, node, graph ? gi++ : si++);
     }
     el.graphs.hidden = !graphs;
     el.grid.hidden = !small;
@@ -304,13 +315,13 @@ class SavvyGraphCard extends SavvyCard {
   }
 
   _renderTile(item, node) {
-    const h = this._hass, st = h.states[item.entity], el = node.__el;
+    const h = this._hass, st = this._stateOf(h, item), el = node.__el;
     node.__item = item;
     const missing = !st, unavailable = !missing && isOff(st);
     attr(node, "data-missing", missing);
     attr(node, "data-unavailable", unavailable);
-    text(el.cap, item.name || st?.attributes.friendly_name || title(item.entity.split(".")[1] || item.entity));
-    const wantState = !item.icon && !!st;
+    text(el.cap, item.name || (item.attribute ? title(item.attribute) : st?.attributes.friendly_name) || title(item.entity.split(".")[1] || item.entity));
+    const wantState = !item.icon && !item.attribute && !!st;
     if (node.__iconKind !== (wantState ? "state" : "plain")) {
       node.__iconKind = wantState ? "state" : "plain";
       el.iconSlot.innerHTML = wantState ? "<ha-state-icon></ha-state-icon>" : "<ha-icon></ha-icon>";
@@ -320,7 +331,7 @@ class SavvyGraphCard extends SavvyCard {
     else attr(el.icon, "icon", item.icon || "mdi:help-circle-outline");
 
     const numeric = this._isGraph(st);
-    const series = numeric ? this._series[item.entity] : undefined;
+    const series = numeric ? this._series[this._sk(item)] : undefined;
     if (!numeric) { el.chart.hidden = true; el.axis.hidden = true; }
     if (missing || unavailable) {
       el.n.parentElement.hidden = true;
@@ -533,6 +544,7 @@ const EDITOR = defineEditor("savvy-graph-card", (hass, c) => [
   { name: "entities", label: "Tiles", type: "list", helper: "A number gets a graph; anything else a small tile with its state.",
     item: [
       { name: "entity", label: "Entity", selector: { entity: {} } },
+      { name: "attribute", label: "Attribute", helper: "Chart one of the entity's attributes instead of its state (a weather entity's humidity).", selector: { text: {} } },
       { type: "grid", name: "", schema: [{ name: "name", label: "Name", selector: { text: {} } }, { name: "icon", label: "Icon", selector: { icon: {} } }] },
       { type: "grid", name: "", schema: [{ name: "unit", label: "Unit", selector: { text: {} } },
         { name: "hours_to_show", label: "Hours (this one)", selector: { number: { min: 1, max: 8760, mode: "box", unit_of_measurement: "h" } } }] },

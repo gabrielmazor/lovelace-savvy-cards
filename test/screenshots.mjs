@@ -63,6 +63,7 @@ const SHOTS = [
   ["snapshot-compact", "savvy-snapshot-card", { area: "bedroom", layout: "compact" }, 400],
   ["media", "savvy-media-card", { area: "living_room", presets: [{ entity: "script.good_night", name: "Good night" }] }, 460],
   ["media-compact", "savvy-media-card", { area: "kitchen", layout: "compact" }, 460],
+  ["scene", "savvy-scene-card", { area: ["living_room", "office"], entities: [{ entity: "scene.party", icon: "mdi:party-popper", color: "purple" }], strip: "^.*//\\s*|\\s*-\\s*on$" }, 460],
   ["camera", "savvy-camera-card", { area: ["living_room", "kitchen"] }, 820, FRIGATE],
 ];
 

@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.3.0 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.4.0 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.3.0";
+const SAVVY_VERSION = "0.4.0";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -229,6 +229,13 @@ const registerCard = (type, cls, name, description) => {
   if (!window.customCards.some((c) => c.type === type)) {
     window.customCards.push({ type, name: `Savvy ${name}`, description, preview: true });
   }
+};
+
+// Puts `node` at `index` in `box` only if it isn't already there. Re-appending every child on
+// each state update pulls the element under a finger or a wheel out and back in, which cancels
+// a scroll in progress.
+const place = (box, node, index) => {
+  if (box.children[index] !== node) box.insertBefore(node, box.children[index] || null);
 };
 
 // ===== core/10-format.js =====
@@ -6313,7 +6320,7 @@ class SavvyEntityCard extends SavvyCard {
         this._pills.set(key, node);
       }
       node.__item = item;
-      box.appendChild(node);
+      place(box, node, i);
       this._renderPill(node, item, item.entity ? h.states[item.entity] : null);
     });
     for (const [key, node] of this._pills) {
@@ -6625,17 +6632,26 @@ class SavvyGraphCard extends SavvyCard {
     return Number.isFinite(parseFloat(st.state));
   }
   _hoursFor(item) { return Number(item.hours_to_show) || this._hours; }
+  // a tile can chart one attribute of an entity (a weather entity's humidity)
+  _sk(item) { return item.attribute ? `${item.entity}#${item.attribute}` : item.entity; }
+  _stateOf(h, item) {
+    const st = h.states[item.entity];
+    if (!item.attribute || !st) return st;
+    const v = st.attributes[item.attribute];
+    return { ...st, state: v == null ? "unavailable" : String(v), attributes: { ...st.attributes, unit_of_measurement: item.unit ?? "" } };
+  }
 
   // Graphs sharing a range share one round-trip; each answer is kept for a minute, so
   // flipping the selector back and forth doesn't refetch.
   async _loadHistory() {
-    const h = this._hass, groups = new Map();
+    const h = this._hass, groups = new Map(), attrs = [];
     for (const item of this._config.entities) {
-      if (!this._isGraph(h.states[item.entity])) continue;
+      if (!this._isGraph(this._stateOf(h, item))) continue;
       const hours = this._hoursFor(item);
+      if (item.attribute) { attrs.push({ id: item.entity, attribute: item.attribute, hours }); continue; }
       (groups.get(hours) || groups.set(hours, []).get(hours)).push(item.entity);
     }
-    const key = [...groups].map(([hours, ids]) => `${hours}:${ids.join(",")}`).join("|");
+    const key = [...[...groups].map(([hours, ids]) => `${hours}:${ids.join(",")}`), ...attrs.map((a) => `${a.hours}:${a.id}#${a.attribute}`)].join("|");
     if (!key) return;
     const cached = this._rawBy.get(key);
     if (cached && Date.now() - cached.at < 60000) {
@@ -6647,7 +6663,9 @@ class SavvyGraphCard extends SavvyCard {
     const raw = {};
     await Promise.all([...groups].map(async ([hours, ids]) => {
       try { Object.assign(raw, await fetchRange(h, ids, hours)); } catch (err) { /* that group shows no history */ }
-    }));
+    }).concat(attrs.map(async (a) => {
+      try { raw[`${a.id}#${a.attribute}`] = await fetchAttributeHistory(h, a.id, a.attribute, a.hours); } catch (err) { /* no history for it */ }
+    })));
     if (this._loading !== key) return;
     this._loading = null;
     this._rawBy.set(key, { raw, at: Date.now() });
@@ -6659,12 +6677,12 @@ class SavvyGraphCard extends SavvyCard {
   _buildSeries() {
     const h = this._hass, end = Date.now(), out = {};
     for (const item of this._config.entities) {
-      const rows = this._raw?.[item.entity];
+      const rows = this._raw?.[this._sk(item)];
       if (!rows) continue;
       const start = end - this._hoursFor(item) * 3600000;
-      const pts = numericPoints(rows, h.states[item.entity]?.state, end);
+      const pts = numericPoints(rows, this._stateOf(h, item)?.state, end);
       const sampled = pts.length < 2 ? [] : resample(pts, start, end);
-      out[item.entity] = sampled.length < 2 ? null : { points: sampled, span: [start, end], ...seriesStats(sampled) };
+      out[this._sk(item)] = sampled.length < 2 ? null : { points: sampled, span: [start, end], ...seriesStats(sampled) };
     }
     this._series = out;
   }
@@ -6710,11 +6728,11 @@ class SavvyGraphCard extends SavvyCard {
 
   _renderTiles() {
     const h = this._hass, cfg = this._config, el = this._el, seen = new Set();
-    let graphs = 0, small = 0;
+    let graphs = 0, small = 0, gi = 0, si = 0;
     for (const item of cfg.entities) {
-      const key = item.entity;
+      const key = this._sk(item);
       seen.add(key);
-      const graph = this._isGraph(h.states[key]);
+      const graph = this._isGraph(this._stateOf(h, item));
       if (graph) graphs++; else small++;
       const box = graph ? el.graphs : el.grid;
       let node = this._tiles.get(key);
@@ -6744,7 +6762,7 @@ class SavvyGraphCard extends SavvyCard {
       }
       this._renderTile(item, node);
       attr(node, "data-graph", graph);
-      if (node.parentElement !== box || node.nextSibling) box.appendChild(node);
+      place(box, node, graph ? gi++ : si++);
     }
     el.graphs.hidden = !graphs;
     el.grid.hidden = !small;
@@ -6765,13 +6783,13 @@ class SavvyGraphCard extends SavvyCard {
   }
 
   _renderTile(item, node) {
-    const h = this._hass, st = h.states[item.entity], el = node.__el;
+    const h = this._hass, st = this._stateOf(h, item), el = node.__el;
     node.__item = item;
     const missing = !st, unavailable = !missing && isOff(st);
     attr(node, "data-missing", missing);
     attr(node, "data-unavailable", unavailable);
-    text(el.cap, item.name || st?.attributes.friendly_name || title(item.entity.split(".")[1] || item.entity));
-    const wantState = !item.icon && !!st;
+    text(el.cap, item.name || (item.attribute ? title(item.attribute) : st?.attributes.friendly_name) || title(item.entity.split(".")[1] || item.entity));
+    const wantState = !item.icon && !item.attribute && !!st;
     if (node.__iconKind !== (wantState ? "state" : "plain")) {
       node.__iconKind = wantState ? "state" : "plain";
       el.iconSlot.innerHTML = wantState ? "<ha-state-icon></ha-state-icon>" : "<ha-icon></ha-icon>";
@@ -6781,7 +6799,7 @@ class SavvyGraphCard extends SavvyCard {
     else attr(el.icon, "icon", item.icon || "mdi:help-circle-outline");
 
     const numeric = this._isGraph(st);
-    const series = numeric ? this._series[item.entity] : undefined;
+    const series = numeric ? this._series[this._sk(item)] : undefined;
     if (!numeric) { el.chart.hidden = true; el.axis.hidden = true; }
     if (missing || unavailable) {
       el.n.parentElement.hidden = true;
@@ -6994,6 +7012,7 @@ const EDITOR = defineEditor("savvy-graph-card", (hass, c) => [
   { name: "entities", label: "Tiles", type: "list", helper: "A number gets a graph; anything else a small tile with its state.",
     item: [
       { name: "entity", label: "Entity", selector: { entity: {} } },
+      { name: "attribute", label: "Attribute", helper: "Chart one of the entity's attributes instead of its state (a weather entity's humidity).", selector: { text: {} } },
       { type: "grid", name: "", schema: [{ name: "name", label: "Name", selector: { text: {} } }, { name: "icon", label: "Icon", selector: { icon: {} } }] },
       { type: "grid", name: "", schema: [{ name: "unit", label: "Unit", selector: { text: {} } },
         { name: "hours_to_show", label: "Hours (this one)", selector: { number: { min: 1, max: 8760, mode: "box", unit_of_measurement: "h" } } }] },
@@ -7522,6 +7541,7 @@ class SavvyHealthCard extends HTMLElement {
 
   _renderRows(rows) {
     const box = this._el.rows, seen = new Set();
+    let at = 0;
     for (const r of rows) {
       seen.add(r.key);
       let node = this._rows.get(r.key);
@@ -7543,12 +7563,12 @@ class SavvyHealthCard extends HTMLElement {
         }
         this._rows.set(r.key, node);
       }
-      if (r.ok) { box.appendChild(node); continue; }
+      if (r.ok) { place(box, node, at++); continue; }
       if (r.group) {
         text(node.querySelector(".gt"), r.group);
         text(node.querySelector(".gs"), r.count ? `· ${r.count}` : "");
         node.__lastRun = r.lastRun;
-        box.appendChild(node);
+        place(box, node, at++);
         continue;
       }
       attr(node.__el.icon, "icon", r.icon);
@@ -7567,7 +7587,7 @@ class SavvyHealthCard extends HTMLElement {
         attr(node, "tabindex", "0");
         this._pressable(node, () => moreInfo(this, r.entity));
       }
-      box.appendChild(node);
+      place(box, node, at++);
     }
     for (const [key, node] of this._rows) {
       if (seen.has(key)) continue;
@@ -10259,6 +10279,316 @@ registerCard("savvy-room-card", SavvyRoomCard, "Room",
   "A room page's header: its mode, temperature, everything it has, and the way to every other room.");
 })();
 
+// ===== cards/scene.js =====
+(() => {
+// savvy-scene-card: every scene of a room, one tap each.
+//
+//   type: custom:savvy-scene-card
+//   area: office                          (or a list: scenes from several rooms)
+//   title: Scenes                         (optional: a heading; tap it to go somewhere with navigation_path)
+//   layout: full | compact                (compact: one scrolling row of pills)
+//   columns: 3                            (else 2 to 4 by the card's width)
+//   entities: [scene.x, { entity: scene.y, name: Cosy, icon: mdi:sofa, color: amber }]
+//                                         pinned first, in this order, even outside the area
+//   auto_discover: true                   also every scene the area has (hidden/disabled left out)
+//   exclude: [scene.z]
+//   strip: '^.*//\s*|\s*-\s*on$'          a regular expression taken out of each name (any case, every match), before the area's name
+//   color: blue   show_icon: true
+//
+// Names: `strip` is taken out first, then the area's name off the front ("Office // Work"
+// reads "Work"; with the strip above "Office Relax" reads "Relax"); `strip: false` keeps
+// names as they are. A pinned scene's own `name` is used as written.
+// Tap runs the scene; hold opens its more-info. A scene lights for a few seconds after it
+// runs, from this card or from anywhere else (a scene's state is when it last ran).
+
+const SCENE_LIT_MS = 4000;
+const SCENE_DEFAULT_ICON = "mdi:palette";
+const escRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const STYLE = `${BASE_CSS}
+  ha-card { --pad: 12px; --c: #588ee9; display: flex; flex-direction: column; gap: 10px; padding: var(--pad); }
+  .head { display: flex; align-items: center; gap: 4px; min-width: 0; align-self: flex-start; margin: -3px -6px; padding: 3px 6px; border-radius: 10px;
+    font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; }
+  .head[role="button"] { cursor: pointer; }
+  .head .t { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .head ha-icon { --mdc-icon-size: 18px; display: flex; color: var(--secondary-text-color); }
+
+  .grid { display: grid; grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); gap: 8px; min-width: 0; }
+  @container (min-width: 300px) { .grid:not([data-cols]) { --cols: 3; } }
+  @container (min-width: 460px) { .grid:not([data-cols]) { --cols: 4; } }
+  .tile { --on: 0; --tc: var(--c); display: flex; align-items: center; gap: 9px; min-width: 0; box-sizing: border-box; height: 46px; padding: 0 12px 0 8px;
+    border-radius: 13px; cursor: pointer; transform-origin: 50% 50%;
+    background: color-mix(in oklab, var(--tc) calc(7% + var(--on) * 17%), transparent);
+    color: color-mix(in oklab, var(--primary-text-color) calc(78% + var(--on) * 22%), transparent); }
+  .tile .ic { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; --mdc-icon-size: 17px;
+    background: color-mix(in oklab, var(--tc) calc(13% + var(--on) * 22%), transparent); color: var(--tc); }
+  .tile .ic > * { display: flex; align-items: center; justify-content: center; width: var(--mdc-icon-size); height: var(--mdc-icon-size); line-height: 0; }
+  .tile .nm { min-width: 0; font-size: 13px; line-height: 17px; font-weight: 600; letter-spacing: -0.008em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile[data-off] { opacity: 0.5; }
+  .grid[data-noicon] .tile { padding-left: 12px; }
+  .grid[data-noicon] .tile .ic { display: none; }
+
+  .grid[data-compact] { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; touch-action: pan-x; padding: 3px; margin: -3px; }
+  .grid[data-compact]::-webkit-scrollbar { display: none; }
+  .grid[data-compact][data-overflow] { mask-image: linear-gradient(to left, transparent 0, #000 26px); -webkit-mask-image: linear-gradient(to left, transparent 0, #000 26px); }
+  .grid[data-compact] .tile { flex: none; height: 34px; padding: 0 12px 0 5px; border-radius: 11px; gap: 7px; }
+  .grid[data-compact] .tile .ic { width: 24px; height: 24px; --mdc-icon-size: 15px; }
+  .grid[data-compact][data-noicon] .tile { padding-left: 12px; }
+  .grid[data-compact] .tile .nm { font-size: 12.5px; }
+
+  .empty { padding: 4px 2px; font-size: 12.5px; font-weight: 500; color: var(--secondary-text-color); }
+  @media (prefers-contrast: more) { .tile { color: var(--primary-text-color); } }
+`;
+
+class SavvySceneCard extends SavvyCard {
+  static getStubConfig(hass) {
+    const scenes = (ids) => pick(hass, ids, { domains: "scene" });
+    const a = allAreas(hass).find((x) => scenes(areaEntities(hass, x.id)).length);
+    if (a) return { area: a.id };
+    const any = Object.keys(hass?.states || {}).find((id) => id.startsWith("scene."));
+    return any ? { entities: [any] } : {};
+  }
+  static getConfigElement() { return document.createElement(EDITOR); }
+
+  constructor() {
+    super();
+    this._tiles = new Map();
+    this._fired = new Map();
+  }
+
+  setConfig(config) {
+    if (!config || typeof config !== "object") throw new Error("savvy-scene-card: invalid configuration");
+    const areas = [].concat(config.area ?? config.areas ?? []).filter(Boolean);
+    let strip = null;
+    if (typeof config.strip === "string" && config.strip) {
+      try { strip = new RegExp(config.strip, "gi"); } catch (err) { strip = null; }
+    }
+    this._config = { ...config, areas, entities: asItems(config.entities), exclude: asItems(config.exclude).map((i) => i.entity), _strip: strip };
+    this._compact = config.layout === "compact";
+    if (this._el) { this._build(); if (this._hass) this._update(); }
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._config) return;
+    if (!this._el) this._build();
+    this._update();
+  }
+
+  connectedCallback() {
+    if (this._el && this._ro) this._ro.observe(this._el.grid);
+    this._wake();
+  }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    clearTimeout(this._litTimer);
+  }
+  getCardSize() {
+    const c = this._config;
+    if (!c) return 2;
+    const rows = this._compact ? 1 : Math.ceil(Math.max(1, this._tiles.size) / (Number(c.columns) || 3));
+    return rows + (this._headed() ? 1 : 0);
+  }
+  getGridOptions() { return { columns: 12, min_columns: 3, rows: "auto" }; }
+
+  _headed() { const c = this._config; return !!(c.title || c.navigation_path); }
+
+  _build() {
+    const root = this.shadowRoot || this.attachShadow({ mode: "open" });
+    this._resetMotion();
+    this._tiles.clear();
+    const c = this._config;
+    root.innerHTML = `<style>${STYLE}</style>
+      <ha-card>
+        <div class="head" id="head" hidden><span class="t" id="title"></span><ha-icon id="chev" icon="mdi:chevron-right" hidden></ha-icon></div>
+        <div class="grid" id="grid" role="group"></div>
+        <div class="empty" id="empty" hidden></div>
+      </ha-card>`;
+    const $ = (id) => root.getElementById(id);
+    this._el = { card: root.querySelector("ha-card"), head: $("head"), title: $("title"), chev: $("chev"), grid: $("grid"), empty: $("empty") };
+    put(this._el.card, "--c", colorOf(c.color || "blue") || "#588ee9");
+    attr(this._el.grid, "data-compact", this._compact);
+    attr(this._el.grid, "data-noicon", c.show_icon === false);
+    const cols = Number(c.columns);
+    if (!this._compact && cols >= 1) { attr(this._el.grid, "data-cols", String(cols)); put(this._el.grid, "--cols", String(Math.min(6, Math.round(cols)))); }
+    if (c.navigation_path) {
+      attr(this._el.head, "role", "button");
+      attr(this._el.head, "tabindex", "0");
+      this._pressable(this._el.head, { onTap: () => navigate(c.navigation_path) }, 0.03);
+    }
+    this._ro?.disconnect();
+    this._ro = new ResizeObserver(() => this._fitRow(this._el.grid));
+    this._ro.observe(this._el.grid);
+    this._first = true;
+  }
+
+  // ---------- which scenes ----------
+  _label(item, st, area) {
+    if (item.name) return item.name;
+    const h = this._hass, c = this._config;
+    const raw = st?.attributes.friendly_name || title(String(item.entity).split(".")[1] || item.entity);
+    if (c.strip === false) return raw;
+    let out = c._strip ? raw.replace(c._strip, "").replace(/\s{2,}/g, " ").trim() : raw;
+    const a = area || entityArea(h, item.entity) || c.areas[0];
+    const name = a ? areaInfo(h, a).name : "";
+    if (name) out = out.replace(new RegExp(`^\\s*${escRe(name)}\\s*(?:[/:|·•–—-]+\\s*)*`, "i"), "").trim();
+    return out || raw;
+  }
+
+  _items() {
+    const h = this._hass, c = this._config, out = [], seen = new Set(c.exclude);
+    for (const p of c.entities) {
+      if (!p.entity || out.some((o) => o.entity === p.entity)) continue;
+      out.push({ ...p, pinned: true });
+    }
+    const pinned = new Set(out.map((o) => o.entity));
+    if (c.auto_discover !== false) {
+      const found = [];
+      for (const a of c.areas) {
+        for (const id of pick(h, areaEntities(h, a), { domains: "scene", exclude: [...seen, ...pinned] })) {
+          if (found.some((f) => f.entity === id)) continue;
+          found.push({ entity: id, area: a });
+        }
+      }
+      for (const f of found) f.label = this._label(f, h.states[f.entity], f.area);
+      found.sort((x, y) => x.label.localeCompare(y.label, langOf(h), { numeric: true }));
+      out.push(...found);
+    }
+    return out;
+  }
+
+  // ---------- painting ----------
+  _update() {
+    const h = this._hass;
+    if (!h || !this._el) return;
+    this.toggleAttribute("dark", !!h.themes?.darkMode);
+    const c = this._config, el = this._el;
+    const headed = this._headed();
+    el.head.hidden = !headed;
+    if (headed) {
+      text(el.title, c.title || "Scenes");
+      el.chev.hidden = !c.navigation_path;
+    }
+    this._renderTiles(this._items());
+    if (this._first) { this._first = false; requestAnimationFrame(() => this._paintAll(null)); }
+    this._wake();
+  }
+
+  _lit(id, st) {
+    const now = Date.now();
+    const last = Math.max(this._fired.get(id) || 0, st ? Date.parse(st.state) || 0 : 0);
+    return last > 0 && now - last < SCENE_LIT_MS ? last + SCENE_LIT_MS - now : 0;
+  }
+
+  _renderTiles(items) {
+    const h = this._hass, c = this._config, el = this._el, seen = new Set();
+    let nextLit = 0;
+    items.forEach((item, at) => {
+      const id = item.entity;
+      seen.add(id);
+      const st = h.states[id];
+      let node = this._tiles.get(id);
+      if (!node) {
+        node = document.createElement("div");
+        node.className = "tile";
+        node.innerHTML = `<span class="ic"></span><span class="nm"></span>`;
+        node.__ic = node.querySelector(".ic");
+        node.__nm = node.querySelector(".nm");
+        attr(node, "role", "button");
+        attr(node, "tabindex", "0");
+        node.dataset.entity = id;
+        this._pressable(node, { onTap: () => this._run(node.__item, "tap"), onHold: () => this._run(node.__item, "hold") }, 0.035);
+        node.__on = this._spring(0, MOTION.ui, `tile:${id}`);
+        node.__enter = this._spring(0, MOTION.ui, `tile:${id}`).to(1, MOTION.ui);
+        this._tiles.set(id, node);
+      }
+      node.__item = item;
+      const label = item.label ?? this._label(item, st, item.area);
+      text(node.__nm, label);
+      const down = !st || st.state === "unavailable";
+      attr(node, "data-off", down);
+      attr(node, "title", label);
+      attr(node, "aria-label", down ? `${label}, unavailable` : label);
+      put(node, "--tc", item.color ? colorOf(item.color) : "");
+      const wantState = !item.icon && !!st;
+      if (node.__iconKind !== (wantState ? "state" : "plain")) {
+        node.__iconKind = wantState ? "state" : "plain";
+        node.__ic.innerHTML = wantState ? "<ha-state-icon></ha-state-icon>" : "<ha-icon></ha-icon>";
+      }
+      const ic = node.__ic.firstElementChild;
+      if (wantState) { if (ic.stateObj !== st) { ic.hass = h; ic.stateObj = st; } }
+      else attr(ic, "icon", item.icon || SCENE_DEFAULT_ICON);
+      const left = down ? 0 : this._lit(id, st);
+      attr(node, "data-lit", left > 0);
+      if (left > 0) nextLit = Math.max(nextLit, left);
+      node.__on.to(left > 0 ? 1 : 0, MOTION.ui);
+      place(el.grid, node, at);        // keeps the DOM in the items' order
+    });
+    for (const [id, node] of this._tiles) {
+      if (seen.has(id)) continue;
+      for (const s of [node.__on, node.__enter, node.__spring]) { const k = this._springs.indexOf(s); if (k >= 0) this._springs.splice(k, 1); }
+      const p = this._pressNodes.indexOf(node);
+      if (p >= 0) this._pressNodes.splice(p, 1);
+      node.remove();
+      this._tiles.delete(id);
+    }
+    el.empty.hidden = items.length > 0;
+    if (!items.length) text(el.empty, c.areas.length || c.entities.length ? "No scenes found in this area." : "Pick an area to list its scenes.");
+    el.grid.hidden = !items.length;
+    this._fitRow(el.grid);
+    clearTimeout(this._litTimer);
+    if (nextLit > 0) this._litTimer = setTimeout(() => this._update(), nextLit + 40);
+  }
+
+  _run(item, kind) {
+    if (!item) return;
+    const h = this._hass, id = item.entity, st = h.states[id];
+    const a = kind === "tap" ? asAction(item.tap_action ?? defaultTapAction(id)) : asAction(item.hold_action ?? { action: "more-info" });
+    if (!a || a.action === "none") return;
+    if (kind === "tap" && (!st || st.state === "unavailable") && a.action !== "navigate") return;
+    runAction(this, h, a, { entity: id });
+    if (kind === "tap" && item.tap_action === undefined) {
+      this._fired.set(id, Date.now());
+      this._update();
+    }
+  }
+
+  _paint(dirty, all, red) {
+    for (const [id, node] of this._tiles) {
+      if (!all && !dirty.has(`tile:${id}`)) continue;
+      put(node, "--on", clamp(node.__on.x).toFixed(3));
+      const v = clamp(node.__enter.x);
+      if (!node.hasAttribute("data-off")) put(node, "opacity", v > 0.999 ? "" : v.toFixed(3));
+      put(node, "translate", red || v > 0.999 ? "" : `0 ${((1 - v) * 4).toFixed(2)}px`);
+    }
+  }
+}
+
+// ---------- editor ----------
+const SCENE_PICK = { entity: { domain: "scene" } };
+const EDITOR = defineEditor("savvy-scene-card", () => [
+  { name: "area", label: "Area", helper: "Every scene in these areas is shown. Pick several for one card across rooms.", selector: { area: { multiple: true } } },
+  S.text("title", "Title", "Empty: no heading."),
+  S.grid({ ...S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (one row)" }]), default: "full" },
+    { ...S.number("columns", "Columns", 1, 6), helper: "Empty: 2 to 4, by the card's width." }),
+  S.grid(S.color(), S.bool("show_icon", "Show icons", null, true)),
+  S.text("strip", "Hide from names", "A regular expression taken out of each name, e.g. ^.*//\\s*|\\s*-\\s*on$. The area's name is always taken off the front too."),
+  S.nav("navigation_path", "Navigate to on tap", "Tapping the title goes there."),
+  { name: "entities", label: "Pinned scenes", helper: "Shown first, in this order, even from outside the area.", type: "list",
+    item: [
+      { name: "entity", label: "Scene", selector: SCENE_PICK },
+      S.grid(S.text("name", "Name"), S.icon()),
+      S.color(),
+    ],
+    add: { selector: SCENE_PICK, label: "Add a scene" } },
+  S.bool("auto_discover", "Also show the area's scenes", "Every scene the area has, after the pinned ones.", true),
+  { name: "exclude", label: "Never show", selector: { entity: { domain: "scene", multiple: true } } },
+]);
+
+registerCard("savvy-scene-card", SavvySceneCard, "Scenes",
+  "Every scene of a room (or several) as tiles: one tap runs it, hold for its details.");
+})();
+
 // ===== cards/snapshot.js =====
 (() => {
 // savvy-snapshot-card: a security glance at one room. Is anything happening here, and
@@ -10734,9 +11064,13 @@ class SavvySnapshotCard extends SavvyCard {
       this._nodes.delete(key);
     }
     // DOM order follows reading order
+    const at = new Map();
     for (const key of seen) {
       const node = this._nodes.get(key);
-      if (node) node.__parent.appendChild(node);
+      if (!node) continue;
+      const i = at.get(node.__parent) || 0;
+      at.set(node.__parent, i + 1);
+      place(node.__parent, node, i);
     }
     this._renderSummary(summary, alarm);
     el.empty.hidden = summary.count > 0 || manual.length > 0;

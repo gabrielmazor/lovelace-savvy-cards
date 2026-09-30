@@ -13,7 +13,8 @@ same way: springs, not transitions; feedback the moment you touch; nothing that 
 - [How every Savvy card behaves](#how-every-savvy-card-behaves)
 - Cards: [Home](#home) · [Room](#room) · [Heading](#heading) · [Room tile](#room-tile) ·
   [Lights](#lights) · [Climate](#climate) · [Media](#media) · [Camera](#camera) ·
-  [Snapshot](#snapshot) · [Vacuum](#vacuum) · [Entity](#entity) · [Graph](#graph) · [Health](#health)
+  [Snapshot](#snapshot) · [Vacuum](#vacuum) · [Entity](#entity) · [Graph](#graph) · [Health](#health) ·
+  [Scenes](#scenes)
 
 ## Install
 
@@ -485,7 +486,7 @@ entities:
 
 | Option | Default | What it does |
 |---|---|---|
-| `entities` | **required** | The tiles: `{ entity, name, icon, unit, hours_to_show, thresholds, state_color, tap_action, hold_action }`. `thresholds` colour a graph good / warn / bad; `state_color` makes an on/off tile green or red. |
+| `entities` | **required** | The tiles: `{ entity, attribute, name, icon, unit, hours_to_show, thresholds, state_color, tap_action, hold_action }`. `attribute` charts one of the entity's attributes instead of its state (a weather entity's `humidity`). `thresholds` colour a graph good / warn / bad; `state_color` makes an on/off tile green or red. |
 | `title` | none | Title. |
 | `hours_to_show` | `24` | Every graph's range, unless a tile sets its own. |
 | `ranges` | none | An hours selector in the header, e.g. `[24, 168, 720]`. |
@@ -526,3 +527,35 @@ type: custom:savvy-health-card
   <source media="(prefers-color-scheme: light)" srcset="docs/images/health-batteries-light.png">
   <img src="docs/images/health-batteries-dark.png" width="420" alt="Savvy health card, batteries">
 </picture>
+
+---
+
+## Scenes
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/scene-light.png">
+  <img src="docs/images/scene-dark.png" width="460" alt="Savvy scene card">
+</picture>
+
+Every scene of a room as a tile: tap runs it, hold opens its details. Give it an area
+(or several) and it finds the scenes there, named without the room's name in front. A
+scene lights for a few seconds after it runs, from this card or from anywhere else.
+
+```yaml
+type: custom:savvy-scene-card
+area: office
+strip: '^.*//\s*|\s*-\s*on$'      # "Office // Work - On" reads "Work"
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `area` | none | An area, or a list of them. Scenes that are hidden or disabled are left out. |
+| `title` | none | A heading over the tiles. |
+| `layout` | `full` | `compact` is one scrolling row of pills. |
+| `columns` | 2 to 4 by width | Tiles per row (1 to 6). |
+| `entities` | none | Pinned scenes, first and in order, even from outside the area. A string, or `{ entity, name, icon, color }`. |
+| `auto_discover` | on | Also the area's scenes, after the pinned ones. |
+| `exclude` | none | Scenes never shown. |
+| `strip` | the area's name | A regular expression taken out of every name (any case, every match); then the area's name is taken off the front. `false`: names stay whole. A pinned scene's own `name` is used as written. |
+| `color` / `show_icon` | `blue` / on | The tint (an HA colour name or hex), and the icons. |
+| `navigation_path` | none | Tapping the title goes there (the heading reads "Scenes" if you gave no `title`). |

@@ -224,3 +224,10 @@ const registerCard = (type, cls, name, description) => {
     window.customCards.push({ type, name: `Savvy ${name}`, description, preview: true });
   }
 };
+
+// Puts `node` at `index` in `box` only if it isn't already there. Re-appending every child on
+// each state update pulls the element under a finger or a wheel out and back in, which cancels
+// a scroll in progress.
+const place = (box, node, index) => {
+  if (box.children[index] !== node) box.insertBefore(node, box.children[index] || null);
+};

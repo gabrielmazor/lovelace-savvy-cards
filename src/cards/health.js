@@ -196,6 +196,7 @@ class SavvyHealthCard extends HTMLElement {
 
   _renderRows(rows) {
     const box = this._el.rows, seen = new Set();
+    let at = 0;
     for (const r of rows) {
       seen.add(r.key);
       let node = this._rows.get(r.key);
@@ -217,12 +218,12 @@ class SavvyHealthCard extends HTMLElement {
         }
         this._rows.set(r.key, node);
       }
-      if (r.ok) { box.appendChild(node); continue; }
+      if (r.ok) { place(box, node, at++); continue; }
       if (r.group) {
         text(node.querySelector(".gt"), r.group);
         text(node.querySelector(".gs"), r.count ? `· ${r.count}` : "");
         node.__lastRun = r.lastRun;
-        box.appendChild(node);
+        place(box, node, at++);
         continue;
       }
       attr(node.__el.icon, "icon", r.icon);
@@ -241,7 +242,7 @@ class SavvyHealthCard extends HTMLElement {
         attr(node, "tabindex", "0");
         this._pressable(node, () => moreInfo(this, r.entity));
       }
-      box.appendChild(node);
+      place(box, node, at++);
     }
     for (const [key, node] of this._rows) {
       if (seen.has(key)) continue;

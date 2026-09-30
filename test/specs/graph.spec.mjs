@@ -64,4 +64,24 @@ export default async function ({ browser, base, check }) {
     check(`${tag} no errors`, errors.length === 0, errors.join(" | "));
     await page.close();
   }
+
+  // a tile can chart one attribute (a weather entity's humidity): its value, unit and history
+  {
+    const { page, errors } = await openPage(browser, base, { theme: "dark", width: 420 });
+    const r = await page.evaluate(async () => {
+      window.asked = [];
+      window.hass.callWS = async (m) => {
+        window.asked.push(`${m.type}:${m.entity_ids.join(",")}:${m.minimal_response}`);
+        const now = Date.now(), H = 3600000;
+        return { [m.entity_ids[0]]: Array.from({ length: 24 }, (_, i) => ({ s: "sunny", lu: (now - (24 - i) * H) / 1000, a: { humidity: 30 + i, temperature: 20 } })) };
+      };
+      window.mount("savvy-graph-card", { entities: [{ entity: "weather.home", attribute: "humidity", unit: "%", name: "Humidity" }, { entity: "weather.home", attribute: "temperature", unit: "°" }] }, 420);
+      await new Promise((res) => setTimeout(res, 1200));
+      const R = window.cards[0].shadowRoot;
+      return { tiles: [...R.querySelectorAll("#graphs .tile")].map((t) => `${t.querySelector(".cap").textContent}|${t.querySelector(".val .n").textContent}${t.querySelector(".val .u").textContent}|${t.querySelector("svg path") ? "chart" : t.querySelector(".cnote").textContent}`), asked: window.asked };
+    });
+    check("an attribute is charted with its own value, unit and history", r.tiles.length === 2 && r.tiles[0] === "Humidity|40%|chart" && r.tiles[1].startsWith("Temperature|26") && r.asked.some((x) => x.endsWith(":false")), JSON.stringify(r));
+    check("attribute tile: no errors", errors.length === 0, errors.join(" | "));
+    await page.close();
+  }
 }

@@ -300,7 +300,7 @@ class SavvyEntityCard extends SavvyCard {
         this._pills.set(key, node);
       }
       node.__item = item;
-      box.appendChild(node);
+      place(box, node, i);
       this._renderPill(node, item, item.entity ? h.states[item.entity] : null);
     });
     for (const [key, node] of this._pills) {

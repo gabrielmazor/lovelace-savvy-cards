@@ -2,6 +2,7 @@
 // needs Playwright, resolved as `playwright` or from PLAYWRIGHT=/path/to/playwright.
 //   node test/run.mjs            all specs
 //   node test/run.mjs core       only specs whose file name contains "core"
+//   BROWSER=webkit node test/run.mjs   the same in WebKit (Safari, the iOS app)
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -10,7 +11,7 @@ import { createRequire } from "node:module";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
-const { chromium } = require(process.env.PLAYWRIGHT || "playwright");
+const { chromium, webkit } = require(process.env.PLAYWRIGHT || "playwright");
 const TYPES = { ".html": "text/html", ".js": "application/javascript", ".mjs": "application/javascript", ".png": "image/png" };
 const server = http.createServer((req, res) => {
   const file = path.join(ROOT, decodeURIComponent(req.url.split("?")[0]));
@@ -22,7 +23,7 @@ await new Promise((r) => server.listen(0, r));
 const base = `http://localhost:${server.address().port}/test/`;
 const filter = process.argv[2] || "";
 const specs = fs.readdirSync(path.join(ROOT, "test/specs")).filter((f) => f.endsWith(".spec.mjs") && f.includes(filter)).sort();
-const browser = await chromium.launch();
+const browser = await (process.env.BROWSER === "webkit" ? webkit : chromium).launch();
 let pass = 0, fail = 0;
 for (const f of specs) {
   const results = [];

@@ -104,6 +104,18 @@
     add("sensor.alex_phone_battery", 64, { friendly_name: "Alex Phone Battery", device_class: "battery", unit_of_measurement: "%" }, { platform: "mobile_app", category: "diagnostic" });
     add("script.good_night", "off", { friendly_name: "Good Night" }, {});
 
+    // ---- scenes: a scene's state is when it last ran. Office ones are named the way a
+    // scenes.yaml often does ("Office // Work - On"); one has no area, one is hidden
+    const scene = (id, name, reg, icon) => add(id, ago(48 * HOUR), { friendly_name: name, ...(icon ? { icon } : {}) }, reg);
+    scene("scene.office_work", "Office // Work - On", { area: "office" });
+    scene("scene.office_focus", "Office // Focus - On", { area: "office" }, "mdi:target");
+    scene("scene.office_relax", "Office Relax", { device: device("dev_office_hub", "office") });
+    scene("scene.office_hidden", "Office // Secret - On", { area: "office", hidden: true });
+    scene("scene.living_room_movie", "Living Room Movie", { area: "living_room" }, "mdi:movie-open");
+    scene("scene.living_room_reading", "Living Room Reading", { area: "living_room" });
+    scene("scene.evening", "Evening", { area: "living_room" });
+    scene("scene.party", "Party", {});
+
     // ---- the rest
     add("weather.home", "sunny", { friendly_name: "Home", temperature: 26, humidity: 40 }, {});
     add("sensor.watchman_missing_entities", 2, { friendly_name: "Watchman Missing Entities",

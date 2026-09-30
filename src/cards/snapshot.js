@@ -471,9 +471,13 @@ class SavvySnapshotCard extends SavvyCard {
       this._nodes.delete(key);
     }
     // DOM order follows reading order
+    const at = new Map();
     for (const key of seen) {
       const node = this._nodes.get(key);
-      if (node) node.__parent.appendChild(node);
+      if (!node) continue;
+      const i = at.get(node.__parent) || 0;
+      at.set(node.__parent, i + 1);
+      place(node.__parent, node, i);
     }
     this._renderSummary(summary, alarm);
     el.empty.hidden = summary.count > 0 || manual.length > 0;
