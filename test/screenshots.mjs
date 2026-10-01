@@ -1,6 +1,7 @@
 // Renders every card on the made-up house, dark and light, into docs/images/ for the
 // README. Rerun after a card changes:  node test/screenshots.mjs
 // (needs Playwright: `playwright` installed, or PLAYWRIGHT=/path/to/playwright)
+// Only some:  node test/screenshots.mjs health   (names that start with it)
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -18,6 +19,11 @@ const VACUUM_WS = `window.hass.callWS = async (m) => {
   if (m.type === "vacuum/get_segments") return { segments: [] };
   throw new Error("unmocked " + m.type);
 };`;
+// a house with hubs down, for the health card: a Zigbee bridge and its devices, a ZHA
+// coordinator, one dead plug, one half-dead sensor
+const HUBS = `window.setStates(window.hubFixture(window.house, { down: ["dev_z2m_bridge", "dev_z2m_kitchen_motion", "dev_z2m_hall_door", "dev_z2m_bedroom_climate", "dev_z2m_office_plug", "dev_z2m_garage_leak",
+  "dev_zha_hall_bulb", "dev_zha_porch_bulb", "dev_zha_stair_bulb", "dev_solo"], downEntities: ["sensor.garage_multi_temperature", "sensor.garage_multi_pressure"] }));`;
+const HUBS_OPEN = HUBS + `window.__after = () => { const c = window.cards[0]; c._open.add("h:dev_z2m_bridge"); c._open.add("h:dev_z2m_bridge/d:dev_z2m_hall_door"); c._update(); };`;
 // the tiles: three rooms side by side (the first is mounted by the loop)
 const TILES = `window.__tiles = () => { for (const area of ["bedroom", "office"]) window.mount("savvy-room-tile", { area }, 260); };`;
 // a day of history, and a month of statistics, for the graphs
@@ -46,7 +52,9 @@ const SHOTS = [
   ["climate-compact", "savvy-climate-card", { area: "living_room", layout: "compact" }, 460],
   ["vacuum", "savvy-vacuum-card", { entity: "vacuum.robot", start: "button.robot_vacuum" }, 520, VACUUM_WS],
   ["vacuum-compact", "savvy-vacuum-card", { entity: "vacuum.robot", layout: "compact" }, 460, VACUUM_WS],
-  ["health", "savvy-health-card", { watchman: ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"], max_rows: 10 }, 420],
+  ["health", "savvy-health-card", { watchman: ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"], max_rows: 10 }, 420, HUBS],
+  ["health-expanded", "savvy-health-card", { max_rows: 14 }, 420, HUBS_OPEN],
+  ["health-details", "savvy-health-card", { watchman: ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"], max_rows: 10, details: true }, 420, HUBS],
   ["health-batteries", "savvy-health-card", { source: "battery" }, 420],
   ["home", "savvy-home-card", { mode: "input_select.house_mode", home_path: "/lovelace/home",
     health: { watchman: ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"] } }, 600],
@@ -79,7 +87,9 @@ const base = `http://localhost:${server.address().port}/test/page.html`;
 fs.mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch();
 const errors = [];
-for (const [name, type, config, width, setup] of SHOTS) {
+const only = process.argv[2];
+const todo = SHOTS.filter(([name]) => !only || name.startsWith(only));
+for (const [name, type, config, width, setup] of todo) {
   for (const theme of ["dark", "light"]) {
     const page = await browser.newPage({ viewport: { width: (name === "tiles" ? 3 * width + 24 : width) + 80, height: 1200 }, deviceScaleFactor: 2 });
     page.on("pageerror", (e) => errors.push(`${name}/${theme}: ${e}`));
@@ -95,6 +105,7 @@ for (const [name, type, config, width, setup] of SHOTS) {
       window.mount(type, config, width);
       if (window.__tiles) { document.getElementById("stage").style.cssText = "padding:16px;display:flex;gap:12px"; window.__tiles(); }
     }, { type, config, width });
+    if (await page.evaluate(() => !!window.__after)) await page.evaluate(() => window.__after());
     await page.waitForTimeout(900);
     for (let i = 0; i < 30; i++) {
       if (!(await page.evaluate(() => window.cards.some((c) => (c._springs || []).some((s) => !s.idle && s.group !== "liquid"))))) break;
@@ -108,5 +119,5 @@ for (const [name, type, config, width, setup] of SHOTS) {
 }
 await browser.close();
 server.close();
-console.log(`\n${SHOTS.length * 2} screenshots in docs/images`);
+console.log(`\n${todo.length * 2} screenshots in docs/images`);
 if (errors.length) { console.error(errors.join("\n")); process.exitCode = 1; }

@@ -96,8 +96,8 @@ export default async function ({ browser, base, check }) {
       return { nav: [...window.nav], pill: hc?.shadowRoot.getElementById("pill").textContent,
         groups: hc ? [...hc.shadowRoot.querySelectorAll(".group .gt")].map((g) => g.textContent) : [] };
     });
-    check(`${tag} cog: tap goes to its page; hold lists everything the count is made of`, health.nav[0] === "/lovelace/admin" && health.pill === "6 ISSUES"
-      && JSON.stringify(health.groups) === JSON.stringify(["Watchman", "Unavailable", "Low batteries"]), JSON.stringify(health));
+    check(`${tag} cog: tap goes to its page; hold lists everything the count is made of`, health.nav[0] === "/lovelace/admin" && health.pill === "6 issues"
+      && JSON.stringify(health.groups) === JSON.stringify(["Broken references", "Offline", "Low batteries"]), JSON.stringify(health));
     await page.keyboard.press("Escape");
     await page.waitForTimeout(450);
 

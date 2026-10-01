@@ -69,7 +69,8 @@ Then edit a dashboard, add a card, and search for **Savvy**.
 
 The header for your home dashboard. On top, the house mode (tap to change it), the
 weather, and the health cog: its number is exactly what the [Health](#health) card
-lists, and holding it shows that list. Below, four chips that count by themselves, with
+lists (a device or a hub counts once, however many entities it has), and holding it
+shows that list. Below, four chips that count by themselves, with
 no helper sensors: lights on (every light in the house, groups left out so nothing counts
 twice), the average indoor temperature (the fan spins while an A/C
 runs), what's playing, and security (the alarm panel; with none, what's open or
@@ -93,7 +94,7 @@ lights:
 | `mode_icons` / `mode_colors` | the dictionary | Per option, one line each under the key: `Movie Night: mdi:popcorn`. |
 | `home_path` | none | A home button that opens this path. |
 | `weather` | the first weather entity | A weather entity, or `false`. |
-| `health` | on | The cog: `navigation_path` (where a tap goes; without one a tap lists the issues), and the Health card's `watchman`, `battery_threshold`, `exclude_platforms`, `warn_above`. `false` hides it. |
+| `health` | on | The cog: `navigation_path` (where a tap goes; without one a tap lists the issues), and the Health card's `watchman`, `battery_threshold`, `exclude_platforms`, `warn_above`, `group_by`, `group_min`. `false` hides it. |
 | `lights` / `climate` / `media` / `security` | on | Each chip: `false` hides it; or `{ entity, name, icon, color, tap_action, hold_action }`, where `entity` shows that entity's state instead of the count. Tap and hold list what's counted unless set. |
 | `chips` | none | Your own chips after the four. |
 
@@ -501,10 +502,21 @@ entities:
   <img src="docs/images/health-dark.png" width="420" alt="Savvy health card">
 </picture>
 
-What in the house needs attention: unavailable entities, low batteries, and (if you use
-[Watchman](https://github.com/dummylabs/thewatchman)) its missing entities and actions,
-with when Watchman last checked. One count; every category always shows, with its count,
-or a ticked "All good" under its name; tap a row for more-info.
+What in the house needs attention, in three sections: what's **offline**, which **batteries**
+are low, and (if you use [Watchman](https://github.com/dummylabs/thewatchman)) the
+**broken references** in your own configuration, meaning an entity or action your
+automations, scripts or dashboards use that doesn't exist. One count, and every section
+always shows: what's wrong in a line ("3 devices offline"), or a tick and what's fine
+("Everything is online").
+
+Offline entities are grouped the way you think about them. All the unavailable entities of
+one device are one issue, the device. And when a hub is down (a Zigbee bridge or
+coordinator, anything other devices are attached to) the devices behind it become one
+issue too: "Zigbee2MQTT Bridge offline, 34 devices". Home Assistant itself records which
+device sits behind which hub, so nothing is guessed from names. A device with only some of
+its entities unavailable is shown as "2 of 9 entities unavailable", in a softer colour, and
+never rolls into a hub. Tap a hub or a device to open it, tap an entity for its more-info,
+hold a device for its page in Home Assistant.
 
 ```yaml
 type: custom:savvy-health-card
@@ -512,16 +524,31 @@ type: custom:savvy-health-card
 
 | Option | Default | What it does |
 |---|---|---|
-| `source` | `all` | `all`, or one list: `battery`, `unavailable`, `watchman`. |
+| `source` | `all` | `all`, or one list: `battery`, `unavailable` (titled Offline), `watchman` (titled Broken references). |
 | `title` | per source | Title. |
+| `details` | `false` | A line of facts under each section ("42 devices, all online", "18 batteries, lowest 34%", "Checked 2 h ago, 0 problems"), and area and integration on the rows. |
+| `group_by` | `hub` | How offline entities become issues: `hub` (devices, and the hub behind them), `device`, or `none` (one row per entity). |
+| `group_min` | `3` | How many down devices a hub needs before they roll up into it. |
 | `battery_threshold` | `20` | A battery below this % is low. |
 | `exclude_platforms` | `[mobile_app]` | Integrations to ignore (phones, by default). |
 | `watchman` | none | Watchman's summary sensors. |
-| `watchman_last_run` | found | Watchman's "last parse" timestamp, shown as "Checked 2 h ago". Found from the Watchman integration; name another sensor, or `false` to hide it. |
-| `warn_above` | `6` | The count turns red at this many. |
+| `watchman_last_run` | found | Watchman's "last parse" timestamp, shown as "Checked 2 h ago" (under the title with `source: watchman`, in the details line otherwise). Found from the Watchman integration; name another sensor, or `false` to hide it. |
+| `warn_above` | `6` | The count turns red at this many issues (a hub or a device counts as one). |
 | `max_rows` | `7` | Rows before the list scrolls. |
 | `show_all_batteries` | `true` | With `source: battery`: every battery, low ones first. |
 | `action` | none | A footer button: `{label, tap_action}`. |
+
+A hub opened, and one of its devices opened inside it, and the same with `details: true`:
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/health-expanded-light.png">
+  <img src="docs/images/health-expanded-dark.png" width="420" alt="Savvy health card, a hub and a device opened">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/health-details-light.png">
+  <img src="docs/images/health-details-dark.png" width="420" alt="Savvy health card, with details">
+</picture>
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/images/health-batteries-light.png">

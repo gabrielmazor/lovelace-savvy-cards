@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.5.0
+
+The health card says what's wrong instead of listing entities.
+
+- **Offline devices, not offline entities.** Every unavailable entity of a device is one
+  issue, the device ("2 of 9 entities unavailable" when only some are down, offline for
+  how long when all are). Entities with no device stay single rows.
+- **Hubs.** When a hub is down (a Zigbee bridge, a coordinator, anything other devices are
+  attached to), the devices behind it are one issue: "Zigbee2MQTT Bridge offline, 34
+  devices". It also rolls up a hub that is up when every device behind it is down. Needs
+  `group_min` devices (default 3); a partial device never rolls up. `group_by: hub |
+  device | none` turns it down or off.
+- **One count.** The card's pill and the home card's cog count issues with the same
+  engine: a hub, a device or a loose entity is one each.
+- **Tap to open.** Hubs and devices expand to what's under them; an entity opens its
+  more-info; holding a device opens its page in Home Assistant. What is open stays open.
+- **New words.** Sections are Offline, Low batteries and Broken references (Watchman's
+  missing entities and actions are references in your configuration that don't exist).
+  Each says what's wrong ("3 devices offline", "2 batteries low") or ticks off what's
+  fine ("Everything is online", "All batteries fine", "No broken references").
+- **`details: true`** adds a facts line under every section and area and integration on the
+  rows.
+
 ## 0.4.0
 
 - **Scenes**: a new card. Point it at an area (or several) and it lists every scene

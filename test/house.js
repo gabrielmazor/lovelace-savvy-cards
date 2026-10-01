@@ -150,5 +150,67 @@
     return { states, entities, devices, areas };
   }
 
+  // Devices for the health card, added to a house on demand (so the base house's counts stay
+  // as they are): hubs, the devices behind them, and the awkward cases.
+  //   window.hubFixture(house, { down: [device ids], downEntities: [entity ids] }) -> a states patch
+  // for window.setStates; the registry (hass.entities / hass.devices) is changed in place.
+  //   Zigbee2MQTT bridge (own entities) with five devices behind it, three entities each
+  //   a ZHA coordinator with no entities of its own, three devices behind it
+  //   a Hue bridge that is up, with three devices behind it
+  //   a chain: dev_chain_a (hub) <- dev_chain_b <- dev_chain_c
+  //   a cycle: dev_cyc_a <-> dev_cyc_b
+  //   dev_partial (some entities down), dev_solo (down, no hub)
+  function hubFixture(house, { down = [], downEntities = [] } = {}) {
+    const patch = {};
+    const dev = (id, name, via = null, area = null, extra = {}) => { house.devices[id] = { id, name, area_id: area, via_device_id: via, manufacturer: extra.manufacturer, model: extra.model }; };
+    const ent = (id, device, platform, state, attrs = {}, name) => {
+      house.entities[id] = { entity_id: id, area_id: null, device_id: device, platform, entity_category: null, hidden: false, disabled_by: null };
+      const off = down.includes(device) || downEntities.includes(id);
+      patch[id] = { entity_id: id, state: off ? "unavailable" : String(state), attributes: { friendly_name: name || id.split(".")[1].replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()), ...attrs }, last_changed: ago(3 * HOUR) };
+    };
+    // Zigbee2MQTT
+    dev("dev_z2m_bridge", "Zigbee2MQTT Bridge", null, null, { manufacturer: "Zigbee2MQTT" });
+    ent("binary_sensor.z2m_bridge_connection_state", "dev_z2m_bridge", "mqtt", "on", { device_class: "connectivity" }, "Z2M Bridge Connection");
+    ent("sensor.z2m_bridge_version", "dev_z2m_bridge", "mqtt", "2.1.0", {}, "Z2M Bridge Version");
+    const z2m = [["kitchen_motion", "Kitchen Motion Sensor", "kitchen"], ["hall_door", "Hall Door Sensor", "hallway"], ["bedroom_climate", "Bedroom Climate Sensor", "bedroom"],
+      ["office_plug", "Office Plug", "office"], ["garage_leak", "Garage Leak Sensor", null]];
+    for (const [k, name, area] of z2m) {
+      dev(`dev_z2m_${k}`, name, "dev_z2m_bridge", area, { manufacturer: "Aqara", model: "Sensor" });
+      ent(`sensor.${k}_state`, `dev_z2m_${k}`, "mqtt", "ok", {}, `${name} State`);
+      ent(`sensor.${k}_linkquality`, `dev_z2m_${k}`, "mqtt", "120", {}, `${name} Link Quality`);
+      ent(`sensor.${k}_battery`, `dev_z2m_${k}`, "mqtt", "88", { device_class: "battery", unit_of_measurement: "%" }, `${name} Battery`);
+    }
+    // ZHA: a coordinator with no entities
+    dev("dev_zha_coord", "ZHA Coordinator", null, null, { manufacturer: "Silicon Labs" });
+    for (const [k, name] of [["hall_bulb", "Hall Bulb"], ["porch_bulb", "Porch Bulb"], ["stair_bulb", "Stair Bulb"]]) {
+      dev(`dev_zha_${k}`, name, "dev_zha_coord", "hallway");
+      ent(`light.zha_${k}`, `dev_zha_${k}`, "zha", "on", {}, name);
+      ent(`sensor.zha_${k}_rssi`, `dev_zha_${k}`, "zha", "-60", {}, `${name} RSSI`);
+    }
+    // a Hue bridge that is up, with three devices behind it
+    dev("dev_hue_bridge", "Hue Bridge");
+    ent("binary_sensor.hue_bridge_status", "dev_hue_bridge", "hue", "on", {}, "Hue Bridge Status");
+    for (const k of ["a", "b", "c"]) {
+      dev(`dev_hue_${k}`, `Hue Lamp ${k.toUpperCase()}`, "dev_hue_bridge", "living_room");
+      ent(`light.hue_lamp_${k}`, `dev_hue_${k}`, "hue", "on", {}, `Hue Lamp ${k.toUpperCase()}`);
+    }
+    // a chain A <- B <- C, and a cycle
+    dev("dev_chain_a", "Chain Hub");
+    dev("dev_chain_b", "Chain Router", "dev_chain_a");
+    dev("dev_chain_c", "Chain Leaf", "dev_chain_b");
+    for (const k of ["a", "b", "c"]) ent(`sensor.chain_${k}`, `dev_chain_${k}`, "demo", "1", {}, `Chain ${k.toUpperCase()}`);
+    dev("dev_cyc_a", "Cycle A", "dev_cyc_b");
+    dev("dev_cyc_b", "Cycle B", "dev_cyc_a");
+    ent("sensor.cycle_a", "dev_cyc_a", "demo", "1", {}, "Cycle A");
+    ent("sensor.cycle_b", "dev_cyc_b", "demo", "1", {}, "Cycle B");
+    // partial and solo
+    dev("dev_partial", "Garage Multisensor", null, "hallway");
+    for (const k of ["temperature", "humidity", "pressure", "battery"]) ent(`sensor.garage_multi_${k}`, "dev_partial", "mqtt", "5", {}, `Garage ${k[0].toUpperCase()}${k.slice(1)}`);
+    dev("dev_solo", "Washer Plug", null, "bathroom");
+    for (const k of ["power", "energy", "switch"]) ent(`sensor.washer_${k}`, "dev_solo", "shelly", "1", {}, `Washer ${k}`);
+    return patch;
+  }
+
   window.makeHouse = makeHouse;
+  window.hubFixture = hubFixture;
 })();

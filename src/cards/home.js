@@ -6,7 +6,7 @@
 //   type: custom:savvy-home-card
 //   mode: input_select.house_mode                   (never guessed; hidden when unset)
 //   weather: auto | weather.home | false
-//   health: { navigation_path: /lovelace/admin, watchman: [...], battery_threshold: 20 } | false
+//   health: { navigation_path: /lovelace/admin, watchman: [...], battery_threshold: 20, group_by: hub } | false
 //   lights / climate / media / security: false | { entity, name, icon, color, tap_action, hold_action }
 //   chips: [...]                                     your own, after the four
 
@@ -150,15 +150,16 @@ class SavvyHomeCard extends SavvyCard {
     attr(el.weather, "aria-label", Number.isFinite(t) ? `Weather, ${cond}, ${Math.round(t)} degrees` : `Weather, ${cond}`);
   }
 
-  // Exactly what savvy-health-card counts: Watchman, unavailable, low batteries.
+  // Exactly what savvy-health-card counts: broken references, offline devices, low batteries.
   _renderHealth() {
     const hc = this._healthCfg(), el = this._el;
     el.health.hidden = !hc;
     if (!hc) return;
     const h = this._hass;
-    if (this._sumFor !== h.states || this._sumReg !== h.entities) {
+    if (this._sumFor !== h.states || this._sumReg !== h.entities || this._sumDev !== h.devices) {
       this._sumFor = h.states;
       this._sumReg = h.entities;
+      this._sumDev = h.devices;
       this._sum = healthSummary(h, hc);
     }
     const total = this._sum.total, warn = hc.warn_above ?? 6;
@@ -244,6 +245,10 @@ const EDITOR = defineEditor("savvy-home-card", (hass, c) => [
       { name: "warn_above", label: "Red from", selector: { number: { min: 1, max: 99, mode: "box" } } },
     ] },
     { name: "exclude_platforms", label: "Ignore integrations", selector: { select: { multiple: true, custom_value: true, options: ["mobile_app"] } } },
+    S.select("group_by", "Group offline entities by", [
+      { value: "hub", label: "Device, and the hub behind it" }, { value: "device", label: "Device" }, { value: "none", label: "Nothing: one row per entity" },
+    ]),
+    S.number("group_min", "Devices a hub needs to roll up", 2, 50),
   ] },
   autoSection("lights", "counts the lights that are on."),
   autoSection("climate", "the average indoor temperature."),
