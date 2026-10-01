@@ -1,13 +1,16 @@
-// savvy-home-card: the header at the top of the home dashboard. Two big chips on top, the
-// house's mode (tap to change it) and its health (the cog, with a count); the weather; and
+// savvy-home-header-card: the header at the top of any page that isn't a room. Two big chips on
+// top, the control (a house mode, say: tap to change it) and health (the cog, with a count); the weather; and
 // four chips that count by themselves, no helpers needed: lights on, the average indoor
 // temperature, what's playing, and security. Hold any of them for the entities behind it.
 //
-//   type: custom:savvy-home-card
-//   mode: input_select.house_mode                   (never guessed; hidden when unset)
+//   type: custom:savvy-home-header-card
+//   control: input_select.house_mode   (never guessed; hidden when unset): a select opens a picker,
+//                                       a button or scene runs, a switch toggles, the rest open more-info
 //   weather: auto | weather.home | false
 //   health: { navigation_path: /lovelace/admin, watchman: [...], battery_threshold: 20, group_by: hub } | false
-//   lights / climate / media / security: false | { entity, name, icon, color, tap_action, hold_action }
+//   lights / climate / media / security: false | { entity, name, icon, color, navigation_path,
+//       popup_button, popup_label, tap_action, hold_action }   (hold lists what's counted; the popup's
+//       page button leads to navigation_path, or to the page its tap or hold already navigates to)
 //   chips: [...]                                     your own, after the four
 
 const STYLE = `${BASE_CSS}${HEADER_CSS}${CHIP_ROW_CSS}`;
@@ -20,16 +23,16 @@ const AUTO = {
   security: { name: "Security", icon: "mdi:shield-home", color: "#E6C48F" },
 };
 
-class SavvyHomeCard extends SavvyCard {
-  // the mode is never guessed: its options (and their icons in the editor) only appear
-  // once an input_select is chosen
+class SavvyHomeHeaderCard extends SavvyCard {
+  // the control is never guessed: a select's options (and their icons in the editor) only
+  // appear once one is chosen
   static getStubConfig() { return {}; }
   static getConfigElement() { return document.createElement(EDITOR); }
 
   setConfig(config) {
     const c = { mode_label: "Home mode", ...config };
     // the pre-Savvy names: home_mode, weather as { entity }, admin, tiles
-    c.mode = config.mode ?? config.home_mode;
+    c.control = config.control ?? config.home_mode;
     if (config.weather && typeof config.weather === "object") c.weather = config.weather.entity;
     if (config.show_home === false) c.home_path = null;
     if (config.health === undefined && config.admin) {
@@ -59,7 +62,7 @@ class SavvyHomeCard extends SavvyCard {
   getCardSize() { return 2; }
   getGridOptions() { return { columns: 12, min_columns: 6, rows: "auto" }; }
 
-  _modeInfo() { return this._hass && modeInfo(this._hass, this._config.mode, this._config); }
+  _modeInfo() { return this._hass && modeInfo(this._hass, controlOf(this._config).entity, this._config); }
   _healthCfg() { const hc = this._config.health; return hc === false ? null : hc || {}; }
 
   _build() {
@@ -107,14 +110,15 @@ class SavvyHomeCard extends SavvyCard {
     this._ro.observe(this._el.chips);
   }
 
-  // The same list savvy-health-card shows, with the same options: its count is the cog's.
+  // The same list savvy-system-health-card shows, with the same options: its count is the cog's.
   _showHealth() {
     if (!this._healthSheet) {
-      this._healthSheet = new Sheet(this, { title: "Health", onClose: () => { this._healthCard?.remove(); this._healthCard = null; } });
+      this._healthSheet = new Sheet(this, { title: "System health", onClose: () => { this._healthCard?.remove(); this._healthCard = null; } });
       this._healthSheet.el.classList.add("health-sheet");
     }
-    const card = document.createElement("savvy-health-card");
-    const { navigation_path, tap_action, hold_action, ...opts } = this._healthCfg() || {};
+    const card = document.createElement("savvy-system-health-card");
+    const { navigation_path, tap_action, hold_action, popup_button, popup_label, ...opts } = this._healthCfg() || {};
+    this._healthSheet.setFooter(pageButton(this._healthCfg() || {}, "system health"));
     card.setConfig({ ...opts, source: "all", max_rows: 30, title: " " });
     this._healthSheet.body.replaceChildren(card);
     card.hass = this._hass;
@@ -150,7 +154,7 @@ class SavvyHomeCard extends SavvyCard {
     attr(el.weather, "aria-label", Number.isFinite(t) ? `Weather, ${cond}, ${Math.round(t)} degrees` : `Weather, ${cond}`);
   }
 
-  // Exactly what savvy-health-card counts: broken references, offline devices, low batteries.
+  // Exactly what savvy-system-health-card counts: broken references, offline devices, low batteries.
   _renderHealth() {
     const hc = this._healthCfg(), el = this._el;
     el.health.hidden = !hc;
@@ -214,7 +218,7 @@ class SavvyHomeCard extends SavvyCard {
       spin: key === "climate" ? spin : undefined,
       config: { ...cfg, tap_action: cfg.tap_action ?? (cfg.navigation_path ? { action: "navigate", navigation_path: cfg.navigation_path } : undefined) },
       defaults: { tap: { action: "list" }, hold: { action: "list" } },
-      list: (from) => this._showList(listTitle, snapshot, cfg.color ? colorOf(cfg.color) : base.color, from),
+      list: (from) => this._showList(listTitle, snapshot, cfg.color ? colorOf(cfg.color) : base.color, from, pageButton(cfg, cfg.name || base.name)),
     };
   }
 
@@ -225,37 +229,42 @@ class SavvyHomeCard extends SavvyCard {
 
 // ---------- editor ----------
 const autoSection = (key, what) => ({ type: "expandable", name: key, title: `${AUTO[key].name} chip`, schema: [
-  { name: "hide", label: "Hide this chip", selector: { boolean: {} } },
-  { name: "entity", label: "Show this entity instead", helper: `Empty: ${what}`, selector: { entity: {} } },
-  { type: "grid", name: "", schema: [{ name: "name", label: "Name", selector: { text: {} } }, { name: "icon", label: "Icon", selector: { icon: { placeholder: AUTO[key].icon } } }] },
-  { name: "color", label: "Colour", selector: { text: {} } },
-  { name: "tap_action", label: "Tap (default: list them)", selector: { ui_action: {} } },
-  { name: "hold_action", label: "Hold (default: list them)", selector: { ui_action: {} } },
+  S.bool("hide", "Hide chip"),
+  { name: "entity", label: "Entity override", helper: `Show this entity's state instead. Empty: ${what}`, selector: { entity: {} } },
+  S.grid(S.text("name", "Name"), { name: "icon", label: "Icon", selector: { icon: { placeholder: AUTO[key].icon } } }),
+  S.color(),
+  S.nav("navigation_path", "Target page", "A tap goes here, and the popup gets a button to it."),
+  S.bool("popup_button", "Page button", "In the popup, when there is a target page.", true),
+  S.text("popup_label", "Button text", `Default: Open ${AUTO[key].name.toLowerCase()}`),
+  S.action("tap_action", "Tap action"),
+  S.action("hold_action", "Hold action"),
 ] });
 
-const EDITOR = defineEditor("savvy-home-card", (hass, c) => [
-  ...modeSchema(hass, c, { helper: "The house mode: any input_select or select. Never guessed; empty hides the chip." }),
-  S.nav("home_path", "Home button navigates to", "Empty hides the button."),
+const EDITOR = defineEditor("savvy-home-header-card", (hass, c) => [
+  ...modeSchema(hass, c),
+  S.nav("home_path", "Home button", "The page it opens. Empty hides the button."),
   { name: "weather", label: "Weather", helper: "Empty: the first weather entity.", selector: { entity: { domain: "weather" } } },
   { type: "expandable", name: "health", title: "Health cog", schema: [
-    S.nav("navigation_path", "Navigate to on tap", "E.g. your admin page. Empty: tapping lists what needs attention (hold always does)."),
+    S.nav("navigation_path", "Target page", "A tap goes here, and the popup gets a button to it. Empty: a tap lists what needs attention (hold always does)."),
+    S.bool("popup_button", "Page button", "In the popup, when there is a target page.", true),
+    S.text("popup_label", "Button text", "Default: Open system health"),
     { name: "watchman", label: "Watchman sensors", selector: { entity: { multiple: true, domain: "sensor" } } },
     { type: "grid", name: "", schema: [
-      { name: "battery_threshold", label: "Low battery below", selector: { number: { min: 1, max: 100, mode: "box", unit_of_measurement: "%" } } },
-      { name: "warn_above", label: "Red from", selector: { number: { min: 1, max: 99, mode: "box" } } },
+      { name: "battery_threshold", label: "Battery alert", helper: "Low below", selector: { number: { min: 1, max: 100, mode: "box", unit_of_measurement: "%" } } },
+      { name: "warn_above", label: "Red threshold", helper: "Red from this many issues", selector: { number: { min: 1, max: 99, mode: "box" } } },
     ] },
-    { name: "exclude_platforms", label: "Ignore integrations", selector: { select: { multiple: true, custom_value: true, options: ["mobile_app"] } } },
-    S.select("group_by", "Group offline entities by", [
+    { name: "exclude_platforms", label: "Ignored integrations", selector: { select: { multiple: true, custom_value: true, options: ["mobile_app"] } } },
+    S.select("group_by", "Grouping", [
       { value: "hub", label: "Device, and the hub behind it" }, { value: "device", label: "Device" }, { value: "none", label: "Nothing: one row per entity" },
     ]),
-    S.number("group_min", "Devices a hub needs to roll up", 2, 50),
+    S.number("group_min", "Hub threshold", 2, 50),
   ] },
   autoSection("lights", "counts the lights that are on."),
   autoSection("climate", "the average indoor temperature."),
   autoSection("media", "counts what's playing."),
   autoSection("security", "the alarm panel; with none, what's open or unlocked."),
-  S.chips("chips", "Your chips", "After the four."),
+  S.chips("chips", "Custom chips", "After the four."),
 ]);
 
-registerCard("savvy-home-card", SavvyHomeCard, "Home",
-  "The home dashboard's header: the house mode, health, weather, and chips that count lights, climate, media and security by themselves.");
+registerCard("savvy-home-header-card", SavvyHomeHeaderCard, "Home header",
+  "The house at a glance, for the top of any page that isn't a room: its control, health, weather, and chips that count lights, climate, media and security by themselves.");

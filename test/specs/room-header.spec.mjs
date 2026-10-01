@@ -1,4 +1,4 @@
-// savvy-room-card on the made-up house.
+// savvy-room-header-card on the made-up house.
 import { openPage, idle, shot, centerOf } from "./_util.mjs";
 
 export default async function ({ browser, base, check }) {
@@ -6,11 +6,11 @@ export default async function ({ browser, base, check }) {
     const tag = `[${theme} ${width}]`;
     const { page, errors } = await openPage(browser, base, { theme, width });
     const r = await page.evaluate(async (width) => {
-      window.mount("savvy-room-card", { area: "living_room", mode: "input_select.living_room_scene", home_path: "/lovelace/home",
+      window.mount("savvy-room-header-card", { area: "living_room", control: "input_select.living_room_scene", home_path: "/lovelace/home",
         entities: [{ entity: "input_boolean.movie_mode", name: "Movie", icon: "mdi:movie" }], room_path: "/lovelace/{slug}",
         chips: [{ entity: "switch.living_room_plug", name: "Plug" }], room_order: ["office"] }, width);
-      window.mount("savvy-room-card", { area: "bedroom", auto_discover: false, entities: ["binary_sensor.bedroom_window"], icons_only: true }, width);
-      window.mount("savvy-room-card", { area: "kitchen", light_state: "input_boolean.movie_mode", sensor_icons_only: false, ignore_sensors: ["media"],
+      window.mount("savvy-room-header-card", { area: "bedroom", auto_discover: false, entities: ["binary_sensor.bedroom_window"], icons_only: true }, width);
+      window.mount("savvy-room-header-card", { area: "kitchen", light_state: "input_boolean.movie_mode", sensor_icons_only: false, ignore_sensors: ["media"],
         order: ["bedroom"], rooms: [{ area: "office", name: "Study", navigation_path: "/lovelace/study" }], exclude_rooms: ["empty_room"] }, width);
       await new Promise((res) => setTimeout(res, 500));
       const read = (el) => {

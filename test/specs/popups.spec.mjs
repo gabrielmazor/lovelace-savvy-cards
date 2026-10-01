@@ -18,8 +18,8 @@ export default async function ({ browser, base, check }) {
       const stage = document.getElementById("stage");
       stage.style.cssText = "display:block;padding-bottom:2000px";
       const wrap = (type, cfg) => { const box = document.createElement("div"); box.style.cssText = "transform:translateZ(0);contain:layout;margin-bottom:12px"; stage.appendChild(box); const el = window.mount(type, cfg, w - 60); box.appendChild(el); return el; };
-      wrap("savvy-home-card", { mode: "input_select.house_mode", health: { navigation_path: "/lovelace/admin" }, lights: { tap_action: { action: "navigate", navigation_path: "/lovelace/lights" } } });
-      wrap("savvy-room-card", { area: "living_room", room_path: "/lovelace/{slug}" });
+      wrap("savvy-home-header-card", { control: "input_select.house_mode", health: { navigation_path: "/lovelace/admin" }, lights: { tap_action: { action: "navigate", navigation_path: "/lovelace/lights" } } });
+      wrap("savvy-room-header-card", { area: "living_room", room_path: "/lovelace/{slug}" });
       window.nav = []; window.addEventListener("location-changed", () => window.nav.push(location.pathname));
       window.scrollTo(0, 40);
     }, width);

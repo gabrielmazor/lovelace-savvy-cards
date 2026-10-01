@@ -7,7 +7,8 @@
 //   this._pressable(el, handlers, depth)      tap / hold / double-tap with press feedback
 //   this._chipActions(el, getCtx, defaults)   the same, from a chip's action config
 //   this._spinner(key, el)                    a rotating icon; set .s.to(turnsPerSecond)
-//   this._showList(title, ids, color, from)   the popup of the entities a chip stands for
+//   this._showList(title, ids, color, from, footer)   the popup of the entities a chip stands for,
+//                                              with an optional pinned page button
 //   _paint(dirty, all)                        the card's own painting, after the shared part
 // ---------------------------------------------------------------------------------------
 
@@ -60,9 +61,10 @@ class SavvyCard extends HTMLElement {
     return spin;
   }
 
-  _showList(heading, ids, color, from) {
+  _showList(heading, ids, color, from, footer = null) {
     if (!this._list) this._list = new EntityListSheet(this, { title: heading });
     this._list.sheet.setTitle(heading);
+    this._list.sheet.setFooter(footer);
     this._list.color = color;
     this._list.show(this._hass, ids, from);
   }
@@ -112,16 +114,31 @@ class SavvyCard extends HTMLElement {
   }
 }
 
-// The mode chip's gestures, the same on every card: tap opens the picker, hold opens
-// more-info. `card._modeInfo()` returns the current modeInfo.
+// The control chip's gestures, the same on every card: a select's tap opens the picker, any
+// other entity's tap does what its domain does (a button presses, a switch toggles, the
+// rest open more-info), hold opens more-info, and tap_action / hold_action /
+// double_tap_action override all of it. `card._modeInfo()` returns the current modeInfo.
 function wireModeChip(card, chip, bounds, caption) {
   card._picker = card._picker || new ModePicker(card, { onPick: (id, v) => selectOption(card._hass, id, v) });
-  card._pressable(chip, {
-    onTap: () => { const info = card._modeInfo(); if (info?.options.length) card._picker.open(chip, bounds(), info, caption()); },
-    onHold: () => moreInfo(card, card._modeInfo()?.entity),
-  });
-  attr(chip, "aria-haspopup", "listbox");
-  attr(chip, "aria-expanded", "false");
+  const run = (kind) => () => {
+    const info = card._modeInfo();
+    if (!info) return;
+    const set = controlOf(card._config)[`${kind}_action`], ctx = { entity: info.entity };
+    if (set !== undefined) { runAction(card, card._hass, set, ctx); return; }
+    if (kind === "tap") {
+      if (info.options.length) card._picker.open(chip, bounds(), info, caption());
+      else if (info.kind === "control") runAction(card, card._hass, defaultTapAction(info.entity), ctx);
+    } else if (kind === "hold") moreInfo(card, info.entity);
+  };
+  card._pressable(chip, { onTap: run("tap"), onHold: run("hold"), onDouble: controlOf(card._config).double_tap_action ? run("double_tap") : null });
+}
+
+// The chip's accessibility state follows what it does now: only a select has a popup.
+function syncModeChip(chip, info) {
+  const picker = !!info?.options?.length;
+  attr(chip, "aria-haspopup", picker ? "listbox" : null);
+  if (!picker) chip.removeAttribute("aria-expanded");
+  else if (!chip.hasAttribute("aria-expanded")) attr(chip, "aria-expanded", "false");
 }
 
 // ---- the header and chip rows the home and room cards share
@@ -239,14 +256,16 @@ SavvyCard.prototype._fitRow = function (row) {
   if (row && !row.hidden) row.toggleAttribute("data-overflow", row.scrollWidth > row.clientWidth + 1);
 };
 
-// The mode pill of the home and room cards: icon, value and a caption under it.
+// The control pill of the house and room headers: icon, value and a caption under it.
 SavvyCard.prototype._renderPill = function (info, caption) {
   const el = this._el;
   el.pill.hidden = !info;
   if (!info) return;
   put(el.card, "--mode", info.color || "var(--secondary-text-color)");
-  attr(el.pill, "aria-label", `${caption || "Mode"} ${info.label}`);
-  el.pill.disabled = !info.options.length;
+  caption = modeCaption(info, caption);
+  attr(el.pill, "aria-label", [caption, info.label].filter(Boolean).join(" "));
+  el.pill.disabled = info.kind === "select" && !info.options.length;
+  syncModeChip(el.pill, info);
   el.pre.hidden = !caption;
   text(el.pre, caption || "");
   this._swap.set(info.value);

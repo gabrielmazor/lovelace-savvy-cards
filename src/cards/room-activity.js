@@ -1,4 +1,4 @@
-// savvy-snapshot-card: a security glance at one room. Is anything happening here, and
+// savvy-room-activity-card: a security glance at one room. Is anything happening here, and
 // when did it last happen? Everything is found from the area by device_class, with a
 // per-kind override as the escape hatch.
 //
@@ -16,7 +16,7 @@
 // the room's temperature, for 6 h / 24 h / 3 d; scrubbing snaps onto the nearest change,
 // so "when did the door open" has an exact answer.
 //
-//   type: custom:savvy-snapshot-card
+//   type: custom:savvy-room-activity-card
 //   area: living_room            navigation_path: /lovelace/living-room
 //   layout: compact              one row: glyphs and the temperature
 
@@ -173,7 +173,7 @@ const STYLE = `${BASE_CSS}
   @container (max-width: 240px) { .roomIcon { display: none; } .glyphs .gl:nth-child(n+3) { display: none; } }
 `;
 
-class SavvySnapshotCard extends SavvyCard {
+class SavvyRoomActivityCard extends SavvyCard {
   static getStubConfig(hass) {
     const a = allAreas(hass).find((x) => areaEntities(hass, x.id).some((id) => domainOf(id) === "binary_sensor"));
     return a ? { area: a.id } : {};
@@ -189,7 +189,7 @@ class SavvySnapshotCard extends SavvyCard {
 
   setConfig(config) {
     if (!config?.area && !config?.entities?.length && !config?.extras?.length && !config?.chips?.length && !SLOTS.some((s) => config?.[s.key])) {
-      throw new Error('savvy-snapshot-card: set "area" (a room) or "entities" (a hand-picked list)');
+      throw new Error('savvy-room-activity-card: set "area" (a room) or "entities" (a hand-picked list)');
     }
     this._compact = config.layout === "compact" || !!config.compact;
     this._config = { ...config, exclude_kinds: config.exclude_kinds ?? config.ignore_sensors };
@@ -1337,21 +1337,21 @@ class SavvySnapshotCard extends SavvyCard {
 }
 
 // ---------- editor ----------
-const EDITOR = defineEditor("savvy-snapshot-card", (hass, c) => [
+const EDITOR = defineEditor("savvy-room-activity-card", (hass, c) => [
   S.area("area", "Area"),
   S.grid(S.text("name", "Name"), S.icon("icon", "Icon")),
   S.grid(S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (one row)" }]),
     { name: "alarm", label: "Alarm", helper: "Found by itself. Doors and windows turn amber while it's armed.", selector: { entity: { domain: "alarm_control_panel" } } }),
-  S.nav("navigation_path", "Navigate to on tap", "Where tapping the name goes."),
-  { name: "exclude_kinds", label: "Don't show", selector: { select: { multiple: true, options: SLOTS.map((s) => ({ value: s.key, label: s.label })) } } },
-  { name: "exclude", label: "Never show", selector: { entity: { multiple: true } } },
-  S.section("Pick a sensor instead of discovering", SLOTS.map((s) => ({ name: s.key, label: s.label,
+  S.nav("navigation_path", "Target page", "Where tapping the name goes."),
+  { name: "exclude_kinds", label: "Hide kinds", selector: { select: { multiple: true, options: SLOTS.map((s) => ({ value: s.key, label: s.label })) } } },
+  { name: "exclude", label: "Exclude", selector: { entity: { multiple: true } } },
+  S.section("Sensor overrides", SLOTS.map((s) => ({ name: s.key, label: s.label,
     selector: { entity: { domain: s.domain, device_class: s.dc, multiple: !s.single } } }))),
   S.section("History page", [
     { name: "history", label: "", selector: { object: {} }, helper: "false turns it off; { hours: 24, ranges: [6, 24, 72] }" },
   ]),
-  S.chips("chips", "Chips", "Toggles become chips; a door or a number takes its place with the rest."),
+  S.chips("chips", "Custom chips", "Toggles become chips; a door or a number takes its place with the rest."),
 ]);
 
-registerCard("savvy-snapshot-card", SavvySnapshotCard, "Snapshot",
-  "A security glance at a room: presence and doors with how long ago, readouts, alerts, and a history page.");
+registerCard("savvy-room-activity-card", SavvyRoomActivityCard, "Room activity",
+  "What is happening in a room, and when it last happened: presence, doors and windows, readings, alerts and a history page.");

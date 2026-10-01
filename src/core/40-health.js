@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------------------
-// core/health: what needs attention. savvy-health-card lists these, and savvy-home-card's
+// core/health: what needs attention. savvy-system-health-card lists these, and savvy-home-header-card's
 // cog counts exactly the same thing, through the same functions and the same options, so
 // the badge always matches the lists.
 //

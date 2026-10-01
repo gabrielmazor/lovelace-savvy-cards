@@ -1,17 +1,17 @@
-// savvy-room-card: the header at the top of a room's own page. The room's mode (tap to
-// change it) and temperature; a row of what the room has, pinned entities first, then
+// savvy-room-header-card: the header at the top of a room's own page. The room's control (a mode
+// select, say: tap to change it) and temperature; a row of what the room has, pinned entities first, then
 // everything the area has, on or off (dimmed when idle); your own chips; and a row to
 // jump to every other room.
 //
-//   type: custom:savvy-room-card
+//   type: custom:savvy-room-header-card
 //   area: living_room
-//   mode: input_select.living_room_mode      home_path: /lovelace/home
+//   control: input_select.living_room_mode   home_path: /lovelace/home
 //   entities: [input_boolean.living_room_lights, …]     auto_discover: true
 //   chips: [...]                              room_path: /lovelace/{slug}
 
 const STYLE = `${BASE_CSS}${HEADER_CSS}${CHIP_ROW_CSS}`;
 
-class SavvyRoomCard extends SavvyCard {
+class SavvyRoomHeaderCard extends SavvyCard {
   static getStubConfig(hass) {
     const a = allAreas(hass).find((x) => areaEntities(hass, x.id).length);
     return a ? { area: a.id } : {};
@@ -19,7 +19,7 @@ class SavvyRoomCard extends SavvyCard {
   static getConfigElement() { return document.createElement(EDITOR); }
 
   setConfig(config) {
-    if (!config?.area) throw new Error("savvy-room-card: set an area");
+    if (!config?.area) throw new Error("savvy-room-header-card: set an area");
     const c = legacyBadges({ mode_label: "Room mode", ...config });
     if (config.sensor_icons_only !== undefined && c.icons_only === undefined) c.icons_only = config.sensor_icons_only;
     c.room_order = config.room_order ?? config.order;
@@ -41,7 +41,7 @@ class SavvyRoomCard extends SavvyCard {
   getCardSize() { return 3; }
   getGridOptions() { return { columns: 12, min_columns: 6, rows: "auto" }; }
 
-  _modeInfo() { return this._hass && modeInfo(this._hass, this._config.mode, this._config); }
+  _modeInfo() { return this._hass && modeInfo(this._hass, controlOf(this._config).entity, this._config); }
 
   _build() {
     const root = this.shadowRoot || this.attachShadow({ mode: "open" });
@@ -166,20 +166,20 @@ class SavvyRoomCard extends SavvyCard {
 // ---------- editor ----------
 const areasOf = (hass, c) => allAreas(hass).filter((a) => a.id !== c.area && areaEntities(hass, a.id).length).map((a) => a.id);
 
-const EDITOR = defineEditor("savvy-room-card", (hass, c) => [
+const EDITOR = defineEditor("savvy-room-header-card", (hass, c) => [
   S.area(),
-  ...modeSchema(hass, c, { helper: "The room's mode or scenes: any input_select or select." }),
-  S.nav("home_path", "Home button navigates to", "Empty hides the button."),
+  ...modeSchema(hass, c),
+  S.nav("home_path", "Home button", "Empty hides the button."),
   { name: "temperature", label: "Temperature", helper: "Found from the area. Pick another to override.", selector: { entity: { domain: ["sensor", "climate"] } } },
   ...badgeSchema({ pinnedHelp: "Always shown first, in this order: a lights helper, presence, a door. The rest of the room follows." }),
   S.bool("icons_only", "Icons only", "Just the coloured icons, no names or states.", false),
-  S.chips("chips", "Chips", "Your own chips, in a row under the room's."),
-  { name: "room_path", label: "Rooms row: each room navigates to", helper: "E.g. /lovelace/{slug} ({area}: the area id, {slug}: with dashes). Empty hides the row.", selector: { text: {} } },
-  { name: "room_order", label: "Rooms order", type: "list", helper: "Rooms listed first, in this order; the rest follow by name.",
+  S.chips("chips", "Custom chips", "Your own chips, in a row under the room's."),
+  { name: "room_path", label: "Room pages", helper: "E.g. /lovelace/{slug} ({area}: the area id, {slug}: with dashes). Empty hides the row.", selector: { text: {} } },
+  { name: "room_order", label: "Room order", type: "list", helper: "Rooms listed first, in this order; the rest follow by name.",
     initial: (h, cfg) => (h ? areasOf(h, cfg) : []), add: { selector: { area: {} }, label: "Add a room" },
     summary: (a, h) => ({ title: areaInfo(h, a).name, sub: a }) },
-  { name: "exclude_rooms", label: "Rooms to leave out", selector: { area: { multiple: true } } },
+  { name: "exclude_rooms", label: "Exclude rooms", selector: { area: { multiple: true } } },
 ]);
 
-registerCard("savvy-room-card", SavvyRoomCard, "Room",
-  "A room page's header: its mode, temperature, everything it has, and the way to every other room.");
+registerCard("savvy-room-header-card", SavvyRoomHeaderCard, "Room header",
+  "The header at the top of a room's page: its control, temperature, everything it has, and the way to every other room.");

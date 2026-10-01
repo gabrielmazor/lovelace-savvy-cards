@@ -1,12 +1,12 @@
-// savvy-heading-card: the first card in a room's section. The room's name and icon (from
-// the area), its mode, its temperature, and a row of badges for what's going on in it:
+// savvy-section-title-card: the first card in a room's section. The room's name and icon (from
+// the area), its control, its temperature, and a row of badges for what's going on in it:
 // pinned entities first, then what the area has (presence and doors always, the rest while
 // active). A heading, not a panel: no plate unless `filled: true`.
 //
-//   type: custom:savvy-heading-card
+//   type: custom:savvy-section-title-card
 //   area: living_room            name / icon: from the area
 //   navigation_path: /lovelace/living-room      (or tap_action on the title)
-//   mode: input_select.living_room_mode
+//   control: input_select.living_room_mode
 //   entities: [binary_sensor.front_door]        auto_discover: true
 //   temperature: sensor.x | false               heading_style: title | subtitle
 
@@ -38,6 +38,7 @@ const STYLE = `${BASE_CSS}
   .mode:not([data-c]) { background: var(--well); color: var(--secondary-text-color); }
   .mode ha-icon { --mdc-icon-size: 15px; flex: none; display: flex; }
   .mode .chev { --mdc-icon-size: 13px; opacity: 0.55; margin-inline-start: -2px; }
+  .mode:not([data-pick]) .chev { display: none; }
   .mode .swap { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
   .mode .swap span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   @container (max-width: 300px) { .mode .swap span { display: none; } }
@@ -72,7 +73,7 @@ const tempColor = (t) => {
 };
 const tempText = (t) => `${t.value.toFixed(1)}${t.unit.includes("°") ? "°" : ` ${t.unit}`}`;
 
-class SavvyHeadingCard extends SavvyCard {
+class SavvySectionTitleCard extends SavvyCard {
   static getStubConfig(hass) {
     const a = allAreas(hass).find((x) => areaEntities(hass, x.id).length);
     return a ? { area: a.id } : { name: "Heading" };
@@ -80,7 +81,7 @@ class SavvyHeadingCard extends SavvyCard {
   static getConfigElement() { return document.createElement(EDITOR); }
 
   setConfig(config) {
-    if (!config || (!config.area && !config.name && !config.heading)) throw new Error("savvy-heading-card: set an area (or a name)");
+    if (!config || (!config.area && !config.name && !config.heading)) throw new Error("savvy-section-title-card: set an area (or a name)");
     this._config = legacyBadges({ heading_style: "title", ...config, name: config.name || config.heading });
     if (this.shadowRoot && this._el) { this._build(); if (this._hass) this._update(); }
   }
@@ -98,7 +99,7 @@ class SavvyHeadingCard extends SavvyCard {
   getCardSize() { return 1; }
   getGridOptions() { return { columns: 12, rows: "auto", min_columns: 4 }; }
 
-  _modeInfo() { return this._hass && modeInfo(this._hass, this._config.mode, this._config); }
+  _modeInfo() { return this._hass && modeInfo(this._hass, controlOf(this._config).entity, this._config); }
   _caption() { return this._config.mode_label ?? "Mode"; }
 
   _build() {
@@ -170,8 +171,10 @@ class SavvyHeadingCard extends SavvyCard {
     if (info) {
       put(el.card, "--mode", info.color || "var(--secondary-text-color)");
       attr(el.mode, "data-c", !!info.color);
-      attr(el.mode, "aria-label", `${this._caption()} ${info.label}`);
-      el.mode.disabled = !info.options.length;
+      attr(el.mode, "aria-label", [modeCaption(info, this._caption()), info.label].filter(Boolean).join(" "));
+      attr(el.mode, "data-pick", info.options.length > 0);
+      el.mode.disabled = info.kind === "select" && !info.options.length;
+      syncModeChip(el.mode, info);
       this._swap.set(info.value);
     }
 
@@ -293,18 +296,18 @@ class SavvyHeadingCard extends SavvyCard {
 }
 
 // ---------- editor ----------
-const EDITOR = defineEditor("savvy-heading-card", (hass, c) => [
+const EDITOR = defineEditor("savvy-section-title-card", (hass, c) => [
   S.area(),
   S.grid(S.text("name", "Name"), S.icon("icon", "Icon")),
-  S.nav("navigation_path", "Navigate to on tap", "Where tapping the name goes. Or set a tap action below."),
+  S.nav("navigation_path", "Target page", "Where tapping the name goes. Or set a tap action below."),
   S.grid(S.select("heading_style", "Style", [{ value: "title", label: "Title" }, { value: "subtitle", label: "Subtitle" }]),
-    S.bool("filled", "On a card background", null, false)),
+    S.bool("filled", "Filled", null, false)),
   ...modeSchema(hass, c),
   { name: "temperature", label: "Temperature", helper: "Found from the area (a temperature sensor, else its climate unit). Pick another to override.",
     selector: { entity: { domain: ["sensor", "climate"] } } },
   ...badgeSchema(),
-  S.section("Title actions", [S.action("tap_action", "Tap"), S.action("hold_action", "Hold")]),
+  S.section("Title actions", [S.action("tap_action", "Tap action"), S.action("hold_action", "Hold action")]),
 ]);
 
-registerCard("savvy-heading-card", SavvyHeadingCard, "Heading",
-  "A room's section heading: its name, mode, temperature and live status badges.");
+registerCard("savvy-section-title-card", SavvySectionTitleCard, "Section title",
+  "A title for a section of a dashboard: plain text, or a room's name with its control, temperature and live status badges.");

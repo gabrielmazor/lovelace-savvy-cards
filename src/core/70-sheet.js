@@ -54,9 +54,21 @@ const SHEET_CSS = `
   .sv-empty { padding: 18px 8px; text-align: center; font-size: 13px; color: var(--secondary-text-color); }
   .sv-group { margin: 8px 6px 2px; font-size: 11.5px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em;
     text-transform: uppercase; color: var(--secondary-text-color); }
+  :host([kbd]) .sv-go:focus-visible { outline: 2px solid var(--go-c, rgb(var(--accent))); outline-offset: 2px; }
   .sv-scrim { touch-action: none; }
+  /* the popup's pinned page button: below the list, always in reach */
+  .sv-foot { flex: none; padding: 2px 16px 16px; }
+  .sv-sheet[data-bottom] .sv-foot { padding-bottom: 12px; }
+  .sv-go { display: flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box; height: 48px; padding: 0 14px 0 16px;
+    border: 0; margin: 0; border-radius: 14px; font: inherit; font-size: 14px; line-height: 18px; font-weight: 650; letter-spacing: -0.01em;
+    text-align: start; cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent;
+    color: var(--go-c, rgb(var(--accent))); background: color-mix(in oklab, var(--go-c, rgb(var(--accent))) 15%, transparent); }
+  .sv-go span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sv-go ha-icon { --mdc-icon-size: 20px; flex: none; display: flex; }
+  @media (hover: hover) { .sv-go:hover { background: color-mix(in oklab, var(--go-c, rgb(var(--accent))) 22%, transparent); } }
+  @media (prefers-contrast: more) { .sv-go { box-shadow: inset 0 0 0 1.5px currentColor; } }
   /* the home card's health list, inside a popup */
-  .sv-sheet savvy-health-card { --ha-card-border-width: 0px; --ha-card-background: transparent; --ha-card-box-shadow: none; margin: -14px -14px 0; }
+  .sv-sheet savvy-system-health-card { --ha-card-border-width: 0px; --ha-card-background: transparent; --ha-card-box-shadow: none; margin: -14px -14px 0; }
 `;
 
 // Popups live in one layer at the top of the page, not inside the card: dashboards wrap
@@ -122,6 +134,29 @@ class Sheet {
 
   setTitle(t) { text(this.el.querySelector(".sv-title"), t); this.el.setAttribute("aria-label", t); }
 
+  // A button pinned under the body: { label, onTap, icon?, color? }, or null for none. A tap
+  // closes the popup first, then runs onTap (a page change, say).
+  setFooter(spec) {
+    this.foot?.remove();
+    this.foot = null;
+    this.footSpring = null;
+    if (!spec) return;
+    const foot = document.createElement("div");
+    foot.className = "sv-foot";
+    const go = document.createElement("button");
+    go.className = "sv-go";
+    go.innerHTML = '<ha-icon></ha-icon><span></span><ha-icon icon="mdi:chevron-right"></ha-icon>';
+    attr(go.firstElementChild, "icon", spec.icon || "mdi:arrow-top-right");
+    text(go.querySelector("span"), spec.label);
+    if (spec.color) put(go, "--go-c", spec.color);
+    this.footSpring = new Spring(0, MOTION.press, "foot");
+    go.__spring = this.footSpring;
+    bindPress(go, { spring: this.footSpring, wake: () => Clock.add(this.job), onTap: () => { this.close(); spec.onTap(); } });
+    foot.appendChild(go);
+    this.el.appendChild(foot);
+    this.foot = foot;
+  }
+
   open(returnTo) {
     this.returnTo = returnTo || this.host.shadowRoot?.activeElement || null;
     portalRoot().append(this.scrim, this.el);
@@ -169,8 +204,19 @@ class Sheet {
     put(this.el, "opacity", clamp(v * 1.6).toFixed(3));
     put(this.el, "transform", bottom ? `translateY(${((1 - v) * 60).toFixed(2)}px)`
       : `translate(-50%, calc(-50% + ${((1 - v) * 18).toFixed(2)}px)) scale(${(0.97 + 0.03 * v).toFixed(4)})`);
+    let busy = !s.idle;
+    const f = this.footSpring;
+    if (f && !f.idle) {
+      if (MQ.reduced.matches) f.snap(); else f.step(dt);
+      const go = this.foot?.firstElementChild;
+      if (go) {
+        put(go, "transform", MQ.reduced.matches || Math.abs(f.x) < 1e-4 ? "" : `scale(${(1 - 0.03 * f.x).toFixed(4)})`);
+        put(go, "opacity", Math.abs(f.x) > 1e-3 ? (1 - 0.1 * clamp(f.x)).toFixed(3) : "");
+      }
+      busy = true;
+    }
     if (this.closing && v < 0.02) { this.remove(); return false; }     // gone: the backdrop goes too
-    return !s.idle;
+    return busy;
   }
 }
 
@@ -219,6 +265,7 @@ class EntityListSheet {
     const box = this.rows;
     box.__rows = box.__rows || new Map();
     const seen = new Set();
+    let at = 0;
     if (!ids.length) {
       if (!box.__empty) { box.__empty = document.createElement("div"); box.__empty.className = "sv-empty"; box.__empty.textContent = "Nothing right now."; }
       box.appendChild(box.__empty);
@@ -259,7 +306,7 @@ class EntityListSheet {
       attr(row.__tog, "data-on", on);
       attr(row.__tog, "aria-label", on ? "Turn off" : "Turn on");
       text(row.querySelector(".sv-val"), toggleable ? "" : stateText(hass, st));
-      box.appendChild(row);   // keeps DOM order equal to the ids' order
+      place(box, row, at++);   // keeps DOM order equal to the ids' order
     }
     for (const [id, row] of box.__rows) if (!seen.has(id)) { row.remove(); box.__rows.delete(id); }
   }

@@ -933,10 +933,10 @@ const playerList = (name, label, helper) => ({ name, label, helper, type: "list"
   item: [
     { name: "entity", label: "Player", selector: { entity: { domain: "media_player" } } },
     { type: "grid", name: "", schema: [{ name: "name", label: "Name", selector: { text: {} } }, { name: "icon", label: "Icon", selector: { icon: {} } }] },
-    { name: "power", label: "Powered by", helper: "A switch that powers it, when the player can't turn itself on.", selector: { entity: { domain: ["switch", "input_boolean"] } } },
-    { name: "output", label: "Its sound comes out of", selector: { entity: { domain: "media_player" } } },
-    { name: "volume", label: "Its volume is", helper: "A helper that is the real volume, when the player's own isn't.", selector: { entity: { domain: ["input_number", "number"] } } },
-    { name: "artwork", label: "Show artwork only while", helper: "A binary sensor that says the artwork is worth showing.", selector: { entity: { domain: "binary_sensor" } } },
+    { name: "power", label: "Power switch", helper: "A switch that powers it, when the player can't turn itself on.", selector: { entity: { domain: ["switch", "input_boolean"] } } },
+    { name: "output", label: "Output", selector: { entity: { domain: "media_player" } } },
+    { name: "volume", label: "Volume helper", helper: "A helper that is the real volume, when the player's own isn't.", selector: { entity: { domain: ["input_number", "number"] } } },
+    { name: "artwork", label: "Artwork when", helper: "A binary sensor that says the artwork is worth showing.", selector: { entity: { domain: "binary_sensor" } } },
   ] });
 
 const EDITOR = defineEditor("savvy-media-card", (hass, c) => [
@@ -944,10 +944,10 @@ const EDITOR = defineEditor("savvy-media-card", (hass, c) => [
   S.grid(S.text("name", "Name"), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (one row)" }])),
   playerList("video", "Video sources", "Empty: the area's players (not its speakers)."),
   playerList("audio", "Speakers", "Empty: the area's speakers and receivers."),
-  { name: "video_output", label: "The video's sound comes out of", selector: { entity: { domain: "media_player" } } },
-  S.grid(S.bool("artwork", "Show artwork", null, true), S.bool("volume_buttons", "Volume − / + buttons", null, true)),
-  S.grid(S.number("volume_step", "Volume step", 1, 25, 1, "%"), S.number("artwork_max_height", "Artwork max height", 80, 800, 10, "px")),
-  { type: "expandable", name: "labels", title: "Captions", schema: [S.text("video", "Over the video"), S.text("audio", "Over the speakers")] },
+  { name: "video_output", label: "Video output", selector: { entity: { domain: "media_player" } } },
+  S.grid(S.bool("artwork", "Show artwork", null, true), S.bool("volume_buttons", "Volume buttons", null, true)),
+  S.grid(S.number("volume_step", "Volume step", 1, 25, 1, "%"), S.number("artwork_max_height", "Artwork height", 80, 800, 10, "px")),
+  { type: "expandable", name: "labels", title: "Captions", schema: [S.text("video", "Video caption"), S.text("audio", "Speaker caption")] },
   { type: "expandable", name: "alarm", title: "Alarm clock", schema: [
     { name: "entity", label: "On / off", selector: { entity: { domain: ["input_boolean", "switch"] } } },
     { name: "time", label: "Time", selector: { entity: { domain: "input_datetime" } } },
@@ -959,7 +959,7 @@ const EDITOR = defineEditor("savvy-media-card", (hass, c) => [
     { name: "placeholder", label: "Placeholder", selector: { text: {} } },
   ] },
   S.chips("presets", "Presets", "Stations, playlists: a button presses, a script runs."),
-  S.chips("chips", "Chips", "The room's other media controls."),
+  S.chips("chips", "Custom chips", "The room's other media controls."),
 ]);
 
 registerCard("savvy-media-card", SavvyMediaCard, "Media",

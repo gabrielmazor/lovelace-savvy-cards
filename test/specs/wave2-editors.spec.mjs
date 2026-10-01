@@ -3,15 +3,15 @@
 import { openPage } from "./_util.mjs";
 
 const EDITORS = {
-  "savvy-heading-card": { config: { area: "living_room", mode: "input_select.living_room_scene" },
-    want: ["area", "name", "icon", "navigation_path", "heading_style", "filled", "mode", "mode_label", "temperature", "auto_discover", "exclude_kinds", "include", "exclude", "tap_action", "hold_action",
+  "savvy-section-title-card": { config: { area: "living_room", control: "input_select.living_room_scene" },
+    want: ["area", "name", "icon", "navigation_path", "heading_style", "filled", "control", "mode_label", "control_tap_action", "control_hold_action", "control_double_tap_action", "temperature", "auto_discover", "exclude_kinds", "include", "exclude", "tap_action", "hold_action",
       "Auto", "Relax", "Party"], lists: ["entities"] },
   "savvy-room-tile": { config: { area: "kitchen" },
-    want: ["area", "name", "icon", "navigation_path", "mode", "temperature", "toggle", "lights", "count", "color_lights", "tint", "auto_discover", "exclude_kinds", "include", "exclude", "tap_action", "double_tap_action", "hold_action"], lists: ["entities"] },
-  "savvy-room-card": { config: { area: "living_room" },
-    want: ["area", "mode", "mode_label", "home_path", "temperature", "auto_discover", "exclude_kinds", "include", "exclude", "icons_only", "room_path", "exclude_rooms"], lists: ["entities", "chips", "room_order"] },
-  "savvy-home-card": { config: { mode: "input_select.house_mode" },
-    want: ["mode", "mode_label", "home_path", "weather", "navigation_path", "watchman", "battery_threshold", "warn_above", "exclude_platforms", "hide", "entity", "Home", "Movie Night"], lists: ["chips"] },
+    want: ["area", "name", "icon", "navigation_path", "control", "mode_label", "temperature", "toggle", "lights", "count", "color_lights", "tint", "auto_discover", "exclude_kinds", "include", "exclude", "tap_action", "double_tap_action", "hold_action"], lists: ["entities"] },
+  "savvy-room-header-card": { config: { area: "living_room" },
+    want: ["area", "control", "mode_label", "control_tap_action", "control_hold_action", "control_double_tap_action", "home_path", "temperature", "auto_discover", "exclude_kinds", "include", "exclude", "icons_only", "room_path", "exclude_rooms"], lists: ["entities", "chips", "room_order"] },
+  "savvy-home-header-card": { config: { control: "input_select.house_mode" },
+    want: ["control", "mode_label", "control_tap_action", "control_hold_action", "control_double_tap_action", "home_path", "weather", "navigation_path", "watchman", "battery_threshold", "warn_above", "exclude_platforms", "hide", "entity", "Home", "Movie Night"], lists: ["chips"] },
 };
 
 export default async function ({ browser, base, check }) {
@@ -32,15 +32,15 @@ export default async function ({ browser, base, check }) {
     const missing = want.filter((w) => !got.fields.includes(w));
     check(`${type}: every option in the editor`, !missing.length, `missing ${missing.join(", ")}`);
     check(`${type}: list editors`, lists.every((l) => got.lists.includes(l)), JSON.stringify(got.lists));
-    if (type === "savvy-room-card") check("room card: the rooms order starts as the discovered order", JSON.stringify(got.initial) === JSON.stringify(["bedroom", "hallway", "kitchen", "office"]), JSON.stringify(got.initial));
+    if (type === "savvy-room-header-card") check("room card: the rooms order starts as the discovered order", JSON.stringify(got.initial) === JSON.stringify(["bedroom", "hallway", "kitchen", "office"]), JSON.stringify(got.initial));
   }
   // a mode icon picked in the editor lands under mode_icons, keyed by the option
   const icons = await page.evaluate(async () => {
-    const ed = document.createElement("savvy-heading-card-editor");
+    const ed = document.createElement("savvy-section-title-card-editor");
     document.body.appendChild(ed);
     let out = null;
     ed.addEventListener("config-changed", (e) => { out = e.detail.config; });
-    ed.setConfig({ type: "custom:savvy-heading-card", area: "living_room", mode: "input_select.living_room_scene" });
+    ed.setConfig({ type: "custom:savvy-section-title-card", area: "living_room", control: "input_select.living_room_scene" });
     ed.hass = window.hass;
     await new Promise((r) => setTimeout(r, 60));
     const form = ed.shadowRoot.querySelector("ha-form");
@@ -51,7 +51,7 @@ export default async function ({ browser, base, check }) {
   // the card picker's preview: each card's stub config mounts and shows something
   const stubs = await page.evaluate(async () => {
     const out = {};
-    for (const type of ["savvy-home-card", "savvy-room-card", "savvy-heading-card", "savvy-room-tile"]) {
+    for (const type of ["savvy-home-header-card", "savvy-room-header-card", "savvy-section-title-card", "savvy-room-tile"]) {
       const cfg = customElements.get(type).getStubConfig(window.hass);
       const el = window.mount(type, cfg, 400);
       await new Promise((r) => setTimeout(r, 100));
@@ -59,17 +59,17 @@ export default async function ({ browser, base, check }) {
     }
     return out;
   });
-  check("no stub config guesses a mode", Object.values(stubs).every((s) => !s.cfg.mode), JSON.stringify(stubs));
+  check("no stub config guesses a mode", Object.values(stubs).every((s) => !s.cfg.control), JSON.stringify(stubs));
   // with no mode chosen the editor has no mode options to show; choosing one fills them from it
   const modeFields = await page.evaluate(async () => {
-    const ed = document.createElement("savvy-home-card-editor");
+    const ed = document.createElement("savvy-home-header-card-editor");
     document.body.appendChild(ed);
     const names = () => [...ed.shadowRoot.querySelectorAll(".stub-field")].map((f) => f.dataset.name);
-    ed.setConfig({ type: "custom:savvy-home-card" });
+    ed.setConfig({ type: "custom:savvy-home-header-card" });
     ed.hass = window.hass;
     await new Promise((r) => setTimeout(r, 60));
     const before = names();
-    ed.setConfig({ type: "custom:savvy-home-card", mode: "input_select.living_room_scene" });
+    ed.setConfig({ type: "custom:savvy-home-header-card", control: "input_select.living_room_scene" });
     await new Promise((r) => setTimeout(r, 60));
     const after = names();
     ed.remove();

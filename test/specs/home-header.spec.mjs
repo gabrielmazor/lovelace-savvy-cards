@@ -1,4 +1,4 @@
-// savvy-home-card on the made-up house.
+// savvy-home-header-card on the made-up house.
 import { openPage, idle, shot, centerOf } from "./_util.mjs";
 
 const W = ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"];
@@ -9,13 +9,13 @@ export default async function ({ browser, base, check }) {
     const tag = `[${theme} ${width}]`;
     const { page, errors } = await openPage(browser, base, { theme, width });
     const r = await page.evaluate(async ({ width, W }) => {
-      window.mount("savvy-home-card", { mode: "input_select.house_mode", home_path: "/lovelace/home",
+      window.mount("savvy-home-header-card", { control: "input_select.house_mode", home_path: "/lovelace/home",
         health: { navigation_path: "/lovelace/admin", watchman: W },
         lights: { tap_action: { action: "navigate", navigation_path: "/lovelace/lights" } },
         chips: [{ entity: "switch.living_room_plug", name: "Plug" }] }, width);
-      window.mount("savvy-home-card", { weather: false, health: false, climate: false, security: { hide: true } }, width);
+      window.mount("savvy-home-header-card", { weather: false, health: false, climate: false, security: { hide: true } }, width);
       // the pre-Savvy shape
-      window.mount("savvy-home-card", { home_mode: "input_select.house_mode", weather: { entity: "weather.home" },
+      window.mount("savvy-home-header-card", { home_mode: "input_select.house_mode", weather: { entity: "weather.home" },
         admin: { path: "/lovelace/admin", entities: W, battery_threshold: 20 },
         tiles: [{ name: "Energy", entity: "sensor.energy_cost", icon: "mdi:flash", color: "#F5B83D", navigation_path: "/lovelace/energy" }] }, width);
       await new Promise((res) => setTimeout(res, 500));
@@ -92,7 +92,7 @@ export default async function ({ browser, base, check }) {
     await hold(page, await centerOf(page, 0, "#health"));
     await page.waitForTimeout(600);
     const health = await page.evaluate(() => {
-      const hc = window.__savvy.portalRoot().querySelector(".sv-sheet savvy-health-card");
+      const hc = window.__savvy.portalRoot().querySelector(".sv-sheet savvy-system-health-card");
       return { nav: [...window.nav], pill: hc?.shadowRoot.getElementById("pill").textContent,
         groups: hc ? [...hc.shadowRoot.querySelectorAll(".group .gt")].map((g) => g.textContent) : [] };
     });

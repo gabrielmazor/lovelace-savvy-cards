@@ -7,10 +7,10 @@ export default async function ({ browser, base, check }) {
     for (let i = 0; i < 10; i++) patch["sensor.gone_" + i] = { state: "unavailable", attributes: { friendly_name: "Gone " + i } };
     for (let i = 0; i < 10; i++) patch["sensor.batt_" + i] = { state: String(5 + i * 2), attributes: { device_class: "battery", friendly_name: "Battery " + i } };
     window.setStates(patch);
-    window.mount("savvy-health-card", { source: "all" }, 420);
+    window.mount("savvy-system-health-card", { source: "all" }, 420);
     window.mount("savvy-graph-card", { entities: ["sensor.living_room_temperature", "sensor.kitchen_temperature", "binary_sensor.living_room_door", "sensor.energy_cost"] }, 420);
     window.mount("savvy-entity-card", { entity: "person.alex", chips: [{ entity: "switch.living_room_lamp" }, { entity: "sensor.alex_phone_battery" }] }, 420);
-    window.mount("savvy-snapshot-card", { area: "living_room" }, 420);
+    window.mount("savvy-room-activity-card", { area: "living_room" }, 420);
     window.mount("savvy-scene-card", { area: "living_room" }, 420);
     await new Promise((r) => setTimeout(r, 900));
     const out = [];

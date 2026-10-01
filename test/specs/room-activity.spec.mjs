@@ -1,4 +1,4 @@
-// savvy-snapshot-card on the made-up house, with a faked recorder for the history page.
+// savvy-room-activity-card on the made-up house, with a faked recorder for the history page.
 import { openPage, idle, shot } from "./_util.mjs";
 
 const RECORDER = `window.hass.callWS = async (m) => {
@@ -16,12 +16,12 @@ export default async function ({ browser, base, check }) {
     const { page, errors } = await openPage(browser, base, { theme, width });
     await page.evaluate(RECORDER);
     const r = await page.evaluate(async (width) => {
-      window.mount("savvy-snapshot-card", { area: "living_room", navigation_path: "/lovelace/living-room",
+      window.mount("savvy-room-activity-card", { area: "living_room", navigation_path: "/lovelace/living-room",
         chips: [{ entity: "input_boolean.movie_mode", name: "Movie", icon: "mdi:movie-open" }, { entity: "switch.living_room_plug", name: "Plug", tap_action: "more-info" }] }, width);
-      window.mount("savvy-snapshot-card", { area: "bedroom" }, width);
-      window.mount("savvy-snapshot-card", { area: "hallway", layout: "compact" }, width);
+      window.mount("savvy-room-activity-card", { area: "bedroom" }, width);
+      window.mount("savvy-room-activity-card", { area: "hallway", layout: "compact" }, width);
       // the pre-Savvy shape: a hand-picked Home overview, no area
-      window.mount("savvy-snapshot-card", { name: "Home", icon: "mdi:home", alarm: "alarm_control_panel.home_alarm",
+      window.mount("savvy-room-activity-card", { name: "Home", icon: "mdi:home", alarm: "alarm_control_panel.home_alarm",
         entities: [{ entity: "sensor.energy_cost", name: "Energy" }, { entity: "lock.back_door", name: "Back door", tap_action: "more-info" }] }, width);
       await new Promise((res) => setTimeout(res, 600));
       const read = (el) => {

@@ -434,10 +434,10 @@ const EDITOR = defineEditor("savvy-entity-card", (hass, c) => [
   S.entity("entity", "Entity", null, { helper: "A person gets their picture, zone and how long they've been there." }),
   S.grid(S.text("name", "Name"), S.icon("icon", "Icon")),
   S.grid(S.color("color", "Colour"), { name: "picture", label: "Picture", helper: "A person's picture, instead of theirs in HA.", selector: { text: {} } }),
-  S.grid(S.bool("show_state", "Show the state", null, true), S.bool("show_since", "Show how long", null, true)),
-  S.nav("navigation_path", "Navigate to on tap", "Empty: tapping opens more-info (or set a tap action below)."),
-  S.section("Actions", [S.action("tap_action", "Tap"), S.action("hold_action", "Hold"), S.action("double_tap_action", "Double tap")]),
-  S.chips("chips", "Chips", "Entities that belong with it: a toggle toggles, a button presses, anything else shows its value."),
+  S.grid(S.bool("show_state", "Show state", null, true), S.bool("show_since", "Show since", null, true)),
+  S.nav("navigation_path", "Target page", "Empty: tapping opens more-info (or set a tap action below)."),
+  S.section("Actions", [S.action("tap_action", "Tap action"), S.action("hold_action", "Hold action"), S.action("double_tap_action", "Double tap action")]),
+  S.chips("chips", "Custom chips", "Entities that belong with it: a toggle toggles, a button presses, anything else shows its value."),
 ]);
 
 registerCard("savvy-entity-card", SavvyEntityCard, "Entity",

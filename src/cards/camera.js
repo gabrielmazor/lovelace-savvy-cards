@@ -1890,11 +1890,11 @@ const EDITOR = defineEditor("savvy-camera-card", (hass, c) => [
     item: [
       { name: "entity", label: "Camera", selector: { entity: { domain: "camera" } } },
       { type: "grid", name: "", schema: [{ name: "name", label: "Name", selector: { text: {} } }, { name: "area", label: "Area", selector: { area: {} } }] },
-      { name: "frigate_camera", label: "Frigate's name for it", helper: "When it isn't the entity's own name.", selector: { text: {} } },
+      { name: "frigate_camera", label: "Frigate name", helper: "When it isn't the entity's own name.", selector: { text: {} } },
     ] },
   S.grid(S.select("recordings", "Recordings", [{ value: "popup", label: "In a popup" }, { value: "inline", label: "In the card" }]),
-    { name: "columns", label: "Cameras side by side", selector: { select: { mode: "dropdown", options: [{ value: "auto", label: "By width" }, "1", "2", "3", "4"] } } }),
-  S.grid(S.number("days", "Days of recordings", 1, 30), S.text("aspect_ratio", "Aspect ratio")),
+    { name: "columns", label: "Columns", selector: { select: { mode: "dropdown", options: [{ value: "auto", label: "By width" }, "1", "2", "3", "4"] } } }),
+  S.grid(S.number("days", "Recording days", 1, 30), S.text("aspect_ratio", "Aspect ratio")),
   { type: "expandable", name: "frigate", title: "Frigate", schema: [
     { name: "instance", label: "Instance", helper: "Frigate's MQTT client id; 'frigate' unless you changed it. Found by itself when the cameras come from Frigate.", selector: { text: {} } },
   ] },

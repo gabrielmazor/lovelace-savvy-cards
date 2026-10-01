@@ -308,7 +308,7 @@ const S = {
   grid: (...schema) => ({ type: "grid", name: "", schema }),
   section: (label, schema, expanded = false) => ({ type: "expandable", name: "", title: label, expanded, schema }),
   // the one chip spec, as a list editor
-  chips: (name = "chips", label = "Chips", helper = "Extra entities shown as chips, each with its own actions.") => ({
+  chips: (name = "chips", label = "Custom chips", helper = "Extra entities shown as chips, each with its own actions.") => ({
     name, label, helper, type: "list",
     item: [
       { name: "entity", label: "Entity", selector: { entity: {} } },
@@ -318,23 +318,27 @@ const S = {
       ] },
       { name: "color", label: "Colour", selector: { text: {} } },
       { name: "show_state", label: "Show state", selector: { boolean: {} } },
-      { name: "tap_action", label: "Tap", selector: { ui_action: {} } },
-      { name: "hold_action", label: "Hold", selector: { ui_action: {} } },
+      { name: "tap_action", label: "Tap action", selector: { ui_action: {} } },
+      { name: "hold_action", label: "Hold action", selector: { ui_action: {} } },
     ],
   }),
 };
 
-// The mode chip's options: the entity, then an icon and a colour for each of its options
+// The control's options: the entity, then an icon and a colour for each of its options
 // (found from the mode dictionary until set).
-const modeSchema = (hass, c, { name = "mode", label = "Mode", helper } = {}) => {
-  const opts = (hass && c[name] && hass.states[c[name]]?.attributes.options) || [];
+const modeSchema = (hass, c, { helper, actions = true } = {}) => {
+  const id = controlOf(c).entity;
+  const opts = (hass && id && hass.states[id]?.attributes.options) || [];
   return [
-    { name, label, helper: helper || "Any input_select or select: a house mode, a room's scenes. Tapping the chip lists its options.",
-      selector: { entity: { domain: ["input_select", "select"] } } },
-    { name: "mode_label", label: "Mode caption", selector: { text: {} } },
+    { name: "control", label: "Control", helper: helper || "A select (a house mode, a room's scenes) opens a picker. A button, script or scene runs, a switch toggles, anything else opens more-info.",
+      selector: { entity: {} } },
+    { name: "mode_label", label: "Caption", helper: "Under a select's value.", selector: { text: {} } },
+    ...(actions ? [{ type: "expandable", name: "", title: "Control actions", schema: [
+      S.action("control_tap_action", "Tap action"), S.action("control_hold_action", "Hold action"), S.action("control_double_tap_action", "Double tap action"),
+    ] }] : []),
     ...(opts.length ? [
-      { type: "expandable", name: "mode_icons", title: "Mode icons", schema: opts.map((o) => ({ name: o, label: o, selector: { icon: { placeholder: modeLook(o).icon } } })) },
-      { type: "expandable", name: "mode_colors", title: "Mode colours", schema: opts.map((o) => ({ name: o, label: o, helper: modeLook(o).color || "No colour", selector: { text: {} } })) },
+      { type: "expandable", name: "mode_icons", title: "Option icons", schema: opts.map((o) => ({ name: o, label: o, selector: { icon: { placeholder: modeLook(o).icon } } })) },
+      { type: "expandable", name: "mode_colors", title: "Option colours", schema: opts.map((o) => ({ name: o, label: o, helper: modeLook(o).color || "No colour", selector: { text: {} } })) },
     ] : []),
   ];
 };
@@ -342,8 +346,8 @@ const modeSchema = (hass, c, { name = "mode", label = "Mode", helper } = {}) => 
 // The badge row: pinned entities, then what the area has.
 const badgeSchema = ({ pinnedLabel = "Pinned", pinnedHelp = "Always shown, first and in this order: a lights helper, presence, a door." } = {}) => [
   S.chips("entities", pinnedLabel, pinnedHelp),
-  S.bool("auto_discover", "Also show what the area has", "Presence and doors always; media, locks, climate, fans, covers, windows, leaks and alarms while active.", true),
-  { name: "exclude_kinds", label: "Don't discover", selector: { select: { multiple: true, options: BADGE_KINDS.map((k) => ({ value: k.key, label: k.name })) } } },
-  { name: "include", label: "Also discover", helper: "Entities to treat as if they were in this area (a lock with no area).", selector: { entity: { multiple: true } } },
-  { name: "exclude", label: "Never show", selector: { entity: { multiple: true } } },
+  S.bool("auto_discover", "Auto discover", "Presence and doors always; media, locks, climate, fans, covers, windows, leaks and alarms while active.", true),
+  { name: "exclude_kinds", label: "Hide kinds", selector: { select: { multiple: true, options: BADGE_KINDS.map((k) => ({ value: k.key, label: k.name })) } } },
+  { name: "include", label: "Include", helper: "Entities to treat as if they were in this area (a lock with no area).", selector: { entity: { multiple: true } } },
+  { name: "exclude", label: "Exclude", selector: { entity: { multiple: true } } },
 ];

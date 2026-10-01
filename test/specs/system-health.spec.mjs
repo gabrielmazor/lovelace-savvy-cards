@@ -1,4 +1,4 @@
-// savvy-health-card on the made-up house.
+// savvy-system-health-card on the made-up house.
 import { openPage, idle, shot } from "./_util.mjs";
 
 export default async function ({ browser, base, check }) {
@@ -7,10 +7,10 @@ export default async function ({ browser, base, check }) {
     const { page, errors } = await openPage(browser, base, { theme, width });
     const r = await page.evaluate(async (width) => {
       const W = ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"];
-      const all = window.mount("savvy-health-card", {}, width);
-      const withW = window.mount("savvy-health-card", { watchman: W, title: "House health" }, width);
-      const batt = window.mount("savvy-health-card", { source: "battery", battery_threshold: 20 }, width);
-      const legacy = window.mount("savvy-health-card", { source: "watchman", entities: W,
+      const all = window.mount("savvy-system-health-card", {}, width);
+      const withW = window.mount("savvy-system-health-card", { watchman: W, title: "House health" }, width);
+      const batt = window.mount("savvy-system-health-card", { source: "battery", battery_threshold: 20 }, width);
+      const legacy = window.mount("savvy-system-health-card", { source: "watchman", entities: W,
         action: { label: "Generate report", service: "watchman.report", data: { create_file: true } } }, width);
       await new Promise((res) => setTimeout(res, 400));
       const read = (el) => ({ pill: el.shadowRoot.getElementById("pill").textContent, name: el.shadowRoot.getElementById("name").textContent,
@@ -60,9 +60,9 @@ export default async function ({ browser, base, check }) {
   // editor: every option is there
   const { page } = await openPage(browser, base, {});
   const fields = await page.evaluate(async () => {
-    const ed = document.createElement("savvy-health-card-editor");
+    const ed = document.createElement("savvy-system-health-card-editor");
     document.body.appendChild(ed);
-    ed.setConfig({ type: "custom:savvy-health-card", source: "battery" });
+    ed.setConfig({ type: "custom:savvy-system-health-card", source: "battery" });
     ed.hass = window.hass;
     await new Promise((r) => setTimeout(r, 50));
     return [...ed.shadowRoot.querySelectorAll(".stub-field")].map((f) => f.dataset.name);

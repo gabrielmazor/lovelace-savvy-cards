@@ -78,12 +78,12 @@ export default async function ({ browser, base, check }) {
     const ZHA = ["dev_zha_hall_bulb", "dev_zha_porch_bulb", "dev_zha_stair_bulb"];
     const setup = await page.evaluate(async ({ width, W, Z2M, ZHA }) => {
       window.setStates(window.hubFixture(window.house, { down: [...Z2M, ...ZHA, "dev_solo"], downEntities: ["sensor.garage_multi_temperature", "sensor.garage_multi_pressure"] }));
-      window.mount("savvy-health-card", { watchman: W, max_rows: 30 }, width);
-      window.mount("savvy-health-card", { watchman: W, max_rows: 30, details: true }, width);
-      window.mount("savvy-health-card", { source: "unavailable", max_rows: 30 }, width);
-      window.mount("savvy-health-card", { source: "unavailable", group_by: "device", max_rows: 30 }, width);
-      window.mount("savvy-health-card", { source: "unavailable", group_by: "none", max_rows: 60 }, width);
-      window.mount("savvy-home-card", { health: { watchman: W } }, width);
+      window.mount("savvy-system-health-card", { watchman: W, max_rows: 30 }, width);
+      window.mount("savvy-system-health-card", { watchman: W, max_rows: 30, details: true }, width);
+      window.mount("savvy-system-health-card", { source: "unavailable", max_rows: 30 }, width);
+      window.mount("savvy-system-health-card", { source: "unavailable", group_by: "device", max_rows: 30 }, width);
+      window.mount("savvy-system-health-card", { source: "unavailable", group_by: "none", max_rows: 60 }, width);
+      window.mount("savvy-home-header-card", { health: { watchman: W } }, width);
       await new Promise((res) => setTimeout(res, 500));
       const sum = window.__savvy.healthSummary(window.hass, { watchman: W });
       const home = window.cards[5].shadowRoot;
@@ -208,11 +208,11 @@ export default async function ({ browser, base, check }) {
   {
     const { page } = await openPage(browser, base, {});
     const ed = await page.evaluate(async () => {
-      const el = document.createElement("savvy-health-card-editor");
+      const el = document.createElement("savvy-system-health-card-editor");
       document.body.appendChild(el);
       const changes = [];
       el.addEventListener("config-changed", (e) => { changes.push(e.detail.config); el.setConfig(e.detail.config); });
-      el.setConfig({ type: "custom:savvy-health-card" });
+      el.setConfig({ type: "custom:savvy-system-health-card" });
       el.hass = window.hass;
       await new Promise((r) => setTimeout(r, 60));
       const fields = [...el.shadowRoot.querySelectorAll(".stub-field")].map((f) => f.dataset.name);
@@ -225,9 +225,9 @@ export default async function ({ browser, base, check }) {
     check("editor: details, group_by and group_min round-trip into the config", ["details", "group_by", "group_min"].every((f) => ed.fields.includes(f))
       && ed.last.details === true && ed.last.group_by === "device" && ed.last.group_min === 4, JSON.stringify(ed));
     const home = await page.evaluate(async () => {
-      const el = document.createElement("savvy-home-card-editor");
+      const el = document.createElement("savvy-home-header-card-editor");
       document.body.appendChild(el);
-      el.setConfig({ type: "custom:savvy-home-card", health: {} });
+      el.setConfig({ type: "custom:savvy-home-header-card", health: {} });
       el.hass = window.hass;
       await new Promise((r) => setTimeout(r, 60));
       return [...el.shadowRoot.querySelectorAll(".stub-field")].map((f) => f.dataset.name);

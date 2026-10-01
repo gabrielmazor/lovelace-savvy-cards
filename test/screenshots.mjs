@@ -1,7 +1,7 @@
 // Renders every card on the made-up house, dark and light, into docs/images/ for the
 // README. Rerun after a card changes:  node test/screenshots.mjs
 // (needs Playwright: `playwright` installed, or PLAYWRIGHT=/path/to/playwright)
-// Only some:  node test/screenshots.mjs health   (names that start with it)
+// Only some:  node test/screenshots.mjs system-health   (names that start with it)
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -45,6 +45,10 @@ const FRIGATE = `window.hass.callWS = async (m) => {
   if (m.type === "auth/sign_path") return { path: m.path };
   throw new Error("unmocked");
 };`;
+// the home header's lights popup with its page button
+const POPUP = `window.__popup = true;
+window.__after = () => { const c = window.cards[0]; c._showList("Lights on", window.__savvy.houseLights(window.hass).on, "#F5B83D", null, pageButtonFor(c)); };
+function pageButtonFor() { return { label: "Open lights", onTap() {} }; }`;
 const SHOTS = [
   ["lights", "savvy-lights-card", { area: "living_room", featured: ["light.living_room_ceiling"], chips: [{ entity: "switch.living_room_plug", name: "Plug" }] }, 520],
   ["lights-compact", "savvy-lights-card", { area: "living_room", layout: "compact" }, 520],
@@ -52,23 +56,24 @@ const SHOTS = [
   ["climate-compact", "savvy-climate-card", { area: "living_room", layout: "compact" }, 460],
   ["vacuum", "savvy-vacuum-card", { entity: "vacuum.robot", start: "button.robot_vacuum" }, 520, VACUUM_WS],
   ["vacuum-compact", "savvy-vacuum-card", { entity: "vacuum.robot", layout: "compact" }, 460, VACUUM_WS],
-  ["health", "savvy-health-card", { watchman: ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"], max_rows: 10 }, 420, HUBS],
-  ["health-expanded", "savvy-health-card", { max_rows: 14 }, 420, HUBS_OPEN],
-  ["health-details", "savvy-health-card", { watchman: ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"], max_rows: 10, details: true }, 420, HUBS],
-  ["health-batteries", "savvy-health-card", { source: "battery" }, 420],
-  ["home", "savvy-home-card", { mode: "input_select.house_mode", home_path: "/lovelace/home",
+  ["system-health", "savvy-system-health-card", { watchman: ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"], max_rows: 10 }, 420, HUBS],
+  ["system-health-expanded", "savvy-system-health-card", { max_rows: 14 }, 420, HUBS_OPEN],
+  ["system-health-details", "savvy-system-health-card", { watchman: ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"], max_rows: 10, details: true }, 420, HUBS],
+  ["system-health-batteries", "savvy-system-health-card", { source: "battery" }, 420],
+  ["home-header", "savvy-home-header-card", { control: "input_select.house_mode", home_path: "/lovelace/home",
     health: { watchman: ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"] } }, 600],
-  ["room", "savvy-room-card", { area: "living_room", mode: "input_select.living_room_scene", home_path: "/lovelace/home", room_path: "/lovelace/{slug}",
+  ["room-header", "savvy-room-header-card", { area: "living_room", control: "input_select.living_room_scene", home_path: "/lovelace/home", room_path: "/lovelace/{slug}",
     entities: [{ entity: "input_boolean.movie_mode", name: "Movie", icon: "mdi:movie-open" }] }, 600],
-  ["heading", "savvy-heading-card", { area: "living_room", mode: "input_select.living_room_scene" }, 520],
-  ["tiles", "savvy-room-tile", { area: "living_room", mode: "input_select.living_room_scene" }, 260, TILES],
+  ["section-title", "savvy-section-title-card", { area: "living_room", control: "input_select.living_room_scene" }, 520],
+  ["home-header-popup", "savvy-home-header-card", { control: "input_select.house_mode", lights: { navigation_path: "/lovelace/lights" } }, 520, POPUP],
+  ["tiles", "savvy-room-tile", { area: "living_room", control: "input_select.living_room_scene" }, 260, TILES],
   ["entity", "savvy-entity-card", { entity: "person.alex", chips: [{ entity: "switch.living_room_plug", name: "Plug", icon: "mdi:power-plug", color: "blue" },
     { entity: "sensor.alex_phone_battery", name: "Phone" }] }, 340],
   ["graph", "savvy-graph-card", { title: "House", entities: [{ entity: "sensor.living_room_temperature", name: "Living room",
     thresholds: [{ value: 0, level: "good" }, { value: 23, level: "warn" }, { value: 26, level: "bad" }] }, { entity: "sensor.energy_cost", name: "Energy", hours_to_show: 720 },
     { entity: "binary_sensor.living_room_door", name: "Door" }, { entity: "sensor.watchman_last_parse", name: "Checked" }] }, 560, RECORDER],
-  ["snapshot", "savvy-snapshot-card", { area: "living_room", chips: [{ entity: "input_boolean.movie_mode", name: "Movie", icon: "mdi:movie-open" }] }, 460],
-  ["snapshot-compact", "savvy-snapshot-card", { area: "bedroom", layout: "compact" }, 400],
+  ["room-activity", "savvy-room-activity-card", { area: "living_room", chips: [{ entity: "input_boolean.movie_mode", name: "Movie", icon: "mdi:movie-open" }] }, 460],
+  ["room-activity-compact", "savvy-room-activity-card", { area: "bedroom", layout: "compact" }, 400],
   ["media", "savvy-media-card", { area: "living_room", presets: [{ entity: "script.good_night", name: "Good night" }] }, 460],
   ["media-compact", "savvy-media-card", { area: "kitchen", layout: "compact" }, 460],
   ["scene", "savvy-scene-card", { area: ["living_room", "office"], entities: [{ entity: "scene.party", icon: "mdi:party-popper", color: "purple" }], strip: "^.*//\\s*|\\s*-\\s*on$" }, 460],
@@ -111,8 +116,10 @@ for (const [name, type, config, width, setup] of todo) {
       if (!(await page.evaluate(() => window.cards.some((c) => (c._springs || []).some((s) => !s.idle && s.group !== "liquid"))))) break;
       await page.waitForTimeout(150);
     }
-    const stage = await page.evaluateHandle(() => document.getElementById("stage"));   // not a card's own #stage
-    await stage.asElement().screenshot({ path: path.join(OUT, `${name}-${theme}.png`) });
+    // a popup lives in the page-level layer: shoot the sheet itself
+    const shot = await page.evaluateHandle(() => (window.__popup ? window.__savvy.portalRoot().querySelector(".sv-sheet") : document.getElementById("stage")));   // not a card's own #stage
+    if (await page.evaluate(() => !!window.__popup)) await page.waitForTimeout(500);
+    await shot.asElement().screenshot({ path: path.join(OUT, `${name}-${theme}.png`) });
     await page.close();
   }
   process.stdout.write(`${name} `);

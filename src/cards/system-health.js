@@ -1,16 +1,16 @@
-// savvy-health-card: what in the house needs attention, with a count pill.
+// savvy-system-health-card: what in the house needs attention, with a count pill.
 //
 // By default it lists everything (source: all), in sections: Broken references (Watchman,
 // when its sensors are given), Offline (devices, and the entities that have no device) and
 // Low batteries. Or one source on its own. The pill's number is exactly what
-// savvy-home-card's cog shows: both read core/health.
+// savvy-home-header-card's cog shows: both read core/health.
 //
 // Offline is grouped: every unavailable entity of a device is one issue (the device), and a
 // hub whose devices are down (a Zigbee bridge, a coordinator) is one issue for all of them.
 // Tap a hub or a device to open it; tap an entity for its more-info; hold a device for its
 // page in Home Assistant.
 //
-//   type: custom:savvy-health-card
+//   type: custom:savvy-system-health-card
 //   source: all | watchman | unavailable | battery
 //   battery_threshold: 20        exclude_platforms: [mobile_app]
 //   watchman: [sensor.watchman_missing_entities, sensor.watchman_missing_actions]
@@ -75,7 +75,7 @@ const STYLE = `${BASE_CSS}
   @container (max-width: 260px) { .row .s { display: none; } }
 `;
 
-class SavvyHealthCard extends HTMLElement {
+class SavvySystemHealthCard extends HTMLElement {
   static getStubConfig() { return {}; }
   static getConfigElement() { return document.createElement(EDITOR); }
 
@@ -89,10 +89,10 @@ class SavvyHealthCard extends HTMLElement {
 
   setConfig(config) {
     const source = config?.source || "all";
-    if (!SOURCES[source]) throw new Error(`savvy-health-card: "source" must be one of ${Object.keys(SOURCES).join(", ")}`);
+    if (!SOURCES[source]) throw new Error(`savvy-system-health-card: "source" must be one of ${Object.keys(SOURCES).join(", ")}`);
     // the pre-Savvy names still work: threshold, and entities for the watchman source
     const watchman = config.watchman ?? (source === "watchman" ? config.entities : undefined);
-    if (source === "watchman" && !(watchman || []).length) throw new Error('savvy-health-card: the "watchman" source needs its sensors in "watchman"');
+    if (source === "watchman" && !(watchman || []).length) throw new Error('savvy-system-health-card: the "watchman" source needs its sensors in "watchman"');
     this._config = { warn_above: 6, max_rows: 7, ...config, source,
       battery_threshold: config.battery_threshold ?? config.threshold, watchman };
     if (this._root) { this._build(); if (this._hass) this._update(); }
@@ -418,32 +418,32 @@ class SavvyHealthCard extends HTMLElement {
   }
 }
 
-const EDITOR = defineEditor("savvy-health-card", (hass, c) => [
-  S.select("source", "What to list", [
+const EDITOR = defineEditor("savvy-system-health-card", (hass, c) => [
+  S.select("source", "List", [
     { value: "all", label: "Everything (broken references, offline, low batteries)" },
     { value: "battery", label: "Batteries" }, { value: "unavailable", label: "Offline devices" }, { value: "watchman", label: "Broken references (Watchman)" },
   ]),
   S.text("title", "Title"),
-  S.grid(S.number("battery_threshold", "Low battery below", 1, 100, 1, "%"), S.number("warn_above", "Red from", 1, 99)),
-  S.number("max_rows", "Rows before scrolling", 3, 30),
+  S.grid(S.number("battery_threshold", "Battery alert", 1, 100, 1, "%"), S.number("warn_above", "Red threshold", 1, 99)),
+  S.number("max_rows", "Max rows", 3, 30),
   S.bool("details", "Show details", "A line of facts under each section (how many devices, the lowest battery, when Watchman checked), and area and integration on the rows."),
-  S.select("group_by", "Group offline entities by", [
+  S.select("group_by", "Grouping", [
     { value: "hub", label: "Device, and the hub behind it" }, { value: "device", label: "Device" }, { value: "none", label: "Nothing: one row per entity" },
   ]),
-  S.number("group_min", "Devices a hub needs to roll up", 2, 50),
-  { name: "exclude_platforms", label: "Ignore integrations", helper: "By integration, e.g. mobile_app for phones.",
+  S.number("group_min", "Hub threshold", 2, 50),
+  { name: "exclude_platforms", label: "Ignored integrations", helper: "By integration, e.g. mobile_app for phones.",
     selector: { select: { multiple: true, custom_value: true, options: ["mobile_app"] } } },
   { name: "watchman", label: "Watchman sensors", helper: "Watchman's missing-entities and missing-actions sensors.",
     selector: { entity: { multiple: true, domain: "sensor" } } },
-  { name: "watchman_last_run", label: "Watchman's last-run sensor", helper: "Found automatically (Watchman's last parse). Pick another to override.",
+  { name: "watchman_last_run", label: "Last run sensor", helper: "Found automatically (Watchman's last parse). Pick another to override.",
     selector: { entity: { domain: "sensor", device_class: "timestamp" } } },
-  ...(c.source === "battery" ? [S.bool("show_all_batteries", "Show every battery", "Low ones first, the rest dimmed.")] : []),
+  ...(c.source === "battery" ? [S.bool("show_all_batteries", "All batteries", "Low ones first, the rest dimmed.")] : []),
   // nested under `action`: ha-form's expandable with a name keeps its fields in that key
   { type: "expandable", name: "action", title: "Footer button", schema: [
     { name: "label", label: "Label", selector: { text: {} } },
-    { name: "tap_action", label: "When pressed", selector: { ui_action: {} } },
+    { name: "tap_action", label: "Action", selector: { ui_action: {} } },
   ] },
 ]);
 
-registerCard("savvy-health-card", SavvyHealthCard, "Health",
+registerCard("savvy-system-health-card", SavvySystemHealthCard, "System health",
   "What needs attention: offline devices (grouped by device and hub), low batteries and Watchman's broken references, with a count.");

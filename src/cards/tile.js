@@ -7,7 +7,7 @@
 //   area: kitchen
 //   navigation_path: /lovelace/kitchen     tap: go there (else: list the room's lights)
 //   double tap: the room's lights on/off   hold: list the room's lights
-//   mode: input_select.kitchen_mode        toggle: input_boolean.kitchen_lights (optional)
+//   control: input_select.kitchen_mode    toggle: input_boolean.kitchen_lights (optional)
 //   lights / count / color_lights: overrides    entities / auto_discover: the badges
 //
 // The drop's outline is a circle plus three lobes (2, 3 and 4 around the rim), each its
@@ -162,7 +162,7 @@ class SavvyRoomTile extends SavvyCard {
   getCardSize() { return 2; }
   getGridOptions() { return { columns: 6, rows: 2, min_rows: 2, max_rows: 2 }; }
 
-  _modeInfo() { return this._hass && modeInfo(this._hass, this._config.mode, this._config); }
+  _modeInfo() { return this._hass && modeInfo(this._hass, controlOf(this._config).entity, this._config); }
 
   _lights() {
     const c = this._config, h = this._hass;
@@ -255,7 +255,7 @@ class SavvyRoomTile extends SavvyCard {
       node.addEventListener("pointerdown", (e) => e.stopPropagation());     // never also presses the card
       this._pressable(node, { onTap: act("tap"), onHold: () => moreInfo(this, entity()) }, 0.08);
     };
-    line(this._el.mode, () => this._config.mode);
+    line(this._el.mode, () => controlOf(this._config).entity);
     line(this._el.temp, () => this._temp?.entity);
     this._swap = new Swap(this._el.swap, (v) => {
       const info = this._modeInfo();
@@ -344,7 +344,7 @@ class SavvyRoomTile extends SavvyCard {
 
     const info = this._modeInfo();
     el.mode.hidden = !info;
-    if (info) { attr(el.mode, "aria-label", `${info.label} mode`); this._swap.set(info.value); }
+    if (info) { attr(el.mode, "aria-label", info.kind === "control" ? info.label : `${info.label} mode`); this._swap.set(info.value); }
 
     const t = roomTemperature(h, c.area, c);
     this._temp = t;
@@ -602,18 +602,18 @@ class SavvyRoomTile extends SavvyCard {
 const EDITOR = defineEditor("savvy-room-tile", (hass, c) => [
   S.area(),
   S.grid(S.text("name", "Name"), S.icon("icon", "Icon")),
-  S.nav("navigation_path", "Navigate to on tap", "Empty: tapping lists the room's lights."),
-  ...modeSchema(hass, c),
+  S.nav("navigation_path", "Target page", "Empty: tapping lists the room's lights."),
+  ...modeSchema(hass, c, { helper: "Shown under the name, read only: a select's mode, or any entity's state. Empty hides it.", actions: false }),
   { name: "temperature", label: "Temperature", helper: "Found from the area. Pick another to override.", selector: { entity: { domain: ["sensor", "climate"] } } },
   S.section("Lights", [
-    { name: "toggle", label: "Lights switch", helper: "Empty: a double tap turns the room's lights off (or on). A helper here is what switches instead.", selector: { entity: {} } },
+    { name: "toggle", label: "Toggle entity", helper: "Empty: a double tap turns the room's lights off (or on). A helper here is what switches instead.", selector: { entity: {} } },
     { name: "lights", label: "Lights", helper: "Found from the area. Pick to use only these.", selector: { entity: { domain: "light", multiple: true } } },
-    { name: "count", label: "Count from", helper: "A sensor with the number of lights on, instead of counting.", selector: { entity: { domain: "sensor" } } },
-    { name: "color_lights", label: "Colour from", helper: "Lights whose colour tints the drop. Empty: any of the room's lights.", selector: { entity: { domain: "light", multiple: true } } },
-    S.color("tint", "Tint when the lights are white"),
+    { name: "count", label: "Count sensor", helper: "A sensor with the number of lights on, instead of counting.", selector: { entity: { domain: "sensor" } } },
+    { name: "color_lights", label: "Colour lights", helper: "Lights whose colour tints the drop. Empty: any of the room's lights.", selector: { entity: { domain: "light", multiple: true } } },
+    S.color("tint", "White tint"),
   ]),
   ...badgeSchema(),
-  S.section("Actions", [S.action("tap_action", "Tap"), S.action("double_tap_action", "Double tap"), S.action("hold_action", "Hold")]),
+  S.section("Actions", [S.action("tap_action", "Tap action"), S.action("double_tap_action", "Double tap action"), S.action("hold_action", "Hold action")]),
 ]);
 
 registerCard("savvy-room-tile", SavvyRoomTile, "Room tile",

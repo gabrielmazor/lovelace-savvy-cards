@@ -1,4 +1,4 @@
-// savvy-heading-card on the made-up house.
+// savvy-section-title-card on the made-up house.
 import { openPage, idle, shot, centerOf } from "./_util.mjs";
 
 export default async function ({ browser, base, check }) {
@@ -6,9 +6,9 @@ export default async function ({ browser, base, check }) {
     const tag = `[${theme} ${width}]`;
     const { page, errors } = await openPage(browser, base, { theme, width });
     const r = await page.evaluate(async (width) => {
-      const lr = window.mount("savvy-heading-card", { area: "living_room", navigation_path: "/lovelace/living-room", mode: "input_select.living_room_scene" }, width);
-      const pinned = window.mount("savvy-heading-card", { area: "bedroom", entities: ["input_boolean.movie_mode", "binary_sensor.living_room_door"], auto_discover: false, temperature: false }, width);
-      const legacy = window.mount("savvy-heading-card", { name: "Hall", area: "hallway", locks: "lock.back_door", heading_style: "subtitle", filled: true }, width);
+      const lr = window.mount("savvy-section-title-card", { area: "living_room", navigation_path: "/lovelace/living-room", control: "input_select.living_room_scene" }, width);
+      const pinned = window.mount("savvy-section-title-card", { area: "bedroom", entities: ["input_boolean.movie_mode", "binary_sensor.living_room_door"], auto_discover: false, temperature: false }, width);
+      const legacy = window.mount("savvy-section-title-card", { name: "Hall", area: "hallway", locks: "lock.back_door", heading_style: "subtitle", filled: true }, width);
       await new Promise((res) => setTimeout(res, 500));
       const read = (el) => {
         const r = el.shadowRoot;

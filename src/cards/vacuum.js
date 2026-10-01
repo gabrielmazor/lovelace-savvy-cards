@@ -1658,21 +1658,21 @@ const EDITOR = defineEditor("savvy-vacuum-card", () => {
   return [
     S.entity("entity", "Vacuum", "vacuum"),
     S.grid(S.text("name", "Name"), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (one row)" }])),
-    S.entity("start", "What Start runs", null, { helper: "A button, script or scene (e.g. an app routine). Empty: the vacuum's own start. Resume after a pause is always a real resume." }),
+    S.entity("start", "Start action", null, { helper: "A button, script or scene (e.g. an app routine). Empty: the vacuum's own start. Resume after a pause is always a real resume." }),
     S.text("start_name", "Start label"),
-    S.nav("navigation_path", "Navigate to on tap", "Where tapping the name goes."),
+    S.nav("navigation_path", "Target page", "Where tapping the name goes."),
     S.section("Parts", [
       { name: "map", label: "Map", helper: "Popup adds a Map button; inline shows it in the card. Or pick an image/camera entity.",
         selector: { select: { mode: "dropdown", custom_value: true, options: [
           { value: "popup", label: "Popup (a Map button)" }, { value: "inline", label: "In the card" }, { value: "off", label: "Hidden" }] } } },
-      S.number("map_max_height", "Map height cap", 120, 1200, 10, "px"),
+      S.number("map_max_height", "Map height", 120, 1200, 10, "px"),
       part("rooms", "Rooms", "Your areas when mapped, else the robot's own rooms. A custom list is YAML: rooms: [kitchen, …]"),
       part("routines", "Routines", "Your app routines. A custom list is YAML: routines: [{entity, name, icon}]"),
       part("modes", "Modes"), part("dock", "Dock"), part("maintenance", "Maintenance"), part("stats", "Statistics"),
-      { name: "hide_modes", label: "Hide these modes", selector: { select: { multiple: true, custom_value: true, options: [] } } },
-      { name: "exclude", label: "Leave these entities out", selector: { entity: { multiple: true } } },
+      { name: "hide_modes", label: "Hidden modes", selector: { select: { multiple: true, custom_value: true, options: [] } } },
+      { name: "exclude", label: "Exclude", selector: { entity: { multiple: true } } },
     ]),
-    S.grid(S.number("battery_warn", "Battery amber below", 1, 100, 1, "%"), S.number("battery_critical", "Battery red below", 1, 100, 1, "%")),
+    S.grid(S.number("battery_warn", "Battery warning", 1, 100, 1, "%"), S.number("battery_critical", "Battery critical", 1, 100, 1, "%")),
   ];
 });
 

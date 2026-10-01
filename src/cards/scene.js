@@ -289,16 +289,16 @@ const EDITOR = defineEditor("savvy-scene-card", () => [
   S.grid({ ...S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (one row)" }]), default: "full" },
     { ...S.number("columns", "Columns", 1, 6), helper: "Empty: 2 to 4, by the card's width." }),
   S.grid(S.color(), S.bool("show_icon", "Show icons", null, true)),
-  S.text("strip", "Hide from names", "A regular expression taken out of each name, e.g. ^.*//\\s*|\\s*-\\s*on$. The area's name is always taken off the front too."),
-  S.nav("navigation_path", "Navigate to on tap", "Tapping the title goes there."),
-  { name: "entities", label: "Pinned scenes", helper: "Shown first, in this order, even from outside the area.", type: "list",
+  S.text("strip", "Strip text", "A regular expression taken out of each name, e.g. ^.*//\\s*|\\s*-\\s*on$. The area's name is always taken off the front too."),
+  S.nav("navigation_path", "Target page", "Tapping the title goes there."),
+  { name: "entities", label: "Pinned", helper: "Shown first, in this order, even from outside the area.", type: "list",
     item: [
       { name: "entity", label: "Scene", selector: SCENE_PICK },
       S.grid(S.text("name", "Name"), S.icon()),
       S.color(),
     ],
     add: { selector: SCENE_PICK, label: "Add a scene" } },
-  S.bool("auto_discover", "Also show the area's scenes", "Every scene the area has, after the pinned ones.", true),
+  S.bool("auto_discover", "Auto discover", "Every scene the area has, after the pinned ones.", true),
   { name: "exclude", label: "Never show", selector: { entity: { domain: "scene", multiple: true } } },
 ]);
 

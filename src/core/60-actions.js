@@ -23,6 +23,24 @@ function defaultTapAction(entity) {
   return { action: "more-info" };
 }
 
+// The page a chip leads to: its navigation_path, else the page its tap or hold action navigates to.
+function pageTarget(cfg = {}) {
+  if (cfg.navigation_path) return cfg.navigation_path;
+  for (const k of ["tap_action", "hold_action"]) {
+    const a = asAction(cfg[k]);
+    if (a?.action === "navigate" && a.navigation_path) return a.navigation_path;
+  }
+  return null;
+}
+
+// The popup's pinned page button for a chip config: popup_button: false hides it, popup_label
+// words it ("Open lights"), and without a target page there's no button.
+function pageButton(cfg = {}, noun = "") {
+  const path = cfg.popup_button === false ? null : pageTarget(cfg);
+  if (!path) return null;
+  return { label: cfg.popup_label || `Open ${String(noun).toLowerCase()}`.trim(), onTap: () => navigate(path) };
+}
+
 // Toggle the way each domain actually toggles.
 function toggleEntity(hass, id) {
   const d = domainOf(id), st = hass.states[id];

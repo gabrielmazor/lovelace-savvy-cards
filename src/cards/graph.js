@@ -538,7 +538,7 @@ class SavvyGraphCard extends SavvyCard {
 // ---------- editor ----------
 const EDITOR = defineEditor("savvy-graph-card", (hass, c) => [
   S.text("title", "Title"),
-  S.grid(S.number("hours_to_show", "Hours shown", 1, 8760, 1, "h"), S.number("columns", "Small tiles per row", 1, 8)),
+  S.grid(S.number("hours_to_show", "Hours", 1, 8760, 1, "h"), S.number("columns", "Columns", 1, 8)),
   { name: "ranges", label: "Hours selector", helper: "Offer these ranges in the header (e.g. 24, 168, 720). Empty: no selector.",
     selector: { select: { multiple: true, custom_value: true, options: ["6", "24", "48", "168", "720"] } } },
   { name: "entities", label: "Tiles", type: "list", helper: "A number gets a graph; anything else a small tile with its state.",
@@ -547,11 +547,11 @@ const EDITOR = defineEditor("savvy-graph-card", (hass, c) => [
       { name: "attribute", label: "Attribute", helper: "Chart one of the entity's attributes instead of its state (a weather entity's humidity).", selector: { text: {} } },
       { type: "grid", name: "", schema: [{ name: "name", label: "Name", selector: { text: {} } }, { name: "icon", label: "Icon", selector: { icon: {} } }] },
       { type: "grid", name: "", schema: [{ name: "unit", label: "Unit", selector: { text: {} } },
-        { name: "hours_to_show", label: "Hours (this one)", selector: { number: { min: 1, max: 8760, mode: "box", unit_of_measurement: "h" } } }] },
-      { name: "state_color", label: "On is good, off is bad (on/off tiles)", selector: { boolean: {} } },
+        { name: "hours_to_show", label: "Tile hours", selector: { number: { min: 1, max: 8760, mode: "box", unit_of_measurement: "h" } } }] },
+      { name: "state_color", label: "State colours", selector: { boolean: {} } },
       { name: "thresholds", label: "Thresholds", helper: "[{value: 0, level: good}, {value: 60, level: warn}, {value: 85, level: bad}]", selector: { object: {} } },
-      { name: "tap_action", label: "Tap", selector: { ui_action: {} } },
-      { name: "hold_action", label: "Hold", selector: { ui_action: {} } },
+      { name: "tap_action", label: "Tap action", selector: { ui_action: {} } },
+      { name: "hold_action", label: "Hold action", selector: { ui_action: {} } },
     ] },
 ]);
 

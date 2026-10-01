@@ -6,7 +6,7 @@ export default async function ({ browser, base, check }) {
     const tag = `[${theme} ${width}]`;
     const { page, errors } = await openPage(browser, base, { theme, width });
     const r = await page.evaluate(async (width) => {
-      window.mount("savvy-room-tile", { area: "living_room", navigation_path: "/lovelace/living-room", mode: "input_select.living_room_scene" }, width);
+      window.mount("savvy-room-tile", { area: "living_room", navigation_path: "/lovelace/living-room", control: "input_select.living_room_scene" }, width);
       window.mount("savvy-room-tile", { area: "office" }, width);
       window.mount("savvy-room-tile", { name: "Legacy", area: "kitchen", light_state: "input_boolean.movie_mode", light_counter: "sensor.energy_cost",
         light_group: ["light.kitchen_pendant"], color_light: "light.kitchen_pendant", navigation_path: "/lovelace/kitchen" }, width);

@@ -1726,15 +1726,15 @@ const EDITOR = defineEditor("savvy-climate-card", (hass, c) => {
     S.area(),
     // with several units in the area, choose one here; one alone is picked by itself
     found.length > 1
-      ? { name: "entity", label: "Which unit", selector: { select: { mode: "dropdown", options: found.map((id) => ({ value: id, label: hass.states[id].attributes.friendly_name || id })) } } }
-      : S.entity("entity", "Climate entity (instead of the area)", "climate"),
+      ? { name: "entity", label: "Unit", selector: { select: { mode: "dropdown", options: found.map((id) => ({ value: id, label: hass.states[id].attributes.friendly_name || id })) } } }
+      : S.entity("entity", "Climate entity", "climate"),
     S.grid(S.text("name", "Name"), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact" }])),
-    { name: "hvac_modes", label: "Modes to show", helper: "In this order. Empty: all the unit's modes.", selector: { select: { multiple: true, mode: "list", options: modes } } },
-    S.grid(S.select("default_hvac_mode", "Power button turns on", modes.filter((m) => m !== "off")), S.bool("fan_control", "Fan button", null, true)),
+    { name: "hvac_modes", label: "Modes", helper: "In this order. Empty: all the unit's modes.", selector: { select: { multiple: true, mode: "list", options: modes } } },
+    S.grid(S.select("default_hvac_mode", "Power mode", modes.filter((m) => m !== "off")), S.bool("fan_control", "Fan button", null, true)),
     S.section("Readings", [
       S.entity("temperature", "Temperature sensor", "sensor", { helper: "Empty: the unit's own reading." }),
       S.entity("humidity", "Humidity sensor", "sensor", { helper: "Empty: the unit's own reading." }),
-      S.entity("weather", "Outdoor weather", "weather"),
+      S.entity("weather", "Weather", "weather"),
       S.grid(S.text("temperature_name", "Temperature label"), S.text("humidity_name", "Humidity label")),
     ]),
     { type: "expandable", name: "timer", title: "Timer", schema: [
@@ -1742,10 +1742,10 @@ const EDITOR = defineEditor("savvy-climate-card", (hass, c) => {
       { name: "select", label: "Duration list (tap steps through it)", selector: { entity: { domain: "input_select" } } },
     ] },
     { type: "expandable", name: "history", title: "History (swipe left)", schema: [
-      { name: "hours", label: "Opens on (hours)", selector: { number: { min: 1, max: 720, mode: "box" } } },
-      { name: "show_state", label: "On/off band under the chart", selector: { boolean: {} } },
+      { name: "hours", label: "History range", selector: { number: { min: 1, max: 720, mode: "box" } } },
+      { name: "show_state", label: "Show band", selector: { boolean: {} } },
     ] },
-    S.grid(S.text("state_name", "On/off band label"), S.text("humidity_color", "Humidity colour")),
+    S.grid(S.text("state_name", "Band label"), S.text("humidity_color", "Humidity colour")),
     S.chips(),
   ];
 });

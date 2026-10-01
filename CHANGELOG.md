@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.6.0
+
+Names that say what a card is for, a page button in the popups, and a control chip that is
+no longer only for selects. **This one changes ids and a key: see Migrating.**
+
+- **Renamed cards.** The picker groups them: Home header, Room activity, Room header,
+  Room tile, Section title, System health.
+- **Page button in the popups.** Holding a chip on the home header lists what it counts;
+  the popup now has a button pinned under the list that opens the chip's page. Its page is
+  the chip's `navigation_path` (a tap goes there too), or else the page its tap or hold
+  action already navigates to. `popup_button: false` hides it, `popup_label` words it. The
+  health cog's popup has one as well.
+- **Control.** `mode` is now `control`, and takes any entity. A select or input_select
+  opens the picker as before; a button, script or scene runs on tap; a switch or
+  input_boolean toggles; anything else opens its more-info. `control_tap_action`,
+  `control_hold_action` and `control_double_tap_action` (or `control: { entity, name, icon,
+  color, tap_action, ... }`) override it. The room tile shows its control read only.
+- **Editor labels.** One or two words, with the detail in the helper text, and the same
+  everywhere: Target page, Tap action, Hold action, Custom chips, Entity override,
+  Home button, Battery alert, Red threshold, Grouping, Hub threshold, Ignored integrations,
+  Control, Caption.
+- Entity-list popups no longer re-append every row on each state update.
+
+### Migrating from 0.5
+
+| Was | Is |
+|---|---|
+| `custom:savvy-home-card` | `custom:savvy-home-header-card` |
+| `custom:savvy-health-card` | `custom:savvy-system-health-card` |
+| `custom:savvy-room-card` | `custom:savvy-room-header-card` |
+| `custom:savvy-heading-card` | `custom:savvy-section-title-card` |
+| `custom:savvy-snapshot-card` | `custom:savvy-room-activity-card` |
+| `mode: input_select.x` (home header, room header, section title, room tile) | `control: input_select.x` |
+
+Nothing else changes: `mode_label`, `mode_icons` and `mode_colors` keep their names.
+
 ## 0.5.0
 
 The health card says what's wrong instead of listing entities.

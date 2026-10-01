@@ -1,25 +1,57 @@
 // ---------------------------------------------------------------------------------------
-// core/mode: the mode chip every card shares. `mode:` names any input_select or select
-// (a house mode, a room's scene); it's never guessed. Each option gets its icon and colour
-// from the mode dictionary (core/palette), overridable with mode_icons / mode_colors.
-// Tapping the chip opens a picker that grows out of it, one row per option.
+// core/mode: the control chip every header card shares. `control:` names any entity (a house
+// mode, a room's scenes, a scene button, a switch). Its behaviour follows its domain:
+//   select / input_select   tap opens a picker, one row per option, each with an icon and a
+//                           colour from the mode dictionary (core/palette), overridable with
+//                           mode_icons / mode_colors; hold opens more-info
+//   button, script, scene   tap runs it
+//   switch, input_boolean   tap toggles it
+//   anything else           tap opens more-info
+// tap_action / hold_action / double_tap_action override any of that, in Home Assistant's
+// standard action format. It is never guessed: no `control`, no chip.
 // ---------------------------------------------------------------------------------------
 
 const SWAP_OUT = { response: 0.14, damping: 1 };
 const SWAP_IN = { response: 0.32, damping: 1 };
 
-// Everything a card shows about its mode. -> null when there's no such entity.
+const SELECTS = new Set(["select", "input_select"]);
+const NO_STATE = new Set(["button", "input_button", "script", "scene"]);
+const CONTROL_ICON = { button: "mdi:gesture-tap-button", input_button: "mdi:gesture-tap-button", script: "mdi:script-text-outline", scene: "mdi:palette-outline",
+  switch: "mdi:toggle-switch-outline", input_boolean: "mdi:toggle-switch-outline", light: "mdi:lightbulb-outline" };
+
+// `control` is an entity id, or { entity, name, icon, color, tap_action, hold_action,
+// double_tap_action }; the flat control_tap_action ... keys say the same (the editor writes them).
+function controlOf(cfg = {}) {
+  const raw = cfg.control;
+  const o = typeof raw === "string" ? { entity: raw } : { ...(raw || {}) };
+  for (const k of ["name", "icon", "color", "tap_action", "hold_action", "double_tap_action"]) {
+    if (o[k] === undefined && cfg[`control_${k}`] !== undefined) o[k] = cfg[`control_${k}`];
+  }
+  return o;
+}
+
+// Everything a card shows about its control. -> null when there's no such entity.
 function modeInfo(hass, id, cfg = {}) {
   const st = id && hass.states[id];
   if (!st) return null;
-  const looks = { icons: keyed(cfg.mode_icons), colors: keyed(cfg.mode_colors) };
+  const ctl = controlOf(cfg);
   const label = (value) => {
     if (hass.formatEntityState) { try { return hass.formatEntityState(st, value); } catch (err) { /* older core */ } }
     return title(value);
   };
+  if (!SELECTS.has(domainOf(id))) {
+    const name = ctl.name || st.attributes.friendly_name || title(id.split(".")[1] || id);
+    const d = domainOf(id), quiet = NO_STATE.has(d);
+    return { entity: id, st, kind: "control", value: quiet ? id : st.state, label: quiet ? name : label(st.state), caption: quiet ? "" : name,
+      icon: ctl.icon || st.attributes.icon || CONTROL_ICON[d] || "mdi:gesture-tap", color: colorOf(ctl.color) || "", options: [] };
+  }
+  const looks = { icons: keyed(cfg.mode_icons), colors: keyed(cfg.mode_colors) };
   const options = (st.attributes.options || []).map((o) => ({ value: o, label: label(o), ...modeLook(o, looks) }));
-  return { entity: id, st, value: st.state, label: label(st.state), ...modeLook(st.state, looks), options };
+  return { entity: id, st, kind: "select", value: st.state, label: label(st.state), ...modeLook(st.state, looks), options };
 }
+
+// What sits under the value: a select's caption ("Home mode"), a control's own name.
+const modeCaption = (info, configured) => (info?.kind === "control" ? info.caption : configured);
 
 const selectOption = (hass, id, option) => {
   const d = domainOf(id);
