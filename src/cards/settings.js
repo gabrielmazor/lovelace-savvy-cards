@@ -1,0 +1,187 @@
+// savvy-settings-card: the defaults every Savvy card on the dashboard shares. Place it once, on any
+// page; the other cards find it by reading the dashboard's config, so they pick it up whichever
+// page they are on. A card's own options always win; then the room's; then these; then
+// auto-discovery. In view mode it is a small status card: how many defaults, how many cards
+// on this page use them.
+//
+//   type: custom:savvy-settings-card
+//   pages:  { home, lights, climate, media, security, health, room: /lovelace/{slug} }
+//   house:  { control, weather, security, tap: list | navigate }
+//   health: { watchman, battery_threshold, warn_above, exclude_platforms, group_by, group_min, watchman_last_run }
+//   ignore: { entities: [], areas: [] }
+//   rooms:  { living_room: { name, icon, page, control, light_state, temperature, humidity, include, exclude } }
+//   layout: full | compact
+
+const STYLE = `${BASE_CSS}
+  ha-card { display: flex; align-items: center; gap: 12px; padding: var(--pad); }
+  :host([compact]) ha-card { padding: 10px 14px; gap: 10px; }
+  .disc { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px;
+    background: var(--well); color: var(--secondary-text-color); }
+  :host([compact]) .disc { width: 28px; height: 28px; border-radius: 9px; }
+  .disc ha-icon { --mdc-icon-size: 20px; display: flex; }
+  :host([compact]) .disc ha-icon { --mdc-icon-size: 16px; }
+  .disc[data-warn] { background: color-mix(in oklab, var(--lvl-warn, #E0A030) 18%, transparent); color: var(--lvl-warn, #E0A030); }
+  .col { min-width: 0; display: flex; flex-direction: column; }
+  .name { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sub { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); overflow-wrap: anywhere; }
+  .sub[data-warn] { color: var(--lvl-warn, #E0A030); }
+  :host([compact]) .col { flex-direction: row; align-items: baseline; gap: 10px; flex: 1; }
+  :host([compact]) .name { flex: none; font-size: 13.5px; }
+  :host([compact]) .sub { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+`;
+
+class SavvySettingsCard extends SavvyCard {
+  static getStubConfig() { return { pages: {}, house: {}, rooms: {} }; }
+  static getConfigElement() { return document.createElement(SETTINGS_EDITOR); }
+
+  setConfig(config) {
+    this._config = { ...config };
+    this._compact = config?.layout === "compact";
+    SettingsStore.publish(this, this._config);
+    this.toggleAttribute("compact", this._compact);
+    if (this._el) this._update();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    SettingsStore.load(hass);
+    if (!this._config) return;
+    if (!this._el) this._build();
+    this._update();
+  }
+
+  connectedCallback() {
+    this._unsub = SettingsStore.subscribe(() => this._update());
+    if (this._config) SettingsStore.publish(this, this._config);
+  }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._unsub?.();
+    this._unsub = null;
+    SettingsStore.unpublish(this);
+  }
+
+  getCardSize() { return 1; }
+  getGridOptions() { return { columns: 12, min_columns: 4, rows: "auto" }; }
+
+  _build() {
+    const root = this.shadowRoot || this.attachShadow({ mode: "open" });
+    root.innerHTML = `<style>${STYLE}</style>
+      <ha-card>
+        <span class="disc" id="disc"><ha-icon icon="mdi:cog-sync-outline"></ha-icon></span>
+        <span class="col"><span class="name">Savvy settings</span><span class="sub" id="sub"></span></span>
+      </ha-card>`;
+    this._el = { card: root.querySelector("ha-card"), disc: root.getElementById("disc"), sub: root.getElementById("sub") };
+  }
+
+  _update() {
+    const el = this._el;
+    if (!el) return;
+    this.toggleAttribute("dark", !!this._hass?.themes?.darkMode);
+    const { defaults, consumers, found } = SettingsStore.stats();
+    const cards = `${consumers} ${consumers === 1 ? "card" : "cards"}`;
+    const many = found > 1;
+    let words = defaults ? `${defaults} ${defaults === 1 ? "default" : "defaults"} · used by ${cards} on this page` : "No defaults set yet";
+    if (many) words = `${found} settings cards found: using the first. ${words}`;
+    attr(el.disc, "data-warn", many);
+    attr(el.sub, "data-warn", many);
+    text(el.sub, words);
+    attr(el.card, "aria-label", `Savvy settings, ${words}`);
+  }
+}
+
+// ---- the editor: sections, and the rooms as a list (the config keeps them as a map by area)
+
+const toRoomList = (rooms) => Object.entries(rooms || {}).map(([area, v]) => ({ area, ...(v && typeof v === "object" ? v : {}) }));
+const fromRoomList = (list) => Object.fromEntries((list || []).filter((i) => i && i.area).map(({ area, ...rest }) => [area, cleanConfig(rest)]));
+const withoutList = (c) => { const { rooms_list, ...rest } = c || {}; return rest; };
+
+class SettingsEditor extends SavvyEditor {
+  get cardType() { return null; }
+
+  setConfig(config) {
+    const same = this._config && JSON.stringify(cleanConfig({ ...config })) === JSON.stringify(withoutList(this._config));
+    if (same) return;
+    this._config = { ...config, rooms_list: toRoomList(config?.rooms) };
+    this._render();
+  }
+
+  _emit(config) {
+    const { rooms_list, ...rest } = config;
+    const out = { ...rest };
+    if (rooms_list) {
+      const map = fromRoomList(rooms_list);
+      if (Object.keys(map).length) out.rooms = map; else delete out.rooms;
+    }
+    super._emit(out);
+    this._config = { ...this._config, rooms_list: rooms_list ?? toRoomList(this._config.rooms) };
+  }
+
+  _render() {
+    super._render();
+    const wrap = this.shadowRoot.querySelector(".sv-ed");
+    if (!wrap) return;
+    const btn = document.createElement("button");
+    btn.className = "sv-prefill";
+    btn.type = "button";
+    btn.textContent = "Add every room";
+    btn.addEventListener("click", () => {
+      const have = new Set((this._config.rooms_list || []).map((i) => i.area));
+      const areas = Object.values(this._hass?.areas || {}).map((a) => a.area_id).filter((id) => id && !have.has(id));
+      if (!areas.length) return;
+      this._emit({ ...this._config, rooms_list: [...(this._config.rooms_list || []), ...areas.map((area) => ({ area }))] });
+      this._render();
+    });
+    wrap.appendChild(btn);
+  }
+
+  schema(hass) {
+    const areaName = (id) => hass?.areas?.[id]?.name || title(id);
+    return [
+      S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact" }]),
+      { type: "expandable", name: "pages", title: "Pages", schema: [
+        S.nav("home", "Home", "Where the home button goes."),
+        S.nav("lights", "Lights page"), S.nav("climate", "Climate page"), S.nav("media", "Media page"), S.nav("security", "Security page"),
+        S.nav("health", "System health page"),
+        S.text("room", "Room pages", "A pattern: /lovelace/{slug} (the room with dashes) or {area} (its id)."),
+      ] },
+      { type: "expandable", name: "house", title: "Home", schema: [
+        S.entity("control", "Control", undefined, { helper: "The house mode: a select opens a picker; a button, scene or switch acts." }),
+        S.entity("weather", "Weather", "weather"),
+        S.entity("security", "Security entity", undefined, { helper: "Shown on the security chip instead of the alarm." }),
+        S.select("tap", "Chip tap", [{ value: "list", label: "Open the list" }, { value: "navigate", label: "Go to its page (hold opens the list)" }]),
+      ] },
+      { type: "expandable", name: "health", title: "Health", schema: [
+        { name: "watchman", label: "Watchman sensors", selector: { entity: { multiple: true, domain: "sensor" } } },
+        S.grid(S.number("battery_threshold", "Battery alert", 1, 100, 1, "%"), S.number("warn_above", "Red threshold", 1, 99)),
+        { name: "exclude_platforms", label: "Ignored integrations", selector: { select: { multiple: true, custom_value: true, options: ["mobile_app"] } } },
+        S.select("group_by", "Grouping", [{ value: "hub", label: "Device, and the hub behind it" }, { value: "device", label: "Device" }, { value: "none", label: "Nothing: one row per entity" }]),
+        S.number("group_min", "Hub threshold", 2, 50),
+        S.entity("watchman_last_run", "Watchman last run", "sensor"),
+      ] },
+      { type: "expandable", name: "ignore", title: "Ignore", schema: [
+        { name: "entities", label: "Ignored entities", helper: "Left out of the home header's counts and popups.", selector: { entity: { multiple: true } } },
+        { name: "areas", label: "Ignored rooms", selector: { area: { multiple: true } } },
+      ] },
+      { name: "rooms_list", label: "Rooms", type: "list", empty: "No rooms yet. Add one, or add every room below.",
+        helper: "Per room: what its cards share. A card's own settings win.",
+        summary: (item, h) => ({ title: item.name || h?.areas?.[item.area]?.name || areaName(item.area), sub: item.area }),
+        add: { selector: { area: {} }, label: "Add a room", make: (area) => ({ area }) },
+        item: [
+          { name: "area", label: "Area", selector: { area: {} } },
+          S.grid(S.text("name", "Name"), S.icon()),
+          S.nav("page", "Target page"),
+          S.entity("control", "Control"),
+          S.entity("light_state", "Light helper", undefined, { helper: "Pinned as the room's Light chip and the lights card's pill." }),
+          S.grid(S.entity("temperature", "Temperature", "sensor"), S.entity("humidity", "Humidity", "sensor")),
+          { name: "include", label: "Include", helper: "Entities to treat as in this room (a lock with no area).", selector: { entity: { multiple: true } } },
+          { name: "exclude", label: "Exclude", selector: { entity: { multiple: true } } },
+        ] },
+    ];
+  }
+}
+const SETTINGS_EDITOR = "savvy-settings-card-editor";
+if (!customElements.get(SETTINGS_EDITOR)) customElements.define(SETTINGS_EDITOR, SettingsEditor);
+
+registerCard("savvy-settings-card", SavvySettingsCard, "settings",
+  "The defaults every Savvy card shares: pages, the house control, health options, what to ignore, and each room's helpers. Set once; any card can still override.");

@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.0
+
+- **Savvy settings**: a new card that holds what you'd repeat on every card: your pages
+  (home, lights, climate, media, security, health and a pattern for rooms), the house
+  control and weather, the health options, what to ignore, and each room's control,
+  light helper, temperature, humidity, page, name and icon. Place it once, anywhere on
+  the dashboard, and every Savvy card on every page takes what it needs from it. A
+  card's own options always win, then the room's, then the global ones, then
+  auto-discovery. Lists (ignored entities, a room's include and exclude) add to a
+  card's own.
+- Home header: with `house.tap: navigate` a tap on a chip goes to its page and hold lists
+  what it counts. A chip with its own `hold_action` keeps its tap on the list.
+- Every card's editor shows what it takes from the settings at the top, under **From
+  Savvy settings**.
+- The settings are read from the dashboard's config, once per page load, and kept in the
+  browser: later loads show them with no wait and nothing flashes. They refresh when the
+  page returns after five minutes, and follow the settings card live while it is edited.
+
 ## 0.6.2
 
 The popups get controls instead of switches.

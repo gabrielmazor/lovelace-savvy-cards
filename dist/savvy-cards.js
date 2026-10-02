@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.6.2 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.7.0 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.6.2";
+const SAVVY_VERSION = "0.7.0";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -224,6 +224,7 @@ const BASE_CSS = `
 // Registers a card for HA's card picker. Every Savvy card goes through this so the
 // picker shows them together, with previews.
 const registerCard = (type, cls, name, description) => {
+  wireSettings(type, cls);       // fills in what the dashboard's Savvy settings supply (core/settings)
   if (!customElements.get(type)) customElements.define(type, cls);
   window.customCards = window.customCards || [];
   if (!window.customCards.some((c) => c.type === type)) {
@@ -3390,6 +3391,15 @@ const EDITOR_CSS = `
   .sv-add { display: flex; gap: 8px; align-items: center; }
   .sv-add > * { flex: 1; }
   .sv-empty { font-size: 13px; color: var(--secondary-text-color); padding: 4px 2px; }
+  .sv-prefill { align-self: flex-start; padding: 8px 14px; border: 0; border-radius: 10px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+    color: var(--primary-color, #58a6ff); background: color-mix(in oklab, var(--primary-color, #58a6ff) 12%, transparent); }
+  .sv-inherit { border-radius: 12px; padding: 10px 12px; background: color-mix(in oklab, var(--primary-color, #58a6ff) 9%, transparent); }
+  .sv-inherit .h { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--primary-text-color); --mdc-icon-size: 18px; }
+  .sv-inherit .l { display: flex; gap: 6px; font-size: 12.5px; line-height: 18px; color: var(--secondary-text-color); margin-top: 2px; }
+  .sv-inherit .l b { flex: none; font-weight: 600; color: var(--primary-text-color); }
+  .sv-inherit .l span { min-width: 0; overflow-wrap: anywhere; }
+  .sv-inherit .l i { font-style: normal; opacity: 0.7; }
+  .sv-inherit .n { font-size: 11.5px; color: var(--secondary-text-color); margin-top: 6px; }
 `;
 
 // Drop keys the user cleared, so the YAML stays as short as the choices made.
@@ -3408,6 +3418,39 @@ class SavvyEditor extends HTMLElement {
     super();
     this.attachShadow({ mode: "open" });
     this._open = new Set();
+  }
+  // the card this edits (defineEditor sets it): what the Savvy settings give it is listed at the top
+  get cardType() { return null; }
+  connectedCallback() { this._unsub = SettingsStore.subscribe(() => this._renderInherit()); }
+  disconnectedCallback() { this._unsub?.(); this._unsub = null; }
+  _renderInherit() {
+    const wrap = this.shadowRoot.querySelector(".sv-ed");
+    if (!wrap || !this._config) return;
+    const type = this.cardType;
+    const list = type ? resolveSettings(type, this._config, SettingsStore.settings).inherited : [];
+    let box = wrap.querySelector(".sv-inherit");
+    if (!list.length) { box?.remove(); return; }
+    if (!box) {
+      box = document.createElement("div");
+      box.className = "sv-inherit";
+      box.innerHTML = '<div class="h"><ha-icon icon="mdi:cog-sync-outline"></ha-icon><span>From Savvy settings</span></div><div class="rows"></div><div class="n">Set a value on this card to override it.</div>';
+      wrap.insertBefore(box, wrap.firstChild);
+    }
+    const key = JSON.stringify(list);
+    if (box.__key === key) return;
+    box.__key = key;
+    const rows = box.querySelector(".rows");
+    rows.replaceChildren(...list.map((i) => {
+      const row = document.createElement("div");
+      row.className = "l";
+      const b = document.createElement("b"), v = document.createElement("span"), f = document.createElement("i");
+      b.textContent = i.label;
+      v.textContent = i.value;
+      f.textContent = ` (${i.from})`;
+      v.appendChild(f);
+      row.append(b, v);
+      return row;
+    }));
   }
   // HA answers every config-changed with setConfig. When that's our own change coming
   // back, nothing is rebuilt: rebuilding replaces the field being typed in, and the cursor
@@ -3509,8 +3552,12 @@ class SavvyEditor extends HTMLElement {
       }
       nodes.push(node);
     });
-    for (const n of [...wrap.children]) if (!nodes.includes(n)) n.remove();
+    const keep = wrap.querySelector(".sv-inherit");
+    for (const n of [...wrap.children]) if (!nodes.includes(n) && n !== keep) n.remove();
     nodes.forEach((n) => wrap.appendChild(n));
+    this._renderInherit();
+    const box = wrap.querySelector(".sv-inherit");
+    if (box && wrap.firstChild !== box) wrap.insertBefore(box, wrap.firstChild);
   }
 }
 
@@ -3635,7 +3682,10 @@ if (!customElements.get("savvy-list-editor")) customElements.define("savvy-list-
 const defineEditor = (type, schemaFn) => {
   const name = `${type}-editor`;
   if (!customElements.get(name)) {
-    customElements.define(name, class extends SavvyEditor { schema(hass, config) { return schemaFn(hass, config); } });
+    customElements.define(name, class extends SavvyEditor {
+      get cardType() { return type; }
+      schema(hass, config) { return schemaFn(hass, config); }
+    });
   }
   return name;
 };
@@ -3700,6 +3750,398 @@ const badgeSchema = ({ pinnedLabel = "Pinned", pinnedHelp = "Always shown, first
   { name: "exclude", label: "Exclude", selector: { entity: { multiple: true } } },
 ];
 
+// ===== core/95-settings.js =====
+// ---------------------------------------------------------------------------------------
+// core/settings: the pages, entities and helpers a dashboard repeats on every card, set once
+// in a `custom:savvy-settings-card` and picked up by every Savvy card on the dashboard.
+//
+//   precedence: the card's own config  >  rooms.<area>  >  global settings  >  auto-discovery
+//   A value the card sets itself (even `false`) is never replaced. Lists (ignored entities,
+//   a room's include / exclude) add to the card's own; a card can switch that off with `false`.
+//
+// Settings are found by reading the dashboard's own config (`lovelace/config`), so a card on
+// any view gets them without the settings card being on its page. The last answer is kept in
+// localStorage per dashboard, so repeat loads need no round trip and nothing flashes.
+// The settings card on the page publishes its config as it is edited: cards follow live.
+// One declarative table (SETTINGS_RULES) says what each card takes; a new key is one line.
+// ---------------------------------------------------------------------------------------
+
+const SETTINGS_TYPE = "custom:savvy-settings-card";
+const SETTINGS_REFRESH_MS = 5 * 60 * 1000;
+const SETTINGS_SECTIONS = ["pages", "house", "health", "ignore", "rooms"];
+
+// ---- the table -------------------------------------------------------------------------
+
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+const navTo = (path) => (path ? { action: "navigate", navigation_path: path } : undefined);
+const pagePattern = (pattern, x) => (pattern ? String(pattern).replace(/\{area\}/g, x.area || "").replace(/\{slug\}/g, x.slug || "") : undefined);
+// a room's own value, else nothing: the source says which room
+const room = (key) => (s, c, x) => (x.room?.[key] != null && x.room[key] !== "" ? { v: x.room[key], src: `rooms.${x.area}` } : undefined);
+const roomPage = (s, c, x) => {
+  if (!x.area) return undefined;
+  if (x.room?.page) return { v: x.room.page, src: `rooms.${x.area}` };
+  const v = pagePattern(s.pages?.room, x);
+  return v ? { v, src: "pages.room" } : undefined;
+};
+const glob = (section, key) => (s) => s[section]?.[key];
+
+const HEALTH_KEYS = [
+  ["watchman", "Watchman sensors"], ["battery_threshold", "Battery alert"], ["warn_above", "Red threshold"],
+  ["exclude_platforms", "Ignored integrations"], ["group_by", "Grouping"], ["group_min", "Hub threshold"], ["watchman_last_run", "Watchman last run"],
+];
+const healthRules = (prefix = "") => HEALTH_KEYS.map(([k, label]) => ({ path: `${prefix}${k}`, label, get: glob("health", k), src: "health" }));
+
+const HOME_CHIPS = ["lights", "climate", "media", "security"];
+
+// Each rule fills `path` of the card's config when the card hasn't set it.
+//   kind "union": the settings' list is added to the card's own (unless the card says false)
+//   kind "pin":   the room's light helper is pinned first in the badge row
+const SETTINGS_RULES = {
+  "savvy-home-header-card": [
+    { path: "control", label: "Control", get: glob("house", "control"), src: "house" },
+    { path: "weather", label: "Weather", get: glob("house", "weather"), src: "house" },
+    { path: "home_path", label: "Home button", get: glob("pages", "home"), src: "pages" },
+    ...HOME_CHIPS.flatMap((k) => [
+      { path: `${k}.navigation_path`, label: `${cap(k)} page`, get: (s) => s.pages?.[k], src: "pages" },
+      // a tap goes to the page and the hold lists, unless the chip already has gestures of its own
+      { path: `${k}.tap_action`, label: `${cap(k)} tap`, src: "house",
+        get: (s, c) => (s.house?.tap === "navigate" && c[k]?.hold_action === undefined ? navTo(c[k]?.navigation_path ?? s.pages?.[k]) : undefined) },
+      { path: `${k}.exclude`, label: `${cap(k)} ignored`, kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
+      { path: `${k}.exclude_areas`, label: `${cap(k)} ignored rooms`, kind: "union", get: (s) => s.ignore?.areas, src: "ignore" },
+    ]),
+    { path: "security.entity", label: "Security entity", get: glob("house", "security"), src: "house" },
+    { path: "health.navigation_path", label: "Health page", get: (s) => s.pages?.health, src: "pages" },
+    { path: "health.tap_action", label: "Health tap", src: "house",
+      get: (s, c) => (s.house?.tap === "navigate" && c.health?.hold_action === undefined ? navTo(c.health?.navigation_path ?? s.pages?.health) : undefined) },
+    ...healthRules("health."),
+  ],
+  "savvy-system-health-card": healthRules(),
+  "savvy-room-header-card": [
+    { path: "control", label: "Control", get: room("control") },
+    { path: "temperature", label: "Temperature", get: room("temperature") },
+    { path: "include", label: "Include", kind: "union", get: room("include") },
+    { path: "exclude", label: "Exclude", kind: "union", get: room("exclude") },
+    { path: "entities", label: "Light helper", kind: "pin", get: room("light_state") },
+    { path: "home_path", label: "Home button", get: glob("pages", "home"), src: "pages" },
+    { path: "room_path", label: "Room pages", get: glob("pages", "room"), src: "pages" },
+  ],
+  "savvy-section-title-card": [
+    { path: "name", label: "Name", get: room("name") },
+    { path: "icon", label: "Icon", get: room("icon") },
+    { path: "control", label: "Control", get: room("control") },
+    { path: "temperature", label: "Temperature", get: room("temperature") },
+    { path: "include", label: "Include", kind: "union", get: room("include") },
+    { path: "exclude", label: "Exclude", kind: "union", get: room("exclude") },
+    { path: "entities", label: "Light helper", kind: "pin", get: room("light_state") },
+    { path: "navigation_path", label: "Target page", get: roomPage },
+  ],
+  "savvy-room-tile": [
+    { path: "name", label: "Name", get: room("name") },
+    { path: "icon", label: "Icon", get: room("icon") },
+    { path: "control", label: "Control", get: room("control") },
+    { path: "temperature", label: "Temperature", get: room("temperature") },
+    { path: "toggle", label: "Light helper", get: (s, c, x) => (c.light_state !== undefined ? undefined : room("light_state")(s, c, x)) },
+    { path: "entities", label: "Light badge", kind: "pin", get: room("light_state") },
+    { path: "navigation_path", label: "Target page", get: roomPage },
+  ],
+  "savvy-lights-card": [
+    { path: "toggle", label: "Light helper",
+      get: (s, c, x) => {
+        if (c.toggle !== undefined || c.master !== undefined) return undefined;
+        const r = room("light_state")(s, c, x);
+        return r ? { v: { entity: r.v }, src: r.src } : undefined;
+      } },
+  ],
+  "savvy-climate-card": [
+    { path: "temperature", label: "Temperature", get: room("temperature") },
+    { path: "humidity", label: "Humidity", get: room("humidity") },
+  ],
+  "savvy-room-activity-card": [
+    { path: "exclude", label: "Exclude", kind: "union", get: room("exclude") },
+  ],
+};
+
+// ---- the resolver -----------------------------------------------------------------------
+
+const getPath = (o, p) => p.split(".").reduce((a, k) => (a == null ? undefined : a[k]), o);
+// copy-on-write: only the objects along `p` are copied
+function setPath(o, p, v) {
+  const ks = p.split("."), root = { ...o };
+  let cur = root;
+  for (let i = 0; i < ks.length - 1; i++) {
+    const next = cur[ks[i]];
+    cur[ks[i]] = next && typeof next === "object" ? { ...next } : {};
+    cur = cur[ks[i]];
+  }
+  cur[ks[ks.length - 1]] = v;
+  return root;
+}
+// `lights: false` (or any non-object) below a path: nothing is inherited under it
+const blockedPath = (o, p) => {
+  const ks = p.split(".");
+  let cur = o;
+  for (let i = 0; i < ks.length - 1; i++) {
+    cur = cur?.[ks[i]];
+    if (cur == null) return false;
+    if (typeof cur !== "object") return true;
+  }
+  return false;
+};
+const asList = (v) => (v == null || v === false ? [] : [].concat(v));
+const sameItem = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const unionOf = (add, own) => {
+  const out = [...asList(own)];
+  for (const v of asList(add)) if (!out.some((o) => sameItem(o, v))) out.unshift(v);
+  return out;
+};
+
+// The area a card is about, when it is about exactly one.
+function settingsArea(cfg, s) {
+  let a = cfg.area ?? cfg.areas;
+  if (Array.isArray(a)) a = a.length === 1 ? a[0] : null;
+  if (typeof a !== "string" || !a) return {};
+  return { area: a, slug: a.replace(/_/g, "-"), room: s.rooms?.[a] || null };
+}
+
+const showValue = (v) => {
+  if (Array.isArray(v)) return v.map(showValue).join(", ");
+  if (v && typeof v === "object") return v.action ? `${v.action}${v.navigation_path ? ` to ${v.navigation_path}` : ""}` : v.entity ? v.entity : JSON.stringify(v);
+  return String(v);
+};
+
+// resolveSettings(type, cfg, settings) -> { config, inherited: [{ path, label, value, from }] }
+function resolveSettings(type, cfg, settings) {
+  const rules = SETTINGS_RULES[type];
+  if (!rules || !settings || !cfg || typeof cfg !== "object") return { config: cfg, inherited: [] };
+  const x = settingsArea(cfg, settings);
+  let out = cfg;
+  const inherited = [];
+  for (const r of rules) {
+    const got = r.get(settings, cfg, x);
+    if (got === undefined || got === null) continue;
+    const { v, src } = typeof got === "object" && !Array.isArray(got) && "v" in got ? got : { v: got, src: r.src };
+    if (v === undefined || v === null || v === "" || (Array.isArray(v) && !v.length)) continue;
+    if (blockedPath(cfg, r.path)) continue;
+    const own = getPath(cfg, r.path);
+    if (r.kind === "union") {
+      if (own === false) continue;
+      const merged = unionOf(v, own);
+      if (merged.length === asList(own).length) continue;
+      out = setPath(out, r.path, merged);
+    } else if (r.kind === "pin") {
+      if (own === false) continue;
+      const have = asList(own);
+      if (have.some((e) => (e && e.entity) === v || e === v)) continue;
+      out = setPath(out, r.path, [{ entity: v, name: "Light", icon: "mdi:light-switch" }, ...have]);
+    } else {
+      if (own !== undefined && own !== null) continue;
+      out = setPath(out, r.path, v);
+    }
+    inherited.push({ path: r.path, label: r.label, value: showValue(v), from: src });
+  }
+  return { config: out, inherited };
+}
+
+// ---- the store --------------------------------------------------------------------------
+
+// the dashboard this page belongs to: /lovelace/home is the default dashboard (url_path null)
+function dashboardPath() {
+  const seg = (location.pathname || "").split("/").filter(Boolean)[0];
+  return !seg || seg === "lovelace" ? null : seg;
+}
+
+function findSettingsCards(node, out = []) {
+  if (Array.isArray(node)) node.forEach((n) => findSettingsCards(n, out));
+  else if (node && typeof node === "object") {
+    if (node.type === SETTINGS_TYPE) out.push(node);
+    else for (const v of Object.values(node)) if (v && typeof v === "object") findSettingsCards(v, out);
+  }
+  return out;
+}
+
+// only the known sections, and only what is filled in
+function normalizeSettings(config) {
+  if (!config || typeof config !== "object") return null;
+  const out = {};
+  for (const k of SETTINGS_SECTIONS) {
+    const v = config[k];
+    if (v && typeof v === "object" && Object.keys(v).length) out[k] = v;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+// how many values are set: what the settings card reports as "defaults"
+function countDefaults(s) {
+  let n = 0;
+  const walk = (v) => {
+    if (v == null || v === "" || (Array.isArray(v) && !v.length)) return;
+    if (v && typeof v === "object" && !Array.isArray(v)) Object.values(v).forEach(walk);
+    else n++;
+  };
+  walk(s);
+  return n;
+}
+
+const SettingsStore = {
+  settings: null,
+  found: 0,
+  live: null,           // the settings card on this page that publishes while it is edited
+  hass: null,
+  cards: new Set(),
+  subs: new Set(),
+  _path: undefined,
+  _fetched: false,
+  _fetchedAt: 0,
+  _seeing: false,
+  _tick: 0,
+
+  _key: () => `savvy:settings:${dashboardPath() || "default"}`,
+  _readCache() {
+    try {
+      const v = JSON.parse(localStorage.getItem(this._key()) || "null");
+      return v && typeof v === "object" ? v : null;
+    } catch (err) { return null; }
+  },
+  _writeCache() {
+    try {
+      if (this.settings) localStorage.setItem(this._key(), JSON.stringify({ settings: this.settings, found: this.found }));
+      else localStorage.removeItem(this._key());
+    } catch (err) { /* storage can be blocked: the cards still work from the fetch */ }
+  },
+
+  // the page can move between dashboards without a reload: follow it
+  _sync() {
+    const p = dashboardPath();
+    if (this._path === p) return;
+    this._path = p;
+    this._fetched = false;
+    this.live = null;
+    const c = this._readCache();
+    this.settings = c?.settings || null;
+    this.found = c?.found || 0;
+  },
+
+  subscribe(fn) { this.subs.add(fn); return () => this.subs.delete(fn); },
+  _emit() {
+    for (const fn of [...this.subs]) { try { fn(); } catch (err) { /* a listener must not break the others */ } }
+  },
+  _changed() {
+    this._emit();
+    for (const card of [...this.cards]) {
+      if (!card.isConnected) { this.cards.delete(card); continue; }
+      card._onSettings?.();
+    }
+    this._statsSoon();
+  },
+  // the settings card's counts follow what cards inherit; coalesced
+  _statsSoon() {
+    if (this._tick) return;
+    this._tick = setTimeout(() => { this._tick = 0; this._emit(); }, 0);
+  },
+
+  set(next, found) {
+    const same = JSON.stringify(next) === JSON.stringify(this.settings);
+    this.found = found ?? this.found;
+    if (same) return;
+    this.settings = next;
+    this._writeCache();
+    this._changed();
+  },
+
+  // a card on this page: remembered so a change reaches it, and counted
+  register(card) {
+    this._sync();
+    this.cards.add(card);
+  },
+  consumers() {
+    let n = 0;
+    for (const card of this.cards) if (card.isConnected && card._inherited?.length) n++;
+    return n;
+  },
+  stats() { return { defaults: countDefaults(this.settings), consumers: this.consumers(), found: this.found }; },
+
+  // the settings card on the page says what it holds, edited or not
+  publish(card, config) {
+    this._sync();
+    this.live = card;
+    this.set(normalizeSettings(config), Math.max(this.found, 1));
+  },
+  unpublish(card) {
+    if (this.live !== card) return;
+    this.live = null;
+    this._fetch();
+  },
+
+  // every card hands over hass; the dashboard is read once per page load
+  load(hass) {
+    this._sync();
+    this.hass = hass;
+    if (this._fetched || !hass?.callWS) return;
+    this._fetched = true;
+    this._fetch().then(() => this._watch());
+  },
+  async _fetch() {
+    const hass = this.hass;
+    if (!hass?.callWS) return;
+    let conf;
+    try { conf = await hass.callWS({ type: "lovelace/config", url_path: dashboardPath() }); }
+    catch (err) { return; }                   // no access, or not a dashboard: keep what we have
+    if (!conf || typeof conf !== "object") return;
+    this._fetchedAt = Date.now();
+    const cards = findSettingsCards(conf);
+    // the settings card on this page is the freshest source while it is there
+    if (this.live) { this.found = Math.max(cards.length, 1); this._statsSoon(); return; }
+    this.set(normalizeSettings(cards[0]), cards.length);
+    this._statsSoon();
+  },
+  _watch() {
+    if (this._seeing || typeof document === "undefined") return;
+    this._seeing = true;
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && Date.now() - this._fetchedAt > SETTINGS_REFRESH_MS) this._fetch();
+    });
+  },
+
+  // test pages reset it between runs
+  reset() {
+    this.settings = null; this.found = 0; this.live = null; this.hass = null; this.cards.clear(); this.subs.clear();
+    this._path = undefined; this._fetched = false; this._fetchedAt = 0;
+  },
+};
+
+// Every card with rules goes through here (registerCard): its setConfig receives the card's
+// config with the settings filled in, and a change in the settings re-runs it, only when
+// what the card would see really changed.
+function wireSettings(type, cls) {
+  if (!SETTINGS_RULES[type] || cls.prototype.__settingsWired) return;
+  const proto = cls.prototype, original = proto.setConfig;
+  proto.__settingsWired = true;
+  proto.setConfig = function (config) {
+    SettingsStore.register(this);
+    this._rawConfig = config;
+    const r = resolveSettings(type, config, SettingsStore.settings);
+    this._inherited = r.inherited;
+    this._appliedKey = JSON.stringify(r.config);
+    const out = original.call(this, r.config);
+    SettingsStore._statsSoon();
+    return out;
+  };
+  proto._onSettings = function () {
+    if (!this._rawConfig) return;
+    const r = resolveSettings(type, this._rawConfig, SettingsStore.settings);
+    this._inherited = r.inherited;
+    const key = JSON.stringify(r.config);
+    if (key === this._appliedKey) return;
+    this._appliedKey = key;
+    original.call(this, r.config);
+    if (this._hass) this.hass = this._hass;
+  };
+  const d = Object.getOwnPropertyDescriptor(proto, "hass");
+  if (d?.set) {
+    Object.defineProperty(proto, "hass", { ...d, set(v) { SettingsStore.load(v); d.set.call(this, v); } });
+  }
+}
+
 // ===== core/99-test-hook.js =====
 // ---------------------------------------------------------------------------------------
 // core/test-hook: test pages set window.__SAVVY_TEST__ before loading the bundle to reach
@@ -3713,7 +4155,7 @@ if (window.__SAVVY_TEST__) {
     duration, since, relativeTime, axisLabel, momentLabel, fmtNumber, withUnit, isTimestamp,
     fetchHistory, fetchRange, fetchAttributeHistory, resample, seriesStats, stateRuns, numericPoints, linePath,
     Sheet, EntityListSheet, SavvyEditor, defineEditor, S, version: SAVVY_VERSION,
-    roomBadges, roomTemperature, areaLights, houseLights, housePlaying, houseTemperature, houseSecurity, ignoring, sortRows, RowKit, SideBar, Seg, Stepper, LockTrack, ROW_KINDS, modeInfo, legacyBadges, chipState, portalRoot,
+    SettingsStore, SETTINGS_RULES, resolveSettings, findSettingsCards, normalizeSettings, countDefaults, dashboardPath, SavvyCard, roomBadges, roomTemperature, areaLights, houseLights, housePlaying, houseTemperature, houseSecurity, ignoring, sortRows, RowKit, SideBar, Seg, Stepper, LockTrack, ROW_KINDS, modeInfo, legacyBadges, chipState, portalRoot,
   };
 }
 
@@ -13039,6 +13481,197 @@ const EDITOR = defineEditor("savvy-section-title-card", (hass, c) => [
 
 registerCard("savvy-section-title-card", SavvySectionTitleCard, "Section title",
   "A title for a section of a dashboard: plain text, or a room's name with its control, temperature and live status badges.");
+})();
+
+// ===== cards/settings.js =====
+(() => {
+// savvy-settings-card: the defaults every Savvy card on the dashboard shares. Place it once, on any
+// page; the other cards find it by reading the dashboard's config, so they pick it up whichever
+// page they are on. A card's own options always win; then the room's; then these; then
+// auto-discovery. In view mode it is a small status card: how many defaults, how many cards
+// on this page use them.
+//
+//   type: custom:savvy-settings-card
+//   pages:  { home, lights, climate, media, security, health, room: /lovelace/{slug} }
+//   house:  { control, weather, security, tap: list | navigate }
+//   health: { watchman, battery_threshold, warn_above, exclude_platforms, group_by, group_min, watchman_last_run }
+//   ignore: { entities: [], areas: [] }
+//   rooms:  { living_room: { name, icon, page, control, light_state, temperature, humidity, include, exclude } }
+//   layout: full | compact
+
+const STYLE = `${BASE_CSS}
+  ha-card { display: flex; align-items: center; gap: 12px; padding: var(--pad); }
+  :host([compact]) ha-card { padding: 10px 14px; gap: 10px; }
+  .disc { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px;
+    background: var(--well); color: var(--secondary-text-color); }
+  :host([compact]) .disc { width: 28px; height: 28px; border-radius: 9px; }
+  .disc ha-icon { --mdc-icon-size: 20px; display: flex; }
+  :host([compact]) .disc ha-icon { --mdc-icon-size: 16px; }
+  .disc[data-warn] { background: color-mix(in oklab, var(--lvl-warn, #E0A030) 18%, transparent); color: var(--lvl-warn, #E0A030); }
+  .col { min-width: 0; display: flex; flex-direction: column; }
+  .name { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sub { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); overflow-wrap: anywhere; }
+  .sub[data-warn] { color: var(--lvl-warn, #E0A030); }
+  :host([compact]) .col { flex-direction: row; align-items: baseline; gap: 10px; flex: 1; }
+  :host([compact]) .name { flex: none; font-size: 13.5px; }
+  :host([compact]) .sub { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+`;
+
+class SavvySettingsCard extends SavvyCard {
+  static getStubConfig() { return { pages: {}, house: {}, rooms: {} }; }
+  static getConfigElement() { return document.createElement(SETTINGS_EDITOR); }
+
+  setConfig(config) {
+    this._config = { ...config };
+    this._compact = config?.layout === "compact";
+    SettingsStore.publish(this, this._config);
+    this.toggleAttribute("compact", this._compact);
+    if (this._el) this._update();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    SettingsStore.load(hass);
+    if (!this._config) return;
+    if (!this._el) this._build();
+    this._update();
+  }
+
+  connectedCallback() {
+    this._unsub = SettingsStore.subscribe(() => this._update());
+    if (this._config) SettingsStore.publish(this, this._config);
+  }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._unsub?.();
+    this._unsub = null;
+    SettingsStore.unpublish(this);
+  }
+
+  getCardSize() { return 1; }
+  getGridOptions() { return { columns: 12, min_columns: 4, rows: "auto" }; }
+
+  _build() {
+    const root = this.shadowRoot || this.attachShadow({ mode: "open" });
+    root.innerHTML = `<style>${STYLE}</style>
+      <ha-card>
+        <span class="disc" id="disc"><ha-icon icon="mdi:cog-sync-outline"></ha-icon></span>
+        <span class="col"><span class="name">Savvy settings</span><span class="sub" id="sub"></span></span>
+      </ha-card>`;
+    this._el = { card: root.querySelector("ha-card"), disc: root.getElementById("disc"), sub: root.getElementById("sub") };
+  }
+
+  _update() {
+    const el = this._el;
+    if (!el) return;
+    this.toggleAttribute("dark", !!this._hass?.themes?.darkMode);
+    const { defaults, consumers, found } = SettingsStore.stats();
+    const cards = `${consumers} ${consumers === 1 ? "card" : "cards"}`;
+    const many = found > 1;
+    let words = defaults ? `${defaults} ${defaults === 1 ? "default" : "defaults"} · used by ${cards} on this page` : "No defaults set yet";
+    if (many) words = `${found} settings cards found: using the first. ${words}`;
+    attr(el.disc, "data-warn", many);
+    attr(el.sub, "data-warn", many);
+    text(el.sub, words);
+    attr(el.card, "aria-label", `Savvy settings, ${words}`);
+  }
+}
+
+// ---- the editor: sections, and the rooms as a list (the config keeps them as a map by area)
+
+const toRoomList = (rooms) => Object.entries(rooms || {}).map(([area, v]) => ({ area, ...(v && typeof v === "object" ? v : {}) }));
+const fromRoomList = (list) => Object.fromEntries((list || []).filter((i) => i && i.area).map(({ area, ...rest }) => [area, cleanConfig(rest)]));
+const withoutList = (c) => { const { rooms_list, ...rest } = c || {}; return rest; };
+
+class SettingsEditor extends SavvyEditor {
+  get cardType() { return null; }
+
+  setConfig(config) {
+    const same = this._config && JSON.stringify(cleanConfig({ ...config })) === JSON.stringify(withoutList(this._config));
+    if (same) return;
+    this._config = { ...config, rooms_list: toRoomList(config?.rooms) };
+    this._render();
+  }
+
+  _emit(config) {
+    const { rooms_list, ...rest } = config;
+    const out = { ...rest };
+    if (rooms_list) {
+      const map = fromRoomList(rooms_list);
+      if (Object.keys(map).length) out.rooms = map; else delete out.rooms;
+    }
+    super._emit(out);
+    this._config = { ...this._config, rooms_list: rooms_list ?? toRoomList(this._config.rooms) };
+  }
+
+  _render() {
+    super._render();
+    const wrap = this.shadowRoot.querySelector(".sv-ed");
+    if (!wrap) return;
+    const btn = document.createElement("button");
+    btn.className = "sv-prefill";
+    btn.type = "button";
+    btn.textContent = "Add every room";
+    btn.addEventListener("click", () => {
+      const have = new Set((this._config.rooms_list || []).map((i) => i.area));
+      const areas = Object.values(this._hass?.areas || {}).map((a) => a.area_id).filter((id) => id && !have.has(id));
+      if (!areas.length) return;
+      this._emit({ ...this._config, rooms_list: [...(this._config.rooms_list || []), ...areas.map((area) => ({ area }))] });
+      this._render();
+    });
+    wrap.appendChild(btn);
+  }
+
+  schema(hass) {
+    const areaName = (id) => hass?.areas?.[id]?.name || title(id);
+    return [
+      S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact" }]),
+      { type: "expandable", name: "pages", title: "Pages", schema: [
+        S.nav("home", "Home", "Where the home button goes."),
+        S.nav("lights", "Lights page"), S.nav("climate", "Climate page"), S.nav("media", "Media page"), S.nav("security", "Security page"),
+        S.nav("health", "System health page"),
+        S.text("room", "Room pages", "A pattern: /lovelace/{slug} (the room with dashes) or {area} (its id)."),
+      ] },
+      { type: "expandable", name: "house", title: "Home", schema: [
+        S.entity("control", "Control", undefined, { helper: "The house mode: a select opens a picker; a button, scene or switch acts." }),
+        S.entity("weather", "Weather", "weather"),
+        S.entity("security", "Security entity", undefined, { helper: "Shown on the security chip instead of the alarm." }),
+        S.select("tap", "Chip tap", [{ value: "list", label: "Open the list" }, { value: "navigate", label: "Go to its page (hold opens the list)" }]),
+      ] },
+      { type: "expandable", name: "health", title: "Health", schema: [
+        { name: "watchman", label: "Watchman sensors", selector: { entity: { multiple: true, domain: "sensor" } } },
+        S.grid(S.number("battery_threshold", "Battery alert", 1, 100, 1, "%"), S.number("warn_above", "Red threshold", 1, 99)),
+        { name: "exclude_platforms", label: "Ignored integrations", selector: { select: { multiple: true, custom_value: true, options: ["mobile_app"] } } },
+        S.select("group_by", "Grouping", [{ value: "hub", label: "Device, and the hub behind it" }, { value: "device", label: "Device" }, { value: "none", label: "Nothing: one row per entity" }]),
+        S.number("group_min", "Hub threshold", 2, 50),
+        S.entity("watchman_last_run", "Watchman last run", "sensor"),
+      ] },
+      { type: "expandable", name: "ignore", title: "Ignore", schema: [
+        { name: "entities", label: "Ignored entities", helper: "Left out of the home header's counts and popups.", selector: { entity: { multiple: true } } },
+        { name: "areas", label: "Ignored rooms", selector: { area: { multiple: true } } },
+      ] },
+      { name: "rooms_list", label: "Rooms", type: "list", empty: "No rooms yet. Add one, or add every room below.",
+        helper: "Per room: what its cards share. A card's own settings win.",
+        summary: (item, h) => ({ title: item.name || h?.areas?.[item.area]?.name || areaName(item.area), sub: item.area }),
+        add: { selector: { area: {} }, label: "Add a room", make: (area) => ({ area }) },
+        item: [
+          { name: "area", label: "Area", selector: { area: {} } },
+          S.grid(S.text("name", "Name"), S.icon()),
+          S.nav("page", "Target page"),
+          S.entity("control", "Control"),
+          S.entity("light_state", "Light helper", undefined, { helper: "Pinned as the room's Light chip and the lights card's pill." }),
+          S.grid(S.entity("temperature", "Temperature", "sensor"), S.entity("humidity", "Humidity", "sensor")),
+          { name: "include", label: "Include", helper: "Entities to treat as in this room (a lock with no area).", selector: { entity: { multiple: true } } },
+          { name: "exclude", label: "Exclude", selector: { entity: { multiple: true } } },
+        ] },
+    ];
+  }
+}
+const SETTINGS_EDITOR = "savvy-settings-card-editor";
+if (!customElements.get(SETTINGS_EDITOR)) customElements.define(SETTINGS_EDITOR, SettingsEditor);
+
+registerCard("savvy-settings-card", SavvySettingsCard, "settings",
+  "The defaults every Savvy card shares: pages, the house control, health options, what to ignore, and each room's helpers. Set once; any card can still override.");
 })();
 
 // ===== cards/system-health.js =====

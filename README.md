@@ -11,6 +11,7 @@ same way: springs, not transitions; feedback the moment you touch; nothing that 
 
 - [Install](#install)
 - [How every Savvy card behaves](#how-every-savvy-card-behaves)
+- [Savvy settings](#savvy-settings): set your pages and helpers once for every card
 - Cards: [Home header](#home-header) · [Room header](#room-header) · [Section title](#section-title) ·
   [Room tile](#room-tile) · [Room activity](#room-activity) · [System health](#system-health) ·
   [Lights](#lights) · [Climate](#climate) · [Media](#media) · [Camera](#camera) ·
@@ -60,8 +61,106 @@ Then edit a dashboard, add a card, and search for **Savvy**.
   badge per kind, presence and doors always, media, locks, climate, fans, covers,
   windows, leaks and smoke while they're active. `exclude_kinds`, `exclude` and
   `include` fine-tune it. Hold a kind with several members for a list of them.
+- **Set it once.** The pages, helpers and sensors you'd otherwise repeat on every card
+  can live in one [Savvy settings](#savvy-settings) card; any card can still override.
 - **Keyboard:** everything is reachable with Tab and the arrow keys; focus rings only
   appear when you use the keyboard.
+
+---
+
+## Savvy settings
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/settings-light.png">
+  <img src="docs/images/settings-dark.png" width="460" alt="Savvy settings card">
+</picture>
+
+Your pages, your house mode, your health options and each room's helpers are the same on
+every card. Put them in one **Savvy settings** card, placed once on any page of the
+dashboard, and every Savvy card on every page picks them up. A card's own options always
+win, so nothing is ever locked in.
+
+```yaml
+type: custom:savvy-settings-card
+pages:
+  home: /lovelace/home
+  lights: /lovelace/lights
+  health: /lovelace/admin
+  room: /lovelace/{slug}
+house:
+  control: input_select.house_mode
+  tap: navigate
+health:
+  watchman: [sensor.watchman_missing_entities]
+  battery_threshold: 20
+ignore:
+  entities: [light.garden_string]
+rooms:
+  kitchen:
+    control: input_select.kitchen_mode
+    light_state: input_boolean.kitchen_light
+    temperature: sensor.kitchen_temperature
+```
+
+With that on the dashboard, `type: custom:savvy-home-header-card` and
+`type: custom:savvy-section-title-card` with `area: kitchen` need nothing else: the
+header has its control, weather, pages and health options, and the kitchen's title has
+its mode, temperature, pinned light helper and page.
+
+**Which value wins, from first to last:** the card's own option, the room's setting
+(`rooms.<area>`), the global setting, then auto-discovery. Even `false` counts as the
+card's own option, so `control: false` on one card turns it off there. Lists are the one
+exception: a card's `exclude` or `include` adds to the settings' list; set it to `false`
+to leave the settings' list out.
+
+| Section | Option | What it gives |
+|---|---|---|
+| `pages` | `home` `lights` `climate` `media` `security` `health` | The page each home header chip, its health cog and its home button lead to (as the popup's page button, or, with `house.tap: navigate`, as what a tap does). |
+| | `room` | A pattern for room pages: `{slug}` is the room's id with dashes, `{area}` the id. |
+| `house` | `control` | The home header's control chip. |
+| | `weather` | Its weather entity. |
+| | `security` | An entity for the security chip instead of the alarm. |
+| | `tap` | `list` (default): a tap opens the popup. `navigate`: a tap goes to the chip's page, hold opens the popup. A chip with a `hold_action` of its own keeps its tap on the list. |
+| `health` | `watchman` `battery_threshold` `warn_above` `exclude_platforms` `group_by` `group_min` `watchman_last_run` | The same options as [System health](#system-health), for the card and the home header's cog alike. |
+| `ignore` | `entities`, `areas` | Left out of the home header chips' counts and popups, on top of a chip's own `exclude` and `exclude_areas`. |
+| `rooms.<area>` | `name`, `icon`, `page` | The room's title and tile name and icon, and where they lead (else the `room` pattern). |
+| | `control` | The room's control chip. |
+| | `light_state` | The helper pinned as the room's **Light** badge, and the lights card's pill. |
+| | `temperature`, `humidity` | The room's readings for the headers, the tile and the climate card. |
+| | `include`, `exclude` | Entities to treat as in this room, or to leave out of it. |
+
+**What each card takes**
+
+| Card | From the settings |
+|---|---|
+| Home header | `control`, `weather`, home button, each chip's page and `tap`, the security entity, `ignore`, the cog's page and health options |
+| System health | the health options |
+| Room header | the room's `control`, `temperature`, `include`, `exclude` and Light badge; home button and room pages |
+| Section title | the room's `name`, `icon`, `control`, `temperature`, `include`, `exclude`, Light badge and page |
+| Room tile | the room's `name`, `icon`, `control`, `temperature`, light helper (`toggle`, and its Light badge) and page |
+| Lights | the room's light helper as the pill's toggle |
+| Climate | the room's `temperature` and `humidity` |
+| Room activity | the room's `exclude` |
+
+A card works on its own area when it has exactly one. Every card's editor lists what it
+is taking from the settings at the top, under **From Savvy settings**, so nothing is
+hidden.
+
+**How it works.** The cards read the dashboard's own config to find the settings card,
+once per page load, so it can sit on any page and the others still see it. The last
+answer is kept in the browser, so later loads need no wait; it refreshes when the page
+comes back after five minutes. While you edit the settings card, every card on the page
+follows. With more than one settings card on a dashboard, the first is used and the card
+says so. Each dashboard has its own.
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/settings-compact-light.png">
+  <img src="docs/images/settings-compact-dark.png" width="460" alt="Savvy settings card, compact">
+</picture>
+
+| Option | Default | What it does |
+|---|---|---|
+| `layout` | `full` | `compact`: a single row. |
 
 ---
 

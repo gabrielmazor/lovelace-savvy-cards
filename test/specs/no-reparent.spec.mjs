@@ -12,6 +12,7 @@ export default async function ({ browser, base, check }) {
     window.mount("savvy-entity-card", { entity: "person.alex", chips: [{ entity: "switch.living_room_lamp" }, { entity: "sensor.alex_phone_battery" }] }, 420);
     window.mount("savvy-room-activity-card", { area: "living_room" }, 420);
     window.mount("savvy-scene-card", { area: "living_room" }, 420);
+    window.mount("savvy-settings-card", { pages: { lights: "/lovelace/lights" }, rooms: { living_room: { name: "Living" } } }, 420);
     await new Promise((r) => setTimeout(r, 900));
     const out = [];
     for (const c of window.cards) {

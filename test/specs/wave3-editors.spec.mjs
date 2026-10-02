@@ -34,7 +34,7 @@ export default async function ({ browser, base, check }) {
   }
   const stubs = await page.evaluate(async () => {
     const out = {};
-    for (const type of ["savvy-entity-card", "savvy-graph-card", "savvy-room-activity-card", "savvy-media-card", "savvy-camera-card", "savvy-scene-card"]) {
+    for (const type of ["savvy-entity-card", "savvy-graph-card", "savvy-room-activity-card", "savvy-media-card", "savvy-camera-card", "savvy-scene-card", "savvy-settings-card"]) {
       const cfg = customElements.get(type).getStubConfig(window.hass);
       const el = window.mount(type, cfg, 400);
       await new Promise((r) => setTimeout(r, 150));

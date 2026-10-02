@@ -72,6 +72,16 @@ const POPUP_CLIMATE = popupOf(["climate.living_ac", "climate.bedroom_ac", "clima
 add("climate.living_ac", "cool", { friendly_name: "Living Room AC", hvac_modes: ["off", "cool", "heat", "fan_only"], min_temp: 16, max_temp: 30, target_temp_step: 0.5, temperature: 22, current_temperature: 23.4, hvac_action: "cooling", fan_mode: "medium" }, "living_room", 25);
 add("climate.bedroom_ac", "heat", { friendly_name: "Bedroom AC", hvac_modes: ["off", "cool", "heat"], min_temp: 16, max_temp: 30, target_temp_step: 0.5, temperature: 24, current_temperature: 21.8, hvac_action: "idle" }, "bedroom", 50);
 add("climate.office_heater", "off", { friendly_name: "Office Heater", hvac_modes: ["off", "heat"], min_temp: 10, max_temp: 28, temperature: 20, current_temperature: 19.2 }, "office", 400);`);
+// the settings card, with a few cards on the page taking what it holds (hidden, so only it is in the picture)
+const SETTINGS_USERS = `window.__after = () => {
+  const SS = window.__savvy.SettingsStore;
+  for (const [type, cfg] of [["savvy-home-header-card", {}], ["savvy-section-title-card", { area: "kitchen" }], ["savvy-section-title-card", { area: "living_room" }], ["savvy-room-tile", { area: "office" }]]) {
+    window.mount(type, cfg, 300).style.display = "none";
+  }
+  SS._statsSoon();
+};`;
+const SETTINGS_CFG = { pages: { home: "/lovelace/home", lights: "/lovelace/lights", room: "/lovelace/{slug}" }, house: { control: "input_select.house_mode", tap: "navigate" },
+  health: { battery_threshold: 20 }, rooms: { living_room: { control: "input_select.living_room_scene", light_state: "input_boolean.movie_mode" }, kitchen: { name: "Kitchen" } } };
 const SHOTS = [
   ["lights", "savvy-lights-card", { area: "living_room", featured: ["light.living_room_ceiling"], chips: [{ entity: "switch.living_room_plug", name: "Plug" }] }, 520],
   ["lights-compact", "savvy-lights-card", { area: "living_room", layout: "compact" }, 520],
@@ -103,6 +113,8 @@ const SHOTS = [
   ["media", "savvy-media-card", { area: "living_room", presets: [{ entity: "script.good_night", name: "Good night" }] }, 460],
   ["media-compact", "savvy-media-card", { area: "kitchen", layout: "compact" }, 460],
   ["scene", "savvy-scene-card", { area: ["living_room", "office"], entities: [{ entity: "scene.party", icon: "mdi:party-popper", color: "purple" }], strip: "^.*//\\s*|\\s*-\\s*on$" }, 460],
+  ["settings", "savvy-settings-card", SETTINGS_CFG, 460, SETTINGS_USERS],
+  ["settings-compact", "savvy-settings-card", { ...SETTINGS_CFG, layout: "compact" }, 460, SETTINGS_USERS],
   ["camera", "savvy-camera-card", { area: ["living_room", "kitchen"] }, 820, FRIGATE],
 ];
 

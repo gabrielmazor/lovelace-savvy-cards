@@ -42,6 +42,15 @@ const EDITOR_CSS = `
   .sv-add { display: flex; gap: 8px; align-items: center; }
   .sv-add > * { flex: 1; }
   .sv-empty { font-size: 13px; color: var(--secondary-text-color); padding: 4px 2px; }
+  .sv-prefill { align-self: flex-start; padding: 8px 14px; border: 0; border-radius: 10px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+    color: var(--primary-color, #58a6ff); background: color-mix(in oklab, var(--primary-color, #58a6ff) 12%, transparent); }
+  .sv-inherit { border-radius: 12px; padding: 10px 12px; background: color-mix(in oklab, var(--primary-color, #58a6ff) 9%, transparent); }
+  .sv-inherit .h { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--primary-text-color); --mdc-icon-size: 18px; }
+  .sv-inherit .l { display: flex; gap: 6px; font-size: 12.5px; line-height: 18px; color: var(--secondary-text-color); margin-top: 2px; }
+  .sv-inherit .l b { flex: none; font-weight: 600; color: var(--primary-text-color); }
+  .sv-inherit .l span { min-width: 0; overflow-wrap: anywhere; }
+  .sv-inherit .l i { font-style: normal; opacity: 0.7; }
+  .sv-inherit .n { font-size: 11.5px; color: var(--secondary-text-color); margin-top: 6px; }
 `;
 
 // Drop keys the user cleared, so the YAML stays as short as the choices made.
@@ -60,6 +69,39 @@ class SavvyEditor extends HTMLElement {
     super();
     this.attachShadow({ mode: "open" });
     this._open = new Set();
+  }
+  // the card this edits (defineEditor sets it): what the Savvy settings give it is listed at the top
+  get cardType() { return null; }
+  connectedCallback() { this._unsub = SettingsStore.subscribe(() => this._renderInherit()); }
+  disconnectedCallback() { this._unsub?.(); this._unsub = null; }
+  _renderInherit() {
+    const wrap = this.shadowRoot.querySelector(".sv-ed");
+    if (!wrap || !this._config) return;
+    const type = this.cardType;
+    const list = type ? resolveSettings(type, this._config, SettingsStore.settings).inherited : [];
+    let box = wrap.querySelector(".sv-inherit");
+    if (!list.length) { box?.remove(); return; }
+    if (!box) {
+      box = document.createElement("div");
+      box.className = "sv-inherit";
+      box.innerHTML = '<div class="h"><ha-icon icon="mdi:cog-sync-outline"></ha-icon><span>From Savvy settings</span></div><div class="rows"></div><div class="n">Set a value on this card to override it.</div>';
+      wrap.insertBefore(box, wrap.firstChild);
+    }
+    const key = JSON.stringify(list);
+    if (box.__key === key) return;
+    box.__key = key;
+    const rows = box.querySelector(".rows");
+    rows.replaceChildren(...list.map((i) => {
+      const row = document.createElement("div");
+      row.className = "l";
+      const b = document.createElement("b"), v = document.createElement("span"), f = document.createElement("i");
+      b.textContent = i.label;
+      v.textContent = i.value;
+      f.textContent = ` (${i.from})`;
+      v.appendChild(f);
+      row.append(b, v);
+      return row;
+    }));
   }
   // HA answers every config-changed with setConfig. When that's our own change coming
   // back, nothing is rebuilt: rebuilding replaces the field being typed in, and the cursor
@@ -161,8 +203,12 @@ class SavvyEditor extends HTMLElement {
       }
       nodes.push(node);
     });
-    for (const n of [...wrap.children]) if (!nodes.includes(n)) n.remove();
+    const keep = wrap.querySelector(".sv-inherit");
+    for (const n of [...wrap.children]) if (!nodes.includes(n) && n !== keep) n.remove();
     nodes.forEach((n) => wrap.appendChild(n));
+    this._renderInherit();
+    const box = wrap.querySelector(".sv-inherit");
+    if (box && wrap.firstChild !== box) wrap.insertBefore(box, wrap.firstChild);
   }
 }
 
@@ -287,7 +333,10 @@ if (!customElements.get("savvy-list-editor")) customElements.define("savvy-list-
 const defineEditor = (type, schemaFn) => {
   const name = `${type}-editor`;
   if (!customElements.get(name)) {
-    customElements.define(name, class extends SavvyEditor { schema(hass, config) { return schemaFn(hass, config); } });
+    customElements.define(name, class extends SavvyEditor {
+      get cardType() { return type; }
+      schema(hass, config) { return schemaFn(hass, config); }
+    });
   }
   return name;
 };

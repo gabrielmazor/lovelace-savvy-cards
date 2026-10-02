@@ -218,6 +218,7 @@ const BASE_CSS = `
 // Registers a card for HA's card picker. Every Savvy card goes through this so the
 // picker shows them together, with previews.
 const registerCard = (type, cls, name, description) => {
+  wireSettings(type, cls);       // fills in what the dashboard's Savvy settings supply (core/settings)
   if (!customElements.get(type)) customElements.define(type, cls);
   window.customCards = window.customCards || [];
   if (!window.customCards.some((c) => c.type === type)) {
