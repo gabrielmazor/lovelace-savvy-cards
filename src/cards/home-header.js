@@ -96,7 +96,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
             <span class="swap" id="swap"><ha-icon id="pillIcon"></ha-icon><span class="col"><span class="val" id="val"></span><span class="pre" id="pre"></span></span></span>
           </button>
           <span class="spacer" id="spacer"></span>
-          <button class="wx" id="weather" hidden><ha-state-icon id="wicon"></ha-state-icon><span class="deg" id="wtemp"></span></button>
+          <button class="wx" id="weather" hidden><savvy-state-icon id="wicon"></savvy-state-icon><span class="deg" id="wtemp"></span></button>
           <button class="glyph" id="health" aria-label="System health" hidden><ha-icon icon="mdi:cog"></ha-icon><span class="count" id="count" hidden></span></button>
         </div>
         <div class="chips" id="chips"></div>

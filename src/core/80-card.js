@@ -166,7 +166,7 @@ const HEADER_CSS = `
   /* a readout, not a panel */
   .wx { flex: none; display: flex; align-items: center; gap: 5px; height: 44px; padding: 0 12px 0 10px; border-radius: 13px;
     background: var(--well); color: var(--secondary-text-color); }
-  .wx ha-icon, .wx ha-state-icon { --mdc-icon-size: 19px; display: flex; }
+  .wx ha-icon, .wx savvy-state-icon { --mdc-icon-size: 19px; display: flex; }
   .wx .deg { font-size: 13.5px; line-height: 17px; font-weight: 650; letter-spacing: -0.012em; color: var(--primary-text-color); }
   :host([kbd]) :focus-visible { outline-color: color-mix(in oklab, var(--mode) 80%, var(--primary-text-color)); }
 `;
@@ -183,7 +183,7 @@ const CHIP_ROW_CSS = `
   .chip .body { display: flex; align-items: center; gap: 9px; }
   .chip .disc { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%;
     background: color-mix(in oklab, var(--tc) 18%, transparent); color: var(--tc); }
-  .chip .disc ha-icon, .chip .disc ha-state-icon { --mdc-icon-size: 17px; display: flex; }
+  .chip .disc ha-icon, .chip .disc savvy-state-icon { --mdc-icon-size: 17px; display: flex; }
   .chip .col { display: flex; flex-direction: column; }
   .chip .v { font-size: 12.5px; line-height: 16px; font-weight: 650; letter-spacing: -0.01em; white-space: nowrap; }
   .chip .k { font-size: 10.5px; line-height: 13px; font-weight: 500; letter-spacing: 0.012em; color: var(--secondary-text-color); white-space: nowrap; }
@@ -212,7 +212,7 @@ SavvyCard.prototype._chipRow = function (row, items, { iconOnly = false } = {}) 
       node = document.createElement("button");
       node.className = "chip";
       node.__state = wantState;
-      node.innerHTML = `<span class="body"><span class="disc">${wantState ? "<ha-state-icon></ha-state-icon>" : "<ha-icon></ha-icon>"}</span>
+      node.innerHTML = `<span class="body"><span class="disc">${wantState ? "<savvy-state-icon></savvy-state-icon>" : "<ha-icon></ha-icon>"}</span>
         <span class="col"><span class="v"></span><span class="k"></span></span></span>`;
       node.__icon = node.querySelector(".disc > *");
       node.__item = item;     // bindActions reads it while wiring

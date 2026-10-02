@@ -174,7 +174,7 @@ ha-card {
   content: ""; position: absolute; inset: 0; z-index: 9; border-radius: inherit; corner-shape: inherit;
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05); pointer-events: none;
 }
-ha-icon, ha-state-icon { display: flex; align-items: center; justify-content: center; line-height: 0; }
+ha-icon, savvy-state-icon { display: flex; align-items: center; justify-content: center; line-height: 0; }
 
 .cap { font-size: 11px; line-height: 13px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); }
 .sec { display: flex; flex-direction: column; gap: 8px; }

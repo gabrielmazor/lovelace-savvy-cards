@@ -98,8 +98,8 @@ export default async function ({ browser, base, check }) {
       && (await rowH(page, "media_player.pr_tv")) <= 54, JSON.stringify([await labels(page, "media_player.pr_tv", ".sv-act"), await rowH(page, "media_player.pr_tv")]));
     await expand(page, "media_player.pr_tv");
     const tvBtns = await labels(page, "media_player.pr_tv", ".sv-ctl");
-    check(`${tag} opened: power, previous, next, mute; a volume bar with - and +, all on one extra line`,
-      JSON.stringify(tvBtns) === JSON.stringify(["Power", "Previous", "Next", "Mute", "Volume down", "Volume up"].filter((l) => width >= 380 || !/Volume (down|up)/.test(l))) || JSON.stringify(tvBtns) === JSON.stringify(["Power", "Previous", "Next", "Mute", "Volume down", "Volume up"]), JSON.stringify(tvBtns));
+    check(`${tag} opened: previous, next, mute; a volume bar with - and +, then power last, all on one extra line`,
+      JSON.stringify(tvBtns) === JSON.stringify(["Previous", "Next", "Mute", "Volume down", "Volume up", "Power"].filter((l) => width >= 380 || !/Volume (down|up)/.test(l))) || JSON.stringify(tvBtns) === JSON.stringify(["Previous", "Next", "Mute", "Volume down", "Volume up", "Power"]), JSON.stringify(tvBtns));
     const oneLine = await q(page, "media_player.pr_tv", ".sv-ctl-media", (e) => { const mids = [...e[0].children].filter((k) => k.offsetParent !== null).map((k) => { const r = k.getBoundingClientRect(); return r.top + r.height / 2; }); return Math.max(...mids) - Math.min(...mids) < 2; });
     check(`${tag} ...and it really is one line`, oneLine);
     check(`${tag} the row says what is playing`, /A Show · Someone/.test(await q(page, "media_player.pr_tv", ".sv-sub", (e) => e[0].textContent)));
@@ -189,15 +189,15 @@ export default async function ({ browser, base, check }) {
     check(`${tag} the stepper stops at the unit's minimum`, await q(page, "climate.pr_ac", ".sv-act .sv-step .sv-btn", (els) => els[0].hasAttribute("disabled") && !els[1].hasAttribute("disabled")));
     await expand(page, "climate.pr_ac");
     const segs = await q(page, "climate.pr_ac", ".sv-ctl .sv-seg-b", (els) => els.map((e) => `${e.textContent}${e.hasAttribute("data-on") ? "*" : ""}`));
-    check(`${tag} opened: Off, Cool, Heat and what else it has, the current mode marked`, JSON.stringify(segs) === JSON.stringify(["Off", "Cool*", "Heat", "Auto"]), JSON.stringify(segs));
+    check(`${tag} opened: Cool, Heat and what else it has, then Off last, the current mode marked`, JSON.stringify(segs) === JSON.stringify(["Cool*", "Heat", "Auto", "Off"]), JSON.stringify(segs));
     await clear(page);
-    await click(page, "climate.pr_ac", ".sv-ctl .sv-seg-b", 2);
     await click(page, "climate.pr_ac", ".sv-ctl .sv-seg-b", 1);
+    await click(page, "climate.pr_ac", ".sv-ctl .sv-seg-b", 0);
     check(`${tag} a mode button sets the mode; the current one does nothing`, JSON.stringify(await log(page)) === JSON.stringify(['climate.set_hvac_mode {"hvac_mode":"heat"} climate.pr_ac']), JSON.stringify(await log(page)));
     const heaterAct = await labels(page, "climate.pr_heater", ".sv-act");
     await expand(page, "climate.pr_heater");
     const heaterSegs = await q(page, "climate.pr_heater", ".sv-ctl .sv-seg-b", (els) => els.map((e) => e.textContent));
-    check(`${tag} a unit that is off: a power button instead of the stepper; two modes shows two`, JSON.stringify(heaterAct) === JSON.stringify(["Turn on"]) && (await visible(page, "climate.pr_heater", ".sv-act .sv-step")) === 0 && JSON.stringify(heaterSegs) === JSON.stringify(["Off", "Heat"]), JSON.stringify([heaterAct, heaterSegs]));
+    check(`${tag} a unit that is off: a power button instead of the stepper; two modes shows two`, JSON.stringify(heaterAct) === JSON.stringify(["Turn on"]) && (await visible(page, "climate.pr_heater", ".sv-act .sv-step")) === 0 && JSON.stringify(heaterSegs) === JSON.stringify(["Heat", "Off"]), JSON.stringify([heaterAct, heaterSegs]));
     await clear(page);
     await click(page, "climate.pr_heater", ".sv-act .sv-btn[aria-label='Turn on']");
     check(`${tag} the power button turns it on in its first mode`, JSON.stringify(await log(page)) === JSON.stringify(['climate.set_hvac_mode {"hvac_mode":"heat"} climate.pr_heater']), JSON.stringify(await log(page)));

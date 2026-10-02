@@ -113,7 +113,7 @@ const STYLE = `${BASE_CSS}
   .chip::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: color-mix(in oklab, var(--bc) 22%, transparent); opacity: 0; }
   .badge[data-critical] .chip::before { opacity: var(--on, 0); }
   :host([kbd]) .badge:focus-visible .chip { box-shadow: 0 0 0 2px rgb(var(--tint)); }
-  .chip ha-icon, .chip ha-state-icon { --mdc-icon-size: 18px; position: relative; display: flex; }
+  .chip ha-icon, .chip savvy-state-icon { --mdc-icon-size: 18px; position: relative; display: flex; }
   .halo { position: absolute; top: 50%; inset-inline-start: calc(var(--chip) / 2); width: 60px; height: 60px; margin: -30px 0 0 -30px;
     border-radius: 50%; pointer-events: none; opacity: 0; background: radial-gradient(closest-side, color-mix(in oklab, var(--bc) 42%, transparent), transparent); }
   @media (prefers-contrast: more) { .temp { color: var(--primary-text-color); } }
@@ -446,9 +446,9 @@ class SavvyRoomTile extends SavvyCard {
         const node = document.createElement("span");
         node.className = "badge";
         node.setAttribute("role", "button");
-        node.innerHTML = `<span class="halo"></span><span class="chip">${look.icon ? "<ha-icon></ha-icon>" : "<ha-state-icon></ha-state-icon>"}</span>`;
+        node.innerHTML = `<span class="halo"></span><span class="chip">${look.icon ? "<ha-icon></ha-icon>" : "<savvy-state-icon></savvy-state-icon>"}</span>`;
         const group = `badge:${b.key}`;
-        item = { el: node, chip: node.querySelector(".chip"), halo: node.querySelector(".halo"), icon: node.querySelector("ha-icon, ha-state-icon"),
+        item = { el: node, chip: node.querySelector(".chip"), halo: node.querySelector(".halo"), icon: node.querySelector("ha-icon, savvy-state-icon"),
           shown: this._spring(0, MOTION.ui, group, 0.002), on: this._spring(0, MOTION.ui, group, 0.002),
           glow: this._spring(0, TILE_MOTION.halo, group), press: this._spring(0, MOTION.press, group), b };
         // a badge tap is its own: it never also taps the card

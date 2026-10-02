@@ -44,7 +44,7 @@ const STYLE = `${BASE_CSS}
     padding: 10px; border-radius: calc(var(--radius) * 0.6); background: var(--well); text-align: start; transform-origin: 50% 50%; cursor: pointer; }
   .tile[data-missing], .tile[data-unavailable] { opacity: 0.55; }
   .tile .top { display: flex; align-items: center; gap: 6px; min-width: 0; }
-  .tile .top ha-icon, .tile .top ha-state-icon { --mdc-icon-size: 16px; display: flex; flex: none; color: var(--tile-lvl, var(--secondary-text-color)); }
+  .tile .top ha-icon, .tile .top savvy-state-icon { --mdc-icon-size: 16px; display: flex; flex: none; color: var(--tile-lvl, var(--secondary-text-color)); }
   .tile .cap { min-width: 0; flex: 1; font-size: 13px; line-height: 16px; font-weight: 600; letter-spacing: -0.006em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tile .val { display: flex; align-items: baseline; gap: 3px; min-width: 0; font-size: 14px; line-height: 17px; font-weight: 650; letter-spacing: -0.012em; }
   .tile .val .u { font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: -0.003em; color: var(--secondary-text-color); }
@@ -324,7 +324,7 @@ class SavvyGraphCard extends SavvyCard {
     const wantState = !item.icon && !item.attribute && !!st;
     if (node.__iconKind !== (wantState ? "state" : "plain")) {
       node.__iconKind = wantState ? "state" : "plain";
-      el.iconSlot.innerHTML = wantState ? "<ha-state-icon></ha-state-icon>" : "<ha-icon></ha-icon>";
+      el.iconSlot.innerHTML = wantState ? "<savvy-state-icon></savvy-state-icon>" : "<ha-icon></ha-icon>";
       el.icon = el.iconSlot.firstElementChild;
     }
     if (wantState) { if (el.icon.stateObj !== st) { el.icon.hass = h; el.icon.stateObj = st; } }

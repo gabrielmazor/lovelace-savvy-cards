@@ -169,7 +169,7 @@ header { display: flex; align-items: center; gap: 10px; min-width: 0; }
   color: var(--secondary-text-color);
 }
 .orb[data-on] { background: rgb(var(--lc, var(--amber)) / 0.22); color: rgb(var(--lc, var(--amber))); }
-.orb ha-icon, .orb ha-state-icon { --mdc-icon-size: 20px; display: flex; }
+.orb ha-icon, .orb savvy-state-icon { --mdc-icon-size: 20px; display: flex; }
 .meta { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .meta .n { font-size: 13.5px; line-height: 17px; font-weight: 600; letter-spacing: -0.01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -196,7 +196,7 @@ header { display: flex; align-items: center; gap: 10px; min-width: 0; }
 /* ---- compact: the light, its name and its state, and nothing else ---- */
 ha-card[data-compact] .light { padding: 8px 10px; border-radius: 13px; }
 ha-card[data-compact] .orb { width: 32px; height: 32px; border-radius: 10px; }
-ha-card[data-compact] .orb ha-icon, ha-card[data-compact] .orb ha-state-icon { --mdc-icon-size: 18px; }
+ha-card[data-compact] .orb ha-icon, ha-card[data-compact] .orb savvy-state-icon { --mdc-icon-size: 18px; }
 ha-card[data-compact] .meta .n { font-size: 13px; line-height: 16px; }
 ha-card[data-compact] .meta .d { font-size: 11px; line-height: 14px; }
 ha-card[data-compact] .grid { gap: 6px; }
@@ -233,7 +233,7 @@ ha-card[data-compact] .grid { gap: 6px; }
   font-size: 13px; line-height: 16px; font-weight: 550; letter-spacing: -0.004em;
   color: var(--secondary-text-color);
 }
-.chip ha-icon, .chip ha-state-icon { --mdc-icon-size: 18px; flex: none; display: flex; color: var(--cc, inherit); }
+.chip ha-icon, .chip savvy-state-icon { --mdc-icon-size: 18px; flex: none; display: flex; color: var(--cc, inherit); }
 .chip span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chip[data-on] { background: color-mix(in oklab, var(--cc) 16%, transparent); color: var(--cc); }
 
@@ -934,7 +934,7 @@ class LightsCard extends HTMLElement {
       node.__entity = id;
       node.innerHTML = `
         <div class="head">
-          <button class="orb"><ha-state-icon></ha-state-icon></button>
+          <button class="orb"><savvy-state-icon></savvy-state-icon></button>
           <button class="meta" style="text-align:start"><span class="n"></span><span class="d"></span></button>
           <button class="swatch" hidden><i></i></button>
           <button class="power" hidden><ha-icon icon="mdi:power"></ha-icon></button>
@@ -964,7 +964,7 @@ class LightsCard extends HTMLElement {
 
     attr(node, "data-unavailable", dead ? "" : null);
     attr(node.querySelector(".orb"), "data-on", on ? "" : null);
-    const icon = node.querySelector("ha-state-icon");
+    const icon = node.querySelector("savvy-state-icon");
     if (icon.stateObj !== st) { icon.hass = h; icon.stateObj = st; }
     text(node.querySelector(".n"), this._stripRoomPrefix(st?.attributes.friendly_name || title(id.split(".")[1]), id));
     text(node.querySelector(".d"), this._subtitle(st, { dead, on }));
@@ -1067,7 +1067,7 @@ class LightsCard extends HTMLElement {
       if (!chip) {
         chip = document.createElement("button");
         chip.className = "chip";
-        chip.innerHTML = `${cfg.icon ? "<ha-icon></ha-icon>" : "<ha-state-icon></ha-state-icon>"}<span></span>`;
+        chip.innerHTML = `${cfg.icon ? "<ha-icon></ha-icon>" : "<savvy-state-icon></savvy-state-icon>"}<span></span>`;
         cache.set(key, chip);
         el.appendChild(chip);
         this._press(chip, () => chip.__act(), () => chip.__hold());
@@ -1079,7 +1079,7 @@ class LightsCard extends HTMLElement {
       put(chip, "--cc", colorOf(cfg.color) || "rgb(var(--amber))");
       attr(chip, "data-on", st && ["on", "home", "open", "playing"].includes(st.state) ? "" : null);
       text(chip.querySelector("span"), cfg.name || st?.attributes.friendly_name || title(String(key).split(".").pop()));
-      const sIcon = chip.querySelector("ha-state-icon");
+      const sIcon = chip.querySelector("savvy-state-icon");
       if (sIcon && sIcon.stateObj !== st) { sIcon.hass = h; sIcon.stateObj = st; }
       const iIcon = chip.querySelector("ha-icon");
       if (iIcon) attr(iIcon, "icon", cfg.icon);

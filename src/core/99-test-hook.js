@@ -9,7 +9,7 @@ if (window.__SAVVY_TEST__) {
     isActive, isOff, runAction, defaultTapAction, toggleEntity, bindPress, bindActions,
     duration, since, relativeTime, axisLabel, momentLabel, fmtNumber, withUnit, isTimestamp,
     fetchHistory, fetchRange, fetchAttributeHistory, resample, seriesStats, stateRuns, numericPoints, linePath,
-    Sheet, EntityListSheet, SavvyEditor, defineEditor, S, version: SAVVY_VERSION,
+    entityIcon, fallbackIcon, NEUTRAL_ICON, offLast, Sheet, EntityListSheet, SavvyEditor, defineEditor, S, version: SAVVY_VERSION,
     SettingsStore, SETTINGS_RULES, resolveSettings, findSettingsCards, normalizeSettings, countDefaults, dashboardPath, SavvyCard, roomBadges, roomTemperature, areaLights, houseLights, housePlaying, houseTemperature, houseSecurity, ignoring, sortRows, RowKit, SideBar, Seg, Stepper, LockTrack, ROW_KINDS, modeInfo, legacyBadges, chipState, portalRoot,
   };
 }

@@ -55,7 +55,7 @@ const STYLE = `${BASE_CSS}
     display: grid; place-items: center; color: var(--secondary-text-color); opacity: 0; }
   .chip::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: color-mix(in oklab, var(--bc) 22%, transparent); opacity: 0; }
   .badge[data-critical] .chip::before { opacity: var(--on, 0); }
-  .chip ha-icon, .chip ha-state-icon { --mdc-icon-size: 19px; position: relative; display: flex; }
+  .chip ha-icon, .chip savvy-state-icon { --mdc-icon-size: 19px; position: relative; display: flex; }
   :host([kbd]) .badge:focus-visible .chip { box-shadow: 0 0 0 2px var(--bc); }
 
   /* the temperature is a reading, so it keeps its number */
@@ -208,8 +208,8 @@ class SavvySectionTitleCard extends SavvyCard {
         const node = document.createElement("span");
         node.className = "badge";
         node.setAttribute("role", "button");
-        node.innerHTML = `<span class="chip">${look.icon ? "<ha-icon></ha-icon>" : "<ha-state-icon></ha-state-icon>"}</span>`;
-        item = { el: node, chip: node.querySelector(".chip"), icon: node.querySelector("ha-icon, ha-state-icon"),
+        node.innerHTML = `<span class="chip">${look.icon ? "<ha-icon></ha-icon>" : "<savvy-state-icon></savvy-state-icon>"}</span>`;
+        item = { el: node, chip: node.querySelector(".chip"), icon: node.querySelector("ha-icon, savvy-state-icon"),
           shown: this._spring(0, MOTION.ui, `badge:${b.key}`, 0.002), on: this._spring(0, MOTION.ui, `badge:${b.key}`, 0.002) };
         item.b = b;
         this._chipActions(node, () => ({ config: item.b.cfg, entity: item.b.entity,

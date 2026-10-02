@@ -230,7 +230,7 @@ class SavvySceneCard extends SavvyCard {
       const wantState = !item.icon && !!st;
       if (node.__iconKind !== (wantState ? "state" : "plain")) {
         node.__iconKind = wantState ? "state" : "plain";
-        node.__ic.innerHTML = wantState ? "<ha-state-icon></ha-state-icon>" : "<ha-icon></ha-icon>";
+        node.__ic.innerHTML = wantState ? "<savvy-state-icon></savvy-state-icon>" : "<ha-icon></ha-icon>";
       }
       const ic = node.__ic.firstElementChild;
       if (wantState) { if (ic.stateObj !== st) { ic.hass = h; ic.stateObj = st; } }

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.7.3
+
+- **Icons**: no entity ever shows a bookmark again. Home Assistant's state icon falls back to
+  one when it can't work out an icon (custom integrations, late-loading translations,
+  domains it doesn't know). Every Savvy card now picks the icon itself: the entity's own
+  `icon`, then its registry icon, then a built-in table by domain, device class and state
+  (doors open and closed, batteries by level, locks, covers, weather, and so on), and a
+  question mark for a domain nobody knows. This covers the popups and every card that shows
+  an entity.
+- **Power is always the last control.** In the media card (full and compact) a power
+  button that was built before the transport, because the player only reported power at first,
+  sat leftmost; the order is now fixed: previous, play, next, power. The popups follow the same
+  rule (the media row's extra line, the climate row), and a list of modes puts Off last (your own
+  `hvac_modes` keeps your order). In right-to-left languages it ends up on the left.
+
 ## 0.7.2
 
 One order for your rooms.

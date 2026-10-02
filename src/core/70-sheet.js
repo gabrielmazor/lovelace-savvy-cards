@@ -392,7 +392,7 @@ class EntityListSheet {
     const fan = d === "climate";
     row.innerHTML = `<div class="sv-line1">
         <div class="sv-main" role="button" tabindex="0">
-          <span class="sv-ic">${fan ? '<ha-icon icon="mdi:fan"></ha-icon>' : "<ha-state-icon></ha-state-icon>"}</span>
+          <span class="sv-ic">${fan ? '<ha-icon icon="mdi:fan"></ha-icon>' : "<savvy-state-icon></savvy-state-icon>"}</span>
           <span class="sv-txt"><span class="sv-name"></span><span class="sv-sub"></span></span>
         </div>
         <span class="sv-val"></span>

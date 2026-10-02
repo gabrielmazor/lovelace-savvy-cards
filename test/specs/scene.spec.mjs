@@ -28,7 +28,7 @@ export default async function ({ browser, base, check }) {
         const R = el.shadowRoot, tiles = [...R.querySelectorAll(".tile")];
         return {
           labels: tiles.map((t) => t.querySelector(".nm").textContent),
-          icons: tiles.map((t) => t.querySelector("ha-icon")?.getAttribute("icon") || (t.querySelector("ha-state-icon") ? "state" : null)),
+          icons: tiles.map((t) => t.querySelector("ha-icon")?.getAttribute("icon") || null),
           colors: tiles.map((t) => t.style.getPropertyValue("--tc")),
           lefts: [...new Set(tiles.map((t) => Math.round(t.getBoundingClientRect().left)))].length,
           tops: [...new Set(tiles.map((t) => Math.round(t.getBoundingClientRect().top)))].length,
@@ -46,7 +46,7 @@ export default async function ({ browser, base, check }) {
     const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     check(`${tag} the area's scenes, the area's name off the front, by name; hidden ones left out`,
       same(r[0].labels, ["Focus - On", "Relax", "Work - On"]), JSON.stringify(r[0].labels));
-    check(`${tag} a scene with its own icon shows it; the rest their state icon`, r[0].icons.every((i) => i === "state"), JSON.stringify(r[0].icons));
+    check(`${tag} a scene with its own icon shows it; the rest the scene icon`, JSON.stringify(r[0].icons) === JSON.stringify(["mdi:target", "mdi:palette", "mdi:palette"]), JSON.stringify(r[0].icons));
     check(`${tag} strip: the regex is taken out (any case, every match), then the area's name`,
       same(r[1].labels, ["Focus", "Relax", "Work"]), JSON.stringify(r[1].labels));
     check(`${tag} pinned first and in order, named as written, with their own icon and colour; the area's after`,

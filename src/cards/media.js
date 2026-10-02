@@ -101,7 +101,7 @@ const STYLE = `${BASE_CSS}
   .pills { display: flex; flex-wrap: wrap; gap: 8px; }
   .pill { display: inline-flex; align-items: center; gap: 7px; min-width: 0; height: 34px; padding: 0 12px; border-radius: 12px; background: var(--well);
     font-size: 13px; line-height: 16px; font-weight: 550; letter-spacing: -0.004em; color: var(--secondary-text-color); }
-  .pill ha-icon, .pill ha-state-icon { --mdc-icon-size: 18px; flex: none; display: flex; color: var(--cc, inherit); }
+  .pill ha-icon, .pill savvy-state-icon { --mdc-icon-size: 18px; flex: none; display: flex; color: var(--cc, inherit); }
   .pill span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pill[data-on] { background: color-mix(in oklab, var(--cc) 16%, transparent); color: var(--cc); }
   /* compact: one row, a thumbnail of what's playing, its transport, the room's volume */
@@ -673,6 +673,9 @@ class SavvyMediaCard extends SavvyCard {
       attr(btn, "disabled", !(on || b.key === "power"));
       attr(btn.querySelector("ha-icon"), "icon", b.icon);
     }
+    // the DOM order is fixed, whichever button was built first: power is always the last
+    let at = 0;
+    for (const key of ["prev", "play", "next", "power"]) { const node = parent.__rows?.get(key); if (node) place(parent, node, at++); }
     const keys = new Set(want.map((b) => b.key));
     for (const [key, node] of parent.__rows || []) node.hidden = !keys.has(key);
     parent.hidden = !want.length;
@@ -822,7 +825,7 @@ class SavvyMediaCard extends SavvyCard {
         if (cfg.entity && !st && !cfg.navigation_path) continue;
         const key = cfg.entity || cfg.navigation_path || cfg.name;
         keys.add(key);
-        const chip = this._rowOf(parent, key, "button", "pill", `${cfg.icon ? "<ha-icon></ha-icon>" : "<ha-state-icon></ha-state-icon>"}<span></span>`);
+        const chip = this._rowOf(parent, key, "button", "pill", `${cfg.icon ? "<ha-icon></ha-icon>" : "<savvy-state-icon></savvy-state-icon>"}<span></span>`);
         if (!chip.__wired) {
           chip.__wired = true;
           this._pressable(chip, { onTap: () => this._runChip(chip.__cfg, "tap"), onHold: () => this._runChip(chip.__cfg, "hold"), haptic: null }, 0.08);
@@ -831,7 +834,7 @@ class SavvyMediaCard extends SavvyCard {
         put(chip, "--cc", colorOf(cfg.color) || "rgb(var(--accent))");
         attr(chip, "data-on", !!st && ["on", "playing", "home", "open"].includes(st.state));
         text(chip.querySelector("span"), cfg.name || st?.attributes.friendly_name || title(String(key).split(".").pop()));
-        const sIcon = chip.querySelector("ha-state-icon");
+        const sIcon = chip.querySelector("savvy-state-icon");
         if (sIcon && sIcon.stateObj !== st) { sIcon.hass = h; sIcon.stateObj = st; }
         const iIcon = chip.querySelector("ha-icon");
         if (iIcon) attr(iIcon, "icon", cfg.icon);

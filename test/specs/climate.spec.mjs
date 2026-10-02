@@ -48,7 +48,7 @@ export default async function ({ browser, base, check }) {
 
     // gestures
     const calls = async (fn) => { await page.evaluate(() => { window.log.length = 0; }); await fn(); await page.waitForTimeout(500); return page.evaluate(() => [...window.log]); };
-    const heat = await calls(async () => { const p = await page.evaluate(() => { const s = [...window.cards[0].shadowRoot.querySelectorAll(".modes .seg")][2].getBoundingClientRect(); return { x: s.x + s.width / 2, y: s.y + s.height / 2 }; }); await page.mouse.click(p.x, p.y); });
+    const heat = await calls(async () => { const p = await page.evaluate(() => { const s = [...window.cards[0].shadowRoot.querySelectorAll(".modes .seg")][1].getBoundingClientRect(); return { x: s.x + s.width / 2, y: s.y + s.height / 2 }; }); await page.mouse.click(p.x, p.y); });
     check(`${tag} a mode segment sets the mode`, heat.some((c) => c.startsWith("climate.set_hvac_mode") && c.includes('"heat"')), heat.join(" | "));
     const drag = await calls(async () => {
       const b = await centerOf(page, 0, "#slider");

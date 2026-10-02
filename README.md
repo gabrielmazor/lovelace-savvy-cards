@@ -45,6 +45,13 @@ Then edit a dashboard, add a card, and search for **Savvy**.
 - **Sliders only move when you drag sideways.** A tap, or a finger on its way to
   scrolling the page, never changes a value.
 - **`layout: compact`** gives the smaller version of a card.
+- **Power is always last.** Wherever a power button shares a line with other controls (the media
+  transport, a popup row's extra line, a unit's modes, a light's buttons), it is the last one, at the
+  end of the line (the left in right-to-left languages), so it is always in the same place. On a list of
+  modes, Off comes last too, unless you list `hvac_modes` yourself.
+- **Icons never fall back to a bookmark.** An entity's own icon wins, then the one in its registry
+  entry, then a built-in table by domain, device class and state; Home Assistant's own state icon
+  is never asked, so nothing shows its bookmark placeholder.
 - **Control.** `control:` puts one entity of your choosing on the header cards as a chip,
   and what a tap does follows what it is. A `select` or `input_select` (a house mode, a
   room's scenes) opens a picker of every option; a `button`, `script` or `scene` runs; a

@@ -206,7 +206,7 @@ const STYLE = `
     flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
     padding: 9px 10px; border-radius: 14px; background: var(--well);
   }
-  .stat ha-icon, .stat ha-state-icon { --mdc-icon-size: 20px; flex: none; display: flex; color: var(--sc, var(--secondary-text-color)); }
+  .stat ha-icon, .stat savvy-state-icon { --mdc-icon-size: 20px; flex: none; display: flex; color: var(--sc, var(--secondary-text-color)); }
   .stat .col { min-width: 0; display: flex; flex-direction: column; }
   .stat .v { font-size: 14px; line-height: 17px; font-weight: 600; letter-spacing: -0.012em;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -257,7 +257,7 @@ const STYLE = `
     font-size: 13px; line-height: 16px; font-weight: 550; letter-spacing: -0.004em;
     color: var(--secondary-text-color);
   }
-  .act ha-icon, .act ha-state-icon { --mdc-icon-size: 18px; flex: none; display: flex; color: var(--ac, inherit); }
+  .act ha-icon, .act savvy-state-icon { --mdc-icon-size: 18px; flex: none; display: flex; color: var(--ac, inherit); }
   .act span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .act[data-on] { background: color-mix(in oklab, var(--ac) 16%, transparent); color: var(--ac); }
 
@@ -969,7 +969,7 @@ class ClimateCard extends HTMLElement {
     this._min = Number.isFinite(a.min_temp) ? a.min_temp : 16;
     this._max = Number.isFinite(a.max_temp) ? a.max_temp : 30;
     this._step = Number(a.target_temp_step) || (this._unit.includes("F") ? 1 : 0.5);
-    this._modes = (c.hvac_modes || a.hvac_modes || ["off"]).filter((m) => m);
+    this._modes = (c.hvac_modes || (a.hvac_modes ? offLast(a.hvac_modes) : ["off"])).filter((m) => m);
     if (st && st.state !== "off" && st.state !== "unavailable") this._lastOn = st.state;
 
     const dead = !st || st.state === "unavailable" || st.state === "unknown";
@@ -1079,7 +1079,7 @@ class ClimateCard extends HTMLElement {
     }
     for (const s of want) {
       const item = this._rowOf(el, s.key, "stat",
-        `${s.weather ? "<ha-state-icon></ha-state-icon>" : `<ha-icon icon="${s.icon}"></ha-icon>`}
+        `${s.weather ? "<savvy-state-icon></savvy-state-icon>" : `<ha-icon icon="${s.icon}"></ha-icon>`}
          <span class="col"><span class="v"></span><span class="k"></span></span>`);
       if (!item.__wired) {
         item.__wired = true;
@@ -1090,7 +1090,7 @@ class ClimateCard extends HTMLElement {
       text(item.querySelector(".v"), s.v);
       text(item.querySelector(".k"), s.k);
       if (s.weather) {
-        const icon = item.querySelector("ha-state-icon");
+        const icon = item.querySelector("savvy-state-icon");
         if (icon.stateObj !== s.weather) { icon.hass = h; icon.stateObj = s.weather; }
       }
     }
@@ -1230,7 +1230,7 @@ class ClimateCard extends HTMLElement {
     }
     for (const it of items) {
       const act = this._rowOf(el, it.key, "act",
-        `${it.icon ? `<ha-icon icon="${it.icon}"></ha-icon>` : "<ha-state-icon></ha-state-icon>"}<span></span>`);
+        `${it.icon ? `<ha-icon icon="${it.icon}"></ha-icon>` : "<savvy-state-icon></savvy-state-icon>"}<span></span>`);
       if (!act.__wired) {
         act.__wired = true;
         this._pressable(act, new Spring(0, MOTION.press, "x"), () => act.__tap(), () => act.__hold());
@@ -1239,7 +1239,7 @@ class ClimateCard extends HTMLElement {
       put(act, "--ac", it.color);
       attr(act, "data-on", it.on ? "" : null);
       text(act.querySelector("span"), it.label);
-      const icon = act.querySelector("ha-state-icon");
+      const icon = act.querySelector("savvy-state-icon");
       if (icon && icon.stateObj !== it.state) { icon.hass = h; icon.stateObj = it.state; }
     }
     const keys = new Set(items.map((i) => i.key));

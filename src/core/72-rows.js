@@ -32,7 +32,7 @@ ROW_KINDS.media_player = {
       const s = ctx.hass().states[ctx.id]?.state;
       call(ctx, "media_player", s === "idle" ? "media_play" : "media_play_pause");
     } });
-    main.append(mainPower, play);
+    main.append(play, mainPower);
     const extra = div("sv-xline sv-ctl-media");
     const power = iconButton(kit, { icon: "mdi:power", label: "Power", onTap: powerTap });
     const prev = iconButton(kit, { icon: "mdi:skip-previous", label: "Previous", onTap: () => call(ctx, "media_player", "media_previous_track") });
@@ -48,7 +48,7 @@ ROW_KINDS.media_player = {
     pct.className = "sv-pct";
     const vol = div("sv-volg");
     vol.append(down, bar.el, up, pct);
-    extra.append(power, prev, next, mute, vol);
+    extra.append(prev, next, mute, vol, power);
     let first = true;
     return {
       main, extra,
@@ -86,6 +86,8 @@ ROW_KINDS.media_player = {
 };
 
 // ---- climate: a - target + stepper on the line (power when off); the modes on the extra line
+// Off is a power control, so it comes last in a list of modes
+const offLast = (modes) => [...modes.filter((m) => m !== "off"), ...modes.filter((m) => m === "off")];
 const HVAC_ORDER = ["off", "cool", "heat", "heat_cool", "auto", "dry", "fan_only"];
 const HVAC_LOOK = {
   off: ["Off", "mdi:power"], cool: ["Cool", "mdi:snowflake"], heat: ["Heat", "mdi:fire"], heat_cool: ["Heat/Cool", "mdi:sun-snowflake-variant"],
@@ -102,7 +104,7 @@ ROW_KINDS.climate = {
       if (m) call(ctx, "climate", "set_hvac_mode", { hvac_mode: m });
     } });
     const step = new Stepper(kit, { label: "Target temperature", compact: true, onChange: (v) => call(ctx, "climate", "set_temperature", { temperature: v }) });
-    main.append(power, step.el);
+    main.append(step.el, power);
     const extra = div("sv-xline sv-ctl-climate");
     let seg = null, segKey = "";
     return {
@@ -120,7 +122,7 @@ ROW_KINDS.climate = {
         }
         const have = a.hvac_modes || [];
         // Off, Cool and Heat first, then whatever else the unit has, while there's room for it
-        const modes = HVAC_ORDER.filter((m) => have.includes(m)).slice(0, 4);
+        const modes = offLast(HVAC_ORDER.filter((m) => have.includes(m)).slice(0, 4));
         const key = modes.join();
         if (key !== segKey) {
           seg?.el.remove();

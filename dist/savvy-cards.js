@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.7.2 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.7.3 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.7.2";
+const SAVVY_VERSION = "0.7.3";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -1275,6 +1275,174 @@ function modeLook(option, overrides = {}) {
   };
 }
 
+// ===== core/55-icons.js =====
+// ---------------------------------------------------------------------------------------
+// core/icons: the icon of an entity, decided here, never by Home Assistant's own state-icon element.
+// That element falls back to a bookmark whenever it can't resolve an icon (translations that
+// load late, custom integrations, domains it doesn't know), so every Savvy card draws its
+// entity icons itself, with a plain <ha-icon>:
+//   1. the entity's own `icon` attribute      2. its registry icon
+//   3. our table by domain, device class and state      4. a neutral question mark
+// <savvy-state-icon> is the drop-in for it: set .hass and .stateObj and it draws the icon.
+// ---------------------------------------------------------------------------------------
+
+const NEUTRAL_ICON = "mdi:help-circle-outline";
+
+const BINARY_ICONS = {
+  battery: ["mdi:battery-alert", "mdi:battery"], battery_charging: ["mdi:battery-charging", "mdi:battery"],
+  carbon_monoxide: ["mdi:smoke-detector-alert", "mdi:smoke-detector"], cold: ["mdi:snowflake", "mdi:thermometer"],
+  connectivity: ["mdi:check-network-outline", "mdi:close-network-outline"], door: ["mdi:door-open", "mdi:door-closed"],
+  garage_door: ["mdi:garage-open", "mdi:garage"], gas: ["mdi:alert-circle", "mdi:check-circle"],
+  heat: ["mdi:fire", "mdi:thermometer"], light: ["mdi:brightness-7", "mdi:brightness-5"],
+  lock: ["mdi:lock-open", "mdi:lock"], moisture: ["mdi:water-alert", "mdi:water-off"],
+  motion: ["mdi:motion-sensor", "mdi:motion-sensor-off"], moving: ["mdi:arrow-right", "mdi:octagon"],
+  occupancy: ["mdi:home", "mdi:home-outline"], opening: ["mdi:square-outline", "mdi:square"],
+  plug: ["mdi:power-plug", "mdi:power-plug-off"], power: ["mdi:power-plug", "mdi:power-plug-off"],
+  presence: ["mdi:home", "mdi:home-outline"], problem: ["mdi:alert-circle", "mdi:check-circle"],
+  running: ["mdi:play", "mdi:stop"], safety: ["mdi:alert-circle", "mdi:check-circle"],
+  smoke: ["mdi:smoke-detector-variant-alert", "mdi:smoke-detector-variant"], sound: ["mdi:music-note", "mdi:music-note-off"],
+  tamper: ["mdi:alert-circle", "mdi:check-circle"], update: ["mdi:package-up", "mdi:package"],
+  vibration: ["mdi:vibrate", "mdi:crop-portrait"], window: ["mdi:window-open", "mdi:window-closed"],
+};
+
+const SENSOR_ICONS = {
+  apparent_power: "mdi:flash", aqi: "mdi:air-filter", atmospheric_pressure: "mdi:gauge", battery: "mdi:battery",
+  carbon_dioxide: "mdi:molecule-co2", carbon_monoxide: "mdi:molecule-co", current: "mdi:current-ac", data_rate: "mdi:transmission-tower",
+  data_size: "mdi:database", date: "mdi:calendar", distance: "mdi:ruler", duration: "mdi:timer-outline", energy: "mdi:lightning-bolt",
+  enum: "mdi:format-list-bulleted", frequency: "mdi:sine-wave", gas: "mdi:gas-burner", humidity: "mdi:water-percent",
+  illuminance: "mdi:brightness-5", irradiance: "mdi:sun-wireless", moisture: "mdi:water-percent", monetary: "mdi:cash",
+  nitrogen_dioxide: "mdi:molecule", ozone: "mdi:molecule", ph: "mdi:ph", pm1: "mdi:air-filter", pm10: "mdi:air-filter",
+  pm25: "mdi:air-filter", power: "mdi:flash", power_factor: "mdi:angle-acute", precipitation: "mdi:weather-rainy",
+  precipitation_intensity: "mdi:weather-pouring", pressure: "mdi:gauge", reactive_power: "mdi:flash", signal_strength: "mdi:wifi",
+  sound_pressure: "mdi:ear-hearing", speed: "mdi:speedometer", sulphur_dioxide: "mdi:molecule", temperature: "mdi:thermometer",
+  timestamp: "mdi:clock-outline", volatile_organic_compounds: "mdi:molecule", voltage: "mdi:sine-wave", volume: "mdi:car-coolant-level",
+  water: "mdi:water", weight: "mdi:weight", wind_speed: "mdi:weather-windy",
+};
+
+const WEATHER_ICONS = {
+  "clear-night": "mdi:weather-night", cloudy: "mdi:weather-cloudy", exceptional: "mdi:alert-circle-outline", fog: "mdi:weather-fog",
+  hail: "mdi:weather-hail", lightning: "mdi:weather-lightning", "lightning-rainy": "mdi:weather-lightning-rainy",
+  partlycloudy: "mdi:weather-partly-cloudy", pouring: "mdi:weather-pouring", rainy: "mdi:weather-rainy", snowy: "mdi:weather-snowy",
+  "snowy-rainy": "mdi:weather-snowy-rainy", sunny: "mdi:weather-sunny", windy: "mdi:weather-windy", "windy-variant": "mdi:weather-windy-variant",
+};
+
+// a battery level, in the ten steps MDI has
+const batteryLevelIcon = (v) => {
+  if (!Number.isFinite(v)) return "mdi:battery";
+  if (v >= 95) return "mdi:battery";
+  if (v < 5) return "mdi:battery-outline";
+  return `mdi:battery-${Math.min(90, Math.max(10, Math.round(v / 10) * 10))}`;
+};
+
+// the table: what an entity looks like when nothing more specific names its icon
+function fallbackIcon(domain, dc, state, st) {
+  const on = state === "on", off = state === "off" || state === "unavailable";
+  const open = state === "open" || state === "opening" || state === "closing";
+  switch (domain) {
+    case "binary_sensor": { const pair = BINARY_ICONS[dc]; return pair ? pair[on ? 0 : 1] : on ? "mdi:checkbox-marked-circle" : "mdi:radiobox-blank"; }
+    case "sensor": return dc === "battery" ? batteryLevelIcon(parseFloat(state)) : SENSOR_ICONS[dc] || "mdi:eye";
+    case "light": return st?.attributes?.entity_id ? (on ? "mdi:lightbulb-group" : "mdi:lightbulb-group-outline") : on ? "mdi:lightbulb" : "mdi:lightbulb-outline";
+    case "switch": return dc === "outlet" ? (on ? "mdi:power-plug" : "mdi:power-plug-off") : on ? "mdi:toggle-switch-variant" : "mdi:toggle-switch-variant-off";
+    case "input_boolean": return on ? "mdi:toggle-switch-variant" : "mdi:toggle-switch-variant-off";
+    case "fan": return off ? "mdi:fan-off" : "mdi:fan";
+    case "lock":
+      if (state === "locked") return "mdi:lock";
+      if (state === "jammed") return "mdi:lock-alert";
+      if (state === "locking" || state === "unlocking") return "mdi:lock-clock";
+      if (state === "open" || state === "opening") return "mdi:door-open";
+      return "mdi:lock-open-variant";
+    case "cover": {
+      const o = open && state !== "closing";
+      if (dc === "garage") return o ? "mdi:garage-open" : "mdi:garage";
+      if (dc === "door") return o ? "mdi:door-open" : "mdi:door-closed";
+      if (dc === "gate") return o ? "mdi:gate-open" : "mdi:gate";
+      if (dc === "window") return o ? "mdi:window-open" : "mdi:window-closed";
+      if (dc === "curtain") return o ? "mdi:curtains" : "mdi:curtains-closed";
+      if (["blind", "shade", "awning"].includes(dc)) return o ? "mdi:blinds-open" : "mdi:blinds";
+      if (dc === "damper") return o ? "mdi:circle" : "mdi:circle-slice-8";
+      return o ? "mdi:window-shutter-open" : "mdi:window-shutter";
+    }
+    case "media_player":
+      if (dc === "tv") return off ? "mdi:television-off" : "mdi:television";
+      if (dc === "speaker") return off ? "mdi:speaker-off" : "mdi:speaker";
+      if (dc === "receiver") return off ? "mdi:audio-video-off" : "mdi:audio-video";
+      return off ? "mdi:cast-off" : state === "playing" || state === "paused" ? "mdi:cast-connected" : "mdi:cast";
+    case "climate":
+      return { heat: "mdi:fire", cool: "mdi:snowflake", fan_only: "mdi:fan", dry: "mdi:water-percent", heat_cool: "mdi:sun-snowflake-variant", auto: "mdi:thermostat-auto" }[state] || "mdi:thermostat";
+    case "vacuum": return state === "error" ? "mdi:robot-vacuum-alert" : "mdi:robot-vacuum";
+    case "lawn_mower": return "mdi:robot-mower";
+    case "alarm_control_panel":
+      return { disarmed: "mdi:shield-off", armed_home: "mdi:shield-home", armed_away: "mdi:shield-lock", armed_night: "mdi:shield-moon",
+        armed_vacation: "mdi:shield-airplane", armed_custom_bypass: "mdi:security", triggered: "mdi:bell-ring", arming: "mdi:shield-sync", pending: "mdi:shield-sync", disarming: "mdi:shield-sync" }[state] || "mdi:shield";
+    case "button": case "input_button": return "mdi:gesture-tap-button";
+    case "script": return "mdi:script-text-outline";
+    case "scene": return "mdi:palette";
+    case "automation": return on ? "mdi:robot" : "mdi:robot-off";
+    case "person": return state === "home" ? "mdi:account" : "mdi:account-arrow-right";
+    case "device_tracker": return state === "home" ? "mdi:account" : "mdi:account-arrow-right";
+    case "camera": return "mdi:video";
+    case "humidifier": return off ? "mdi:air-humidifier-off" : "mdi:air-humidifier";
+    case "water_heater": return off ? "mdi:water-boiler-off" : "mdi:water-boiler";
+    case "valve": return state === "closed" || state === "closing" ? "mdi:valve-closed" : "mdi:valve-open";
+    case "siren": return on ? "mdi:bullhorn" : "mdi:bullhorn-outline";
+    case "remote": return "mdi:remote";
+    case "update": return on ? "mdi:package-up" : "mdi:package";
+    case "number": case "input_number": return "mdi:ray-vertex";
+    case "select": case "input_select": return "mdi:format-list-bulleted";
+    case "text": case "input_text": return "mdi:form-textbox";
+    case "datetime": case "input_datetime": return dc === "date" ? "mdi:calendar" : "mdi:calendar-clock";
+    case "date": case "calendar": case "schedule": return "mdi:calendar";
+    case "time": return "mdi:clock-outline";
+    case "timer": return "mdi:timer-outline";
+    case "counter": return "mdi:counter";
+    case "event": return "mdi:gesture-double-tap";
+    case "image": return "mdi:image";
+    case "todo": return "mdi:clipboard-list";
+    case "weather": return WEATHER_ICONS[state] || "mdi:weather-partly-cloudy";
+    case "sun": return state === "below_horizon" ? "mdi:weather-night" : "mdi:white-balance-sunny";
+    case "zone": return "mdi:map-marker-radius";
+    case "geo_location": return "mdi:map-marker";
+    case "proximity": return "mdi:map-marker-distance";
+    case "group": return "mdi:google-circles-communities";
+    case "air_quality": return "mdi:air-filter";
+    case "tts": return "mdi:account-voice";
+    case "stt": return "mdi:microphone-message";
+    case "conversation": return "mdi:forum-outline";
+    case "assist_satellite": return "mdi:comment-processing";
+    case "wake_word": return "mdi:chat-sleep";
+    case "notify": return "mdi:message-text";
+    case "persistent_notification": return "mdi:bell";
+    case "alert": return "mdi:alert";
+    case "plant": return "mdi:flower";
+    default: return NEUTRAL_ICON;
+  }
+}
+
+// The icon for an entity, by id and state.
+function entityIcon(hass, id, st) {
+  st = st || hass?.states?.[id];
+  const own = st?.attributes?.icon;
+  if (own) return own;
+  const reg = hass?.entities?.[id]?.icon;
+  if (reg) return reg;
+  return fallbackIcon(domainOf(id), st?.attributes?.device_class, st?.state, st);
+}
+
+// Set .hass and .stateObj, and it draws a plain <ha-icon> for the entity.
+class SavvyStateIcon extends HTMLElement {
+  set hass(h) { this._h = h; this._paint(); }
+  set stateObj(st) { this._st = st; this._paint(); }
+  get stateObj() { return this._st; }
+  _paint() {
+    const st = this._st;
+    if (!st) return;
+    if (!this._ic) { this._ic = document.createElement("ha-icon"); this.appendChild(this._ic); }
+    const icon = entityIcon(this._h, st.entity_id, st);
+    if (this._ic.getAttribute("icon") !== icon) this._ic.setAttribute("icon", icon);
+  }
+}
+if (!customElements.get("savvy-state-icon")) customElements.define("savvy-state-icon", SavvyStateIcon);
+
 // ===== core/60-actions.js =====
 // ---------------------------------------------------------------------------------------
 // core/actions: tap / hold / double-tap in Home Assistant's standard action format, plus
@@ -1833,7 +2001,7 @@ class EntityListSheet {
     const fan = d === "climate";
     row.innerHTML = `<div class="sv-line1">
         <div class="sv-main" role="button" tabindex="0">
-          <span class="sv-ic">${fan ? '<ha-icon icon="mdi:fan"></ha-icon>' : "<ha-state-icon></ha-state-icon>"}</span>
+          <span class="sv-ic">${fan ? '<ha-icon icon="mdi:fan"></ha-icon>' : "<savvy-state-icon></savvy-state-icon>"}</span>
           <span class="sv-txt"><span class="sv-name"></span><span class="sv-sub"></span></span>
         </div>
         <span class="sv-val"></span>
@@ -2561,7 +2729,7 @@ ROW_KINDS.media_player = {
       const s = ctx.hass().states[ctx.id]?.state;
       call(ctx, "media_player", s === "idle" ? "media_play" : "media_play_pause");
     } });
-    main.append(mainPower, play);
+    main.append(play, mainPower);
     const extra = div("sv-xline sv-ctl-media");
     const power = iconButton(kit, { icon: "mdi:power", label: "Power", onTap: powerTap });
     const prev = iconButton(kit, { icon: "mdi:skip-previous", label: "Previous", onTap: () => call(ctx, "media_player", "media_previous_track") });
@@ -2577,7 +2745,7 @@ ROW_KINDS.media_player = {
     pct.className = "sv-pct";
     const vol = div("sv-volg");
     vol.append(down, bar.el, up, pct);
-    extra.append(power, prev, next, mute, vol);
+    extra.append(prev, next, mute, vol, power);
     let first = true;
     return {
       main, extra,
@@ -2615,6 +2783,8 @@ ROW_KINDS.media_player = {
 };
 
 // ---- climate: a - target + stepper on the line (power when off); the modes on the extra line
+// Off is a power control, so it comes last in a list of modes
+const offLast = (modes) => [...modes.filter((m) => m !== "off"), ...modes.filter((m) => m === "off")];
 const HVAC_ORDER = ["off", "cool", "heat", "heat_cool", "auto", "dry", "fan_only"];
 const HVAC_LOOK = {
   off: ["Off", "mdi:power"], cool: ["Cool", "mdi:snowflake"], heat: ["Heat", "mdi:fire"], heat_cool: ["Heat/Cool", "mdi:sun-snowflake-variant"],
@@ -2631,7 +2801,7 @@ ROW_KINDS.climate = {
       if (m) call(ctx, "climate", "set_hvac_mode", { hvac_mode: m });
     } });
     const step = new Stepper(kit, { label: "Target temperature", compact: true, onChange: (v) => call(ctx, "climate", "set_temperature", { temperature: v }) });
-    main.append(power, step.el);
+    main.append(step.el, power);
     const extra = div("sv-xline sv-ctl-climate");
     let seg = null, segKey = "";
     return {
@@ -2649,7 +2819,7 @@ ROW_KINDS.climate = {
         }
         const have = a.hvac_modes || [];
         // Off, Cool and Heat first, then whatever else the unit has, while there's room for it
-        const modes = HVAC_ORDER.filter((m) => have.includes(m)).slice(0, 4);
+        const modes = offLast(HVAC_ORDER.filter((m) => have.includes(m)).slice(0, 4));
         const key = modes.join();
         if (key !== segKey) {
           seg?.el.remove();
@@ -3400,7 +3570,7 @@ const HEADER_CSS = `
   /* a readout, not a panel */
   .wx { flex: none; display: flex; align-items: center; gap: 5px; height: 44px; padding: 0 12px 0 10px; border-radius: 13px;
     background: var(--well); color: var(--secondary-text-color); }
-  .wx ha-icon, .wx ha-state-icon { --mdc-icon-size: 19px; display: flex; }
+  .wx ha-icon, .wx savvy-state-icon { --mdc-icon-size: 19px; display: flex; }
   .wx .deg { font-size: 13.5px; line-height: 17px; font-weight: 650; letter-spacing: -0.012em; color: var(--primary-text-color); }
   :host([kbd]) :focus-visible { outline-color: color-mix(in oklab, var(--mode) 80%, var(--primary-text-color)); }
 `;
@@ -3417,7 +3587,7 @@ const CHIP_ROW_CSS = `
   .chip .body { display: flex; align-items: center; gap: 9px; }
   .chip .disc { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%;
     background: color-mix(in oklab, var(--tc) 18%, transparent); color: var(--tc); }
-  .chip .disc ha-icon, .chip .disc ha-state-icon { --mdc-icon-size: 17px; display: flex; }
+  .chip .disc ha-icon, .chip .disc savvy-state-icon { --mdc-icon-size: 17px; display: flex; }
   .chip .col { display: flex; flex-direction: column; }
   .chip .v { font-size: 12.5px; line-height: 16px; font-weight: 650; letter-spacing: -0.01em; white-space: nowrap; }
   .chip .k { font-size: 10.5px; line-height: 13px; font-weight: 500; letter-spacing: 0.012em; color: var(--secondary-text-color); white-space: nowrap; }
@@ -3446,7 +3616,7 @@ SavvyCard.prototype._chipRow = function (row, items, { iconOnly = false } = {}) 
       node = document.createElement("button");
       node.className = "chip";
       node.__state = wantState;
-      node.innerHTML = `<span class="body"><span class="disc">${wantState ? "<ha-state-icon></ha-state-icon>" : "<ha-icon></ha-icon>"}</span>
+      node.innerHTML = `<span class="body"><span class="disc">${wantState ? "<savvy-state-icon></savvy-state-icon>" : "<ha-icon></ha-icon>"}</span>
         <span class="col"><span class="v"></span><span class="k"></span></span></span>`;
       node.__icon = node.querySelector(".disc > *");
       node.__item = item;     // bindActions reads it while wiring
@@ -4341,7 +4511,7 @@ if (window.__SAVVY_TEST__) {
     isActive, isOff, runAction, defaultTapAction, toggleEntity, bindPress, bindActions,
     duration, since, relativeTime, axisLabel, momentLabel, fmtNumber, withUnit, isTimestamp,
     fetchHistory, fetchRange, fetchAttributeHistory, resample, seriesStats, stateRuns, numericPoints, linePath,
-    Sheet, EntityListSheet, SavvyEditor, defineEditor, S, version: SAVVY_VERSION,
+    entityIcon, fallbackIcon, NEUTRAL_ICON, offLast, Sheet, EntityListSheet, SavvyEditor, defineEditor, S, version: SAVVY_VERSION,
     SettingsStore, SETTINGS_RULES, resolveSettings, findSettingsCards, normalizeSettings, countDefaults, dashboardPath, SavvyCard, roomBadges, roomTemperature, areaLights, houseLights, housePlaying, houseTemperature, houseSecurity, ignoring, sortRows, RowKit, SideBar, Seg, Stepper, LockTrack, ROW_KINDS, modeInfo, legacyBadges, chipState, portalRoot,
   };
 }
@@ -6464,7 +6634,7 @@ const STYLE = `
     flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
     padding: 9px 10px; border-radius: 14px; background: var(--well);
   }
-  .stat ha-icon, .stat ha-state-icon { --mdc-icon-size: 20px; flex: none; display: flex; color: var(--sc, var(--secondary-text-color)); }
+  .stat ha-icon, .stat savvy-state-icon { --mdc-icon-size: 20px; flex: none; display: flex; color: var(--sc, var(--secondary-text-color)); }
   .stat .col { min-width: 0; display: flex; flex-direction: column; }
   .stat .v { font-size: 14px; line-height: 17px; font-weight: 600; letter-spacing: -0.012em;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -6515,7 +6685,7 @@ const STYLE = `
     font-size: 13px; line-height: 16px; font-weight: 550; letter-spacing: -0.004em;
     color: var(--secondary-text-color);
   }
-  .act ha-icon, .act ha-state-icon { --mdc-icon-size: 18px; flex: none; display: flex; color: var(--ac, inherit); }
+  .act ha-icon, .act savvy-state-icon { --mdc-icon-size: 18px; flex: none; display: flex; color: var(--ac, inherit); }
   .act span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .act[data-on] { background: color-mix(in oklab, var(--ac) 16%, transparent); color: var(--ac); }
 
@@ -7227,7 +7397,7 @@ class ClimateCard extends HTMLElement {
     this._min = Number.isFinite(a.min_temp) ? a.min_temp : 16;
     this._max = Number.isFinite(a.max_temp) ? a.max_temp : 30;
     this._step = Number(a.target_temp_step) || (this._unit.includes("F") ? 1 : 0.5);
-    this._modes = (c.hvac_modes || a.hvac_modes || ["off"]).filter((m) => m);
+    this._modes = (c.hvac_modes || (a.hvac_modes ? offLast(a.hvac_modes) : ["off"])).filter((m) => m);
     if (st && st.state !== "off" && st.state !== "unavailable") this._lastOn = st.state;
 
     const dead = !st || st.state === "unavailable" || st.state === "unknown";
@@ -7337,7 +7507,7 @@ class ClimateCard extends HTMLElement {
     }
     for (const s of want) {
       const item = this._rowOf(el, s.key, "stat",
-        `${s.weather ? "<ha-state-icon></ha-state-icon>" : `<ha-icon icon="${s.icon}"></ha-icon>`}
+        `${s.weather ? "<savvy-state-icon></savvy-state-icon>" : `<ha-icon icon="${s.icon}"></ha-icon>`}
          <span class="col"><span class="v"></span><span class="k"></span></span>`);
       if (!item.__wired) {
         item.__wired = true;
@@ -7348,7 +7518,7 @@ class ClimateCard extends HTMLElement {
       text(item.querySelector(".v"), s.v);
       text(item.querySelector(".k"), s.k);
       if (s.weather) {
-        const icon = item.querySelector("ha-state-icon");
+        const icon = item.querySelector("savvy-state-icon");
         if (icon.stateObj !== s.weather) { icon.hass = h; icon.stateObj = s.weather; }
       }
     }
@@ -7488,7 +7658,7 @@ class ClimateCard extends HTMLElement {
     }
     for (const it of items) {
       const act = this._rowOf(el, it.key, "act",
-        `${it.icon ? `<ha-icon icon="${it.icon}"></ha-icon>` : "<ha-state-icon></ha-state-icon>"}<span></span>`);
+        `${it.icon ? `<ha-icon icon="${it.icon}"></ha-icon>` : "<savvy-state-icon></savvy-state-icon>"}<span></span>`);
       if (!act.__wired) {
         act.__wired = true;
         this._pressable(act, new Spring(0, MOTION.press, "x"), () => act.__tap(), () => act.__hold());
@@ -7497,7 +7667,7 @@ class ClimateCard extends HTMLElement {
       put(act, "--ac", it.color);
       attr(act, "data-on", it.on ? "" : null);
       text(act.querySelector("span"), it.label);
-      const icon = act.querySelector("ha-state-icon");
+      const icon = act.querySelector("savvy-state-icon");
       if (icon && icon.stateObj !== it.state) { icon.hass = h; icon.stateObj = it.state; }
     }
     const keys = new Set(items.map((i) => i.key));
@@ -8055,7 +8225,7 @@ const STYLE = `${BASE_CSS}
     --mdc-icon-size: 12px; background: var(--card-background-color, #fff); color: var(--primary-text-color);
     box-shadow: 0 0 0 1.5px var(--card-background-color, #fff), inset 0 0 0 20px var(--well); }
   /* ha-icon is inline with a baseline gap under its svg; as a fixed-size flex box it centres */
-  .av > ha-icon, .av > ha-state-icon, .av .zone ha-icon { display: flex; align-items: center; justify-content: center;
+  .av > ha-icon, .av > savvy-state-icon, .av .zone ha-icon { display: flex; align-items: center; justify-content: center;
     width: var(--mdc-icon-size); height: var(--mdc-icon-size); line-height: 0; }
   .txt { display: flex; flex-direction: column; min-width: 0; flex: 1; }
   .name { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -8244,7 +8414,7 @@ class SavvyEntityCard extends SavvyCard {
       if (el.av.__key !== k) {
         el.av.__key = k;
         attr(el.av, "data-kind", "icon");
-        el.av.innerHTML = c.icon ? "<ha-icon></ha-icon>" : "<ha-state-icon></ha-state-icon>";
+        el.av.innerHTML = c.icon ? "<ha-icon></ha-icon>" : "<savvy-state-icon></savvy-state-icon>";
       }
       const ic = el.av.firstElementChild;
       if (c.icon) attr(ic, "icon", c.icon);
@@ -8341,7 +8511,7 @@ class SavvyEntityCard extends SavvyCard {
     const wantState = !item.icon && !!st;
     if (node.__iconKind !== (wantState ? "state" : "plain")) {
       node.__iconKind = wantState ? "state" : "plain";
-      node.__el.ic.outerHTML = wantState ? `<ha-state-icon class="ic"></ha-state-icon>` : `<ha-icon class="ic"></ha-icon>`;
+      node.__el.ic.outerHTML = wantState ? `<savvy-state-icon class="ic"></savvy-state-icon>` : `<ha-icon class="ic"></ha-icon>`;
       node.__el.ic = node.querySelector(".ic");
     }
     if (wantState) { if (node.__el.ic.stateObj !== st) { node.__el.ic.hass = h; node.__el.ic.stateObj = st; } }
@@ -8508,7 +8678,7 @@ const STYLE = `${BASE_CSS}
     padding: 10px; border-radius: calc(var(--radius) * 0.6); background: var(--well); text-align: start; transform-origin: 50% 50%; cursor: pointer; }
   .tile[data-missing], .tile[data-unavailable] { opacity: 0.55; }
   .tile .top { display: flex; align-items: center; gap: 6px; min-width: 0; }
-  .tile .top ha-icon, .tile .top ha-state-icon { --mdc-icon-size: 16px; display: flex; flex: none; color: var(--tile-lvl, var(--secondary-text-color)); }
+  .tile .top ha-icon, .tile .top savvy-state-icon { --mdc-icon-size: 16px; display: flex; flex: none; color: var(--tile-lvl, var(--secondary-text-color)); }
   .tile .cap { min-width: 0; flex: 1; font-size: 13px; line-height: 16px; font-weight: 600; letter-spacing: -0.006em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tile .val { display: flex; align-items: baseline; gap: 3px; min-width: 0; font-size: 14px; line-height: 17px; font-weight: 650; letter-spacing: -0.012em; }
   .tile .val .u { font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: -0.003em; color: var(--secondary-text-color); }
@@ -8788,7 +8958,7 @@ class SavvyGraphCard extends SavvyCard {
     const wantState = !item.icon && !item.attribute && !!st;
     if (node.__iconKind !== (wantState ? "state" : "plain")) {
       node.__iconKind = wantState ? "state" : "plain";
-      el.iconSlot.innerHTML = wantState ? "<ha-state-icon></ha-state-icon>" : "<ha-icon></ha-icon>";
+      el.iconSlot.innerHTML = wantState ? "<savvy-state-icon></savvy-state-icon>" : "<ha-icon></ha-icon>";
       el.icon = el.iconSlot.firstElementChild;
     }
     if (wantState) { if (el.icon.stateObj !== st) { el.icon.hass = h; el.icon.stateObj = st; } }
@@ -9123,7 +9293,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
             <span class="swap" id="swap"><ha-icon id="pillIcon"></ha-icon><span class="col"><span class="val" id="val"></span><span class="pre" id="pre"></span></span></span>
           </button>
           <span class="spacer" id="spacer"></span>
-          <button class="wx" id="weather" hidden><ha-state-icon id="wicon"></ha-state-icon><span class="deg" id="wtemp"></span></button>
+          <button class="wx" id="weather" hidden><savvy-state-icon id="wicon"></savvy-state-icon><span class="deg" id="wtemp"></span></button>
           <button class="glyph" id="health" aria-label="System health" hidden><ha-icon icon="mdi:cog"></ha-icon><span class="count" id="count" hidden></span></button>
         </div>
         <div class="chips" id="chips"></div>
@@ -9508,7 +9678,7 @@ header { display: flex; align-items: center; gap: 10px; min-width: 0; }
   color: var(--secondary-text-color);
 }
 .orb[data-on] { background: rgb(var(--lc, var(--amber)) / 0.22); color: rgb(var(--lc, var(--amber))); }
-.orb ha-icon, .orb ha-state-icon { --mdc-icon-size: 20px; display: flex; }
+.orb ha-icon, .orb savvy-state-icon { --mdc-icon-size: 20px; display: flex; }
 .meta { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .meta .n { font-size: 13.5px; line-height: 17px; font-weight: 600; letter-spacing: -0.01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -9535,7 +9705,7 @@ header { display: flex; align-items: center; gap: 10px; min-width: 0; }
 /* ---- compact: the light, its name and its state, and nothing else ---- */
 ha-card[data-compact] .light { padding: 8px 10px; border-radius: 13px; }
 ha-card[data-compact] .orb { width: 32px; height: 32px; border-radius: 10px; }
-ha-card[data-compact] .orb ha-icon, ha-card[data-compact] .orb ha-state-icon { --mdc-icon-size: 18px; }
+ha-card[data-compact] .orb ha-icon, ha-card[data-compact] .orb savvy-state-icon { --mdc-icon-size: 18px; }
 ha-card[data-compact] .meta .n { font-size: 13px; line-height: 16px; }
 ha-card[data-compact] .meta .d { font-size: 11px; line-height: 14px; }
 ha-card[data-compact] .grid { gap: 6px; }
@@ -9572,7 +9742,7 @@ ha-card[data-compact] .grid { gap: 6px; }
   font-size: 13px; line-height: 16px; font-weight: 550; letter-spacing: -0.004em;
   color: var(--secondary-text-color);
 }
-.chip ha-icon, .chip ha-state-icon { --mdc-icon-size: 18px; flex: none; display: flex; color: var(--cc, inherit); }
+.chip ha-icon, .chip savvy-state-icon { --mdc-icon-size: 18px; flex: none; display: flex; color: var(--cc, inherit); }
 .chip span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chip[data-on] { background: color-mix(in oklab, var(--cc) 16%, transparent); color: var(--cc); }
 
@@ -10273,7 +10443,7 @@ class LightsCard extends HTMLElement {
       node.__entity = id;
       node.innerHTML = `
         <div class="head">
-          <button class="orb"><ha-state-icon></ha-state-icon></button>
+          <button class="orb"><savvy-state-icon></savvy-state-icon></button>
           <button class="meta" style="text-align:start"><span class="n"></span><span class="d"></span></button>
           <button class="swatch" hidden><i></i></button>
           <button class="power" hidden><ha-icon icon="mdi:power"></ha-icon></button>
@@ -10303,7 +10473,7 @@ class LightsCard extends HTMLElement {
 
     attr(node, "data-unavailable", dead ? "" : null);
     attr(node.querySelector(".orb"), "data-on", on ? "" : null);
-    const icon = node.querySelector("ha-state-icon");
+    const icon = node.querySelector("savvy-state-icon");
     if (icon.stateObj !== st) { icon.hass = h; icon.stateObj = st; }
     text(node.querySelector(".n"), this._stripRoomPrefix(st?.attributes.friendly_name || title(id.split(".")[1]), id));
     text(node.querySelector(".d"), this._subtitle(st, { dead, on }));
@@ -10406,7 +10576,7 @@ class LightsCard extends HTMLElement {
       if (!chip) {
         chip = document.createElement("button");
         chip.className = "chip";
-        chip.innerHTML = `${cfg.icon ? "<ha-icon></ha-icon>" : "<ha-state-icon></ha-state-icon>"}<span></span>`;
+        chip.innerHTML = `${cfg.icon ? "<ha-icon></ha-icon>" : "<savvy-state-icon></savvy-state-icon>"}<span></span>`;
         cache.set(key, chip);
         el.appendChild(chip);
         this._press(chip, () => chip.__act(), () => chip.__hold());
@@ -10418,7 +10588,7 @@ class LightsCard extends HTMLElement {
       put(chip, "--cc", colorOf(cfg.color) || "rgb(var(--amber))");
       attr(chip, "data-on", st && ["on", "home", "open", "playing"].includes(st.state) ? "" : null);
       text(chip.querySelector("span"), cfg.name || st?.attributes.friendly_name || title(String(key).split(".").pop()));
-      const sIcon = chip.querySelector("ha-state-icon");
+      const sIcon = chip.querySelector("savvy-state-icon");
       if (sIcon && sIcon.stateObj !== st) { sIcon.hass = h; sIcon.stateObj = st; }
       const iIcon = chip.querySelector("ha-icon");
       if (iIcon) attr(iIcon, "icon", cfg.icon);
@@ -10636,7 +10806,7 @@ const STYLE = `${BASE_CSS}
   .pills { display: flex; flex-wrap: wrap; gap: 8px; }
   .pill { display: inline-flex; align-items: center; gap: 7px; min-width: 0; height: 34px; padding: 0 12px; border-radius: 12px; background: var(--well);
     font-size: 13px; line-height: 16px; font-weight: 550; letter-spacing: -0.004em; color: var(--secondary-text-color); }
-  .pill ha-icon, .pill ha-state-icon { --mdc-icon-size: 18px; flex: none; display: flex; color: var(--cc, inherit); }
+  .pill ha-icon, .pill savvy-state-icon { --mdc-icon-size: 18px; flex: none; display: flex; color: var(--cc, inherit); }
   .pill span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pill[data-on] { background: color-mix(in oklab, var(--cc) 16%, transparent); color: var(--cc); }
   /* compact: one row, a thumbnail of what's playing, its transport, the room's volume */
@@ -11208,6 +11378,9 @@ class SavvyMediaCard extends SavvyCard {
       attr(btn, "disabled", !(on || b.key === "power"));
       attr(btn.querySelector("ha-icon"), "icon", b.icon);
     }
+    // the DOM order is fixed, whichever button was built first: power is always the last
+    let at = 0;
+    for (const key of ["prev", "play", "next", "power"]) { const node = parent.__rows?.get(key); if (node) place(parent, node, at++); }
     const keys = new Set(want.map((b) => b.key));
     for (const [key, node] of parent.__rows || []) node.hidden = !keys.has(key);
     parent.hidden = !want.length;
@@ -11357,7 +11530,7 @@ class SavvyMediaCard extends SavvyCard {
         if (cfg.entity && !st && !cfg.navigation_path) continue;
         const key = cfg.entity || cfg.navigation_path || cfg.name;
         keys.add(key);
-        const chip = this._rowOf(parent, key, "button", "pill", `${cfg.icon ? "<ha-icon></ha-icon>" : "<ha-state-icon></ha-state-icon>"}<span></span>`);
+        const chip = this._rowOf(parent, key, "button", "pill", `${cfg.icon ? "<ha-icon></ha-icon>" : "<savvy-state-icon></savvy-state-icon>"}<span></span>`);
         if (!chip.__wired) {
           chip.__wired = true;
           this._pressable(chip, { onTap: () => this._runChip(chip.__cfg, "tap"), onHold: () => this._runChip(chip.__cfg, "hold"), haptic: null }, 0.08);
@@ -11366,7 +11539,7 @@ class SavvyMediaCard extends SavvyCard {
         put(chip, "--cc", colorOf(cfg.color) || "rgb(var(--accent))");
         attr(chip, "data-on", !!st && ["on", "playing", "home", "open"].includes(st.state));
         text(chip.querySelector("span"), cfg.name || st?.attributes.friendly_name || title(String(key).split(".").pop()));
-        const sIcon = chip.querySelector("ha-state-icon");
+        const sIcon = chip.querySelector("savvy-state-icon");
         if (sIcon && sIcon.stateObj !== st) { sIcon.hass = h; sIcon.stateObj = st; }
         const iIcon = chip.querySelector("ha-icon");
         if (iIcon) attr(iIcon, "icon", cfg.icon);
@@ -13285,7 +13458,7 @@ class SavvySceneCard extends SavvyCard {
       const wantState = !item.icon && !!st;
       if (node.__iconKind !== (wantState ? "state" : "plain")) {
         node.__iconKind = wantState ? "state" : "plain";
-        node.__ic.innerHTML = wantState ? "<ha-state-icon></ha-state-icon>" : "<ha-icon></ha-icon>";
+        node.__ic.innerHTML = wantState ? "<savvy-state-icon></savvy-state-icon>" : "<ha-icon></ha-icon>";
       }
       const ic = node.__ic.firstElementChild;
       if (wantState) { if (ic.stateObj !== st) { ic.hass = h; ic.stateObj = st; } }
@@ -13420,7 +13593,7 @@ const STYLE = `${BASE_CSS}
     display: grid; place-items: center; color: var(--secondary-text-color); opacity: 0; }
   .chip::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: color-mix(in oklab, var(--bc) 22%, transparent); opacity: 0; }
   .badge[data-critical] .chip::before { opacity: var(--on, 0); }
-  .chip ha-icon, .chip ha-state-icon { --mdc-icon-size: 19px; position: relative; display: flex; }
+  .chip ha-icon, .chip savvy-state-icon { --mdc-icon-size: 19px; position: relative; display: flex; }
   :host([kbd]) .badge:focus-visible .chip { box-shadow: 0 0 0 2px var(--bc); }
 
   /* the temperature is a reading, so it keeps its number */
@@ -13573,8 +13746,8 @@ class SavvySectionTitleCard extends SavvyCard {
         const node = document.createElement("span");
         node.className = "badge";
         node.setAttribute("role", "button");
-        node.innerHTML = `<span class="chip">${look.icon ? "<ha-icon></ha-icon>" : "<ha-state-icon></ha-state-icon>"}</span>`;
-        item = { el: node, chip: node.querySelector(".chip"), icon: node.querySelector("ha-icon, ha-state-icon"),
+        node.innerHTML = `<span class="chip">${look.icon ? "<ha-icon></ha-icon>" : "<savvy-state-icon></savvy-state-icon>"}</span>`;
+        item = { el: node, chip: node.querySelector(".chip"), icon: node.querySelector("ha-icon, savvy-state-icon"),
           shown: this._spring(0, MOTION.ui, `badge:${b.key}`, 0.002), on: this._spring(0, MOTION.ui, `badge:${b.key}`, 0.002) };
         item.b = b;
         this._chipActions(node, () => ({ config: item.b.cfg, entity: item.b.entity,
@@ -14580,7 +14753,7 @@ const STYLE = `${BASE_CSS}
   .chip::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: color-mix(in oklab, var(--bc) 22%, transparent); opacity: 0; }
   .badge[data-critical] .chip::before { opacity: var(--on, 0); }
   :host([kbd]) .badge:focus-visible .chip { box-shadow: 0 0 0 2px rgb(var(--tint)); }
-  .chip ha-icon, .chip ha-state-icon { --mdc-icon-size: 18px; position: relative; display: flex; }
+  .chip ha-icon, .chip savvy-state-icon { --mdc-icon-size: 18px; position: relative; display: flex; }
   .halo { position: absolute; top: 50%; inset-inline-start: calc(var(--chip) / 2); width: 60px; height: 60px; margin: -30px 0 0 -30px;
     border-radius: 50%; pointer-events: none; opacity: 0; background: radial-gradient(closest-side, color-mix(in oklab, var(--bc) 42%, transparent), transparent); }
   @media (prefers-contrast: more) { .temp { color: var(--primary-text-color); } }
@@ -14913,9 +15086,9 @@ class SavvyRoomTile extends SavvyCard {
         const node = document.createElement("span");
         node.className = "badge";
         node.setAttribute("role", "button");
-        node.innerHTML = `<span class="halo"></span><span class="chip">${look.icon ? "<ha-icon></ha-icon>" : "<ha-state-icon></ha-state-icon>"}</span>`;
+        node.innerHTML = `<span class="halo"></span><span class="chip">${look.icon ? "<ha-icon></ha-icon>" : "<savvy-state-icon></savvy-state-icon>"}</span>`;
         const group = `badge:${b.key}`;
-        item = { el: node, chip: node.querySelector(".chip"), halo: node.querySelector(".halo"), icon: node.querySelector("ha-icon, ha-state-icon"),
+        item = { el: node, chip: node.querySelector(".chip"), halo: node.querySelector(".halo"), icon: node.querySelector("ha-icon, savvy-state-icon"),
           shown: this._spring(0, MOTION.ui, group, 0.002), on: this._spring(0, MOTION.ui, group, 0.002),
           glow: this._spring(0, TILE_MOTION.halo, group), press: this._spring(0, MOTION.press, group), b };
         // a badge tap is its own: it never also taps the card
@@ -15265,7 +15438,7 @@ ha-card {
   content: ""; position: absolute; inset: 0; z-index: 9; border-radius: inherit; corner-shape: inherit;
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05); pointer-events: none;
 }
-ha-icon, ha-state-icon { display: flex; align-items: center; justify-content: center; line-height: 0; }
+ha-icon, savvy-state-icon { display: flex; align-items: center; justify-content: center; line-height: 0; }
 
 .cap { font-size: 11px; line-height: 13px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); }
 .sec { display: flex; flex-direction: column; gap: 8px; }

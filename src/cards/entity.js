@@ -39,7 +39,7 @@ const STYLE = `${BASE_CSS}
     --mdc-icon-size: 12px; background: var(--card-background-color, #fff); color: var(--primary-text-color);
     box-shadow: 0 0 0 1.5px var(--card-background-color, #fff), inset 0 0 0 20px var(--well); }
   /* ha-icon is inline with a baseline gap under its svg; as a fixed-size flex box it centres */
-  .av > ha-icon, .av > ha-state-icon, .av .zone ha-icon { display: flex; align-items: center; justify-content: center;
+  .av > ha-icon, .av > savvy-state-icon, .av .zone ha-icon { display: flex; align-items: center; justify-content: center;
     width: var(--mdc-icon-size); height: var(--mdc-icon-size); line-height: 0; }
   .txt { display: flex; flex-direction: column; min-width: 0; flex: 1; }
   .name { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -228,7 +228,7 @@ class SavvyEntityCard extends SavvyCard {
       if (el.av.__key !== k) {
         el.av.__key = k;
         attr(el.av, "data-kind", "icon");
-        el.av.innerHTML = c.icon ? "<ha-icon></ha-icon>" : "<ha-state-icon></ha-state-icon>";
+        el.av.innerHTML = c.icon ? "<ha-icon></ha-icon>" : "<savvy-state-icon></savvy-state-icon>";
       }
       const ic = el.av.firstElementChild;
       if (c.icon) attr(ic, "icon", c.icon);
@@ -325,7 +325,7 @@ class SavvyEntityCard extends SavvyCard {
     const wantState = !item.icon && !!st;
     if (node.__iconKind !== (wantState ? "state" : "plain")) {
       node.__iconKind = wantState ? "state" : "plain";
-      node.__el.ic.outerHTML = wantState ? `<ha-state-icon class="ic"></ha-state-icon>` : `<ha-icon class="ic"></ha-icon>`;
+      node.__el.ic.outerHTML = wantState ? `<savvy-state-icon class="ic"></savvy-state-icon>` : `<ha-icon class="ic"></ha-icon>`;
       node.__el.ic = node.querySelector(".ic");
     }
     if (wantState) { if (node.__el.ic.stateObj !== st) { node.__el.ic.hass = h; node.__el.ic.stateObj = st; } }
