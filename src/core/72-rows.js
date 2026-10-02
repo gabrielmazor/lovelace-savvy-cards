@@ -317,7 +317,8 @@ function bulkKindOf(ids) {
 const bulkTargets = (kind, ids, hass) => ids.filter((id) => domainOf(id) === BULK[kind].domain && hass.states[id] && BULK[kind].needs(hass.states[id]));
 
 // ---- sorting: by room (headings), by recent change (flat), or as given
-function sortRows(hass, ids, { sort, pinned = [] } = {}) {
+// `order`: area ids listed first, in this order; the rest follow by name, and "No room" is always last
+function sortRows(hass, ids, { sort, pinned = [], order = [] } = {}) {
   const out = [];
   if (!sort) return ids.map((id) => ({ id }));
   const pin = new Set(pinned);
@@ -337,7 +338,8 @@ function sortRows(hass, ids, { sort, pinned = [] } = {}) {
     groups.get(area).push(id);
   }
   const label = (area) => (area ? areaInfo(hass, area).name : "No room");
-  const keys = [...groups.keys()].sort((a, b) => (!a) - (!b) || label(a).localeCompare(label(b)));
+  const rank = new Map([].concat(order || []).map((a, i) => [a, i]));
+  const keys = [...groups.keys()].sort((a, b) => (!a) - (!b) || (rank.get(a) ?? Infinity) - (rank.get(b) ?? Infinity) || label(a).localeCompare(label(b)));
   for (const area of keys) {
     out.push({ head: { key: area || "_none", label: label(area) } });
     const list = groups.get(area).sort((a, b) => (isActive(hass.states[b]) - isActive(hass.states[a])) || nameOf(a).localeCompare(nameOf(b)));

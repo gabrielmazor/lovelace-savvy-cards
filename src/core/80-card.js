@@ -8,7 +8,7 @@
 //   this._chipActions(el, getCtx, defaults)   the same, from a chip's action config
 //   this._spinner(key, el)                    a rotating icon; set .s.to(turnsPerSecond)
 //   this._showList(title, ids, color, from, footer, opts)   the popup of the entities a chip stands for,
-//                                              with an optional pinned page button; opts: { sort, toggle, storeKey, pinned }
+//                                              with an optional pinned page button; opts: { sort, order, toggle, storeKey, pinned }
 //   _paint(dirty, all)                        the card's own painting, after the shared part
 // ---------------------------------------------------------------------------------------
 

@@ -223,7 +223,7 @@ class Sheet {
 // its main control on the right (a switch, play / pause, a target stepper...) and, when it has
 // more, a chevron that opens one extra line (core/rows.js says what each kind puts where). One
 // extra line is open at a time. The row's name area opens more-info.
-//   show(hass, ids, returnTo, { sort: "room" | "recent", toggle: false, storeKey, pinned: [ids], bulk: "lights" | ... | "auto" })
+//   show(hass, ids, returnTo, { sort: "room" | "recent", order: [area ids], toggle: false, storeKey, pinned: [ids], bulk: "lights" | ... | "auto" })
 // sort groups the rows under room headings, or lists them by latest change; the toggle at the
 // top lets the user switch, and remembers the choice per storeKey. pinned ids stay first. bulk
 // puts a button next to the toggle that acts on exactly the listed entities (All off, Pause all, Lock all).
@@ -441,7 +441,7 @@ class EntityListSheet {
       if (!box.__empty) { box.__empty = document.createElement("div"); box.__empty.className = "sv-empty"; box.__empty.textContent = "Nothing right now."; }
       box.appendChild(box.__empty);
     } else box.__empty?.remove();
-    for (const item of sortRows(hass, ids, { sort: this.sort, pinned: this.opts.pinned })) {
+    for (const item of sortRows(hass, ids, { sort: this.sort, pinned: this.opts.pinned, order: this.opts.order })) {
       if (item.head) {
         let head = box.__heads.get(item.head.key);
         if (!head) { head = document.createElement("div"); head.className = "sv-group"; box.__heads.set(item.head.key, head); }

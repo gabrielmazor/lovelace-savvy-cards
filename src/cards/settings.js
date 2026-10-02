@@ -9,6 +9,7 @@
 //   house:  { control, weather, security, tap: list | navigate }
 //   health: { watchman, battery_threshold, warn_above, exclude_platforms, group_by, group_min, watchman_last_run }
 //   ignore: { entities: [], areas: [] }
+//   room_order: [area ids]   the rooms' order in the popups and the room header's row; the rest follow by name
 //   rooms:  { living_room: { name, icon, page, control, light_state, temperature, humidity, include, exclude } }
 //   layout: full | compact
 
@@ -92,7 +93,12 @@ class SavvySettingsCard extends SavvyCard {
 
 // ---- the editor: sections, and the rooms as a list (the config keeps them as a map by area)
 
-const toRoomList = (rooms) => Object.entries(rooms || {}).map(([area, v]) => ({ area, ...(v && typeof v === "object" ? v : {}) }));
+// the rooms list follows `room_order`; rooms it doesn't name keep their place after the named ones
+const byOrder = (order) => {
+  const rank = new Map([].concat(order || []).map((a, i) => [a, i]));
+  return (a, b) => (rank.get(a.area) ?? Infinity) - (rank.get(b.area) ?? Infinity);
+};
+const toRoomList = (rooms, order) => Object.entries(rooms || {}).map(([area, v]) => ({ area, ...(v && typeof v === "object" ? v : {}) })).sort(byOrder(order));
 const fromRoomList = (list) => Object.fromEntries((list || []).filter((i) => i && i.area).map(({ area, ...rest }) => [area, cleanConfig(rest)]));
 const withoutList = (c) => { const { rooms_list, ...rest } = c || {}; return rest; };
 
@@ -102,37 +108,58 @@ class SettingsEditor extends SavvyEditor {
   setConfig(config) {
     const same = this._config && JSON.stringify(cleanConfig({ ...config })) === JSON.stringify(withoutList(this._config));
     if (same) return;
-    this._config = { ...config, rooms_list: toRoomList(config?.rooms) };
+    this._config = { ...config, rooms_list: toRoomList(config?.rooms, config?.room_order) };
     this._render();
   }
 
   _emit(config) {
-    const { rooms_list, ...rest } = config;
+    let { rooms_list, ...rest } = config;
+    // a new room order re-orders the Rooms entries with it
+    if (rooms_list && JSON.stringify(rest.room_order || []) !== JSON.stringify(this._config?.room_order || [])) {
+      rooms_list = [...rooms_list].sort(byOrder(rest.room_order));
+      this._reorder = true;
+    }
     const out = { ...rest };
     if (rooms_list) {
       const map = fromRoomList(rooms_list);
       if (Object.keys(map).length) out.rooms = map; else delete out.rooms;
     }
     super._emit(out);
-    this._config = { ...this._config, rooms_list: rooms_list ?? toRoomList(this._config.rooms) };
+    this._config = { ...this._config, rooms_list: rooms_list ?? toRoomList(this._config.rooms, this._config.room_order) };
+    if (this._reorder) { this._reorder = false; this._render(); }
   }
 
   _render() {
     super._render();
     const wrap = this.shadowRoot.querySelector(".sv-ed");
     if (!wrap) return;
-    const btn = document.createElement("button");
-    btn.className = "sv-prefill";
-    btn.type = "button";
-    btn.textContent = "Add every room";
-    btn.addEventListener("click", () => {
+    const button = (label, onClick) => {
+      const btn = document.createElement("button");
+      btn.className = "sv-prefill";
+      btn.type = "button";
+      btn.textContent = label;
+      btn.addEventListener("click", onClick);
+      return btn;
+    };
+    const everyArea = () => Object.values(this._hass?.areas || {}).sort((a, b) => String(a.name).localeCompare(String(b.name))).map((a) => a.area_id).filter(Boolean);
+    // the order list sits above the rooms list: its button goes right after it
+    const orderList = wrap.querySelector('[data-key="list:room_order"]');
+    const orderBtn = button("Add every room to the order", () => {
+      const have = new Set(this._config.room_order || []);
+      const add = everyArea().filter((id) => !have.has(id));
+      if (!add.length) return;
+      this._emit({ ...this._config, room_order: [...(this._config.room_order || this._config.rooms_list?.map((i) => i.area) || []), ...add] });
+      this._render();
+    });
+    orderBtn.dataset.for = "room_order";
+    if (orderList) orderList.after(orderBtn); else wrap.appendChild(orderBtn);
+    wrap.appendChild(button("Add every room", () => {
       const have = new Set((this._config.rooms_list || []).map((i) => i.area));
-      const areas = Object.values(this._hass?.areas || {}).map((a) => a.area_id).filter((id) => id && !have.has(id));
+      const areas = everyArea().filter((id) => !have.has(id));
       if (!areas.length) return;
       this._emit({ ...this._config, rooms_list: [...(this._config.rooms_list || []), ...areas.map((area) => ({ area }))] });
       this._render();
-    });
-    wrap.appendChild(btn);
+    }));
   }
 
   schema(hass) {
@@ -163,6 +190,12 @@ class SettingsEditor extends SavvyEditor {
         { name: "entities", label: "Ignored entities", helper: "Left out of the home header's counts and popups.", selector: { entity: { multiple: true } } },
         { name: "areas", label: "Ignored rooms", selector: { area: { multiple: true } } },
       ] },
+      { name: "room_order", label: "Room order", type: "list", empty: "No order yet: rooms follow by name.",
+        helper: "The order of the rooms in the popups and the room header's row: listed first, in this order; the rest follow by name.",
+        // while unset it starts as the Rooms entries' order, so reordering works from the first touch
+        initial: (h, cfg) => Object.keys(cfg?.rooms || {}),
+        add: { selector: { area: {} }, label: "Add a room" },
+        summary: (a, h) => ({ title: h?.areas?.[a]?.name || areaName(a), sub: a }) },
       { name: "rooms_list", label: "Rooms", type: "list", empty: "No rooms yet. Add one, or add every room below.",
         helper: "Per room: what its cards share. A card's own settings win.",
         summary: (item, h) => ({ title: item.name || h?.areas?.[item.area]?.name || areaName(item.area), sub: item.area }),

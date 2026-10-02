@@ -58,7 +58,7 @@ export default async function ({ browser, base, check }) {
       window.ed = ed;
       const fields = [...ed.shadowRoot.querySelectorAll(".stub-field")].map((f) => ({ name: f.dataset.name, sel: f.dataset.selector }));
       const list = ed.shadowRoot.querySelector('savvy-list-editor[data-key="list:rooms_list"]');
-      return { fields, list: !!list, rows: [...list.shadowRoot.querySelectorAll(".sv-item .t")].map((t) => t.textContent), btn: !!ed.shadowRoot.querySelector(".sv-prefill") };
+      return { fields, list: !!list, rows: [...list.shadowRoot.querySelectorAll(".sv-item .t")].map((t) => t.textContent), btn: !!ed.shadowRoot.querySelector(".sv-prefill:not([data-for])") };
     });
     const names = e.fields.map((f) => f.name);
     check(`${tag} every option is in the editor`, WANT.every((w) => names.includes(w)), `missing ${WANT.filter((w) => !names.includes(w)).join(", ")}`);
@@ -90,10 +90,10 @@ export default async function ({ browser, base, check }) {
 
     const add = await page.evaluate(async () => {
       const ed = window.ed;
-      ed.shadowRoot.querySelector(".sv-prefill").click();
+      ed.shadowRoot.querySelector(".sv-prefill:not([data-for])").click();
       await new Promise((res) => setTimeout(res, 60));
       const sent = window.sent.at(-1);
-      ed.shadowRoot.querySelector(".sv-prefill").click();
+      ed.shadowRoot.querySelector(".sv-prefill:not([data-for])").click();
       await new Promise((res) => setTimeout(res, 60));
       return { rooms: Object.keys(sent.rooms), again: Object.keys(window.sent.at(-1).rooms).length, kept: sent.rooms.kitchen?.name };
     });

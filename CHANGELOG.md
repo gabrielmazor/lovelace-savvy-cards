@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.2
+
+One order for your rooms.
+
+- **Room order.** `room_order`, a list of area ids, sets the order of the rooms in the home
+  header's popups (listed rooms first, in that order; the rest by name; "No room" last) and in
+  the room header's row of other rooms. Set it once in the Savvy settings, on the home header
+  (all four chips), or on one chip: the chip's own wins over the card's, and the card's over the
+  settings'. The room header's own `room_order` (or the older `order`) still wins there.
+- **Editors.** The settings card has a Room order list, starting as the Rooms' order, with an
+  "Add every room to the order" button; the Rooms entries follow the order, in the editor and in
+  the YAML. The home header has the same list, and a field per chip for its own.
+
 ## 0.7.1
 
 Popups get smaller and tidier.

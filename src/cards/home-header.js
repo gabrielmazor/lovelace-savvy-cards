@@ -9,7 +9,7 @@
 //   weather: auto | weather.home | false
 //   health: { navigation_path: /lovelace/admin, watchman: [...], battery_threshold: 20, group_by: hub } | false
 //   lights / climate / media / security: false | { entity, name, icon, color, navigation_path,
-//       popup_button, popup_label, exclude, exclude_areas, sort, sort_toggle, bulk_action, tap_action, hold_action }
+//       popup_button, popup_label, exclude, exclude_areas, sort, room_order, sort_toggle, bulk_action, tap_action, hold_action }
 //       (exclude / exclude_areas: ignored entities and rooms, for the count and the popup alike; sort: room | recent
 //       is how the popup lists them, with a Room | Recent switch at its top unless sort_toggle is false, and a bulk
 //       action beside it (All off, Pause all, Lock all) unless bulk_action is false;
@@ -17,6 +17,8 @@
 //       counted, unless tap_action / hold_action say otherwise; the popup's page button leads to
 //       navigation_path, or to the page its tap or hold action navigates to. navigation_path never
 //       changes what a tap does)
+//   room_order: [area ids]                          the rooms' order in the popups (and a chip's own room_order wins);
+//                                                    the rest follow by name, "No room" last
 //   chips: [...]                                     your own, after the four
 
 const STYLE = `${BASE_CSS}${HEADER_CSS}${CHIP_ROW_CSS}`;
@@ -241,7 +243,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
       config: { ...cfg },
       defaults: { tap: { action: "list" }, hold: { action: "list" } },
       list: (from) => this._showList(listTitle, snapshot, cfg.color ? colorOf(cfg.color) : base.color, from, pageButton(cfg, cfg.name || base.name),
-        { sort: cfg.sort === "recent" ? "recent" : "room", toggle: cfg.sort_toggle !== false, storeKey: key, pinned, bulk: cfg.bulk_action === false ? null : key }),
+        { sort: cfg.sort === "recent" ? "recent" : "room", order: cfg.room_order ?? this._config.room_order, toggle: cfg.sort_toggle !== false, storeKey: key, pinned, bulk: cfg.bulk_action === false ? null : key }),
     };
   }
 
@@ -262,6 +264,7 @@ const autoSection = (key, what) => ({ type: "expandable", name: key, title: `${A
   { name: "exclude", label: "Ignored entities", helper: "Left out of the count and the popup.", selector: { entity: { multiple: true, domain: AUTO[key].domain } } },
   { name: "exclude_areas", label: "Ignored rooms", helper: "Everything in these rooms is left out.", selector: { area: { multiple: true } } },
   S.select("sort", "Sort by", [{ value: "room", label: "Room" }, { value: "recent", label: "Recent" }]),
+  { name: "room_order", label: "Room order", helper: "Rooms listed first, in this order (the order you pick them in). Empty: the card's, then the settings'.", selector: { area: { multiple: true } } },
   S.bool("sort_toggle", "Sort toggle", "A Room | Recent switch at the top of the popup.", true),
   S.bool("bulk_action", "Bulk action", `${BULK[key].label} for everything listed, at the top of the popup.`, true),
   S.action("tap_action", "Tap action", "Default: open the list."),
@@ -291,6 +294,9 @@ const EDITOR = defineEditor("savvy-home-header-card", (hass, c) => [
     ]),
     S.number("group_min", "Hub threshold", 2, 50),
   ] },
+  { name: "room_order", label: "Room order", type: "list", helper: "The order of the rooms in the popups: listed first, in this order; the rest follow by name. A chip can have its own.",
+    initial: (h) => (h ? allAreas(h).map((a) => a.id) : []), add: { selector: { area: {} }, label: "Add a room" },
+    summary: (a, h) => ({ title: areaInfo(h, a).name, sub: a }) },
   autoSection("lights", "counts the lights that are on."),
   autoSection("climate", "the average indoor temperature."),
   autoSection("media", "counts what's playing."),

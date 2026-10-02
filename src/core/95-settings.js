@@ -55,6 +55,8 @@ const SETTINGS_RULES = {
         get: (s, c) => (s.house?.tap === "navigate" && c[k]?.hold_action === undefined ? navTo(c[k]?.navigation_path ?? s.pages?.[k]) : undefined) },
       { path: `${k}.exclude`, label: `${cap(k)} ignored`, kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
       { path: `${k}.exclude_areas`, label: `${cap(k)} ignored rooms`, kind: "union", get: (s) => s.ignore?.areas, src: "ignore" },
+      // the card's own room_order covers all four chips; the settings' order fills in under both
+      { path: `${k}.room_order`, label: `${cap(k)} room order`, get: (s, c) => (c.room_order !== undefined ? undefined : s.room_order), src: "room_order" },
     ]),
     { path: "security.entity", label: "Security entity", get: glob("house", "security"), src: "house" },
     { path: "health.navigation_path", label: "Health page", get: (s) => s.pages?.health, src: "pages" },
@@ -71,6 +73,8 @@ const SETTINGS_RULES = {
     { path: "entities", label: "Light helper", kind: "pin", get: room("light_state") },
     { path: "home_path", label: "Home button", get: glob("pages", "home"), src: "pages" },
     { path: "room_path", label: "Room pages", get: glob("pages", "room"), src: "pages" },
+    // the card's own `order` (the pre-Savvy name) counts as its own
+    { path: "room_order", label: "Room order", get: (s, c) => (c.order !== undefined ? undefined : s.room_order), src: "room_order" },
   ],
   "savvy-section-title-card": [
     { path: "name", label: "Name", get: room("name") },
@@ -213,6 +217,11 @@ function normalizeSettings(config) {
   for (const k of SETTINGS_SECTIONS) {
     const v = config[k];
     if (v && typeof v === "object" && Object.keys(v).length) out[k] = v;
+  }
+  // one room order for every card that lists rooms
+  if (Array.isArray(config.room_order)) {
+    const order = config.room_order.filter((a) => typeof a === "string" && a);
+    if (order.length) out.room_order = order;
   }
   return Object.keys(out).length ? out : null;
 }

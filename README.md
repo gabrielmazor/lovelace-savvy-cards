@@ -95,6 +95,7 @@ health:
   battery_threshold: 20
 ignore:
   entities: [light.garden_string]
+room_order: [living_room, kitchen, bedroom]
 rooms:
   kitchen:
     control: input_select.kitchen_mode
@@ -123,6 +124,7 @@ to leave the settings' list out.
 | | `tap` | `list` (default): a tap opens the popup. `navigate`: a tap goes to the chip's page, hold opens the popup. A chip with a `hold_action` of its own keeps its tap on the list. |
 | `health` | `watchman` `battery_threshold` `warn_above` `exclude_platforms` `group_by` `group_min` `watchman_last_run` | The same options as [System health](#system-health), for the card and the home header's cog alike. |
 | `ignore` | `entities`, `areas` | Left out of the home header chips' counts and popups, on top of a chip's own `exclude` and `exclude_areas`. |
+| `room_order` | a list of area ids | The order of the rooms in the home header's popups and in the room header's row of other rooms: the rooms you list come first, in this order; the rest follow by name; "No room" is always last. Ids that aren't rooms are ignored. The editor lists it above Rooms (starting as the Rooms' order), and a button adds every room. |
 | `rooms.<area>` | `name`, `icon`, `page` | The room's title and tile name and icon, and where they lead (else the `room` pattern). |
 | | `control` | The room's control chip. |
 | | `light_state` | The helper pinned as the room's **Light** badge, and the lights card's pill. |
@@ -133,9 +135,9 @@ to leave the settings' list out.
 
 | Card | From the settings |
 |---|---|
-| Home header | `control`, `weather`, home button, each chip's page and `tap`, the security entity, `ignore`, the cog's page and health options |
+| Home header | `control`, `weather`, home button, each chip's page and `tap`, the security entity, `ignore`, `room_order`, the cog's page and health options |
 | System health | the health options |
-| Room header | the room's `control`, `temperature`, `include`, `exclude` and Light badge; home button and room pages |
+| Room header | the room's `control`, `temperature`, `include`, `exclude` and Light badge; home button, room pages and `room_order` |
 | Section title | the room's `name`, `icon`, `control`, `temperature`, `include`, `exclude`, Light badge and page |
 | Room tile | the room's `name`, `icon`, `control`, `temperature`, light helper (`toggle`, and its Light badge) and page |
 | Lights | the room's light helper as the pill's toggle |
@@ -211,7 +213,7 @@ works the same way, except that its button is off unless you set `popup_button: 
 | `home_path` | none | A home button that opens this page. |
 | `weather` | the first weather entity | A weather entity, or `false`. |
 | `health` | on | The cog: `navigation_path` (where the popup's button leads), `popup_button` (off by default for the cog), `popup_label`, `tap_action` / `hold_action` (default: the list of what needs attention), and the System health card's `watchman`, `watchman_button`, `watchman_report`, `battery_threshold`, `exclude_platforms`, `warn_above`, `group_by`, `group_min`. `false` hides it. |
-| `lights` / `climate` / `media` / `security` | on | Each chip: `false` hides it; or `{ entity, name, icon, color, navigation_path, popup_button, popup_label, exclude, exclude_areas, sort, sort_toggle, bulk_action, tap_action, hold_action }`, where `entity` shows that entity's state instead of the count. Tap and hold list what's counted unless `tap_action` / `hold_action` say otherwise; `navigation_path` only feeds the popup's page button. `exclude` and `exclude_areas` leave entities and whole rooms out of the count and the popup alike. `sort` (`room`, the default, or `recent`) is how the popup lists them. |
+| `lights` / `climate` / `media` / `security` | on | Each chip: `false` hides it; or `{ entity, name, icon, color, navigation_path, popup_button, popup_label, exclude, exclude_areas, sort, room_order, sort_toggle, bulk_action, tap_action, hold_action }`, where `entity` shows that entity's state instead of the count. Tap and hold list what's counted unless `tap_action` / `hold_action` say otherwise; `navigation_path` only feeds the popup's page button. `exclude` and `exclude_areas` leave entities and whole rooms out of the count and the popup alike. `sort` (`room`, the default, or `recent`) is how the popup lists them, and `room_order` the order of its rooms (also on the card, for all four). |
 | `chips` | none | Your own chips after the four. |
 
 ---
@@ -285,6 +287,12 @@ under "No room"), the active ones first. A **Room | Recent** switch at its top l
 flat, newest change first, with when each changed. The alarm and the locks stay on top of the
 security popup either way. The switch remembers your choice per chip; `sort: recent` makes
 Recent the default, and `sort_toggle: false` takes the switch away.
+
+By room, the rooms follow **your order**: `room_order` lists area ids first, in that order, and
+the rest follow by name. Set it once in the [settings](#savvy-settings), or on the card
+(`room_order: [kitchen, office]`, for all four chips) or on one chip; the chip's wins over the
+card's, and the card's over the settings'. The room header's row of other rooms follows the same
+order.
 
 ```yaml
 type: custom:savvy-home-header-card

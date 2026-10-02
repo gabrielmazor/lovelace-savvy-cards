@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.7.1 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.7.2 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.7.1";
+const SAVVY_VERSION = "0.7.2";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -1664,7 +1664,7 @@ class Sheet {
 // its main control on the right (a switch, play / pause, a target stepper...) and, when it has
 // more, a chevron that opens one extra line (core/rows.js says what each kind puts where). One
 // extra line is open at a time. The row's name area opens more-info.
-//   show(hass, ids, returnTo, { sort: "room" | "recent", toggle: false, storeKey, pinned: [ids], bulk: "lights" | ... | "auto" })
+//   show(hass, ids, returnTo, { sort: "room" | "recent", order: [area ids], toggle: false, storeKey, pinned: [ids], bulk: "lights" | ... | "auto" })
 // sort groups the rows under room headings, or lists them by latest change; the toggle at the
 // top lets the user switch, and remembers the choice per storeKey. pinned ids stay first. bulk
 // puts a button next to the toggle that acts on exactly the listed entities (All off, Pause all, Lock all).
@@ -1882,7 +1882,7 @@ class EntityListSheet {
       if (!box.__empty) { box.__empty = document.createElement("div"); box.__empty.className = "sv-empty"; box.__empty.textContent = "Nothing right now."; }
       box.appendChild(box.__empty);
     } else box.__empty?.remove();
-    for (const item of sortRows(hass, ids, { sort: this.sort, pinned: this.opts.pinned })) {
+    for (const item of sortRows(hass, ids, { sort: this.sort, pinned: this.opts.pinned, order: this.opts.order })) {
       if (item.head) {
         let head = box.__heads.get(item.head.key);
         if (!head) { head = document.createElement("div"); head.className = "sv-group"; box.__heads.set(item.head.key, head); }
@@ -2846,7 +2846,8 @@ function bulkKindOf(ids) {
 const bulkTargets = (kind, ids, hass) => ids.filter((id) => domainOf(id) === BULK[kind].domain && hass.states[id] && BULK[kind].needs(hass.states[id]));
 
 // ---- sorting: by room (headings), by recent change (flat), or as given
-function sortRows(hass, ids, { sort, pinned = [] } = {}) {
+// `order`: area ids listed first, in this order; the rest follow by name, and "No room" is always last
+function sortRows(hass, ids, { sort, pinned = [], order = [] } = {}) {
   const out = [];
   if (!sort) return ids.map((id) => ({ id }));
   const pin = new Set(pinned);
@@ -2866,7 +2867,8 @@ function sortRows(hass, ids, { sort, pinned = [] } = {}) {
     groups.get(area).push(id);
   }
   const label = (area) => (area ? areaInfo(hass, area).name : "No room");
-  const keys = [...groups.keys()].sort((a, b) => (!a) - (!b) || label(a).localeCompare(label(b)));
+  const rank = new Map([].concat(order || []).map((a, i) => [a, i]));
+  const keys = [...groups.keys()].sort((a, b) => (!a) - (!b) || (rank.get(a) ?? Infinity) - (rank.get(b) ?? Infinity) || label(a).localeCompare(label(b)));
   for (const area of keys) {
     out.push({ head: { key: area || "_none", label: label(area) } });
     const list = groups.get(area).sort((a, b) => (isActive(hass.states[b]) - isActive(hass.states[a])) || nameOf(a).localeCompare(nameOf(b)));
@@ -3240,7 +3242,7 @@ class ModePicker {
 //   this._chipActions(el, getCtx, defaults)   the same, from a chip's action config
 //   this._spinner(key, el)                    a rotating icon; set .s.to(turnsPerSecond)
 //   this._showList(title, ids, color, from, footer, opts)   the popup of the entities a chip stands for,
-//                                              with an optional pinned page button; opts: { sort, toggle, storeKey, pinned }
+//                                              with an optional pinned page button; opts: { sort, order, toggle, storeKey, pinned }
 //   _paint(dirty, all)                        the card's own painting, after the shared part
 // ---------------------------------------------------------------------------------------
 
@@ -3984,6 +3986,8 @@ const SETTINGS_RULES = {
         get: (s, c) => (s.house?.tap === "navigate" && c[k]?.hold_action === undefined ? navTo(c[k]?.navigation_path ?? s.pages?.[k]) : undefined) },
       { path: `${k}.exclude`, label: `${cap(k)} ignored`, kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
       { path: `${k}.exclude_areas`, label: `${cap(k)} ignored rooms`, kind: "union", get: (s) => s.ignore?.areas, src: "ignore" },
+      // the card's own room_order covers all four chips; the settings' order fills in under both
+      { path: `${k}.room_order`, label: `${cap(k)} room order`, get: (s, c) => (c.room_order !== undefined ? undefined : s.room_order), src: "room_order" },
     ]),
     { path: "security.entity", label: "Security entity", get: glob("house", "security"), src: "house" },
     { path: "health.navigation_path", label: "Health page", get: (s) => s.pages?.health, src: "pages" },
@@ -4000,6 +4004,8 @@ const SETTINGS_RULES = {
     { path: "entities", label: "Light helper", kind: "pin", get: room("light_state") },
     { path: "home_path", label: "Home button", get: glob("pages", "home"), src: "pages" },
     { path: "room_path", label: "Room pages", get: glob("pages", "room"), src: "pages" },
+    // the card's own `order` (the pre-Savvy name) counts as its own
+    { path: "room_order", label: "Room order", get: (s, c) => (c.order !== undefined ? undefined : s.room_order), src: "room_order" },
   ],
   "savvy-section-title-card": [
     { path: "name", label: "Name", get: room("name") },
@@ -4142,6 +4148,11 @@ function normalizeSettings(config) {
   for (const k of SETTINGS_SECTIONS) {
     const v = config[k];
     if (v && typeof v === "object" && Object.keys(v).length) out[k] = v;
+  }
+  // one room order for every card that lists rooms
+  if (Array.isArray(config.room_order)) {
+    const order = config.room_order.filter((a) => typeof a === "string" && a);
+    if (order.length) out.room_order = order;
   }
   return Object.keys(out).length ? out : null;
 }
@@ -9025,7 +9036,7 @@ registerCard("savvy-graph-card", SavvyGraphCard, "Graph",
 //   weather: auto | weather.home | false
 //   health: { navigation_path: /lovelace/admin, watchman: [...], battery_threshold: 20, group_by: hub } | false
 //   lights / climate / media / security: false | { entity, name, icon, color, navigation_path,
-//       popup_button, popup_label, exclude, exclude_areas, sort, sort_toggle, bulk_action, tap_action, hold_action }
+//       popup_button, popup_label, exclude, exclude_areas, sort, room_order, sort_toggle, bulk_action, tap_action, hold_action }
 //       (exclude / exclude_areas: ignored entities and rooms, for the count and the popup alike; sort: room | recent
 //       is how the popup lists them, with a Room | Recent switch at its top unless sort_toggle is false, and a bulk
 //       action beside it (All off, Pause all, Lock all) unless bulk_action is false;
@@ -9033,6 +9044,8 @@ registerCard("savvy-graph-card", SavvyGraphCard, "Graph",
 //       counted, unless tap_action / hold_action say otherwise; the popup's page button leads to
 //       navigation_path, or to the page its tap or hold action navigates to. navigation_path never
 //       changes what a tap does)
+//   room_order: [area ids]                          the rooms' order in the popups (and a chip's own room_order wins);
+//                                                    the rest follow by name, "No room" last
 //   chips: [...]                                     your own, after the four
 
 const STYLE = `${BASE_CSS}${HEADER_CSS}${CHIP_ROW_CSS}`;
@@ -9257,7 +9270,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
       config: { ...cfg },
       defaults: { tap: { action: "list" }, hold: { action: "list" } },
       list: (from) => this._showList(listTitle, snapshot, cfg.color ? colorOf(cfg.color) : base.color, from, pageButton(cfg, cfg.name || base.name),
-        { sort: cfg.sort === "recent" ? "recent" : "room", toggle: cfg.sort_toggle !== false, storeKey: key, pinned, bulk: cfg.bulk_action === false ? null : key }),
+        { sort: cfg.sort === "recent" ? "recent" : "room", order: cfg.room_order ?? this._config.room_order, toggle: cfg.sort_toggle !== false, storeKey: key, pinned, bulk: cfg.bulk_action === false ? null : key }),
     };
   }
 
@@ -9278,6 +9291,7 @@ const autoSection = (key, what) => ({ type: "expandable", name: key, title: `${A
   { name: "exclude", label: "Ignored entities", helper: "Left out of the count and the popup.", selector: { entity: { multiple: true, domain: AUTO[key].domain } } },
   { name: "exclude_areas", label: "Ignored rooms", helper: "Everything in these rooms is left out.", selector: { area: { multiple: true } } },
   S.select("sort", "Sort by", [{ value: "room", label: "Room" }, { value: "recent", label: "Recent" }]),
+  { name: "room_order", label: "Room order", helper: "Rooms listed first, in this order (the order you pick them in). Empty: the card's, then the settings'.", selector: { area: { multiple: true } } },
   S.bool("sort_toggle", "Sort toggle", "A Room | Recent switch at the top of the popup.", true),
   S.bool("bulk_action", "Bulk action", `${BULK[key].label} for everything listed, at the top of the popup.`, true),
   S.action("tap_action", "Tap action", "Default: open the list."),
@@ -9307,6 +9321,9 @@ const EDITOR = defineEditor("savvy-home-header-card", (hass, c) => [
     ]),
     S.number("group_min", "Hub threshold", 2, 50),
   ] },
+  { name: "room_order", label: "Room order", type: "list", helper: "The order of the rooms in the popups: listed first, in this order; the rest follow by name. A chip can have its own.",
+    initial: (h) => (h ? allAreas(h).map((a) => a.id) : []), add: { selector: { area: {} }, label: "Add a room" },
+    summary: (a, h) => ({ title: areaInfo(h, a).name, sub: a }) },
   autoSection("lights", "counts the lights that are on."),
   autoSection("climate", "the average indoor temperature."),
   autoSection("media", "counts what's playing."),
@@ -13674,6 +13691,7 @@ registerCard("savvy-section-title-card", SavvySectionTitleCard, "Section title",
 //   house:  { control, weather, security, tap: list | navigate }
 //   health: { watchman, battery_threshold, warn_above, exclude_platforms, group_by, group_min, watchman_last_run }
 //   ignore: { entities: [], areas: [] }
+//   room_order: [area ids]   the rooms' order in the popups and the room header's row; the rest follow by name
 //   rooms:  { living_room: { name, icon, page, control, light_state, temperature, humidity, include, exclude } }
 //   layout: full | compact
 
@@ -13757,7 +13775,12 @@ class SavvySettingsCard extends SavvyCard {
 
 // ---- the editor: sections, and the rooms as a list (the config keeps them as a map by area)
 
-const toRoomList = (rooms) => Object.entries(rooms || {}).map(([area, v]) => ({ area, ...(v && typeof v === "object" ? v : {}) }));
+// the rooms list follows `room_order`; rooms it doesn't name keep their place after the named ones
+const byOrder = (order) => {
+  const rank = new Map([].concat(order || []).map((a, i) => [a, i]));
+  return (a, b) => (rank.get(a.area) ?? Infinity) - (rank.get(b.area) ?? Infinity);
+};
+const toRoomList = (rooms, order) => Object.entries(rooms || {}).map(([area, v]) => ({ area, ...(v && typeof v === "object" ? v : {}) })).sort(byOrder(order));
 const fromRoomList = (list) => Object.fromEntries((list || []).filter((i) => i && i.area).map(({ area, ...rest }) => [area, cleanConfig(rest)]));
 const withoutList = (c) => { const { rooms_list, ...rest } = c || {}; return rest; };
 
@@ -13767,37 +13790,58 @@ class SettingsEditor extends SavvyEditor {
   setConfig(config) {
     const same = this._config && JSON.stringify(cleanConfig({ ...config })) === JSON.stringify(withoutList(this._config));
     if (same) return;
-    this._config = { ...config, rooms_list: toRoomList(config?.rooms) };
+    this._config = { ...config, rooms_list: toRoomList(config?.rooms, config?.room_order) };
     this._render();
   }
 
   _emit(config) {
-    const { rooms_list, ...rest } = config;
+    let { rooms_list, ...rest } = config;
+    // a new room order re-orders the Rooms entries with it
+    if (rooms_list && JSON.stringify(rest.room_order || []) !== JSON.stringify(this._config?.room_order || [])) {
+      rooms_list = [...rooms_list].sort(byOrder(rest.room_order));
+      this._reorder = true;
+    }
     const out = { ...rest };
     if (rooms_list) {
       const map = fromRoomList(rooms_list);
       if (Object.keys(map).length) out.rooms = map; else delete out.rooms;
     }
     super._emit(out);
-    this._config = { ...this._config, rooms_list: rooms_list ?? toRoomList(this._config.rooms) };
+    this._config = { ...this._config, rooms_list: rooms_list ?? toRoomList(this._config.rooms, this._config.room_order) };
+    if (this._reorder) { this._reorder = false; this._render(); }
   }
 
   _render() {
     super._render();
     const wrap = this.shadowRoot.querySelector(".sv-ed");
     if (!wrap) return;
-    const btn = document.createElement("button");
-    btn.className = "sv-prefill";
-    btn.type = "button";
-    btn.textContent = "Add every room";
-    btn.addEventListener("click", () => {
+    const button = (label, onClick) => {
+      const btn = document.createElement("button");
+      btn.className = "sv-prefill";
+      btn.type = "button";
+      btn.textContent = label;
+      btn.addEventListener("click", onClick);
+      return btn;
+    };
+    const everyArea = () => Object.values(this._hass?.areas || {}).sort((a, b) => String(a.name).localeCompare(String(b.name))).map((a) => a.area_id).filter(Boolean);
+    // the order list sits above the rooms list: its button goes right after it
+    const orderList = wrap.querySelector('[data-key="list:room_order"]');
+    const orderBtn = button("Add every room to the order", () => {
+      const have = new Set(this._config.room_order || []);
+      const add = everyArea().filter((id) => !have.has(id));
+      if (!add.length) return;
+      this._emit({ ...this._config, room_order: [...(this._config.room_order || this._config.rooms_list?.map((i) => i.area) || []), ...add] });
+      this._render();
+    });
+    orderBtn.dataset.for = "room_order";
+    if (orderList) orderList.after(orderBtn); else wrap.appendChild(orderBtn);
+    wrap.appendChild(button("Add every room", () => {
       const have = new Set((this._config.rooms_list || []).map((i) => i.area));
-      const areas = Object.values(this._hass?.areas || {}).map((a) => a.area_id).filter((id) => id && !have.has(id));
+      const areas = everyArea().filter((id) => !have.has(id));
       if (!areas.length) return;
       this._emit({ ...this._config, rooms_list: [...(this._config.rooms_list || []), ...areas.map((area) => ({ area }))] });
       this._render();
-    });
-    wrap.appendChild(btn);
+    }));
   }
 
   schema(hass) {
@@ -13828,6 +13872,12 @@ class SettingsEditor extends SavvyEditor {
         { name: "entities", label: "Ignored entities", helper: "Left out of the home header's counts and popups.", selector: { entity: { multiple: true } } },
         { name: "areas", label: "Ignored rooms", selector: { area: { multiple: true } } },
       ] },
+      { name: "room_order", label: "Room order", type: "list", empty: "No order yet: rooms follow by name.",
+        helper: "The order of the rooms in the popups and the room header's row: listed first, in this order; the rest follow by name.",
+        // while unset it starts as the Rooms entries' order, so reordering works from the first touch
+        initial: (h, cfg) => Object.keys(cfg?.rooms || {}),
+        add: { selector: { area: {} }, label: "Add a room" },
+        summary: (a, h) => ({ title: h?.areas?.[a]?.name || areaName(a), sub: a }) },
       { name: "rooms_list", label: "Rooms", type: "list", empty: "No rooms yet. Add one, or add every room below.",
         helper: "Per room: what its cards share. A card's own settings win.",
         summary: (item, h) => ({ title: item.name || h?.areas?.[item.area]?.name || areaName(item.area), sub: item.area }),
