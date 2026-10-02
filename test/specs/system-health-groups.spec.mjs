@@ -18,7 +18,7 @@ export default async function ({ browser, base, check }) {
           (d.ents || []).forEach((st, i) => {
             const eid = `sensor.${id}_${i}`;
             hass.states[eid] = { entity_id: eid, state: st, attributes: { friendly_name: `${id} ${i}` }, last_changed: new Date(Date.now() - 3600000).toISOString() };
-            hass.entities[eid] = { entity_id: eid, device_id: id, platform: d.platform || "demo", hidden: !!d.hidden?.[i] };
+            hass.entities[eid] = { entity_id: eid, device_id: id, platform: d.platform || `p_${id}`, hidden: !!d.hidden?.[i] };
           });
         }
         return Object.assign(hass, extra);
@@ -59,7 +59,7 @@ export default async function ({ browser, base, check }) {
     check("engine: a chain rolls up to its top-most down hub", JSON.stringify(r.chain) === JSON.stringify(["hub:A:offline[2]"]) && r.chain3.length === 3, JSON.stringify([r.chain, r.chain3]));
     check("engine: a chain stops at an up hub", r.chainUp.length === 2 && r.chainUp.every((x) => x.startsWith("device:")), JSON.stringify(r.chainUp));
     check("engine: a cycle neither hangs nor loses a device", r.cycle.length === 2, JSON.stringify(r.cycle));
-    check("engine: a partial device never rolls into a hub, and counts once", JSON.stringify(r.partial) === JSON.stringify(["hub:H:offline[4]", "device:p:partial"]), JSON.stringify(r.partial));
+    check("engine: a device with a few entities unavailable folds into an offline hub with the rest, and counts once", JSON.stringify(r.partial) === JSON.stringify(["hub:H:offline[5]"]), JSON.stringify(r.partial));
     check("engine: group_by device keeps every device, none keeps every entity", r.deviceMode.length === 5 && r.noneMode.length === 9, JSON.stringify([r.deviceMode, r.noneMode]));
     check("engine: hidden entities and excluded platforms are never issues; a device is partial when only some entities are down",
       r.hidden.length === 0 || (r.hidden.length === 1 && r.hidden[0].startsWith("device:d")), JSON.stringify(r.hidden));
@@ -101,14 +101,14 @@ export default async function ({ browser, base, check }) {
           x: r.getAttribute("aria-expanded"), soft: r.hasAttribute("data-soft") })) };
     }, i);
     const a = await read(0);
-    check(`${tag} sections say what's wrong in words`, JSON.stringify(a.groups) === JSON.stringify(["Broken references | 3 broken references", "Offline | 3 devices offline, 1 partly offline and 2 entities", "Low batteries | 1 battery low"]), JSON.stringify(a.groups));
+    check(`${tag} sections say what's wrong in words`, JSON.stringify(a.groups) === JSON.stringify(["Watchman | 2 missing entities, 1 missing action", "Offline devices | 4 devices and 2 entities offline", "Low batteries | 1 battery low"]), JSON.stringify(a.groups));
     const top = a.rows.filter((r) => r.d === "0");
     check(`${tag} offline: hubs first, then devices, then entities; each says how long`,
-      JSON.stringify(top.slice(3, 9).map((r) => r.n)) === JSON.stringify(["ZHA Coordinator offline", "Zigbee2MQTT Bridge offline", "Washer Plug", "Garage Multisensor", "Garage Temperature", "Hallway Light"]), JSON.stringify(top.map((r) => r.n)));
+      JSON.stringify(top.slice(3, 9).map((r) => r.n)) === JSON.stringify(["ZHA Coordinator offline", "Zigbee2MQTT Bridge offline", "Garage Multisensor", "Washer Plug", "Garage Temperature", "Hallway Light"]), JSON.stringify(top.map((r) => r.n)));
     const byName = (rows, n) => rows.find((r) => r.n === n);
     check(`${tag} hub, device, partial and entity lines read right`,
       byName(top, "Zigbee2MQTT Bridge offline").s === "5 devices · offline for 3 h" && byName(top, "ZHA Coordinator offline").s === "3 devices · offline for 3 h"
-      && byName(top, "Washer Plug").s === "offline for 3 h · 3 entities" && byName(top, "Garage Multisensor").s === "2 of 4 entities unavailable" && byName(top, "Garage Multisensor").soft
+      && byName(top, "Washer Plug").s === "offline for 3 h · 3 entities" && byName(top, "Garage Multisensor").s === "offline for 3 h · 2 of 4 entities" && !byName(top, "Garage Multisensor").soft
       && byName(top, "Hallway Light").s === "offline for 30 min · light.hallway_broken", JSON.stringify(top));
     check(`${tag} hubs and devices are collapsed buttons`, byName(top, "Zigbee2MQTT Bridge offline").x === "false" && byName(top, "Washer Plug").x === "false" && byName(top, "Hallway Light").x === null, JSON.stringify(top));
 
@@ -171,14 +171,14 @@ export default async function ({ browser, base, check }) {
     // details: facts lines, area and integration on the rows
     const det = await read(1);
     const dtop = det.rows.filter((r) => r.d === "0");
-    check(`${tag} details: a facts line under every section`, JSON.stringify(det.facts) === JSON.stringify(["Checked 2 h ago, 3 problems", `13 of 23 devices online`, "4 batteries, lowest 12%"]) && !a.facts.length, JSON.stringify([det.facts, a.facts]));
+    check(`${tag} details: a facts line under every section`, JSON.stringify(det.facts) === JSON.stringify(["Checked 2 h ago, 3 missing", `12 of 23 devices online`, "4 batteries, lowest 12%"]) && !a.facts.length, JSON.stringify([det.facts, a.facts]));
     check(`${tag} details: area and integration on the rows`, byName(dtop, "Zigbee2MQTT Bridge offline").s === "MQTT · 5 devices · offline for 3 h"
-      && byName(dtop, "Washer Plug").s === "Bathroom · Shelly · offline for 3 h · 3 entities" && byName(dtop, "Garage Multisensor").s === "Hallway · MQTT · 2 of 4 entities unavailable", JSON.stringify(dtop));
-    check(`${tag} the facts count devices the way the engine does`, setup.stats.devices.total === 23 && setup.stats.devices.down === 10, JSON.stringify(setup.stats));
+      && byName(dtop, "Washer Plug").s === "Bathroom · Shelly · offline for 3 h · 3 entities" && byName(dtop, "Garage Multisensor").s === "Hallway · MQTT · offline for 3 h · 2 of 4 entities", JSON.stringify(dtop));
+    check(`${tag} the facts count devices the way the engine does`, setup.stats.devices.total === 23 && setup.stats.devices.down === 11, JSON.stringify(setup.stats));
 
     // single sources and group_by
     const one = await read(2), dev = await read(3), none = await read(4);
-    check(`${tag} source offline: titled Offline, counted in what's offline`, one.name === "Offline" && one.pill === "6 offline" && one.rows.filter((r) => r.d === "0").length === 6, JSON.stringify([one.name, one.pill]));
+    check(`${tag} source offline: titled Offline devices, counted in what's offline`, one.name === "Offline devices" && one.pill === "6 offline" && one.rows.filter((r) => r.d === "0").length === 6, JSON.stringify([one.name, one.pill]));
     check(`${tag} group_by device: no hubs; none: one row per entity`, dev.pill === "13 offline" && !dev.rows.some((r) => /offline$/.test(r.n))
       && none.pill === "30 offline" && none.rows.every((r) => r.x === null), JSON.stringify([dev.pill, none.pill, none.rows.length]));
 
@@ -195,8 +195,8 @@ export default async function ({ browser, base, check }) {
         single: window.cards[2].shadowRoot.querySelector(".rows .ok")?.textContent.trim(), facts: [...window.cards[1].shadowRoot.querySelectorAll(".facts")].map((f) => f.textContent) };
     });
     check(`${tag} nothing wrong: All good, with a tick and what's fine under each title`, healthy.pill === "All good" && healthy.rows === 0
-      && JSON.stringify(healthy.ticks) === JSON.stringify(["No broken references", "Everything is online", "All batteries fine"]) && healthy.single === "Everything is online", JSON.stringify(healthy));
-    check(`${tag} nothing wrong, with details: the facts say so`, JSON.stringify(healthy.facts) === JSON.stringify(["Checked 2 h ago, 0 problems", "23 devices, all online", "9 batteries, lowest 55%"]), JSON.stringify(healthy.facts));
+      && JSON.stringify(healthy.ticks) === JSON.stringify(["Nothing missing", "All devices online", "All batteries fine"]) && healthy.single === "All devices online", JSON.stringify(healthy));
+    check(`${tag} nothing wrong, with details: the facts say so`, JSON.stringify(healthy.facts) === JSON.stringify(["Checked 2 h ago, nothing missing", "23 devices, all online", "9 batteries, lowest 55%"]), JSON.stringify(healthy.facts));
 
     check(`${tag} springs idle`, await idle(page));
     const real = errors.filter((x) => !/Failed to load resource/.test(x));

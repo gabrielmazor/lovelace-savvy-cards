@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.6.1
+
+The health card, on a real house: when Zigbee2MQTT stopped, every device showed up on its
+own instead of collapsing under the bridge.
+
+- **Offline means half or more.** A device is offline when half or more of its entities are
+  unavailable, not only when all are: devices keep an entity or two when a bridge stops.
+  Fewer is still "partly offline". A hub whose own connectivity sensor reads off counts as
+  offline, and takes every device behind it that has anything unavailable.
+- **Integration rows.** An integration that Home Assistant reports as failed or retrying, or
+  whose devices are mostly offline with no hub to blame, is one row ("Tuya, retrying
+  setup"). A hub is blamed before its integration; a hub of a failed integration sits
+  inside it. The config entries are read once in a while and a refusal (they may be
+  admin-only) is silent; the rows are then inferred from the devices.
+- **New wording.** The sections are **Offline devices**, **Low batteries** and **Watchman**,
+  with Watchman's own words ("3 missing entities, 1 missing action", "Nothing missing") and
+  "All devices online". `source: offline` works as well as `unavailable`.
+- **Run report.** A chip in the Watchman section asks Watchman for a new report
+  (`watchman.report`, `parse_config: true` by default; `watchman_report` sets the data,
+  `watchman_button: false` hides it). The home header's cog popup has it too.
+- **Locks in the security popup.** The popup now always lists every lock, in any state. It
+  used to list only what was open, which dropped a locked lock whenever a window was open.
+- **Taps follow tap_action.** On the home header's four chips and the health cog,
+  `navigation_path` no longer makes a tap navigate. Tap and hold both open the list, unless
+  `tap_action` / `hold_action` say otherwise; `navigation_path` only feeds the popup's page
+  button. To make a tap go to a page, give the chip `tap_action: { action: navigate, ... }`.
+
 ## 0.6.0
 
 Names that say what a card is for, a page button in the popups, and a control chip that is
@@ -9,7 +36,7 @@ no longer only for selects. **This one changes ids and a key: see Migrating.**
   Room tile, Section title, System health.
 - **Page button in the popups.** Holding a chip on the home header lists what it counts;
   the popup now has a button pinned under the list that opens the chip's page. Its page is
-  the chip's `navigation_path` (a tap goes there too), or else the page its tap or hold
+  the chip's `navigation_path`, or else the page its tap or hold
   action already navigates to. `popup_button: false` hides it, `popup_label` words it. The
   health cog's popup has one as well.
 - **Control.** `mode` is now `control`, and takes any entity. A select or input_select

@@ -168,14 +168,14 @@ function houseTemperature(hass) {
 }
 
 // Security: the alarm panel when there is one; otherwise what's open or unlocked.
-// -> { entity, state, open: [ids], ids: [everything relevant] }
+// -> { entity, open: [ids], locks: [every lock], ids: [everything relevant] }
 function houseSecurity(hass) {
   const inside = houseEntities(hass);
   const alarm = inside.find((id) => domainOf(id) === "alarm_control_panel") || null;
   const locks = inside.filter((id) => domainOf(id) === "lock");
   const openings = pick(hass, houseEntities(hass, { inArea: true }), { domains: "binary_sensor", deviceClasses: ["door", "window", "garage_door", "opening"] });
   const open = [...locks, ...openings].filter((id) => isActive(hass.states[id]));
-  return { entity: alarm, open, ids: [...(alarm ? [alarm] : []), ...locks, ...openings] };
+  return { entity: alarm, open, locks, ids: [...(alarm ? [alarm] : []), ...locks, ...openings] };
 }
 
 // The pre-Savvy badge keys, for the room / heading / tile cards: `locks: lock.x` (or any

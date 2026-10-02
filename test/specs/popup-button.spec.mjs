@@ -1,5 +1,6 @@
 // The home header's popups: a pinned page button under the list, taken from the chip's
-// navigation_path or from the page its tap or hold action navigates to.
+// navigation_path or from the page its tap or hold action navigates to. navigation_path never
+// changes what a tap does: tap and hold open the list unless tap_action / hold_action say otherwise.
 import { openPage, idle, centerOf } from "./_util.mjs";
 
 const hold = async (page, p, ms = 650) => { await page.mouse.move(p.x, p.y); await page.mouse.down(); await page.waitForTimeout(ms); await page.mouse.up(); };
@@ -20,12 +21,17 @@ export default async function ({ browser, base, check }) {
         security: { name: "Doors" },
       }, width);
       window.mount("savvy-home-header-card", { lights: { navigation_path: "/lovelace/lights", popup_button: false }, health: false }, width);
+      // an explicit tap_action replaces the tap; the button still follows navigation_path
+      window.mount("savvy-home-header-card", {
+        health: { navigation_path: "/lovelace/admin", tap_action: { action: "navigate", navigation_path: "/lovelace/admin-tap" } },
+        lights: { navigation_path: "/lovelace/lights", tap_action: { action: "navigate", navigation_path: "/lovelace/lights-tap" } },
+      }, width);
     }, width);
     await page.waitForTimeout(500);
     const chip = (card, i) => page.evaluate(({ card, i }) => { const r = window.cards[card].shadowRoot.querySelectorAll("#chips .chip")[i].getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; }, { card, i });
     const close = async () => { await page.keyboard.press("Escape"); await page.waitForTimeout(450); };
 
-    // lights: navigation_path is the target; a tap goes there, hold lists and the popup has the button
+    // lights: navigation_path is the target of the button; hold lists
     await hold(page, await chip(0, 0));
     await page.waitForTimeout(500);
     const lights = await page.evaluate(GO);
@@ -39,11 +45,13 @@ export default async function ({ browser, base, check }) {
     const after = await page.evaluate(() => ({ nav: [...window.nav], open: window.__savvy.portalRoot().querySelectorAll(".sv-sheet").length }));
     check(`${tag} tapping it navigates and closes the popup`, after.nav.at(-1) === "/lovelace/lights" && after.open === 0, JSON.stringify(after));
 
-    // a tap on the chip navigates by default when it has a target page
+    // a tap on the chip opens the list too: a target page does not make it navigate
     await page.evaluate(() => { window.nav.length = 0; });
     await page.mouse.click(...Object.values(await chip(0, 0)));
-    await page.waitForTimeout(250);
-    check(`${tag} a tap on a chip with a target page goes there`, (await page.evaluate(() => [...window.nav]))[0] === "/lovelace/lights");
+    await page.waitForTimeout(500);
+    const tapped = await page.evaluate((GO) => ({ nav: [...window.nav], go: eval(GO)?.text ?? null }), GO);
+    check(`${tag} a tap on a chip with a target page still opens the list; it does not navigate`, tapped.nav.length === 0 && tapped.go === "Open lights", JSON.stringify(tapped));
+    await close();
 
     // climate: the target comes from its tap_action; the label is its own
     await hold(page, await chip(0, 1));
@@ -74,6 +82,39 @@ export default async function ({ browser, base, check }) {
     await page.waitForTimeout(500);
     check(`${tag} popup_button: false hides it`, (await page.evaluate(GO)) === null);
     await close();
+
+    // the cog: a tap opens the health popup too, whatever its navigation_path
+    await page.evaluate(() => { window.nav.length = 0; });
+    await page.mouse.click(...Object.values(await centerOf(page, 0, "#health")));
+    await page.waitForTimeout(600);
+    const cogTap = await page.evaluate((GO) => ({ nav: [...window.nav], go: eval(GO)?.text ?? null, title: window.__savvy.portalRoot().querySelector(".sv-sheet .sv-title")?.textContent }), GO);
+    check(`${tag} a tap on the cog opens the health popup; navigation_path does not navigate`, cogTap.nav.length === 0 && cogTap.go === "Open system health" && cogTap.title === "System health", JSON.stringify(cogTap));
+    await close();
+
+    // explicit tap_action: the tap navigates, hold still lists, and the button follows navigation_path
+    await page.evaluate(() => { window.nav.length = 0; });
+    await page.mouse.click(...Object.values(await chip(2, 0)));
+    await page.waitForTimeout(300);
+    check(`${tag} an explicit tap_action navigates on tap`, (await page.evaluate(() => [...window.nav]))[0] === "/lovelace/lights-tap" && (await page.evaluate(GO)) === null);
+    await hold(page, await chip(2, 0));
+    await page.waitForTimeout(500);
+    const ex = await page.evaluate(GO);
+    check(`${tag} ...hold still opens the list, whose button leads to navigation_path (not the tap's page)`, ex?.text === "Open lights", JSON.stringify(ex));
+    await page.evaluate(() => { window.nav.length = 0; });
+    await page.evaluate(() => window.__savvy.portalRoot().querySelector(".sv-go").click());
+    await page.waitForTimeout(500);
+    check(`${tag} ...and that button goes to navigation_path`, (await page.evaluate(() => [...window.nav])).at(-1) === "/lovelace/lights");
+    await page.evaluate(() => { window.nav.length = 0; });
+    await page.mouse.click(...Object.values(await centerOf(page, 2, "#health")));
+    await page.waitForTimeout(300);
+    check(`${tag} the cog's explicit tap_action navigates on tap`, (await page.evaluate(() => [...window.nav]))[0] === "/lovelace/admin-tap");
+    await hold(page, await centerOf(page, 2, "#health"));
+    await page.waitForTimeout(600);
+    check(`${tag} ...and its hold opens the health popup, button to navigation_path`, (await page.evaluate(GO))?.text === "Open system health");
+    await page.evaluate(() => { window.nav.length = 0; });
+    await page.evaluate(() => window.__savvy.portalRoot().querySelector(".sv-go").click());
+    await page.waitForTimeout(500);
+    check(`${tag} ...which goes to /lovelace/admin`, (await page.evaluate(() => [...window.nav])).at(-1) === "/lovelace/admin");
 
     // the cog's popup
     await hold(page, await centerOf(page, 0, "#health"));

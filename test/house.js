@@ -211,6 +211,55 @@
     return patch;
   }
 
+  // What a real house does when things stop (0.6.1), added on demand like hubFixture:
+  //   z2m     a Zigbee2MQTT-like bridge stops: its connectivity sensor reads "off" (not unavailable),
+  //           three of its four entities go unavailable, and each of the six devices behind it loses
+  //           two of its three entities (one device loses only one: partial). MQTT platform.
+  //   washer  an MQTT device with 14 entities, 12 of them unavailable
+  //   tuya    four Tuya devices on one config entry, three of them offline
+  //   coord   a ZHA-like coordinator with no entities, four devices behind it, three offline
+  //   nest    a config entry with no devices
+  //   tuyaState / nestState   the config entries' states, as config_entries/get says ("loaded", "setup_retry"...)
+  //   window.offlineFixture(house, { z2m, washer, tuya, coord, tuyaState, nestState }) -> { patch, entries }
+  // `patch` is for window.setStates; `entries` is what config_entries/get answers. The registry
+  // (hass.entities / hass.devices) is changed in place.
+  function offlineFixture(house, { z2m = false, washer = false, tuya = false, coord = false, tuyaState = "loaded", nestState = "loaded" } = {}) {
+    const patch = {};
+    const dev = (id, name, via, entry, area = null) => { house.devices[id] = { id, name, area_id: area, via_device_id: via, config_entries: entry ? [entry] : [], primary_config_entry: entry || null }; };
+    const ent = (id, device, platform, state, off, attrs = {}, name) => {
+      house.entities[id] = { entity_id: id, area_id: null, device_id: device, platform, entity_category: null, hidden: false, disabled_by: null };
+      patch[id] = { entity_id: id, state: off ? "unavailable" : String(state), attributes: { friendly_name: name || id.split(".")[1].replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()), ...attrs }, last_changed: ago(3 * HOUR) };
+    };
+    dev("dev_n_bridge", "Z2M Bridge", null, "entry_mqtt");
+    ent("binary_sensor.n_bridge_connection", "dev_n_bridge", "mqtt", z2m ? "off" : "on", false, { device_class: "connectivity" }, "Z2M Bridge Connection");
+    for (const k of ["version", "clients", "uptime"]) ent(`sensor.n_bridge_${k}`, "dev_n_bridge", "mqtt", "1", z2m, {}, `Z2M Bridge ${k[0].toUpperCase()}${k.slice(1)}`);
+    for (let i = 1; i <= 6; i++) {
+      dev(`dev_n_k${i}`, `Z2M Sensor ${i}`, "dev_n_bridge", "entry_mqtt", "kitchen");
+      ent(`sensor.n_k${i}_a`, `dev_n_k${i}`, "mqtt", "1", z2m, {}, `Z2M Sensor ${i} A`);
+      ent(`sensor.n_k${i}_b`, `dev_n_k${i}`, "mqtt", "1", z2m && i < 6, {}, `Z2M Sensor ${i} B`);
+      ent(`sensor.n_k${i}_c`, `dev_n_k${i}`, "mqtt", "1", false, {}, `Z2M Sensor ${i} C`);
+    }
+    dev("dev_n_washer", "Washing Machine", null, "entry_mqtt", "bathroom");
+    for (let i = 0; i < 14; i++) ent(`sensor.n_washer_${i}`, "dev_n_washer", "mqtt", "1", washer && i < 12, {}, `Washer ${i}`);
+    for (let i = 1; i <= 4; i++) {
+      dev(`dev_n_tuya${i}`, `Tuya Plug ${i}`, null, "entry_tuya", "office");
+      for (const k of ["power", "switch"]) ent(`sensor.n_tuya${i}_${k}`, `dev_n_tuya${i}`, "tuya", "1", tuya && i < 4, {}, `Tuya Plug ${i} ${k[0].toUpperCase()}${k.slice(1)}`);
+    }
+    dev("dev_n_coord", "ZHA Hub");
+    for (let i = 1; i <= 4; i++) {
+      dev(`dev_n_z${i}`, `ZHA Bulb ${i}`, "dev_n_coord", "entry_zha", "hallway");
+      for (const k of ["light", "rssi"]) ent(`${k === "light" ? "light" : "sensor"}.n_z${i}_${k}`, `dev_n_z${i}`, "zha", k === "light" ? "on" : "-60", coord && i < 4, {}, `ZHA Bulb ${i} ${k}`);
+    }
+    const entries = [
+      { entry_id: "entry_mqtt", domain: "mqtt", title: "MQTT", state: "loaded", disabled_by: null },
+      { entry_id: "entry_tuya", domain: "tuya", title: "Tuya", state: tuyaState, disabled_by: null },
+      { entry_id: "entry_zha", domain: "zha", title: "ZHA", state: "loaded", disabled_by: null },
+      { entry_id: "entry_nest", domain: "nest", title: "Nest", state: nestState, disabled_by: null },
+    ];
+    return { patch, entries };
+  }
+
   window.makeHouse = makeHouse;
   window.hubFixture = hubFixture;
+  window.offlineFixture = offlineFixture;
 })();

@@ -85,10 +85,13 @@ export default async function ({ browser, base, check }) {
     const after = await page.evaluate(() => ({ v: window.cards[0].shadowRoot.getElementById("val").textContent, icon: window.cards[0].shadowRoot.getElementById("pillIcon").getAttribute("icon") }));
     check(`${tag} the chip swaps to the new mode`, after.v === "Away" && after.icon !== "mdi:shape-outline", JSON.stringify(after));
 
-    // the cog: tap navigates; hold lists what needs attention, the same count
+    // the cog: tap and hold both list what needs attention, the same count; navigation_path only feeds the popup's button
     await page.evaluate(() => { window.nav.length = 0; });
     await page.mouse.click(...Object.values(await centerOf(page, 0, "#health")));
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(600);
+    const tapped = await page.evaluate(() => ({ nav: [...window.nav], open: window.__savvy.portalRoot().querySelectorAll(".sv-sheet").length }));
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(450);
     await hold(page, await centerOf(page, 0, "#health"));
     await page.waitForTimeout(600);
     const health = await page.evaluate(() => {
@@ -96,8 +99,8 @@ export default async function ({ browser, base, check }) {
       return { nav: [...window.nav], pill: hc?.shadowRoot.getElementById("pill").textContent,
         groups: hc ? [...hc.shadowRoot.querySelectorAll(".group .gt")].map((g) => g.textContent) : [] };
     });
-    check(`${tag} cog: tap goes to its page; hold lists everything the count is made of`, health.nav[0] === "/lovelace/admin" && health.pill === "6 issues"
-      && JSON.stringify(health.groups) === JSON.stringify(["Broken references", "Offline", "Low batteries"]), JSON.stringify(health));
+    check(`${tag} cog: a tap opens the list (navigation_path does not navigate); hold lists everything the count is made of`, tapped.nav.length === 0 && tapped.open === 1 && health.nav.length === 0 && health.pill === "6 issues"
+      && JSON.stringify(health.groups) === JSON.stringify(["Watchman", "Offline devices", "Low batteries"]), JSON.stringify([tapped, health]));
     await page.keyboard.press("Escape");
     await page.waitForTimeout(450);
 

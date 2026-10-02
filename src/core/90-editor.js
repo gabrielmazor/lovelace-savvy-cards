@@ -301,7 +301,7 @@ const S = {
   icon: (name = "icon", label = "Icon") => ({ name, label, selector: { icon: {} } }),
   number: (name, label, min, max, step = 1, unit) => ({ name, label, selector: { number: { min, max, step, mode: "box", unit_of_measurement: unit } } }),
   select: (name, label, options) => ({ name, label, selector: { select: { mode: "dropdown", options } } }),
-  action: (name, label) => ({ name, label, selector: { ui_action: {} } }),
+  action: (name, label, helper) => ({ name, label, ...(helper ? { helper } : {}), selector: { ui_action: {} } }),
   // HA's own page picker: every dashboard and view, or a path typed in
   nav: (name, label, helper) => ({ name, label, helper, selector: { navigation: {} } }),
   color: (name = "color", label = "Colour") => ({ name, label, selector: { text: {} }, helper: "An HA colour name (blue, amber…) or a hex like #F5B83D" }),

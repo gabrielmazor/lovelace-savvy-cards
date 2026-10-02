@@ -19,11 +19,13 @@ const VACUUM_WS = `window.hass.callWS = async (m) => {
   if (m.type === "vacuum/get_segments") return { segments: [] };
   throw new Error("unmocked " + m.type);
 };`;
-// a house with hubs down, for the health card: a Zigbee bridge and its devices, a ZHA
-// coordinator, one dead plug, one half-dead sensor
-const HUBS = `window.setStates(window.hubFixture(window.house, { down: ["dev_z2m_bridge", "dev_z2m_kitchen_motion", "dev_z2m_hall_door", "dev_z2m_bedroom_climate", "dev_z2m_office_plug", "dev_z2m_garage_leak",
-  "dev_zha_hall_bulb", "dev_zha_porch_bulb", "dev_zha_stair_bulb", "dev_solo"], downEntities: ["sensor.garage_multi_temperature", "sensor.garage_multi_pressure"] }));`;
-const HUBS_OPEN = HUBS + `window.__after = () => { const c = window.cards[0]; c._open.add("h:dev_z2m_bridge"); c._open.add("h:dev_z2m_bridge/d:dev_z2m_hall_door"); c._update(); };`;
+// a house where things stopped, for the health card: a Zigbee2MQTT-like bridge (its connectivity
+// sensor off) and its devices, a mostly-offline washer, a retrying Tuya integration
+const OFFLINE = `const f = window.offlineFixture(window.house, { z2m: true, washer: true, tuya: true, tuyaState: "setup_retry" });
+window.hass.callWS = async (m) => { if (m.type === "config_entries/get") return f.entries; throw new Error("unmocked " + m.type); };
+window.hass.services = { watchman: { report: {} } };
+window.setStates(f.patch);`;
+const OFFLINE_OPEN = OFFLINE + `window.__after = () => { const c = window.cards[0]; c._open.add("h:dev_n_bridge"); c._open.add("h:dev_n_bridge/d:dev_n_k1"); c._open.add("i:e:entry_tuya"); c._update(); };`;
 // the tiles: three rooms side by side (the first is mounted by the loop)
 const TILES = `window.__tiles = () => { for (const area of ["bedroom", "office"]) window.mount("savvy-room-tile", { area }, 260); };`;
 // a day of history, and a month of statistics, for the graphs
@@ -56,9 +58,9 @@ const SHOTS = [
   ["climate-compact", "savvy-climate-card", { area: "living_room", layout: "compact" }, 460],
   ["vacuum", "savvy-vacuum-card", { entity: "vacuum.robot", start: "button.robot_vacuum" }, 520, VACUUM_WS],
   ["vacuum-compact", "savvy-vacuum-card", { entity: "vacuum.robot", layout: "compact" }, 460, VACUUM_WS],
-  ["system-health", "savvy-system-health-card", { watchman: ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"], max_rows: 10 }, 420, HUBS],
-  ["system-health-expanded", "savvy-system-health-card", { max_rows: 14 }, 420, HUBS_OPEN],
-  ["system-health-details", "savvy-system-health-card", { watchman: ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"], max_rows: 10, details: true }, 420, HUBS],
+  ["system-health", "savvy-system-health-card", { watchman: ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"], max_rows: 10 }, 420, OFFLINE],
+  ["system-health-expanded", "savvy-system-health-card", { max_rows: 16 }, 420, OFFLINE_OPEN],
+  ["system-health-details", "savvy-system-health-card", { watchman: ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"], max_rows: 10, details: true }, 420, OFFLINE],
   ["system-health-batteries", "savvy-system-health-card", { source: "battery" }, 420],
   ["home-header", "savvy-home-header-card", { control: "input_select.house_mode", home_path: "/lovelace/home",
     health: { watchman: ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"] } }, 600],

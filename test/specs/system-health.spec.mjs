@@ -22,11 +22,11 @@ export default async function ({ browser, base, check }) {
       return { all: read(all), withW: read(withW), batt: read(batt), legacy: read(legacy), coreTotal: core.total };
     }, width);
     check(`${tag} default lists everything, in sections that say what's wrong`, r.all.pill === "3 issues" && r.all.name === "Health"
-      && JSON.stringify(r.all.groups) === JSON.stringify(["Offline | 2 entities offline", "Low batteries | 1 battery low"]), JSON.stringify(r.all));
+      && JSON.stringify(r.all.groups) === JSON.stringify(["Offline devices | 2 entities offline", "Low batteries | 1 battery low"]), JSON.stringify(r.all));
     check(`${tag} with Watchman: every category, named for what it is`,
-      JSON.stringify(r.withW.groups) === JSON.stringify(["Broken references | 3 broken references", "Offline | 2 entities offline", "Low batteries | 1 battery low"]), JSON.stringify(r.withW.groups));
+      JSON.stringify(r.withW.groups) === JSON.stringify(["Watchman | 2 missing entities, 1 missing action", "Offline devices | 2 entities offline", "Low batteries | 1 battery low"]), JSON.stringify(r.withW.groups));
     check(`${tag} Watchman source: last check under the title`, r.legacy.when === "Checked 2 h ago", r.legacy.when);
-    check(`${tag} with Watchman the pill equals the core total the home cog uses`, r.withW.pill === `${r.coreTotal} issues` && r.withW.groups[0].startsWith("Broken references"), JSON.stringify(r.withW));
+    check(`${tag} with Watchman the pill equals the core total the home cog uses`, r.withW.pill === `${r.coreTotal} issues` && r.withW.groups[0].startsWith("Watchman"), JSON.stringify(r.withW));
     check(`${tag} battery source: low first, the rest dimmed, phone excluded`, r.batt.pill === "1 low"
       && JSON.stringify(r.batt.rows) === JSON.stringify(["Front Door Battery", "Motion Sensor Battery", "Remote Battery", "Robot Battery"]), JSON.stringify(r.batt));
     check(`${tag} the pre-Savvy watchman config still works`, r.legacy.pill === "3 issues" && r.legacy.rows.length === 3, JSON.stringify(r.legacy));
@@ -49,7 +49,7 @@ export default async function ({ browser, base, check }) {
       groups: [...window.cards[0].shadowRoot.querySelectorAll(".group, .rows .ok")].map((g) => g.classList.contains("ok") ? `✓ ${g.textContent.trim()}`
         : `${g.querySelector(".gt").textContent}${g.querySelector(".gw").textContent ? " | " + g.querySelector(".gw").textContent : ""}`) }));
     check(`${tag} counts follow the house live; a healthy category stays, with a tick and what's fine below its title`, live.pill === "1 issue"
-      && JSON.stringify(live.groups) === JSON.stringify(["Offline | 1 entity offline", "Low batteries", "✓ All batteries fine"]), JSON.stringify(live));
+      && JSON.stringify(live.groups) === JSON.stringify(["Offline devices | 1 entity offline", "Low batteries", "✓ All batteries fine"]), JSON.stringify(live));
 
     if (width === 420) await shot(page, `health-${theme}`, 0);
     check(`${tag} springs idle`, await idle(page));

@@ -9,8 +9,10 @@
 //   weather: auto | weather.home | false
 //   health: { navigation_path: /lovelace/admin, watchman: [...], battery_threshold: 20, group_by: hub } | false
 //   lights / climate / media / security: false | { entity, name, icon, color, navigation_path,
-//       popup_button, popup_label, tap_action, hold_action }   (hold lists what's counted; the popup's
-//       page button leads to navigation_path, or to the page its tap or hold already navigates to)
+//       popup_button, popup_label, tap_action, hold_action }   (tap and hold both open the list of what's
+//       counted, unless tap_action / hold_action say otherwise; the popup's page button leads to
+//       navigation_path, or to the page its tap or hold action navigates to. navigation_path never
+//       changes what a tap does)
 //   chips: [...]                                     your own, after the four
 
 const STYLE = `${BASE_CSS}${HEADER_CSS}${CHIP_ROW_CSS}`;
@@ -37,7 +39,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
     if (config.show_home === false) c.home_path = null;
     if (config.health === undefined && config.admin) {
       const a = config.admin;
-      c.health = { navigation_path: a.path, watchman: a.watchman ?? a.entities, battery_threshold: a.battery_threshold,
+      c.health = { navigation_path: a.path, tap_action: a.path ? { action: "navigate", navigation_path: a.path } : undefined, watchman: a.watchman ?? a.entities, battery_threshold: a.battery_threshold,
         exclude_platforms: a.exclude_platforms, warn_above: a.warn_above };
     }
     if (config.tiles) {
@@ -58,7 +60,17 @@ class SavvyHomeHeaderCard extends SavvyCard {
     if (this._picker?.isOpen) this._picker.render(this._modeInfo(), this._config.mode_label);
   }
 
-  connectedCallback() { this._observe(); this._wake(); }
+  connectedCallback() {
+    this._observe();
+    this._wake();
+    // the cog counts failed integrations, which Home Assistant only tells us about asynchronously
+    this._onEntries = this._onEntries || (() => { this._sumFor = null; if (this._hass && this._el) this._update(); });
+    entryStore.listeners.add(this._onEntries);
+  }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    entryStore.listeners.delete(this._onEntries);
+  }
   getCardSize() { return 2; }
   getGridOptions() { return { columns: 12, min_columns: 6, rows: "auto" }; }
 
@@ -99,7 +111,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
     // the cog: tap goes to its page (or lists what needs attention), hold always lists
     const hc = this._healthCfg() || {};
     this._chipActions(el.health, () => ({ config: { tap_action: hc.tap_action, hold_action: hc.hold_action }, list: () => this._showHealth() }),
-      { tap: hc.navigation_path ? { action: "navigate", navigation_path: hc.navigation_path } : { action: "list" }, hold: { action: "list" } });
+      { tap: { action: "list" }, hold: { action: "list" } });
     this._observe();
   }
 
@@ -160,10 +172,12 @@ class SavvyHomeHeaderCard extends SavvyCard {
     el.health.hidden = !hc;
     if (!hc) return;
     const h = this._hass;
-    if (this._sumFor !== h.states || this._sumReg !== h.entities || this._sumDev !== h.devices) {
+    refreshConfigEntries(h);
+    if (this._sumFor !== h.states || this._sumReg !== h.entities || this._sumDev !== h.devices || this._sumEntries !== entryStore.map) {
       this._sumFor = h.states;
       this._sumReg = h.entities;
       this._sumDev = h.devices;
+      this._sumEntries = entryStore.map;
       this._sum = healthSummary(h, hc);
     }
     const total = this._sum.total, warn = hc.warn_above ?? 6;
@@ -208,7 +222,9 @@ class SavvyHomeHeaderCard extends SavvyCard {
     } else {
       const s = houseSecurity(h);
       value = s.entity ? stateText(h, h.states[s.entity]) : s.open.length ? `${s.open.length} open` : "Secure";
-      ids = s.open.length ? [...(s.entity ? [s.entity] : []), ...s.open] : s.ids;
+      // every lock is always there, in any state; then what is open (or, when nothing is, every opening)
+      const rest = (s.open.length ? s.open : s.ids).filter((id) => id !== s.entity && domainOf(id) !== "lock");
+      ids = [...(s.entity ? [s.entity] : []), ...s.locks, ...rest];
     }
     if (own) value = chipState(h, own);
     const snapshot = [...ids];     // what was counted when opened: turning one off keeps its row
@@ -216,7 +232,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
       key, icon: cfg.icon || base.icon, entity: cfg.entity, color: colorOf(cfg.color) || base.color,
       value, caption: cfg.name || base.name, aria: `${cfg.name || base.name}, ${value}`,
       spin: key === "climate" ? spin : undefined,
-      config: { ...cfg, tap_action: cfg.tap_action ?? (cfg.navigation_path ? { action: "navigate", navigation_path: cfg.navigation_path } : undefined) },
+      config: { ...cfg },
       defaults: { tap: { action: "list" }, hold: { action: "list" } },
       list: (from) => this._showList(listTitle, snapshot, cfg.color ? colorOf(cfg.color) : base.color, from, pageButton(cfg, cfg.name || base.name)),
     };
@@ -233,11 +249,11 @@ const autoSection = (key, what) => ({ type: "expandable", name: key, title: `${A
   { name: "entity", label: "Entity override", helper: `Show this entity's state instead. Empty: ${what}`, selector: { entity: {} } },
   S.grid(S.text("name", "Name"), { name: "icon", label: "Icon", selector: { icon: { placeholder: AUTO[key].icon } } }),
   S.color(),
-  S.nav("navigation_path", "Target page", "A tap goes here, and the popup gets a button to it."),
+  S.nav("navigation_path", "Target page", "The popup gets a button to it."),
   S.bool("popup_button", "Page button", "In the popup, when there is a target page.", true),
   S.text("popup_label", "Button text", `Default: Open ${AUTO[key].name.toLowerCase()}`),
-  S.action("tap_action", "Tap action"),
-  S.action("hold_action", "Hold action"),
+  S.action("tap_action", "Tap action", "Default: open the list."),
+  S.action("hold_action", "Hold action", "Default: open the list."),
 ] });
 
 const EDITOR = defineEditor("savvy-home-header-card", (hass, c) => [
@@ -245,10 +261,14 @@ const EDITOR = defineEditor("savvy-home-header-card", (hass, c) => [
   S.nav("home_path", "Home button", "The page it opens. Empty hides the button."),
   { name: "weather", label: "Weather", helper: "Empty: the first weather entity.", selector: { entity: { domain: "weather" } } },
   { type: "expandable", name: "health", title: "Health cog", schema: [
-    S.nav("navigation_path", "Target page", "A tap goes here, and the popup gets a button to it. Empty: a tap lists what needs attention (hold always does)."),
+    S.nav("navigation_path", "Target page", "The popup gets a button to it."),
     S.bool("popup_button", "Page button", "In the popup, when there is a target page.", true),
     S.text("popup_label", "Button text", "Default: Open system health"),
+    S.action("tap_action", "Tap action", "Default: open the list of what needs attention."),
+    S.action("hold_action", "Hold action", "Default: open the list of what needs attention."),
     { name: "watchman", label: "Watchman sensors", selector: { entity: { multiple: true, domain: "sensor" } } },
+    S.bool("watchman_button", "Run report chip", "A chip in the popup's Watchman section that runs a new report. Needs the Watchman integration.", true),
+    { name: "watchman_report", label: "Report options", helper: "Data sent to watchman.report. Default: parse_config: true.", selector: { object: {} } },
     { type: "grid", name: "", schema: [
       { name: "battery_threshold", label: "Battery alert", helper: "Low below", selector: { number: { min: 1, max: 100, mode: "box", unit_of_measurement: "%" } } },
       { name: "warn_above", label: "Red threshold", helper: "Red from this many issues", selector: { number: { min: 1, max: 99, mode: "box" } } },

@@ -1,31 +1,34 @@
 // savvy-system-health-card: what in the house needs attention, with a count pill.
 //
-// By default it lists everything (source: all), in sections: Broken references (Watchman,
-// when its sensors are given), Offline (devices, and the entities that have no device) and
-// Low batteries. Or one source on its own. The pill's number is exactly what
+// By default it lists everything (source: all), in sections: Watchman (when its sensors are
+// given), Offline devices (with the integrations that failed, and the entities that have no
+// device) and Low batteries. Or one source on its own. The pill's number is exactly what
 // savvy-home-header-card's cog shows: both read core/health.
 //
-// Offline is grouped: every unavailable entity of a device is one issue (the device), and a
-// hub whose devices are down (a Zigbee bridge, a coordinator) is one issue for all of them.
-// Tap a hub or a device to open it; tap an entity for its more-info; hold a device for its
-// page in Home Assistant.
+// Offline devices are grouped: every unavailable entity of a device is one issue (the
+// device), a hub whose devices are offline (a Zigbee bridge, a coordinator) is one issue for
+// all of them, and so is an integration that failed or whose devices are mostly offline.
+// Tap a row to open it; tap an entity for its more-info; hold a device for its page in Home
+// Assistant. Watchman's section has a chip that runs a new report.
 //
 //   type: custom:savvy-system-health-card
-//   source: all | watchman | unavailable | battery
+//   source: all | watchman | offline | battery      (offline is also called unavailable)
 //   battery_threshold: 20        exclude_platforms: [mobile_app]
 //   watchman: [sensor.watchman_missing_entities, sensor.watchman_missing_actions]
 //   group_by: hub | device | none      group_min: 3      details: false
 //   warn_above: 6  max_rows: 7   title: …
+//   watchman_button: true        watchman_report: { parse_config: true }
 //   action: { label: Generate report, tap_action: { action: perform-action, perform_action: watchman.report } }
 
 const SOURCES = {
   all: { title: "Health", noun: "issue", nouns: "issues" },
-  watchman: { title: "Broken references", noun: "issue", nouns: "issues" },
-  unavailable: { title: "Offline", noun: "offline", nouns: "offline" },
+  watchman: { title: "Watchman", noun: "issue", nouns: "issues" },
+  unavailable: { title: "Offline devices", noun: "offline", nouns: "offline" },
   battery: { title: "Batteries", noun: "low", nouns: "low" },
 };
-const GROUP_TITLE = { watchman: "Broken references", unavailable: "Offline", battery: "Low batteries" };
-const ALL_FINE = { watchman: "No broken references", unavailable: "Everything is online", battery: "All batteries fine" };
+const GROUP_TITLE = { watchman: "Watchman", unavailable: "Offline devices", battery: "Low batteries" };
+const ALL_FINE = { watchman: "Nothing missing", unavailable: "All devices online", battery: "All batteries fine" };
+const REPORT_TIMEOUT = 60000;
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const joinAnd = (parts) => (parts.length < 2 ? parts.join("") : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`);
 
@@ -45,7 +48,7 @@ const STYLE = `${BASE_CSS}
     mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent 100%); }
   .titles { display: flex; flex-direction: column; min-width: 0; }
   .when { font-size: 11.5px; line-height: 15px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .group { display: flex; align-items: baseline; gap: 6px; }
+  .group { display: flex; align-items: center; gap: 6px; }
   .rows .empty.ok { flex: none; padding: 4px 4px 2px; }
   .group .gw { margin-inline-start: auto; font-weight: 500; letter-spacing: 0; text-transform: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .group { flex: none; margin: 8px 4px 2px; font-size: 11px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em;
@@ -63,6 +66,13 @@ const STYLE = `${BASE_CSS}
   .row .s { font-size: 10.5px; line-height: 13px; font-weight: 500; letter-spacing: 0.006em; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .row[data-depth="1"] { margin-inline-start: 16px; }
   .row[data-depth="2"] { margin-inline-start: 32px; }
+  .row[data-depth="3"] { margin-inline-start: 48px; }
+  .report { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 9px 0 6px; border-radius: 11px; margin-inline-start: 6px;
+    background: color-mix(in oklab, rgb(var(--accent)) 16%, transparent); color: rgb(var(--accent));
+    font-size: 11px; line-height: 14px; font-weight: 650; letter-spacing: 0; text-transform: none; white-space: nowrap; transform-origin: 50% 50%; }
+  .report ha-icon { --mdc-icon-size: 14px; display: flex; transform-origin: 50% 50%; }
+  .report[hidden] { display: none; }
+  .report[data-flash] { background: color-mix(in oklab, var(--lvl-good) 18%, transparent); color: var(--lvl-good); }
   .row[data-soft] .disc { background: color-mix(in oklab, var(--lvl-warn) 20%, transparent); color: var(--lvl-warn); }
   .row .chev { flex: none; display: flex; --mdc-icon-size: 18px; color: var(--secondary-text-color); transform-origin: 50% 50%; }
   .facts { flex: none; margin: -1px 4px 3px; font-size: 11.5px; line-height: 15px; font-weight: 500; color: var(--secondary-text-color);
@@ -88,7 +98,7 @@ class SavvySystemHealthCard extends HTMLElement {
   }
 
   setConfig(config) {
-    const source = config?.source || "all";
+    const source = (config?.source === "offline" ? "unavailable" : config?.source) || "all";
     if (!SOURCES[source]) throw new Error(`savvy-system-health-card: "source" must be one of ${Object.keys(SOURCES).join(", ")}`);
     // the pre-Savvy names still work: threshold, and entities for the watchman source
     const watchman = config.watchman ?? (source === "watchman" ? config.entities : undefined);
@@ -108,8 +118,15 @@ class SavvySystemHealthCard extends HTMLElement {
   connectedCallback() {
     this._wake();
     this._ticker = this._ticker || setInterval(() => this._hass && this._update(), 30000);
+    // failed integrations are only told to us asynchronously
+    this._onEntries = this._onEntries || (() => { if (this._hass && this._root) this._update(); });
+    entryStore.listeners.add(this._onEntries);
   }
-  disconnectedCallback() { Clock.remove(this._job); this._ro?.disconnect(); clearInterval(this._ticker); this._ticker = 0; }
+  disconnectedCallback() {
+    Clock.remove(this._job); this._ro?.disconnect(); clearInterval(this._ticker); this._ticker = 0;
+    entryStore.listeners.delete(this._onEntries);
+    clearTimeout(this._repTimer); clearTimeout(this._flashTimer);
+  }
 
   // "Checked 2 h ago", under the title for the Watchman source
   _tickWhen() {
@@ -136,12 +153,16 @@ class SavvySystemHealthCard extends HTMLElement {
     this._rows.clear();
     this._root.innerHTML = `<style>${STYLE}</style>
       <ha-card>
-        <div class="head"><span class="titles"><span class="name" id="name"></span><span class="when" id="when" hidden></span></span><span class="pill" id="pill"></span></div>
+        <div class="head" id="head"><span class="titles"><span class="name" id="name"></span><span class="when" id="when" hidden></span></span><span class="pill" id="pill"></span></div>
         <div class="rows" id="rows"></div>
         <button class="action" id="action" hidden></button>
+        <button class="report" id="report" hidden><ha-icon icon="mdi:refresh"></ha-icon><span>Run report</span></button>
       </ha-card>`;
     const $ = (id) => this._root.getElementById(id);
-    this._el = { card: this._root.querySelector("ha-card"), name: $("name"), when: $("when"), pill: $("pill"), rows: $("rows"), action: $("action") };
+    this._el = { card: this._root.querySelector("ha-card"), head: $("head"), name: $("name"), when: $("when"), pill: $("pill"), rows: $("rows"), action: $("action"), report: $("report") };
+    this._el.report.remove();
+    this._pressable(this._el.report, () => this._runReport());
+    this._angle = 0;
     const c = this._config;
     put(this._el.rows, "--max-rows", c.max_rows);
     text(this._el.name, c.title || SOURCES[c.source].title);
@@ -172,14 +193,26 @@ class SavvySystemHealthCard extends HTMLElement {
   // ---------- what to say ----------
   _offlineLine(sum) {
     const is = sum.offline;
+    const integ = is.filter((i) => i.kind === "integration").length;
     const down = is.filter((i) => i.kind === "hub" || (i.kind === "device" && i.state === "down")).length;
     const part = is.filter((i) => i.kind === "device" && i.state === "partial").length;
     const ent = is.filter((i) => i.kind === "entity").length;
+    const main = [];
+    if (integ) main.push(plural(integ, "integration", "integrations"));
+    if (down) main.push(plural(down, "device", "devices"));
+    if (ent) main.push(plural(ent, "entity", "entities"));
+    const out = [];
+    if (main.length) out.push(`${joinAnd(main)} offline`);
+    if (part) out.push(`${part} partly offline`);
+    return out.join(", ");
+  }
+
+  _watchmanLine(sum) {
+    const { entities, actions } = sum.counts.watchmanKinds;
     const parts = [];
-    if (down) parts.push(`${plural(down, "device", "devices")} offline`);
-    if (part) parts.push(`${part} partly offline`);
-    if (ent) parts.push(down || part ? plural(ent, "entity", "entities") : `${plural(ent, "entity", "entities")} offline`);
-    return joinAnd(parts);
+    if (entities) parts.push(`${entities} missing ${entities === 1 ? "entity" : "entities"}`);
+    if (actions) parts.push(`${actions} missing ${actions === 1 ? "action" : "actions"}`);
+    return parts.join(", ") || plural(sum.counts.watchman, "missing item", "missing items");
   }
 
   _line(key, sum) {
@@ -187,7 +220,7 @@ class SavvySystemHealthCard extends HTMLElement {
     if (!n) return "";
     if (key === "unavailable") return this._offlineLine(sum);
     if (key === "battery") return `${plural(n, "battery", "batteries")} low`;
-    return plural(n, "broken reference", "broken references");
+    return this._watchmanLine(sum);
   }
 
   _facts(key, sum) {
@@ -201,16 +234,23 @@ class SavvySystemHealthCard extends HTMLElement {
       return count ? `${plural(count, "battery", "batteries")}, lowest ${Math.round(lowest)}%` : "No batteries found";
     }
     const t = this._lastRunTime(), n = sum.counts.watchman;
-    return `${Number.isFinite(t) ? `Checked ${since(t, false)}, ` : ""}${plural(n, "problem", "problems")}`;
+    return [Number.isFinite(t) ? `Checked ${since(t, false)}` : "", n ? `${n} missing` : "nothing missing"].filter(Boolean).join(", ").replace(/^./, (c) => c.toUpperCase());
   }
 
-  // one issue (a hub, a device, an entity) as a row
+  // one issue (an integration, a hub, a device, an entity) as a row
   _issueRow(is, depth, open) {
     const det = this._config.details;
     const age = Number.isFinite(is.since) ? duration(Date.now() - is.since) : "";
     const meta = det ? [is.area, is.integration].filter(Boolean).join(" · ") : "";
     const join = (...p) => p.filter(Boolean).join(" · ");
     const nav = () => navigate(`/config/devices/device/${is.id}`);
+    if (is.kind === "integration") {
+      const failed = is.state === "failed";
+      const page = () => navigate(`/config/integrations/integration/${is.domain}`);
+      return { type: "row", key: is.key, icon: "mdi:puzzle-remove-outline", alert: true, depth, expandable: is.total > 0, open, hold: page, go: page,
+        name: is.name,
+        secondary: join(failed ? is.label : "", is.total ? `${plural(is.total, "device", "devices")}${failed ? "" : " offline"}` : "", !failed && age && `offline for ${age}`) };
+    }
     if (is.kind === "hub") {
       const offline = is.state === "offline";
       return { type: "row", key: is.key, icon: "mdi:access-point-network-off", alert: true, depth, expandable: true, open, hold: nav,
@@ -221,7 +261,7 @@ class SavvySystemHealthCard extends HTMLElement {
       const down = is.state === "down";
       return { type: "row", key: is.key, icon: down ? "mdi:power-plug-off-outline" : "mdi:alert-circle-outline", alert: down, soft: !down, depth, expandable: true, open, hold: nav,
         name: is.name,
-        secondary: down ? join(meta, age && `offline for ${age}`, is.total > 1 && plural(is.total, "entity", "entities"))
+        secondary: down ? join(meta, age && `offline for ${age}`, is.down < is.total ? `${is.down} of ${is.total} entities` : is.total > 1 && plural(is.total, "entity", "entities"))
           : join(meta, `${is.down} of ${is.total} entities unavailable`) };
     }
     return { type: "row", key: is.key, icon: "mdi:alert-circle-outline", alert: true, depth, entity: is.entity, name: is.name,
@@ -234,7 +274,8 @@ class SavvySystemHealthCard extends HTMLElement {
       const open = this._open.has(is.key);
       out.push(this._issueRow(is, depth, open));
       if (!open) return;
-      if (is.kind === "hub") { is.entities.forEach((e) => walk(e, depth + 1)); is.devices.forEach((d) => walk(d, depth + 1)); }
+      if (is.kind === "integration") is.devices.forEach((d) => walk(d, depth + 1));
+      else if (is.kind === "hub") { is.entities.forEach((e) => walk(e, depth + 1)); is.devices.forEach((d) => walk(d, depth + 1)); }
       else if (is.kind === "device") is.entities.forEach((e) => walk(e, depth + 1));
     };
     issues.forEach((i) => walk(i, 0));
@@ -278,6 +319,8 @@ class SavvySystemHealthCard extends HTMLElement {
     this._reduced = MQ.reduced.matches;
     this.toggleAttribute("dark", !!h.themes?.darkMode);
     this._lastRun = c.source === "all" || c.source === "watchman" ? watchmanLastRun(h, c) : null;
+    if (c.source === "all" || c.source === "unavailable") refreshConfigEntries(h);
+    this._checkReport();
     const { total, rows } = this._compute();
     const label = SOURCES[c.source];
     const lvl = total === 0 ? "var(--lvl-good)" : total < c.warn_above ? "var(--lvl-warn)" : "var(--lvl-bad)";
@@ -285,8 +328,64 @@ class SavvySystemHealthCard extends HTMLElement {
     text(this._el.pill, total === 0 ? "All good" : `${total} ${total === 1 ? label.noun : label.nouns}`);
     attr(this._el.card, "aria-label", `${c.title || label.title}, ${total === 0 ? "all good" : `${total} ${label.nouns}`}`);
     this._renderRows(rows);
+    this._placeReport();
     this._tickWhen();
     this._wake();
+  }
+
+  // ---------- the Watchman chip: run a new report ----------
+  _reportShown() {
+    const c = this._config, h = this._hass;
+    return (c.source === "all" || c.source === "watchman") && c.watchman_button !== false && healthOptions(c).watchman.length > 0 && !!h?.services?.watchman?.report;
+  }
+
+  _placeReport() {
+    const chip = this._el.report, show = this._reportShown();
+    chip.hidden = !show;
+    if (!show) return;
+    const host = this._config.source === "watchman" ? this._el.head : this._rows.get("g:watchman");
+    if (!host) { chip.hidden = true; return; }
+    if (chip.parentNode !== host) host.insertBefore(chip, host === this._el.head ? this._el.pill : null);
+    this._paintReport();
+  }
+
+  _paintReport() {
+    const chip = this._el.report, running = !!this._rep, flash = !!this._flash;
+    attr(chip, "data-running", running);
+    attr(chip, "data-flash", flash);
+    attr(chip, "aria-busy", String(running));
+    attr(chip.querySelector("ha-icon"), "icon", running ? "mdi:loading" : flash ? "mdi:check" : "mdi:refresh");
+    text(chip.querySelector("span"), running ? "Running…" : flash ? "Done" : "Run report");
+    attr(chip, "role", "button");
+    attr(chip, "tabindex", "0");
+    attr(chip, "aria-label", running ? "Running the Watchman report" : "Run a new Watchman report");
+    if (!running) put(chip.querySelector("ha-icon"), "transform", "");
+  }
+
+  _runReport() {
+    if (this._rep || !this._reportShown()) return;
+    const c = this._config;
+    haptic("medium");
+    this._hass.callService("watchman", "report", { parse_config: true, ...(c.watchman_report || {}) });
+    this._rep = { start: Date.now(), base: this._lastRunTime() };
+    this._flash = false;
+    clearTimeout(this._flashTimer);
+    clearTimeout(this._repTimer);
+    this._repTimer = setTimeout(() => { this._rep = null; this._paintReport(); }, REPORT_TIMEOUT);
+    this._paintReport();
+    this._wake();
+  }
+
+  // done when Watchman's last-parse timestamp changes
+  _checkReport() {
+    if (!this._rep) return;
+    const t = this._lastRunTime(), base = this._rep.base;
+    if (!Number.isFinite(t) || (Number.isFinite(base) && t === base)) return;
+    this._rep = null;
+    clearTimeout(this._repTimer);
+    this._flash = true;
+    this._flashTimer = setTimeout(() => { this._flash = false; this._paintReport(); }, 2500);
+    this._paintReport();
   }
 
   _node(r) {
@@ -362,11 +461,11 @@ class SavvySystemHealthCard extends HTMLElement {
       }
     }
     const live = r.entity && this._hass.states[r.entity];
-    if ((r.expandable || live) && !node.__wired) {
+    if ((r.expandable || live || r.go) && !node.__wired) {
       node.__wired = true;
       attr(node, "role", "button");
       attr(node, "tabindex", "0");
-      this._pressable(node, () => this._tapRow(node.__r), r.expandable ? () => node.__r.hold?.() : null);
+      this._pressable(node, () => this._tapRow(node.__r), r.hold ? () => node.__r.hold?.() : null);
     }
   }
 
@@ -374,7 +473,8 @@ class SavvySystemHealthCard extends HTMLElement {
     if (r.expandable) {
       if (this._open.has(r.key)) this._open.delete(r.key); else this._open.add(r.key);
       this._update();
-    } else if (r.entity) moreInfo(this, r.entity);
+    } else if (r.go) r.go();
+    else if (r.entity) moreInfo(this, r.entity);
   }
 
   _fit() {
@@ -391,7 +491,13 @@ class SavvySystemHealthCard extends HTMLElement {
       if (this._reduced) s.snap(); else s.step(dt);
       dirty.add(s.group);
     }
-    if (!dirty.size) return false;
+    // the report chip's spinner turns while a report runs
+    const spinning = !!this._rep && !this._reduced;
+    if (spinning) {
+      this._angle = (this._angle + dt * 400) % 360;
+      put(this._el.report.querySelector("ha-icon"), "transform", `rotate(${this._angle.toFixed(1)}deg)`);
+    }
+    if (!dirty.size) return spinning;
     this._paint(dirty);
     return true;
   }
@@ -420,8 +526,8 @@ class SavvySystemHealthCard extends HTMLElement {
 
 const EDITOR = defineEditor("savvy-system-health-card", (hass, c) => [
   S.select("source", "List", [
-    { value: "all", label: "Everything (broken references, offline, low batteries)" },
-    { value: "battery", label: "Batteries" }, { value: "unavailable", label: "Offline devices" }, { value: "watchman", label: "Broken references (Watchman)" },
+    { value: "all", label: "Everything (Watchman, offline devices, low batteries)" },
+    { value: "battery", label: "Batteries" }, { value: "unavailable", label: "Offline devices" }, { value: "watchman", label: "Watchman" },
   ]),
   S.text("title", "Title"),
   S.grid(S.number("battery_threshold", "Battery alert", 1, 100, 1, "%"), S.number("warn_above", "Red threshold", 1, 99)),
@@ -435,6 +541,8 @@ const EDITOR = defineEditor("savvy-system-health-card", (hass, c) => [
     selector: { select: { multiple: true, custom_value: true, options: ["mobile_app"] } } },
   { name: "watchman", label: "Watchman sensors", helper: "Watchman's missing-entities and missing-actions sensors.",
     selector: { entity: { multiple: true, domain: "sensor" } } },
+  S.bool("watchman_button", "Run report chip", "A chip in the Watchman section that runs a new report. Needs the Watchman integration.", true),
+  { name: "watchman_report", label: "Report options", helper: "Data sent to watchman.report. Default: parse_config: true.", selector: { object: {} } },
   { name: "watchman_last_run", label: "Last run sensor", helper: "Found automatically (Watchman's last parse). Pick another to override.",
     selector: { entity: { domain: "sensor", device_class: "timestamp" } } },
   ...(c.source === "battery" ? [S.bool("show_all_batteries", "All batteries", "Low ones first, the rest dimmed.")] : []),
@@ -446,4 +554,4 @@ const EDITOR = defineEditor("savvy-system-health-card", (hass, c) => [
 ]);
 
 registerCard("savvy-system-health-card", SavvySystemHealthCard, "System health",
-  "What needs attention: offline devices (grouped by device and hub), low batteries and Watchman's broken references, with a count.");
+  "What needs attention: offline devices (grouped by device, hub and integration), low batteries and Watchman's findings, with a count.");

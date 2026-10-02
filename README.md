@@ -91,11 +91,12 @@ lights:
   navigation_path: /lovelace/lights
 ```
 
-A tap on a chip with a `navigation_path` goes to that page; hold lists what it counts, and
-the popup has a button pinned under the list that opens the same page. The button's page
-is the chip's `navigation_path`, or else the page its tap or hold action already
-navigates to; `popup_button: false` hides it and `popup_label` words it. The health cog's
-popup works the same way.
+Tap and hold on a chip both open the list of what it counts. The popup has a button pinned
+under the list that opens a page: the chip's `navigation_path`, or else the page its tap or
+hold action navigates to; `popup_button: false` hides it and `popup_label` words it.
+`navigation_path` only feeds that button: to make a tap go to a page, give it a
+`tap_action` (`action: navigate`), which replaces the tap's default. The health cog's popup
+works the same way.
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/images/home-header-popup-light.png">
@@ -110,8 +111,8 @@ popup works the same way.
 | `control_tap_action` / `control_hold_action` / `control_double_tap_action` | by domain | Override what the control does. |
 | `home_path` | none | A home button that opens this page. |
 | `weather` | the first weather entity | A weather entity, or `false`. |
-| `health` | on | The cog: `navigation_path` (where a tap goes, and where the popup's button leads; without one a tap lists the issues), `popup_button`, `popup_label`, and the System health card's `watchman`, `battery_threshold`, `exclude_platforms`, `warn_above`, `group_by`, `group_min`. `false` hides it. |
-| `lights` / `climate` / `media` / `security` | on | Each chip: `false` hides it; or `{ entity, name, icon, color, navigation_path, popup_button, popup_label, tap_action, hold_action }`, where `entity` shows that entity's state instead of the count. Tap and hold list what's counted unless set (a `navigation_path` makes a tap go there). |
+| `health` | on | The cog: `navigation_path` (where the popup's button leads), `popup_button`, `popup_label`, `tap_action` / `hold_action` (default: the list of what needs attention), and the System health card's `watchman`, `watchman_button`, `watchman_report`, `battery_threshold`, `exclude_platforms`, `warn_above`, `group_by`, `group_min`. `false` hides it. |
+| `lights` / `climate` / `media` / `security` | on | Each chip: `false` hides it; or `{ entity, name, icon, color, navigation_path, popup_button, popup_label, tap_action, hold_action }`, where `entity` shows that entity's state instead of the count. Tap and hold list what's counted unless `tap_action` / `hold_action` say otherwise; `navigation_path` only feeds the popup's page button. |
 | `chips` | none | Your own chips after the four. |
 
 ---
@@ -520,21 +521,31 @@ entities:
   <img src="docs/images/system-health-dark.png" width="420" alt="Savvy system health card">
 </picture>
 
-What in the house needs attention, in three sections: what's **offline**, which **batteries**
-are low, and (if you use [Watchman](https://github.com/dummylabs/thewatchman)) the
-**broken references** in your own configuration, meaning an entity or action your
-automations, scripts or dashboards use that doesn't exist. One count, and every section
-always shows: what's wrong in a line ("3 devices offline"), or a tick and what's fine
-("Everything is online").
+What in the house needs attention, in three sections: which **offline devices** there are,
+which **batteries** are low, and (if you use [Watchman](https://github.com/dummylabs/thewatchman))
+what Watchman found: the missing entities and actions your automations, scripts or
+dashboards use. One count, and every section always shows: what's wrong in a line ("3
+devices offline", "3 missing entities, 1 missing action"), or a tick and what's fine ("All
+devices online", "Nothing missing").
 
-Offline entities are grouped the way you think about them. All the unavailable entities of
-one device are one issue, the device. And when a hub is down (a Zigbee bridge or
-coordinator, anything other devices are attached to) the devices behind it become one
-issue too: "Zigbee2MQTT Bridge offline, 34 devices". Home Assistant itself records which
-device sits behind which hub, so nothing is guessed from names. A device with only some of
-its entities unavailable is shown as "2 of 9 entities unavailable", in a softer colour, and
-never rolls into a hub. Tap a hub or a device to open it, tap an entity for its more-info,
-hold a device for its page in Home Assistant.
+Offline devices are grouped the way you think about them:
+
+- All the unavailable entities of one device are one issue, the device. A device counts as
+  offline when half or more of its entities are unavailable (devices rarely lose all of
+  them: when Zigbee2MQTT stops, each keeps an entity or two); fewer reads "2 of 9 entities
+  unavailable", in a softer colour.
+- A hub, a bridge or coordinator, anything other devices are attached to, takes the devices
+  behind it along when it is offline, or when its connectivity sensor reads off: one issue,
+  "Zigbee2MQTT Bridge offline, 34 devices". Home Assistant itself records which device sits
+  behind which hub, so nothing is guessed from names.
+- An integration is one issue when Home Assistant says its setup failed or is retrying
+  ("Tuya, retrying setup"), or when most of its devices are offline and no hub explains
+  them ("Tuya, 12 devices offline"). A hub is blamed before its integration.
+- Tap a row to open it, tap an entity for its more-info, hold a device for its page in Home
+  Assistant (an integration, for its page).
+
+The Watchman section has a small chip, **Run report**, that asks Watchman for a new
+report: it spins while it runs and says Done when Watchman's last-parse time changes.
 
 ```yaml
 type: custom:savvy-system-health-card
@@ -542,16 +553,18 @@ type: custom:savvy-system-health-card
 
 | Option | Default | What it does |
 |---|---|---|
-| `source` | `all` | `all`, or one list: `battery`, `unavailable` (titled Offline), `watchman` (titled Broken references). |
+| `source` | `all` | `all`, or one list: `battery`, `unavailable` (titled Offline devices; `offline` works too), `watchman`. |
 | `title` | per source | Title. |
-| `details` | `false` | A line of facts under each section ("42 devices, all online", "18 batteries, lowest 34%", "Checked 2 h ago, 0 problems"), and area and integration on the rows. |
-| `group_by` | `hub` | How offline entities become issues: `hub` (devices, and the hub behind them), `device`, or `none` (one row per entity). |
-| `group_min` | `3` | How many down devices a hub needs before they roll up into it. |
+| `details` | `false` | A line of facts under each section ("42 devices, all online", "18 batteries, lowest 34%", "Checked 2 h ago, nothing missing"), and area and integration on the rows. |
+| `group_by` | `hub` | How offline entities become issues: `hub` (devices, the hub behind them, and integrations), `device`, or `none` (one row per entity). |
+| `group_min` | `3` | How many devices a hub or an integration needs before they roll up into it. |
 | `battery_threshold` | `20` | A battery below this % is low. |
 | `exclude_platforms` | `[mobile_app]` | Integrations to ignore (phones, by default). |
 | `watchman` | none | Watchman's summary sensors. |
+| `watchman_button` | `true` | The Run report chip in the Watchman section. It only shows when the Watchman integration's `watchman.report` action exists. |
+| `watchman_report` | `{ parse_config: true }` | The data the chip sends to `watchman.report`. |
 | `watchman_last_run` | found | Watchman's "last parse" timestamp, shown as "Checked 2 h ago" (under the title with `source: watchman`, in the details line otherwise). Found from the Watchman integration; name another sensor, or `false` to hide it. |
-| `warn_above` | `6` | The count turns red at this many issues (a hub or a device counts as one). |
+| `warn_above` | `6` | The count turns red at this many issues (an integration, a hub or a device counts as one). |
 | `max_rows` | `7` | Rows before the list scrolls. |
 | `show_all_batteries` | `true` | With `source: battery`: every battery, low ones first. |
 | `action` | none | A footer button: `{label, tap_action}`. |

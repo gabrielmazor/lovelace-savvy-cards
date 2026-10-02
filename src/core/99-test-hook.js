@@ -5,7 +5,7 @@
 if (window.__SAVVY_TEST__) {
   window.__savvy = {
     Spring, Clock, MOTION, norm, title, modeLook, MODE_DICTIONARY, colorOf,
-    healthSummary, healthOptions, areaEntities, houseEntities, pick, rankBy, entityArea, shortName, asItems,
+    healthSummary, healthOptions, refreshConfigEntries, resetConfigEntries, areaEntities, houseEntities, pick, rankBy, entityArea, shortName, asItems,
     isActive, isOff, runAction, defaultTapAction, toggleEntity, bindPress, bindActions,
     duration, since, relativeTime, axisLabel, momentLabel, fmtNumber, withUnit, isTimestamp,
     fetchHistory, fetchRange, fetchAttributeHistory, resample, seriesStats, stateRuns, numericPoints, linePath,
