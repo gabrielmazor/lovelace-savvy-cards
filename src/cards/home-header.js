@@ -9,7 +9,10 @@
 //   weather: auto | weather.home | false
 //   health: { navigation_path: /lovelace/admin, watchman: [...], battery_threshold: 20, group_by: hub } | false
 //   lights / climate / media / security: false | { entity, name, icon, color, navigation_path,
-//       popup_button, popup_label, tap_action, hold_action }   (tap and hold both open the list of what's
+//       popup_button, popup_label, exclude, exclude_areas, sort, sort_toggle, tap_action, hold_action }
+//       (exclude / exclude_areas: ignored entities and rooms, for the count and the popup alike; sort: room | recent
+//       is how the popup lists them, with a Room | Recent switch at its top unless sort_toggle is false;
+//       tap and hold both open the list of what's
 //       counted, unless tap_action / hold_action say otherwise; the popup's page button leads to
 //       navigation_path, or to the page its tap or hold action navigates to. navigation_path never
 //       changes what a tap does)
@@ -19,10 +22,10 @@ const STYLE = `${BASE_CSS}${HEADER_CSS}${CHIP_ROW_CSS}`;
 
 // The four chips: how each counts, and its look.
 const AUTO = {
-  lights: { name: "Lights", icon: "mdi:lightbulb", color: "#F5B83D" },
-  climate: { name: "Climate", icon: "mdi:fan", color: "#7FC4E8" },
-  media: { name: "Media", icon: "mdi:multimedia", color: "#C98BD9" },
-  security: { name: "Security", icon: "mdi:shield-home", color: "#E6C48F" },
+  lights: { name: "Lights", icon: "mdi:lightbulb", color: "#F5B83D", domain: "light" },
+  climate: { name: "Climate", icon: "mdi:fan", color: "#7FC4E8", domain: ["climate", "sensor"] },
+  media: { name: "Media", icon: "mdi:multimedia", color: "#C98BD9", domain: "media_player" },
+  security: { name: "Security", icon: "mdi:shield-home", color: "#E6C48F", domain: ["lock", "alarm_control_panel", "binary_sensor"] },
 };
 
 class SavvyHomeHeaderCard extends SavvyCard {
@@ -204,27 +207,29 @@ class SavvyHomeHeaderCard extends SavvyCard {
   _auto(key, cfg) {
     const h = this._hass, base = AUTO[key];
     const own = cfg.entity && h.states[cfg.entity];
-    let value, ids, spin, listTitle = cfg.name || base.name;
+    const skip = ignoring(h, cfg);
+    let value, ids, spin, pinned, listTitle = cfg.name || base.name;
     if (key === "lights") {
-      const l = houseLights(h);
+      const l = houseLights(h, skip);
       value = l.on.length ? `${l.on.length} on` : "Off";
       ids = l.on.length ? l.on : l.all;
       listTitle = l.on.length ? "Lights on" : "Lights";
     } else if (key === "media") {
-      const m = housePlaying(h);
+      const m = housePlaying(h, skip);
       value = m.on.length ? `${m.on.length} playing` : "Not playing";
       ids = m.on.length ? m.on : m.all;
     } else if (key === "climate") {
-      const t = houseTemperature(h);
+      const t = houseTemperature(h, skip);
       value = t.value == null ? "–" : `${t.value.toFixed(1)}${t.unit}`;
       ids = t.ids;
       spin = t.running.length ? fanRate(h.states[t.running[0]]) : 0;
     } else {
-      const s = houseSecurity(h);
+      const s = houseSecurity(h, skip);
       value = s.entity ? stateText(h, h.states[s.entity]) : s.open.length ? `${s.open.length} open` : "Secure";
       // every lock is always there, in any state; then what is open (or, when nothing is, every opening)
       const rest = (s.open.length ? s.open : s.ids).filter((id) => id !== s.entity && domainOf(id) !== "lock");
       ids = [...(s.entity ? [s.entity] : []), ...s.locks, ...rest];
+      pinned = ids.slice(0, (s.entity ? 1 : 0) + s.locks.length);     // the alarm and the locks stay on top, whatever the sort
     }
     if (own) value = chipState(h, own);
     const snapshot = [...ids];     // what was counted when opened: turning one off keeps its row
@@ -234,7 +239,8 @@ class SavvyHomeHeaderCard extends SavvyCard {
       spin: key === "climate" ? spin : undefined,
       config: { ...cfg },
       defaults: { tap: { action: "list" }, hold: { action: "list" } },
-      list: (from) => this._showList(listTitle, snapshot, cfg.color ? colorOf(cfg.color) : base.color, from, pageButton(cfg, cfg.name || base.name)),
+      list: (from) => this._showList(listTitle, snapshot, cfg.color ? colorOf(cfg.color) : base.color, from, pageButton(cfg, cfg.name || base.name),
+        { sort: cfg.sort === "recent" ? "recent" : "room", toggle: cfg.sort_toggle !== false, storeKey: key, pinned }),
     };
   }
 
@@ -252,6 +258,10 @@ const autoSection = (key, what) => ({ type: "expandable", name: key, title: `${A
   S.nav("navigation_path", "Target page", "The popup gets a button to it."),
   S.bool("popup_button", "Page button", "In the popup, when there is a target page.", true),
   S.text("popup_label", "Button text", `Default: Open ${AUTO[key].name.toLowerCase()}`),
+  { name: "exclude", label: "Ignored entities", helper: "Left out of the count and the popup.", selector: { entity: { multiple: true, domain: AUTO[key].domain } } },
+  { name: "exclude_areas", label: "Ignored rooms", helper: "Everything in these rooms is left out.", selector: { area: { multiple: true } } },
+  S.select("sort", "Sort by", [{ value: "room", label: "Room" }, { value: "recent", label: "Recent" }]),
+  S.bool("sort_toggle", "Sort toggle", "A Room | Recent switch at the top of the popup.", true),
   S.action("tap_action", "Tap action", "Default: open the list."),
   S.action("hold_action", "Hold action", "Default: open the list."),
 ] });

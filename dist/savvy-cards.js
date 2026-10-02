@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.6.1 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.6.2 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.6.1";
+const SAVVY_VERSION = "0.6.2";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -597,29 +597,39 @@ const areaLights = (hass, area) => pick(hass, areaEntities(hass, area), { domain
 
 // Every light and every media player in the house that sits in an area (integration and
 // cloud entities without a room aren't the house's lights).
-const houseOf = (hass, domain) => houseEntities(hass, { inArea: true })
-  .filter((id) => domainOf(id) === domain && !isGroup(hass.states[id]));
+const houseOf = (hass, domain, skip = NONE) => houseEntities(hass, { inArea: true })
+  .filter((id) => domainOf(id) === domain && !isGroup(hass.states[id]) && !skip(id));
+
+// A chip's ignore list: `exclude` (entities) and `exclude_areas` (rooms). Counting and the
+// popup both go through it, so the number is always what the popup lists.
+const NONE = () => false;
+function ignoring(hass, cfg = {}) {
+  const ids = new Set([].concat(cfg.exclude || []));
+  const areas = new Set([].concat(cfg.exclude_areas || []));
+  if (!ids.size && !areas.size) return NONE;
+  return (id) => ids.has(id) || (areas.size > 0 && areas.has(entityArea(hass, id)));
+}
 
 // Every light in the house: with an area or not, hidden or not (a group's members are
 // often hidden), in the registry or not (YAML lights). Groups are left out so nothing
 // counts twice, and so are disabled lights and config/diagnostic ones.
-function houseLights(hass) {
+function houseLights(hass, skip = NONE) {
   const all = Object.keys(hass.states).filter((id) => {
     if (!id.startsWith("light.")) return false;
     const e = hass.entities?.[id];
-    return !(e && (e.disabled_by || e.entity_category)) && !isGroup(hass.states[id]);
+    return !(e && (e.disabled_by || e.entity_category)) && !isGroup(hass.states[id]) && !skip(id);
   }).sort((a, b) => (hass.states[a].attributes.friendly_name || a).localeCompare(hass.states[b].attributes.friendly_name || b));
   return { all, on: all.filter((id) => hass.states[id].state === "on") };
 }
-function housePlaying(hass) {
-  const all = houseOf(hass, "media_player");
+function housePlaying(hass, skip = NONE) {
+  const all = houseOf(hass, "media_player", skip);
   return { all, on: all.filter((id) => hass.states[id].state === "playing") };
 }
 
 // The average indoor temperature: climate units' own readings, else the temperature
 // sensors assigned to an area. -> { value, unit, ids, running: [climates blowing] }
-function houseTemperature(hass) {
-  const inside = houseEntities(hass, { inArea: true });
+function houseTemperature(hass, skip = NONE) {
+  const inside = houseEntities(hass, { inArea: true }).filter((id) => !skip(id));
   const climates = inside.filter((id) => domainOf(id) === "climate");
   const running = climates.filter((id) => climateRunning(hass.states[id]));
   let ids = climates.filter((id) => Number.isFinite(Number(hass.states[id].attributes.current_temperature)) && hass.states[id].attributes.current_temperature != null);
@@ -636,11 +646,11 @@ function houseTemperature(hass) {
 
 // Security: the alarm panel when there is one; otherwise what's open or unlocked.
 // -> { entity, open: [ids], locks: [every lock], ids: [everything relevant] }
-function houseSecurity(hass) {
-  const inside = houseEntities(hass);
+function houseSecurity(hass, skip = NONE) {
+  const inside = houseEntities(hass).filter((id) => !skip(id));
   const alarm = inside.find((id) => domainOf(id) === "alarm_control_panel") || null;
   const locks = inside.filter((id) => domainOf(id) === "lock");
-  const openings = pick(hass, houseEntities(hass, { inArea: true }), { domains: "binary_sensor", deviceClasses: ["door", "window", "garage_door", "opening"] });
+  const openings = pick(hass, houseEntities(hass, { inArea: true }).filter((id) => !skip(id)), { domains: "binary_sensor", deviceClasses: ["door", "window", "garage_door", "opening"] });
   const open = [...locks, ...openings].filter((id) => isActive(hass.states[id]));
   return { entity: alarm, open, locks, ids: [...(alarm ? [alarm] : []), ...locks, ...openings] };
 }
@@ -1464,13 +1474,9 @@ const SHEET_CSS = `
 
   /* the entity list: one row per entity, live */
   .sv-rows { display: flex; flex-direction: column; gap: 4px; }
-  .sv-row { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 6px 8px 6px 6px; border-radius: 14px;
-    cursor: pointer; }
-  .sv-row:hover { background: var(--well); }
   .sv-ic { flex: none; width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center;
     background: var(--well); color: var(--secondary-text-color); --mdc-icon-size: 20px; }
   .sv-row[data-on] .sv-ic { color: var(--row-c, rgb(var(--accent))); background: color-mix(in oklab, var(--row-c, rgb(var(--accent))) 16%, transparent); }
-  .sv-row[data-off] { opacity: 0.55; }
   .sv-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .sv-name { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sv-sub { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1509,7 +1515,7 @@ function portalRoot() {
     portalEl.className = "savvy-portal";
     const root = portalEl.attachShadow({ mode: "open" });
     const style = document.createElement("style");
-    style.textContent = SHEET_CSS + PICKER_CSS;
+    style.textContent = SHEET_CSS + ROWS_CSS + PICKER_CSS;
     root.appendChild(style);
     watchKeyboard(portalEl);
     document.body.appendChild(portalEl);
@@ -1648,13 +1654,24 @@ class Sheet {
   }
 }
 
-// The popup a group chip opens: the entities it counts, live, each with its own control.
-// Row tap opens more-info; the switch on toggleable rows toggles.
+// The popup a group chip opens: the entities it counts, live, each with the controls its kind
+// needs (core/rows.js: a lock's track, a media player's transport, a climate unit's target...).
+// The row's name area opens more-info; the switch on switchable rows toggles.
+//   show(hass, ids, returnTo, { sort: "room" | "recent", toggle: false, storeKey, pinned: [ids] })
+// sort groups the rows under room headings, or lists them by latest change; the toggle at the
+// top lets the user switch, and remembers the choice per storeKey. pinned ids stay first.
 class EntityListSheet {
   constructor(host, { title: heading, color } = {}) {
     this.host = host;
     this.color = color;
     this.sheet = new Sheet(host, { title: heading, onClose: () => { this.open = false; } });
+    this.kit = new RowKit(() => Clock.add(this.ctlJob));
+    this.ctlJob = (now, dt) => {
+      if (!this.open) return false;
+      let busy = this.kit.step(dt);
+      for (const row of this.rows.__rows?.values() || []) if (row.__kit.step(dt)) busy = true;
+      return busy;
+    };
     // A/C rows show a fan that turns while the unit runs
     this.spinJob = (now, dt) => {
       if (!this.open) return false;
@@ -1676,13 +1693,79 @@ class EntityListSheet {
     this.rows = document.createElement("div");
     this.rows.className = "sv-rows";
     this.sheet.body.appendChild(this.rows);
+    this.opts = {};
+    this.sort = null;
   }
 
-  show(hass, ids, returnTo) {
+  show(hass, ids, returnTo, opts = {}) {
     this.ids = ids;
+    this.opts = opts || {};
+    this.sort = null;
+    if (this.opts.sort) {
+      this.sort = this.opts.sort;
+      if (this.opts.toggle !== false && this.opts.storeKey) {
+        try {
+          const v = localStorage.getItem(`savvy-sort:${this.opts.storeKey}`);
+          if (v === "room" || v === "recent") this.sort = v;
+        } catch (err) { /* private window: the default it is */ }
+      }
+    }
+    this.sortBar(!!this.opts.sort && this.opts.toggle !== false);
     this.open = true;
     this.render(hass);
     this.sheet.open(returnTo);
+  }
+
+  // "Room | Recent" at the top of the list
+  sortBar(on) {
+    if (!on) { this.sortEl?.remove(); this.sortEl = null; this.seg = null; return; }
+    if (!this.sortEl) {
+      this.sortEl = document.createElement("div");
+      this.sortEl.className = "sv-sortbar";
+      this.seg = new Seg(this.kit, { label: "Sort by", items: [{ value: "room", label: "Room", icon: "mdi:floor-plan" }, { value: "recent", label: "Recent", icon: "mdi:clock-outline" }],
+        onPick: (v) => this.setSort(v) });
+      this.sortEl.appendChild(this.seg.el);
+      this.sheet.body.insertBefore(this.sortEl, this.rows);
+    }
+    this.seg.setValue(this.sort, true);
+  }
+
+  setSort(v) {
+    if (v === this.sort) return;
+    this.sort = v;
+    this.seg?.setValue(v);
+    if (this.opts.storeKey) { try { localStorage.setItem(`savvy-sort:${this.opts.storeKey}`, v); } catch (err) { /* not stored */ } }
+    haptic("selection");
+    this.render(this.hass);
+  }
+
+  makeRow(id) {
+    const d = domainOf(id);
+    const row = document.createElement("div");
+    row.className = "sv-row";
+    row.dataset.kind = d;
+    row.dataset.id = id;
+    const fan = d === "climate";
+    row.innerHTML = `<div class="sv-main" role="button" tabindex="0">
+        <span class="sv-ic">${fan ? '<ha-icon icon="mdi:fan"></ha-icon>' : "<ha-state-icon></ha-state-icon>"}</span>
+        <span class="sv-txt"><span class="sv-name"></span><span class="sv-sub"></span></span>
+        <span class="sv-val"></span><button class="sv-tog" hidden></button>
+      </div><div class="sv-ctl" hidden></div>`;
+    row.__main = row.querySelector(".sv-main");
+    row.__ic = row.querySelector(".sv-ic");
+    row.__icon = row.querySelector(".sv-ic > *");
+    row.__ctlBox = row.querySelector(".sv-ctl");
+    if (fan) { row.__spin = new Spring(0, MOTION.spin, "spin", 1e-4); row.__angle = 0; }
+    row.__tog = row.querySelector(".sv-tog");
+    row.__kit = new RowKit(() => Clock.add(this.ctlJob));
+    const kind = ROW_KINDS[d];
+    if (kind) {
+      row.__ctl = kind.build({ id, kit: row.__kit, host: this.host, hass: () => this.hass, refresh: () => this.render(this.hass) });
+      row.__ctlBox.appendChild(row.__ctl.el);
+    }
+    bindPress(row.__main, { onTap: () => moreInfo(this.host, id), haptic: null });
+    bindPress(row.__tog, { onTap: () => toggleEntity(this.hass, id) });
+    return row;
   }
 
   // cards call this from their hass setter while it's open, so rows stay live
@@ -1692,53 +1775,1030 @@ class EntityListSheet {
     const ids = (typeof this.ids === "function" ? this.ids(hass) : this.ids) || [];
     const box = this.rows;
     box.__rows = box.__rows || new Map();
-    const seen = new Set();
+    box.__heads = box.__heads || new Map();
+    const seen = new Set(), seenHeads = new Set();
     let at = 0;
     if (!ids.length) {
       if (!box.__empty) { box.__empty = document.createElement("div"); box.__empty.className = "sv-empty"; box.__empty.textContent = "Nothing right now."; }
       box.appendChild(box.__empty);
     } else box.__empty?.remove();
-    for (const id of ids) {
+    for (const item of sortRows(hass, ids, { sort: this.sort, pinned: this.opts.pinned })) {
+      if (item.head) {
+        let head = box.__heads.get(item.head.key);
+        if (!head) { head = document.createElement("div"); head.className = "sv-group"; box.__heads.set(item.head.key, head); }
+        text(head, item.head.label);
+        seenHeads.add(item.head.key);
+        place(box, head, at++);
+        continue;
+      }
+      const id = item.id;
       seen.add(id);
       let row = box.__rows.get(id);
-      if (!row) {
-        row = document.createElement("div");
-        row.className = "sv-row";
-        row.setAttribute("role", "button");
-        row.setAttribute("tabindex", "0");
-        const fan = domainOf(id) === "climate";
-        row.innerHTML = `<span class="sv-ic">${fan ? '<ha-icon icon="mdi:fan"></ha-icon>' : "<ha-state-icon></ha-state-icon>"}</span>
-          <span class="sv-txt"><span class="sv-name"></span><span class="sv-sub"></span></span>
-          <span class="sv-val"></span><button class="sv-tog" hidden></button>`;
-        row.__icon = row.querySelector(".sv-ic > *");
-        if (fan) { row.__spin = new Spring(0, MOTION.spin, "spin", 1e-4); row.__angle = 0; }
-        row.__tog = row.querySelector(".sv-tog");
-        bindPress(row, { onTap: () => moreInfo(this.host, id), haptic: null });
-        bindPress(row.__tog, { onTap: () => toggleEntity(this.hass, id) });
-        box.__rows.set(id, row);
-      }
-      const st = hass.states[id];
+      if (!row) { row = this.makeRow(id); box.__rows.set(id, row); }
+      const d = domainOf(id), st = hass.states[id];
       const on = isActive(st);
       if (this.color) put(row, "--row-c", colorOf(this.color));
       attr(row, "data-on", on);
       attr(row, "data-off", !st || isOff(st));
+      attr(row.__main, "data-on", on);
       if (row.__spin) {
         row.__spin.to(climateRunning(st) && !MQ.reduced.matches ? fanRate(st) : 0);
         if (!row.__spin.idle || row.__spin.x > 1e-4) Clock.add(this.spinJob);
-      } else if (st && row.__icon.stateObj !== st) { row.__icon.hass = hass; row.__icon.stateObj = st; }
+      } else if (st && row.__icon && row.__icon.stateObj !== st) { row.__icon.hass = hass; row.__icon.stateObj = st; }
       text(row.querySelector(".sv-name"), shortName(hass, id, null));
+      const res = (st && row.__ctl?.update(st, hass)) || {};
+      this.art(row, res.art);
       const area = entityArea(hass, id);
-      text(row.querySelector(".sv-sub"), area ? areaInfo(hass, area).name : "");
-      const toggleable = ["light", "switch", "input_boolean", "fan", "lock", "cover", "media_player", "climate", "siren", "humidifier"].includes(domainOf(id));
-      row.__tog.hidden = !toggleable || !st || isOff(st);
+      const t = Date.parse(st?.last_changed);
+      const parts = [];
+      if (res.sub) parts.push(res.sub);
+      if ((this.sort === "recent" || res.timed) && Number.isFinite(t)) parts.push(since(t, false));
+      if (this.sort !== "room" && area) parts.push(areaInfo(hass, area).name);
+      text(row.querySelector(".sv-sub"), parts.join(" · "));
+      row.__ctlBox.hidden = !res.visible;
+      const switchable = TOGGLE_DOMAINS.has(d);
+      row.__tog.hidden = !switchable || !st || isOff(st);
       attr(row.__tog, "data-on", on);
       attr(row.__tog, "aria-label", on ? "Turn off" : "Turn on");
-      text(row.querySelector(".sv-val"), toggleable ? "" : stateText(hass, st));
-      place(box, row, at++);   // keeps DOM order equal to the ids' order
+      text(row.querySelector(".sv-val"), switchable || ROW_KINDS[d] ? "" : stateText(hass, st));
+      place(box, row, at++);   // keeps DOM order equal to the order
     }
-    for (const [id, row] of box.__rows) if (!seen.has(id)) { row.remove(); box.__rows.delete(id); }
+    for (const [id, row] of box.__rows) if (!seen.has(id)) { row.__kit.dispose(); row.remove(); box.__rows.delete(id); }
+    for (const [key, head] of box.__heads) if (!seenHeads.has(key)) { head.remove(); box.__heads.delete(key); }
+    Clock.add(this.ctlJob);
+  }
+
+  // what's playing replaces the icon in its tile
+  art(row, url) {
+    let img = row.__art;
+    if (!url) { if (img) img.hidden = true; attr(row.__ic, "data-art", false); if (row.__icon) row.__icon.hidden = false; return; }
+    if (!img) { img = row.__art = document.createElement("img"); img.className = "sv-art"; img.alt = ""; row.__ic.appendChild(img); }
+    if (img.__src !== url) { img.__src = url; img.src = url; }
+    img.hidden = false;
+    attr(row.__ic, "data-art", true);
+    row.__icon.hidden = true;
   }
 }
+
+// ===== core/71-controls.js =====
+// ---------------------------------------------------------------------------------------
+// core/controls: the small controls a popup row is built from (CARD-DESIGN.md 3): press
+// buttons, a bar that only moves on a sideways drag, a segmented control, a - / + stepper
+// and the lock track. Each one owns its springs through a RowKit, which the popup's clock
+// job steps and paints, so a row never needs its own animation loop.
+// ---------------------------------------------------------------------------------------
+
+const CTL_PREDICT_MS = 1500;   // an optimistic value waits this long for HA to agree
+const CTL_WRITE_MS = 140;      // a drag sends at most this often; the release always lands
+const LOCK_END = 0.96;         // where the finger's travel counts as the end of the track
+const LOCK_HOLD_MS = 500;      // how long the end of the lock track must be held to open
+const LOCK_COLORS = [[76, 175, 80], [232, 163, 61], [224, 102, 102]];   // locked, unlocked, open
+const mixRgb = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
+
+// The springs and press feedback of one row's controls.
+class RowKit {
+  constructor(wake) {
+    this.wake = wake;
+    this.springs = [];
+    this.presses = [];
+    this.paints = [];
+  }
+  spring(value, motion, eps) {
+    const s = new Spring(value, motion, "k", eps);
+    this.springs.push(s);
+    return s;
+  }
+  // tap (and optionally hold) with the shared press feedback
+  press(el, onTap, { onHold, depth = 0.08, haptic: tap = "light" } = {}) {
+    const spring = this.spring(0, MOTION.press);
+    el.__spring = spring;
+    el.__depth = depth;
+    this.presses.push(el);
+    bindPress(el, { spring, wake: this.wake, onTap, onHold, haptic: tap });
+    return spring;
+  }
+  // steps every spring and paints; true while something still moves
+  step(dt) {
+    const red = MQ.reduced.matches;
+    let busy = false;
+    for (const s of this.springs) {
+      if (s.idle) continue;
+      if (red) s.snap(); else s.step(dt);
+      if (!s.idle) busy = true;
+    }
+    for (const el of this.presses) {
+      const p = el.__spring.x;
+      put(el, "transform", red || Math.abs(p) < 1e-4 ? "" : `scale(${(1 - el.__depth * p).toFixed(4)})`);
+      put(el, "opacity", Math.abs(p) > 1e-3 ? (1 - (red ? 0.25 : 0.12) * clamp(p)).toFixed(3) : "");
+    }
+    for (const paint of this.paints) if (paint(dt)) busy = true;
+    return busy;
+  }
+  // a row that goes away takes its timers with it
+  dispose() { for (const fn of this.disposers || []) fn(); }
+  onDispose(fn) { (this.disposers || (this.disposers = [])).push(fn); }
+}
+
+// A round icon button: transport, power, mute, the - and + of a stepper.
+function iconButton(kit, { icon, label, onTap, solid = false, cls = "" }) {
+  const btn = document.createElement("button");
+  btn.className = `sv-btn ${cls}`.trim();
+  if (solid) btn.dataset.solid = "";
+  btn.innerHTML = "<ha-icon></ha-icon>";
+  btn.__icon = btn.firstElementChild;
+  attr(btn.__icon, "icon", icon);
+  attr(btn, "aria-label", label);
+  kit.press(btn, onTap, { depth: solid ? 0.06 : 0.1 });
+  btn.setIcon = (name) => attr(btn.__icon, "icon", name);
+  return btn;
+}
+
+// A bar that only moves once a drag is clearly sideways, so a press, or a finger on its way
+// to scrolling the page, never changes anything; then the level follows the finger 1:1 from
+// where it was (CARD-DESIGN.md 3.1). onChange(level 0..1, final).
+class SideBar {
+  constructor(kit, { label, onChange, step = 0.05 }) {
+    this.kit = kit;
+    this.onChange = onChange;
+    this.step = step;
+    const el = this.el = document.createElement("div");
+    el.className = "sv-bar";
+    el.setAttribute("role", "slider");
+    el.tabIndex = 0;
+    el.setAttribute("aria-label", label);
+    el.setAttribute("aria-valuemin", "0");
+    el.setAttribute("aria-valuemax", "100");
+    el.innerHTML = '<span class="sv-bar-fill"></span>';
+    this.fill = el.firstElementChild;
+    this.value = kit.spring(0, MOTION.value, 0.002);
+    this.grab = kit.spring(0, { response: 0.4, damping: 1 });
+    this.level = 0;
+    this.pending = null;
+    this.pendingAt = 0;
+    this.dragging = false;
+    this.queued = null;
+    this.timer = 0;
+    this.last = 0;
+    kit.paints.push(() => this.paint());
+    kit.onDispose(() => { clearTimeout(this.timer); clearTimeout(this.expiry); });
+    this.wire();
+  }
+
+  paint() {
+    put(this.fill, "transform", `scaleX(${clamp(this.value.x).toFixed(4)})`);
+    put(this.el, "--grab", clamp(this.grab.x).toFixed(3));
+    return false;
+  }
+
+  // Home Assistant's level; a guess of our own holds until it agrees or expires
+  setLevel(v, snap = false) {
+    this.level = v;
+    attr(this.el, "aria-valuenow", String(Math.round(v * 100)));
+    if (this.dragging) return;
+    if (this.pending != null && (Math.abs(this.pending - v) < 0.02 || Date.now() - this.pendingAt > CTL_PREDICT_MS)) this.pending = null;
+    if (this.pending != null) return;
+    if (snap) this.value.snap(v); else this.value.to(v);
+    this.kit.wake();
+  }
+
+  guess(v) {
+    this.pending = v;
+    this.pendingAt = Date.now();
+    clearTimeout(this.expiry);
+    this.expiry = setTimeout(() => { this.pending = null; this.value.to(this.level); this.kit.wake(); }, CTL_PREDICT_MS + 50);
+  }
+
+  send(v, throttle) {
+    this.queued = v;
+    if (throttle) {
+      if (this.timer) return;
+      this.timer = setTimeout(() => { this.timer = 0; this.flush(); }, CTL_WRITE_MS);
+      return;
+    }
+    clearTimeout(this.timer);
+    this.timer = 0;
+    this.flush();
+  }
+  flush() {
+    if (this.queued == null) return;
+    const v = this.queued;
+    this.queued = null;
+    this.onChange(v);
+  }
+
+  nudge(d) {
+    const v = clamp((this.pending ?? this.value.target) + d * this.step);
+    this.guess(v);
+    this.value.to(v);
+    haptic("selection");
+    this.send(v, false);
+    this.kit.wake();
+  }
+
+  wire() {
+    const el = this.el;
+    let id = null, x0 = 0, y0 = 0, xs = 0, from = 0, live = false;
+    const at = (x) => clamp(from + (x - xs) / Math.max(1, el.getBoundingClientRect().width));
+    el.addEventListener("pointerdown", (e) => {
+      if (e.button > 0) return;
+      e.stopPropagation();
+      id = e.pointerId; x0 = e.clientX; y0 = e.clientY; live = false;
+      try { el.setPointerCapture(e.pointerId); } catch (err) { /* already lifted */ }
+    });
+    el.addEventListener("pointermove", (e) => {
+      if (e.pointerId !== id) return;
+      if (!e.buttons && e.pointerType === "mouse") { id = null; return; }
+      if (!live) {
+        const dx = e.clientX - x0, dy = e.clientY - y0;
+        if (Math.hypot(dx, dy) < SLOP) return;
+        if (Math.abs(dy) >= Math.abs(dx)) { id = null; return; }   // vertical: the page scrolls
+        live = true;
+        this.dragging = true;
+        this.grab.to(1);
+        xs = e.clientX;
+        from = clamp(this.pending ?? this.value.x);
+        this.last = Math.round(from * 10);
+      }
+      const v = at(e.clientX);
+      this.value.snap(v);
+      this.guess(v);
+      const notch = Math.round(v * 10);
+      if (notch !== this.last) { this.last = notch; haptic("selection"); }
+      this.send(v, true);
+      this.kit.wake();
+    });
+    const end = (e) => {
+      if (e.pointerId !== id) return;
+      id = null;
+      if (!live) return;
+      live = false;
+      this.dragging = false;
+      this.grab.to(0);
+      this.send(this.value.x, false);
+      this.kit.wake();
+    };
+    el.addEventListener("pointerup", end);
+    el.addEventListener("pointercancel", end);
+    el.addEventListener("click", (e) => e.stopPropagation());
+    el.addEventListener("keydown", (e) => {
+      const d = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 }[e.key];
+      if (!d) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.nudge(d);
+    });
+  }
+}
+
+// A segmented control: equal segments and a pill that slides between them on a spring.
+// items: [{ value, label, icon }]; setValue(null) leaves none picked.
+class Seg {
+  constructor(kit, { items, label, onPick }) {
+    this.kit = kit;
+    this.items = items;
+    this.onPick = onPick;
+    const el = this.el = document.createElement("div");
+    el.className = "sv-seg";
+    el.setAttribute("role", "radiogroup");
+    el.setAttribute("aria-label", label);
+    el.style.setProperty("--n", String(items.length));
+    el.innerHTML = '<span class="sv-seg-pill"></span>';
+    this.pill = el.firstElementChild;
+    this.buttons = items.map((it, i) => {
+      const b = document.createElement("button");
+      b.className = "sv-seg-b";
+      b.setAttribute("role", "radio");
+      b.dataset.v = String(it.value);
+      b.innerHTML = `${it.icon ? "<ha-icon></ha-icon>" : ""}<span></span>`;
+      if (it.icon) attr(b.querySelector("ha-icon"), "icon", it.icon);
+      text(b.querySelector("span"), it.label);
+      kit.press(b, () => this.onPick(it.value), { depth: 0.04 });
+      el.appendChild(b);
+      return b;
+    });
+    this.idx = kit.spring(0, MOTION.pill, 0.002);
+    this.shown = kit.spring(0, MOTION.ui, 0.002);
+    this.value = undefined;
+    kit.paints.push(() => this.paint());
+  }
+  setValue(v, snap = false) {
+    if (v === this.value && !snap) return;
+    this.value = v;
+    const i = this.items.findIndex((it) => it.value === v);
+    this.buttons.forEach((b, k) => { attr(b, "aria-checked", String(k === i)); attr(b, "data-on", k === i); });
+    this.shown.to(i < 0 ? 0 : 1);
+    if (i >= 0) { if (snap || this.shown.x < 0.01) this.idx.snap(i); else this.idx.to(i); }
+    if (snap) this.shown.snap();
+    this.kit.wake();
+  }
+  paint() {
+    put(this.pill, "--i", this.idx.x.toFixed(3));
+    put(this.pill, "opacity", clamp(this.shown.x).toFixed(3));
+    return false;
+  }
+}
+
+// - value +: the target of a climate unit. Taps step it; the service call waits until the
+// stepping stops, so three taps are one write.
+class Stepper {
+  constructor(kit, { label, onChange }) {
+    this.kit = kit;
+    this.onChange = onChange;
+    const el = this.el = document.createElement("div");
+    el.className = "sv-step";
+    el.setAttribute("role", "group");
+    el.setAttribute("aria-label", label);
+    this.down = iconButton(kit, { icon: "mdi:minus", label: `${label} down`, onTap: () => this.bump(-1) });
+    this.up = iconButton(kit, { icon: "mdi:plus", label: `${label} up`, onTap: () => this.bump(1) });
+    this.val = document.createElement("span");
+    this.val.className = "sv-step-v";
+    el.append(this.down, this.val, this.up);
+    this.cfg = { value: 0, min: 0, max: 100, step: 1, unit: "" };
+    this.pending = null;
+    this.timer = 0;
+    kit.onDispose(() => clearTimeout(this.timer));
+  }
+  fmt(v) { return `${v.toFixed(this.cfg.step < 1 ? 1 : 0)}${this.cfg.unit}`; }
+  set(cfg) {
+    this.cfg = cfg;
+    if (this.pending != null && (Math.abs(this.pending - cfg.value) < 1e-6 || Date.now() - this.pendingAt > CTL_PREDICT_MS + 600)) this.pending = null;
+    const shown = this.pending ?? cfg.value;
+    text(this.val, this.fmt(shown));
+    attr(this.down, "disabled", shown <= cfg.min + 1e-9);
+    attr(this.up, "disabled", shown >= cfg.max - 1e-9);
+  }
+  bump(d) {
+    const { value, min, max, step } = this.cfg;
+    const v = clamp((this.pending ?? value) + d * step, min, max);
+    this.pending = Math.round(v / step) * step;
+    this.pendingAt = Date.now();
+    this.set(this.cfg);
+    haptic("selection");
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => { this.timer = 0; this.onChange(this.pending); }, 450);
+  }
+}
+
+// Lock, unlock, open: one track, one knob, three stops. A tap does nothing; the knob is
+// dragged. Past Unlocked the track gets heavy and the end has to be held until a ring fills
+// (and then released) before the door's latch opens. A lock that can't open has two stops.
+class LockTrack {
+  constructor(kit, { label, canOpen, onLock, onUnlock, onOpen }) {
+    this.kit = kit;
+    this.canOpen = canOpen;
+    this.onLock = onLock;
+    this.onUnlock = onUnlock;
+    this.onOpen = onOpen;
+    this.onWords = null;                        // the row calls this to say its subtitle changed
+    this.u = canOpen ? 0.5 : 1;                 // where Unlocked sits, as a share of the travel
+    const el = this.el = document.createElement("div");
+    el.className = "sv-lk";
+    el.dataset.stops = canOpen ? "3" : "2";
+    el.setAttribute("role", "slider");
+    el.tabIndex = 0;
+    el.setAttribute("aria-label", label);
+    el.setAttribute("aria-valuemin", "0");
+    el.setAttribute("aria-valuemax", canOpen ? "2" : "1");
+    el.innerHTML = `<span class="sv-lk-hint l"></span><span class="sv-lk-hint r"></span>
+      <span class="sv-lk-knob">
+        <svg class="sv-lk-ring" viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="20"></circle></svg>
+        <ha-icon class="i0"></ha-icon><ha-icon class="i1"></ha-icon><ha-icon class="i2"></ha-icon>
+      </span>`;
+    this.knob = el.querySelector(".sv-lk-knob");
+    this.ring = el.querySelector(".sv-lk-ring circle");
+    this.hl = el.querySelector(".sv-lk-hint.l");
+    this.hr = el.querySelector(".sv-lk-hint.r");
+    this.icons = [el.querySelector(".i0"), el.querySelector(".i1"), el.querySelector(".i2")];
+    attr(this.icons[0], "icon", "mdi:lock");
+    attr(this.icons[1], "icon", "mdi:lock-open-variant");
+    attr(this.icons[2], "icon", "mdi:door-open");
+    this.x = kit.spring(0, { response: 0.3, damping: 0.74 }, 0.001);
+    this.pulse = 0;
+    this.W = 0;
+    this.state = "unknown";
+    this.pend = null;                           // { stop, at }: what we asked for
+    this.rest = 0;
+    this.drag = null;
+    this.holdFrom = 0;
+    this.armed = false;
+    this.timers = [];
+    this.later = [];
+    kit.paints.push((dt) => this.paint(dt));
+    kit.onDispose(() => { this.clearTimers(); for (const t of this.later) clearTimeout(t); });
+    if (typeof ResizeObserver === "function") {
+      this.ro = new ResizeObserver(() => { this.measure(); kit.wake(); });
+      this.ro.observe(el);
+      kit.onDispose(() => this.ro.disconnect());
+    }
+    this.wire();
+  }
+
+  clearTimers() { for (const t of this.timers) clearTimeout(t); this.timers = []; }
+  measure() { this.W = this.el.clientWidth; this.T = Math.max(1, this.W - 44 - 8); }
+  stopPos(stop) { return stop === 0 ? 0 : stop === 1 ? this.u : 1; }
+  // the knob sits where the finger is, but past Unlocked it lags and then arrives: heavy. The
+  // end is the finger's last 4%: a drag only counts from where it became clearly sideways.
+  mapFinger(f) {
+    if (!this.canOpen || f <= this.u) return f;
+    const t = clamp((f - this.u) / (LOCK_END - this.u));
+    return this.u + (1 - this.u) * Math.pow(t, 1.8);
+  }
+
+  get disabled() { return this.state === "unavailable" || this.state === "unknown"; }
+  get transitional() { return ["locking", "unlocking", "opening"].includes(this.state) || !!this.pend; }
+
+  // HA's state each render; an optimistic stop holds until HA agrees or it expires
+  setState(state, snap = false) {
+    this.state = state;
+    const truth = state === "locked" || state === "locking" ? 0 : state === "open" || state === "opening" ? 2 : 1;
+    const now = Date.now();
+    if (this.pend && (this.pend.stop === truth || (now - this.pend.at > (this.pend.ttl ?? CTL_PREDICT_MS) && !["locking", "unlocking", "opening"].includes(state)))) this.pend = null;
+    let stop = this.pend ? this.pend.stop : truth;
+    if (!this.canOpen && stop === 2) stop = 1;
+    this.rest = stop;
+    attr(this.el, "aria-valuenow", String(stop));
+    attr(this.el, "aria-valuetext", ["Locked", "Unlocked", "Open"][stop]);
+    attr(this.el, "data-bad", state === "jammed");
+    attr(this.el, "aria-disabled", this.disabled ? "true" : null);
+    attr(this.el, "data-busy", this.transitional);
+    if (!this.drag) {
+      if (snap) this.x.snap(this.stopPos(stop)); else this.x.to(this.stopPos(stop));
+    }
+    text(this.hr, this.disabled ? "" : stop === 0 ? "Slide to unlock" : stop === 1 && this.canOpen ? "Hold the end to open" : "");
+    text(this.hl, this.disabled ? "" : stop >= 1 ? "Lock" : "");
+    this.kit.wake();
+  }
+
+  // what the row says under the name
+  get words() {
+    if (this.pend) return this.pend.stop === 0 ? "Locking…" : this.pend.stop === 1 ? "Unlocking…" : "Opening…";
+    return { locked: "Locked", unlocked: "Unlocked", locking: "Locking…", unlocking: "Unlocking…", opening: "Opening…", open: "Open", jammed: "Jammed" }[this.state] || title(this.state);
+  }
+
+  paint(dt) {
+    if (!this.W) this.measure();
+    const x = clamp(this.x.x, 0, 1.04), u = this.u;
+    put(this.knob, "transform", `translateX(${(x * this.T).toFixed(2)}px)`);
+    const c = this.canOpen
+      ? (x <= u ? mixRgb(LOCK_COLORS[0], LOCK_COLORS[1], u ? x / u : 1) : mixRgb(LOCK_COLORS[1], LOCK_COLORS[2], clamp((x - u) / (1 - u))))
+      : mixRgb(LOCK_COLORS[0], LOCK_COLORS[1], clamp(x));
+    put(this.el, "--lk", c.join(" "));
+    // the icon crossfades between the stops it sits between
+    const pos = this.canOpen ? [0, u, 1] : [0, 1, 1];
+    const span = this.canOpen ? u : 1;
+    this.icons.forEach((ic, i) => {
+      const w = i === 2 && !this.canOpen ? 0 : clamp(1 - Math.abs(x - pos[i]) / span);
+      put(ic, "opacity", w.toFixed(3));
+      put(ic, "transform", `scale(${(0.7 + 0.3 * w).toFixed(3)})`);
+    });
+    // the hints belong to the stop the knob rests on and fade as it leaves
+    const near = this.drag ? 0 : clamp(1 - Math.abs(x - this.stopPos(this.rest)) * 5);
+    put(this.hl, "opacity", near.toFixed(3));
+    put(this.hr, "opacity", near.toFixed(3));
+    // the hold ring, from the clock so reduced motion keeps it
+    let busy = false;
+    let p = 0;
+    if (this.holdFrom && !this.armed) { p = clamp((performance.now() - this.holdFrom) / LOCK_HOLD_MS); busy = true; }
+    else if (this.armed) p = 1;
+    put(this.ring, "strokeDashoffset", (125.7 * (1 - p)).toFixed(2));
+    put(this.knob, "--ring", p > 0 ? "1" : "0");
+    attr(this.el, "data-armed", this.armed);
+    // a knob waiting on HA breathes
+    if (this.transitional && !MQ.reduced.matches) {
+      this.pulse += (dt || 0) * 5;
+      put(this.knob, "--breath", (0.5 + 0.5 * Math.sin(this.pulse)).toFixed(3));
+      busy = true;
+    } else put(this.knob, "--breath", "0");
+    return busy;
+  }
+
+  // ---- gestures
+  wire() {
+    const el = this.el;
+    let id = null, x0 = 0, y0 = 0, xs = 0, from = 0;
+    el.addEventListener("pointerdown", (e) => {
+      if (e.button > 0 || this.disabled) return;
+      e.stopPropagation();
+      id = e.pointerId; x0 = e.clientX; y0 = e.clientY;
+      this.drag = null;
+      try { el.setPointerCapture(e.pointerId); } catch (err) { /* already lifted */ }
+    });
+    el.addEventListener("pointermove", (e) => {
+      if (e.pointerId !== id) return;
+      if (!e.buttons && e.pointerType === "mouse") { id = null; return; }
+      if (!this.drag) {
+        const dx = e.clientX - x0, dy = e.clientY - y0;
+        if (Math.hypot(dx, dy) < SLOP) return;
+        if (Math.abs(dy) >= Math.abs(dx)) { id = null; return; }   // vertical: the page scrolls
+        this.measure();
+        // relative: the finger moves the knob from wherever it was
+        const cur = this.x.x, f0 = this.canOpen && cur > this.u ? this.u + (LOCK_END - this.u) * Math.pow((cur - this.u) / (1 - this.u), 1 / 1.8) : cur;
+        from = f0; xs = x0;                     // the knob stays under the finger that grabbed it
+        this.drag = { f: f0, zone: false };
+        this.last = 0;
+        el.dataset.drag = "";
+      }
+      const f = clamp(from + (e.clientX - xs) / this.T);
+      this.drag.f = f;
+      this.x.snap(this.mapFinger(f));
+      const notch = f > this.u ? 2 : f > this.u / 2 ? 1 : 0;
+      if (notch !== this.last) { this.last = notch; haptic("selection"); }
+      this.zone(f >= LOCK_END);
+      this.kit.wake();
+    });
+    const end = (e) => {
+      if (e.pointerId !== id) return;
+      id = null;
+      if (!this.drag) return;
+      const f = this.drag.f, armed = this.armed;
+      this.drag = null;
+      delete el.dataset.drag;
+      this.zone(false);
+      this.release(f, armed);
+    };
+    el.addEventListener("pointerup", end);
+    el.addEventListener("pointercancel", (e) => { if (e.pointerId === id && this.drag) { id = null; this.drag = null; delete el.dataset.drag; this.zone(false); this.x.to(this.stopPos(this.rest)); this.kit.wake(); } });
+    el.addEventListener("click", (e) => e.stopPropagation());
+
+    // keyboard: arrows lock and unlock; Open needs Enter or Space held for the same half second
+    let keyHold = false;
+    el.addEventListener("keydown", (e) => {
+      if (this.disabled) return;
+      if (e.key === "ArrowRight" || e.key === "ArrowUp") { e.preventDefault(); e.stopPropagation(); if (this.rest === 0) this.commit(1); return; }
+      if (e.key === "ArrowLeft" || e.key === "ArrowDown") { e.preventDefault(); e.stopPropagation(); if (this.rest >= 1) this.commit(0); return; }
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault(); e.stopPropagation();
+        if (e.repeat || keyHold) return;
+        if (this.rest === 0 || !this.canOpen) { this.commit(this.rest === 0 ? 1 : 0); return; }
+        keyHold = true;
+        this.x.to(1);
+        this.zone(true);
+        this.kit.wake();
+      }
+    });
+    el.addEventListener("keyup", (e) => {
+      if (!keyHold || (e.key !== "Enter" && e.key !== " ")) return;
+      e.stopPropagation();
+      keyHold = false;
+      const armed = this.armed;
+      this.zone(false);
+      this.release(armed ? 1 : this.u, armed);
+    });
+    el.addEventListener("blur", () => { if (keyHold) { keyHold = false; this.zone(false); this.x.to(this.stopPos(this.rest)); this.kit.wake(); } });
+  }
+
+  // the end of the track: entering it starts the ring; a half second later it arms
+  zone(inside) {
+    if (!this.canOpen) return;
+    if (inside && !this.holdFrom) {
+      this.holdFrom = performance.now();
+      this.clearTimers();
+      const red = MQ.reduced.matches;
+      if (!red) {
+        haptic("selection");
+        this.timers.push(setTimeout(() => haptic("light"), LOCK_HOLD_MS * 0.35), setTimeout(() => haptic("light"), LOCK_HOLD_MS * 0.7));
+      }
+      this.timers.push(setTimeout(() => { this.armed = true; haptic("medium"); this.kit.wake(); }, LOCK_HOLD_MS));
+      this.kit.wake();
+    } else if (!inside && this.holdFrom) {
+      this.holdFrom = 0;
+      this.armed = false;
+      this.clearTimers();
+      this.kit.wake();
+    }
+  }
+
+  // the finger lets go at share f of the travel
+  release(f, armed) {
+    if (armed && this.canOpen) {
+      this.armed = false;
+      this.holdFrom = 0;
+      // the knob shows the latch for a moment, then settles back on Unlocked
+      this.pend = { stop: 2, at: Date.now(), ttl: 700 };
+      haptic("success");
+      this.x.to(1);
+      this.onOpen();
+      this.setState(this.state);
+      this.onWords?.();
+      this.recheck(750);
+      this.kit.wake();
+      return;
+    }
+    this.armed = false;
+    this.holdFrom = 0;
+    const m = this.canOpen ? this.u / 2 : 0.5;
+    let target = f < m ? 0 : 1;
+    if (this.rest === 2 && f >= m) target = 2;     // already open: a small drag changes nothing
+    this.commit(target);
+  }
+
+  // settle on a stop; ask HA when it isn't the one it's in
+  commit(stop) {
+    if (stop !== this.rest) {
+      this.pend = { stop, at: Date.now() };
+      haptic("light");
+      if (stop === 0) this.onLock(); else if (stop === 1) this.onUnlock();
+      this.setState(this.state);
+      this.onWords?.();
+      this.recheck(CTL_PREDICT_MS + 60);
+    }
+    this.x.to(this.stopPos(this.rest));
+    this.kit.wake();
+  }
+
+  // HA may never answer (or answer with the state it was already in): look again when the guess is stale
+  recheck(ms) {
+    this.later.push(setTimeout(() => { this.setState(this.state); this.onWords?.(); }, ms));
+  }
+}
+
+// ===== core/72-rows.js =====
+// ---------------------------------------------------------------------------------------
+// core/rows: what a popup row controls, by domain. A lock gets its track; a media player
+// its transport and volume; a climate unit its target and modes; a light a brightness bar;
+// a cover its buttons; an alarm panel its arm modes. Everything else is a switch or just
+// its state. Each kind builds its controls once per row and updates them from the state.
+//
+//   ROW_KINDS[domain] = { tog?, build(ctx) -> { el, update(st, hass) -> { visible, sub, timed, art } } }
+//   ctx: { id, kit, host, hass() }
+// ---------------------------------------------------------------------------------------
+
+const feature = (st, bit) => ((st?.attributes.supported_features || 0) & bit) === bit;
+const TOGGLE_DOMAINS = new Set(["light", "switch", "input_boolean", "fan", "siren", "humidifier"]);
+const call = (ctx, domain, service, data) => ctx.hass().callService(domain, service, data || {}, { entity_id: ctx.id });
+const div = (cls) => { const d = document.createElement("div"); d.className = cls; return d; };
+const dimmable = (st) => {
+  const modes = st.attributes.supported_color_modes;
+  return Array.isArray(modes) ? modes.some((m) => ["brightness", "color_temp", "hs", "xy", "rgb", "rgbw", "rgbww", "white"].includes(m)) : st.attributes.brightness != null;
+};
+
+const ROW_KINDS = {};
+
+// ---- media players: power, previous, play / pause, next, mute; a volume bar with - and +
+ROW_KINDS.media_player = {
+  build(ctx) {
+    const { kit } = ctx;
+    const el = div("sv-ctl-media");
+    const top = div("sv-line"), vol = div("sv-line sv-vol");
+    const power = iconButton(kit, { icon: "mdi:power", label: "Power", onTap: () => { const s = ctx.hass().states[ctx.id]?.state; call(ctx, "media_player", ["off", "standby"].includes(s) ? "turn_on" : "turn_off"); } });
+    const prev = iconButton(kit, { icon: "mdi:skip-previous", label: "Previous", onTap: () => call(ctx, "media_player", "media_previous_track") });
+    const play = iconButton(kit, { icon: "mdi:play", label: "Play", solid: true, cls: "sv-play", onTap: () => {
+      const s = ctx.hass().states[ctx.id]?.state;
+      call(ctx, "media_player", s === "idle" ? "media_play" : "media_play_pause");
+    } });
+    const next = iconButton(kit, { icon: "mdi:skip-next", label: "Next", onTap: () => call(ctx, "media_player", "media_next_track") });
+    const mute = iconButton(kit, { icon: "mdi:volume-high", label: "Mute", onTap: () => {
+      const st = ctx.hass().states[ctx.id];
+      call(ctx, "media_player", "volume_mute", { is_volume_muted: !st?.attributes.is_volume_muted });
+    } });
+    const spacer = div("sv-spacer");
+    top.append(power, prev, play, next, spacer, mute);
+    const bar = new SideBar(kit, { label: "Volume", onChange: (v) => call(ctx, "media_player", "volume_set", { volume_level: Math.round(v * 100) / 100 }) });
+    const down = iconButton(kit, { icon: "mdi:minus", label: "Volume down", onTap: () => bar.nudge(-1) });
+    const up = iconButton(kit, { icon: "mdi:plus", label: "Volume up", onTap: () => bar.nudge(1) });
+    const pct = document.createElement("span");
+    pct.className = "sv-pct";
+    vol.append(down, bar.el, up, pct);
+    el.append(top, vol);
+    let first = true;
+    return {
+      el,
+      update(st) {
+        const s = st.state, f = (bit) => feature(st, bit);
+        const off = ["off", "unavailable", "unknown", "standby"].includes(s);
+        const active = ["playing", "paused", "buffering"].includes(s);
+        power.hidden = !(f(128) || f(256)) || s === "unavailable";
+        attr(power, "data-on", !off);
+        prev.hidden = !(active && f(16));
+        next.hidden = !(active && f(32));
+        play.hidden = !((active && (f(1) || f(16384))) || (s === "idle" && f(16384)));
+        play.setIcon(s === "playing" || s === "buffering" ? "mdi:pause" : "mdi:play");
+        attr(play, "aria-label", s === "playing" ? "Pause" : "Play");
+        mute.hidden = !(active && f(8));
+        const muted = !!st.attributes.is_volume_muted;
+        mute.setIcon(muted ? "mdi:volume-off" : "mdi:volume-high");
+        attr(mute, "data-on", muted);
+        vol.hidden = !(active && f(4));
+        spacer.hidden = mute.hidden;
+        const level = clamp(Number(st.attributes.volume_level) || 0);
+        bar.setLevel(level, first);
+        text(pct, `${Math.round((bar.pending ?? level) * 100)}%`);
+        first = false;
+        const title = [st.attributes.media_title, st.attributes.media_artist].filter(Boolean).join(" · ");
+        return {
+          visible: !top.querySelectorAll(".sv-btn:not([hidden])").length ? !vol.hidden : true,
+          sub: active ? title || st.attributes.source || null : null,
+          art: active ? st.attributes.entity_picture_local || st.attributes.entity_picture || null : null,
+        };
+      },
+    };
+  },
+};
+
+// ---- climate: a - target + stepper, and the modes
+const HVAC_ORDER = ["off", "cool", "heat", "heat_cool", "auto", "dry", "fan_only"];
+const HVAC_LOOK = {
+  off: ["Off", "mdi:power"], cool: ["Cool", "mdi:snowflake"], heat: ["Heat", "mdi:fire"], heat_cool: ["Heat/Cool", "mdi:sun-snowflake-variant"],
+  auto: ["Auto", "mdi:thermostat-auto"], dry: ["Dry", "mdi:water-percent"], fan_only: ["Fan", "mdi:fan"],
+};
+ROW_KINDS.climate = {
+  build(ctx) {
+    const { kit } = ctx;
+    const el = div("sv-ctl-climate");
+    const line = div("sv-line");
+    const label = document.createElement("span");
+    label.className = "sv-cap";
+    label.textContent = "Target";
+    const step = new Stepper(kit, { label: "Target temperature", onChange: (v) => call(ctx, "climate", "set_temperature", { temperature: v }) });
+    line.append(label, step.el);
+    el.appendChild(line);
+    let seg = null, segKey = "";
+    return {
+      el,
+      update(st, hass) {
+        const a = st.attributes, unit = hass.config?.unit_system?.temperature || "°C";
+        const target = Number(a.temperature);
+        line.hidden = !(a.temperature != null && Number.isFinite(target));
+        if (!line.hidden) {
+          step.set({ value: target, min: Number.isFinite(a.min_temp) ? a.min_temp : 7, max: Number.isFinite(a.max_temp) ? a.max_temp : 35,
+            step: Number(a.target_temp_step) || (unit.includes("F") ? 1 : 0.5), unit: "°" });
+          attr(line, "data-dim", st.state === "off");
+        }
+        const have = a.hvac_modes || [];
+        // Off, Cool and Heat first, then whatever else the unit has, while there's room for it
+        const modes = HVAC_ORDER.filter((m) => have.includes(m)).slice(0, 4);
+        const key = modes.join();
+        if (key !== segKey) {
+          seg?.el.remove();
+          segKey = key;
+          seg = modes.length ? new Seg(kit, { label: "Mode", items: modes.map((m) => ({ value: m, label: HVAC_LOOK[m][0], icon: HVAC_LOOK[m][1] })),
+            onPick: (m) => { if (m !== ctx.hass().states[ctx.id]?.state) call(ctx, "climate", "set_hvac_mode", { hvac_mode: m }); } }) : null;
+          if (seg) el.appendChild(seg.el);
+          seg?.setValue(st.state, true);
+        }
+        seg?.setValue(st.state);
+        const cur = Number(a.current_temperature);
+        const action = a.hvac_action && !["off", "idle"].includes(a.hvac_action) ? title(a.hvac_action) : null;
+        return { visible: st.state !== "unavailable", sub: [Number.isFinite(cur) ? `${cur.toFixed(1)}° now` : null, action].filter(Boolean).join(" · ") || null };
+      },
+    };
+  },
+};
+
+// ---- lights: a brightness bar
+ROW_KINDS.light = {
+  tog: true,
+  build(ctx) {
+    const { kit } = ctx;
+    const el = div("sv-line sv-ctl-light");
+    const bar = new SideBar(kit, { label: "Brightness", onChange: (v) => call(ctx, "light", "turn_on", { brightness_pct: Math.max(1, Math.round(v * 100)) }) });
+    const pct = document.createElement("span");
+    pct.className = "sv-pct";
+    el.append(bar.el, pct);
+    let first = true;
+    return {
+      el,
+      update(st) {
+        const on = st.state === "on" && dimmable(st);
+        const level = clamp((Number(st.attributes.brightness) || 0) / 255);
+        if (on) bar.setLevel(level, first);
+        text(pct, `${Math.round((bar.pending ?? level) * 100)}%`);
+        first = !on;
+        return { visible: on };
+      },
+    };
+  },
+};
+
+// ---- covers: open, stop, close, and a position bar
+ROW_KINDS.cover = {
+  build(ctx) {
+    const { kit } = ctx;
+    const el = div("sv-ctl-cover");
+    const line = div("sv-line");
+    const open = iconButton(kit, { icon: "mdi:arrow-up", label: "Open", onTap: () => call(ctx, "cover", "open_cover") });
+    const stop = iconButton(kit, { icon: "mdi:stop", label: "Stop", onTap: () => call(ctx, "cover", "stop_cover") });
+    const close = iconButton(kit, { icon: "mdi:arrow-down", label: "Close", onTap: () => call(ctx, "cover", "close_cover") });
+    line.append(open, stop, close);
+    const posLine = div("sv-line");
+    const bar = new SideBar(kit, { label: "Position", onChange: (v) => call(ctx, "cover", "set_cover_position", { position: Math.round(v * 100) }) });
+    const pct = document.createElement("span");
+    pct.className = "sv-pct";
+    posLine.append(bar.el, pct);
+    el.append(line, posLine);
+    let first = true;
+    return {
+      el,
+      update(st) {
+        const sf = st.attributes.supported_features ?? 11;
+        open.hidden = !(sf & 1);
+        close.hidden = !(sf & 2);
+        stop.hidden = !(sf & 8);
+        attr(open, "disabled", st.state === "open" && st.attributes.current_position === 100);
+        attr(close, "disabled", st.state === "closed");
+        const pos = Number(st.attributes.current_position);
+        posLine.hidden = !((sf & 4) && Number.isFinite(pos));
+        if (!posLine.hidden) { bar.setLevel(clamp(pos / 100), first); text(pct, `${Math.round((bar.pending ?? pos / 100) * 100)}%`); first = false; }
+        const words = title(st.state);
+        return { visible: st.state !== "unavailable", sub: Number.isFinite(pos) ? `${words} · ${Math.round(pos)}%` : words };
+      },
+    };
+  },
+};
+
+// ---- alarm panels: arm modes; disarming (and a code) is the more-info dialog's job
+const ARM = [["home", "Home", 1, "mdi:shield-home"], ["away", "Away", 2, "mdi:shield-lock"], ["night", "Night", 4, "mdi:shield-moon"], ["vacation", "Vacation", 32, "mdi:shield-airplane"]];
+ROW_KINDS.alarm_control_panel = {
+  build(ctx) {
+    const { kit } = ctx;
+    const el = div("sv-ctl-alarm sv-line");
+    let seg = null, segKey = "";
+    const disarm = document.createElement("button");
+    disarm.className = "sv-pillbtn";
+    disarm.innerHTML = '<ha-icon icon="mdi:shield-off"></ha-icon><span>Disarm</span>';
+    kit.press(disarm, () => moreInfo(ctx.host, ctx.id), { depth: 0.05 });
+    el.appendChild(disarm);
+    return {
+      el,
+      update(st) {
+        const a = st.attributes, sf = a.supported_features ?? 7;
+        const modes = ARM.filter((m) => sf & m[2]);
+        const key = modes.map((m) => m[0]).join();
+        if (key !== segKey) {
+          seg?.el.remove();
+          segKey = key;
+          seg = modes.length ? new Seg(kit, { label: "Arm mode", items: modes.map((m) => ({ value: m[0], label: m[1], icon: m[3] })), onPick: (m) => {
+            const cur = ctx.hass().states[ctx.id];
+            if (cur?.state === `armed_${m}`) return;
+            const needsCode = cur?.attributes.code_format != null && cur.attributes.code_arm_required !== false;
+            if (needsCode) moreInfo(ctx.host, ctx.id);
+            else call(ctx, "alarm_control_panel", `alarm_arm_${m}`);
+          } }) : null;
+          if (seg) el.insertBefore(seg.el, disarm);
+          seg?.setValue(undefined, true);
+        }
+        const armed = /^armed_(.+)$/.exec(st.state);
+        seg?.setValue(armed && modes.some((m) => m[0] === armed[1]) ? armed[1] : null);
+        disarm.hidden = st.state === "disarmed" || st.state === "unavailable";
+        return { visible: st.state !== "unavailable", sub: stateText(ctx.hass(), st) };
+      },
+    };
+  },
+};
+
+// ---- fans: a speed bar
+ROW_KINDS.fan = {
+  tog: true,
+  build(ctx) {
+    const { kit } = ctx;
+    const el = div("sv-line sv-ctl-fan");
+    const bar = new SideBar(kit, { label: "Speed", step: 0.1, onChange: (v) => call(ctx, "fan", "set_percentage", { percentage: Math.max(1, Math.round(v * 100)) }) });
+    const pct = document.createElement("span");
+    pct.className = "sv-pct";
+    el.append(bar.el, pct);
+    let first = true;
+    return {
+      el,
+      update(st) {
+        const p = Number(st.attributes.percentage);
+        const on = st.state === "on" && st.attributes.percentage != null && Number.isFinite(p);
+        if (on) bar.setLevel(clamp(p / 100), first);
+        if (on) text(pct, `${Math.round((bar.pending ?? p / 100) * 100)}%`);
+        first = !on;
+        return { visible: on };
+      },
+    };
+  },
+};
+
+// ---- locks: the track
+ROW_KINDS.lock = {
+  build(ctx) {
+    const { kit } = ctx;
+    const el = div("sv-ctl-lock");
+    const track = new LockTrack(kit, {
+      label: "Lock", canOpen: feature(ctx.hass().states[ctx.id], 1),
+      onLock: () => call(ctx, "lock", "lock"), onUnlock: () => call(ctx, "lock", "unlock"), onOpen: () => call(ctx, "lock", "open"),
+    });
+    track.onWords = () => ctx.refresh?.();
+    el.appendChild(track.el);
+    let first = true;
+    return {
+      el, track,
+      update(st) {
+        if (track.canOpen !== feature(st, 1)) { /* the feature set doesn't change at runtime */ }
+        track.setState(st.state, first);
+        first = false;
+        return { visible: true, sub: track.words, timed: true };
+      },
+    };
+  },
+};
+
+// ---- sorting: by room (headings), by recent change (flat), or as given
+function sortRows(hass, ids, { sort, pinned = [] } = {}) {
+  const out = [];
+  if (!sort) return ids.map((id) => ({ id }));
+  const pin = new Set(pinned);
+  for (const id of pinned) if (ids.includes(id)) out.push({ id });
+  const rest = ids.filter((id) => !pin.has(id));
+  const nameOf = (id) => hass.states[id]?.attributes.friendly_name || id;
+  const changed = (id) => Date.parse(hass.states[id]?.last_changed) || 0;
+  if (sort === "recent") {
+    rest.sort((a, b) => changed(b) - changed(a) || nameOf(a).localeCompare(nameOf(b)));
+    for (const id of rest) out.push({ id });
+    return out;
+  }
+  const groups = new Map();
+  for (const id of rest) {
+    const area = entityArea(hass, id) || "";
+    if (!groups.has(area)) groups.set(area, []);
+    groups.get(area).push(id);
+  }
+  const label = (area) => (area ? areaInfo(hass, area).name : "No room");
+  const keys = [...groups.keys()].sort((a, b) => (!a) - (!b) || label(a).localeCompare(label(b)));
+  for (const area of keys) {
+    out.push({ head: { key: area || "_none", label: label(area) } });
+    const list = groups.get(area).sort((a, b) => (isActive(hass.states[b]) - isActive(hass.states[a])) || nameOf(a).localeCompare(nameOf(b)));
+    for (const id of list) out.push({ id });
+  }
+  return out;
+}
+
+const ROWS_CSS = `
+  .sv-sheet [hidden] { display: none !important; }
+  .sv-btn, .sv-seg-b, .sv-pillbtn { border: 0; margin: 0; font: inherit; cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; }
+  .sv-seg-b { background: none; }
+  .sv-row { display: flex; flex-direction: column; border-radius: 14px; }
+  .sv-main { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 6px 8px 6px 6px; border-radius: 14px; cursor: pointer; }
+  .sv-main:hover { background: var(--well); }
+  .sv-row[data-off] .sv-main { opacity: 0.55; }
+  .sv-art { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block; }
+  .sv-ic[data-art] { overflow: hidden; padding: 0; }
+  .sv-ctl { display: flex; flex-direction: column; gap: 8px; padding: 2px 8px 10px 54px; }
+  @container (max-width: 380px) { .sv-ctl { padding-inline-start: 8px; } }
+  .sv-ctl > div:not(.sv-line) { display: flex; flex-direction: column; gap: 8px; }
+  .sv-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .sv-line[data-dim] { opacity: 0.5; }
+  .sv-spacer { flex: 1; }
+  .sv-cap { flex: 1; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--secondary-text-color); }
+  .sv-pct { flex: none; min-width: 34px; text-align: end; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--secondary-text-color); }
+  /* round buttons */
+  .sv-btn { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; background: var(--well);
+    color: var(--primary-text-color); --mdc-icon-size: 19px; }
+  .sv-btn ha-icon { display: flex; }
+  .sv-btn[data-on] { color: var(--row-c, rgb(var(--accent))); background: color-mix(in oklab, var(--row-c, rgb(var(--accent))) 16%, transparent); }
+  .sv-btn[data-solid] { width: 44px; border-radius: 14px; background: var(--row-c, rgb(var(--accent))); color: #fff; --mdc-icon-size: 23px; }
+  .sv-btn[disabled] { opacity: 0.35; cursor: default; }
+  :host([kbd]) .sv-btn:focus-visible, :host([kbd]) .sv-seg-b:focus-visible, :host([kbd]) .sv-bar:focus-visible, :host([kbd]) .sv-lk:focus-visible, :host([kbd]) .sv-pillbtn:focus-visible, :host([kbd]) .sv-main:focus-visible
+    { outline: 2px solid var(--row-c, rgb(var(--accent))); outline-offset: 2px; }
+  /* the bar: a pill that only moves on a sideways drag */
+  .sv-bar { position: relative; flex: 1; min-width: 60px; height: 30px; border-radius: 99px; overflow: hidden; background: var(--well);
+    touch-action: pan-y; cursor: grab; outline: none; }
+  .sv-bar:active { cursor: grabbing; }
+  .sv-bar-fill { position: absolute; inset: 0; border-radius: 99px; transform-origin: 0 50%; transform: scaleX(0);
+    background: linear-gradient(90deg, color-mix(in oklab, var(--row-c, rgb(var(--accent))) 55%, transparent), var(--row-c, rgb(var(--accent)))); }
+  /* segmented control */
+  .sv-seg { position: relative; display: grid; grid-template-columns: repeat(var(--n), 1fr); padding: 3px; border-radius: 13px; background: var(--well); min-width: 0; }
+  .sv-seg-pill { position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / var(--n)); border-radius: 10px;
+    background: var(--card-background-color, #fff); box-shadow: 0 1px 4px rgb(0 0 0 / 0.22);
+    transform: translateX(calc(var(--i, 0) * 100%)); }
+  .sv-seg-b { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; height: 32px; padding: 0 4px;
+    border-radius: 10px; font-size: 12.5px; line-height: 16px; font-weight: 600; color: var(--secondary-text-color); --mdc-icon-size: 16px; }
+  .sv-seg-b ha-icon { display: flex; flex: none; }
+  .sv-seg-b span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sv-seg-b[data-on] { color: var(--row-c, rgb(var(--accent))); }
+  /* stepper */
+  .sv-step { flex: none; display: flex; align-items: center; gap: 6px; }
+  .sv-step-v { min-width: 52px; text-align: center; font-size: 16px; line-height: 20px; font-weight: 650; letter-spacing: -0.01em; }
+  .sv-pillbtn { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 12px; border-radius: 13px; background: var(--well);
+    font-size: 12.5px; font-weight: 600; color: var(--primary-text-color); --mdc-icon-size: 17px; }
+  .sv-pillbtn ha-icon { display: flex; }
+  .sv-ctl-alarm .sv-seg { flex: 1; }
+  .sv-ctl-climate .sv-seg { flex: none; }
+  /* the sort toggle at the top of a popup's list */
+  .sv-sortbar { display: flex; }
+  .sv-sortbar .sv-seg { flex: 1; }
+  .sv-sortbar .sv-seg-b { height: 28px; }
+  /* the lock track: three stops, one knob */
+  .sv-lk { --lk: 76 175 80; position: relative; box-sizing: border-box; height: 44px; border-radius: 22px; padding: 0 4px; overflow: hidden;
+    background: rgb(var(--lk) / 0.16); box-shadow: inset 0 0 0 1px rgb(var(--lk) / 0.28); touch-action: pan-y; cursor: grab; outline: none; user-select: none; -webkit-user-select: none; }
+  .sv-lk[data-drag] { cursor: grabbing; }
+  .sv-lk[aria-disabled="true"] { opacity: 0.45; cursor: default; }
+  .sv-lk-hint { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; font-size: 12.5px; font-weight: 600; letter-spacing: -0.004em;
+    color: rgb(var(--lk)); pointer-events: none; white-space: nowrap; }
+  .sv-lk-hint.r { right: 18px; }
+  .sv-lk-hint.l { left: 18px; }
+  .sv-lk-knob { position: absolute; top: 4px; left: 4px; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: #fff;
+    background: rgb(var(--lk)); box-shadow: 0 2px 8px rgb(0 0 0 / 0.3); will-change: transform; --mdc-icon-size: 20px; --ring: 0; --breath: 0; }
+  .sv-lk-knob::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid rgb(var(--lk)); opacity: calc(var(--breath) * 0.7); transform: scale(calc(1 + var(--breath) * 0.2)); pointer-events: none; }
+  .sv-lk-knob ha-icon { position: absolute; display: flex; }
+  .sv-lk-ring { position: absolute; inset: -4px; width: 44px; height: 44px; transform: rotate(-90deg); opacity: var(--ring); pointer-events: none; }
+  .sv-lk-ring circle { fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 125.7; stroke-dashoffset: 125.7; }
+  .sv-lk[data-armed] .sv-lk-knob { box-shadow: 0 0 0 4px rgb(var(--lk) / 0.35), 0 2px 8px rgb(0 0 0 / 0.3); }
+  .sv-lk[data-bad] { --lk: 224 102 102 !important; }
+  @media (prefers-contrast: more) { .sv-lk { box-shadow: inset 0 0 0 1.5px rgb(var(--lk)); } .sv-seg { box-shadow: inset 0 0 0 1px currentColor; } }
+`;
 
 // ===== core/75-mode.js =====
 // ---------------------------------------------------------------------------------------
@@ -2002,8 +3062,8 @@ class ModePicker {
 //   this._pressable(el, handlers, depth)      tap / hold / double-tap with press feedback
 //   this._chipActions(el, getCtx, defaults)   the same, from a chip's action config
 //   this._spinner(key, el)                    a rotating icon; set .s.to(turnsPerSecond)
-//   this._showList(title, ids, color, from, footer)   the popup of the entities a chip stands for,
-//                                              with an optional pinned page button
+//   this._showList(title, ids, color, from, footer, opts)   the popup of the entities a chip stands for,
+//                                              with an optional pinned page button; opts: { sort, toggle, storeKey, pinned }
 //   _paint(dirty, all)                        the card's own painting, after the shared part
 // ---------------------------------------------------------------------------------------
 
@@ -2056,12 +3116,12 @@ class SavvyCard extends HTMLElement {
     return spin;
   }
 
-  _showList(heading, ids, color, from, footer = null) {
+  _showList(heading, ids, color, from, footer = null, opts = {}) {
     if (!this._list) this._list = new EntityListSheet(this, { title: heading });
     this._list.sheet.setTitle(heading);
     this._list.sheet.setFooter(footer);
     this._list.color = color;
-    this._list.show(this._hass, ids, from);
+    this._list.show(this._hass, ids, from, opts);
   }
 
   _wake() { if (this.shadowRoot && this.isConnected) Clock.add(this._job); }
@@ -2653,7 +3713,7 @@ if (window.__SAVVY_TEST__) {
     duration, since, relativeTime, axisLabel, momentLabel, fmtNumber, withUnit, isTimestamp,
     fetchHistory, fetchRange, fetchAttributeHistory, resample, seriesStats, stateRuns, numericPoints, linePath,
     Sheet, EntityListSheet, SavvyEditor, defineEditor, S, version: SAVVY_VERSION,
-    roomBadges, roomTemperature, areaLights, houseLights, housePlaying, houseTemperature, houseSecurity, modeInfo, legacyBadges, chipState, portalRoot,
+    roomBadges, roomTemperature, areaLights, houseLights, housePlaying, houseTemperature, houseSecurity, ignoring, sortRows, RowKit, SideBar, Seg, Stepper, LockTrack, ROW_KINDS, modeInfo, legacyBadges, chipState, portalRoot,
   };
 }
 
@@ -7347,7 +8407,10 @@ registerCard("savvy-graph-card", SavvyGraphCard, "Graph",
 //   weather: auto | weather.home | false
 //   health: { navigation_path: /lovelace/admin, watchman: [...], battery_threshold: 20, group_by: hub } | false
 //   lights / climate / media / security: false | { entity, name, icon, color, navigation_path,
-//       popup_button, popup_label, tap_action, hold_action }   (tap and hold both open the list of what's
+//       popup_button, popup_label, exclude, exclude_areas, sort, sort_toggle, tap_action, hold_action }
+//       (exclude / exclude_areas: ignored entities and rooms, for the count and the popup alike; sort: room | recent
+//       is how the popup lists them, with a Room | Recent switch at its top unless sort_toggle is false;
+//       tap and hold both open the list of what's
 //       counted, unless tap_action / hold_action say otherwise; the popup's page button leads to
 //       navigation_path, or to the page its tap or hold action navigates to. navigation_path never
 //       changes what a tap does)
@@ -7357,10 +8420,10 @@ const STYLE = `${BASE_CSS}${HEADER_CSS}${CHIP_ROW_CSS}`;
 
 // The four chips: how each counts, and its look.
 const AUTO = {
-  lights: { name: "Lights", icon: "mdi:lightbulb", color: "#F5B83D" },
-  climate: { name: "Climate", icon: "mdi:fan", color: "#7FC4E8" },
-  media: { name: "Media", icon: "mdi:multimedia", color: "#C98BD9" },
-  security: { name: "Security", icon: "mdi:shield-home", color: "#E6C48F" },
+  lights: { name: "Lights", icon: "mdi:lightbulb", color: "#F5B83D", domain: "light" },
+  climate: { name: "Climate", icon: "mdi:fan", color: "#7FC4E8", domain: ["climate", "sensor"] },
+  media: { name: "Media", icon: "mdi:multimedia", color: "#C98BD9", domain: "media_player" },
+  security: { name: "Security", icon: "mdi:shield-home", color: "#E6C48F", domain: ["lock", "alarm_control_panel", "binary_sensor"] },
 };
 
 class SavvyHomeHeaderCard extends SavvyCard {
@@ -7542,27 +8605,29 @@ class SavvyHomeHeaderCard extends SavvyCard {
   _auto(key, cfg) {
     const h = this._hass, base = AUTO[key];
     const own = cfg.entity && h.states[cfg.entity];
-    let value, ids, spin, listTitle = cfg.name || base.name;
+    const skip = ignoring(h, cfg);
+    let value, ids, spin, pinned, listTitle = cfg.name || base.name;
     if (key === "lights") {
-      const l = houseLights(h);
+      const l = houseLights(h, skip);
       value = l.on.length ? `${l.on.length} on` : "Off";
       ids = l.on.length ? l.on : l.all;
       listTitle = l.on.length ? "Lights on" : "Lights";
     } else if (key === "media") {
-      const m = housePlaying(h);
+      const m = housePlaying(h, skip);
       value = m.on.length ? `${m.on.length} playing` : "Not playing";
       ids = m.on.length ? m.on : m.all;
     } else if (key === "climate") {
-      const t = houseTemperature(h);
+      const t = houseTemperature(h, skip);
       value = t.value == null ? "–" : `${t.value.toFixed(1)}${t.unit}`;
       ids = t.ids;
       spin = t.running.length ? fanRate(h.states[t.running[0]]) : 0;
     } else {
-      const s = houseSecurity(h);
+      const s = houseSecurity(h, skip);
       value = s.entity ? stateText(h, h.states[s.entity]) : s.open.length ? `${s.open.length} open` : "Secure";
       // every lock is always there, in any state; then what is open (or, when nothing is, every opening)
       const rest = (s.open.length ? s.open : s.ids).filter((id) => id !== s.entity && domainOf(id) !== "lock");
       ids = [...(s.entity ? [s.entity] : []), ...s.locks, ...rest];
+      pinned = ids.slice(0, (s.entity ? 1 : 0) + s.locks.length);     // the alarm and the locks stay on top, whatever the sort
     }
     if (own) value = chipState(h, own);
     const snapshot = [...ids];     // what was counted when opened: turning one off keeps its row
@@ -7572,7 +8637,8 @@ class SavvyHomeHeaderCard extends SavvyCard {
       spin: key === "climate" ? spin : undefined,
       config: { ...cfg },
       defaults: { tap: { action: "list" }, hold: { action: "list" } },
-      list: (from) => this._showList(listTitle, snapshot, cfg.color ? colorOf(cfg.color) : base.color, from, pageButton(cfg, cfg.name || base.name)),
+      list: (from) => this._showList(listTitle, snapshot, cfg.color ? colorOf(cfg.color) : base.color, from, pageButton(cfg, cfg.name || base.name),
+        { sort: cfg.sort === "recent" ? "recent" : "room", toggle: cfg.sort_toggle !== false, storeKey: key, pinned }),
     };
   }
 
@@ -7590,6 +8656,10 @@ const autoSection = (key, what) => ({ type: "expandable", name: key, title: `${A
   S.nav("navigation_path", "Target page", "The popup gets a button to it."),
   S.bool("popup_button", "Page button", "In the popup, when there is a target page.", true),
   S.text("popup_label", "Button text", `Default: Open ${AUTO[key].name.toLowerCase()}`),
+  { name: "exclude", label: "Ignored entities", helper: "Left out of the count and the popup.", selector: { entity: { multiple: true, domain: AUTO[key].domain } } },
+  { name: "exclude_areas", label: "Ignored rooms", helper: "Everything in these rooms is left out.", selector: { area: { multiple: true } } },
+  S.select("sort", "Sort by", [{ value: "room", label: "Room" }, { value: "recent", label: "Recent" }]),
+  S.bool("sort_toggle", "Sort toggle", "A Room | Recent switch at the top of the popup.", true),
   S.action("tap_action", "Tap action", "Default: open the list."),
   S.action("hold_action", "Hold action", "Default: open the list."),
 ] });

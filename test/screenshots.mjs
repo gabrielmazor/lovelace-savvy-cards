@@ -51,6 +51,27 @@ const FRIGATE = `window.hass.callWS = async (m) => {
 const POPUP = `window.__popup = true;
 window.__after = () => { const c = window.cards[0]; c._showList("Lights on", window.__savvy.houseLights(window.hass).on, "#F5B83D", null, pageButtonFor(c)); };
 function pageButtonFor() { return { label: "Open lights", onTap() {} }; }`;
+// popups with their row controls: a few entities made up for the purpose, listed straight from the home header
+const SEED = `const add = (id, state, attributes, area, minutesAgo = 20) => {
+  window.house.states[id] = { entity_id: id, state, attributes, last_changed: new Date(Date.now() - minutesAgo * 60000).toISOString(), last_updated: new Date().toISOString() };
+  window.house.entities[id] = { entity_id: id, area_id: area, device_id: null, platform: "demo", entity_category: null, hidden: false, disabled_by: null };
+};`;
+const popupOf = (ids, title, color, seed) => `${SEED}${seed}
+window.hass = { ...window.hass, states: { ...window.house.states } };
+window.__popup = true;
+window.__after = () => window.cards[0]._showList(${JSON.stringify(title)}, ${JSON.stringify(ids)}, ${JSON.stringify(color)}, null, null, {});`;
+const POPUP_LOCKS = popupOf(["lock.front_door", "lock.back_door", "lock.garage"], "Security", "#E6C48F", `
+add("lock.front_door", "locked", { friendly_name: "Front Door", supported_features: 1 }, "hallway", 180);
+add("lock.back_door", "unlocked", { friendly_name: "Back Door", supported_features: 1 }, "kitchen", 4);
+add("lock.garage", "locked", { friendly_name: "Garage Door" }, "bedroom", 600);`);
+const POPUP_MEDIA = popupOf(["media_player.living_tv", "media_player.kitchen_speaker", "media_player.bedroom_tv"], "Media", "#C98BD9", `
+add("media_player.living_tv", "playing", { friendly_name: "Living Room TV", supported_features: 21437, volume_level: 0.42, media_title: "Slow Horses", media_artist: "Apple TV+" }, "living_room", 12);
+add("media_player.kitchen_speaker", "idle", { friendly_name: "Kitchen Speaker", supported_features: 21437, volume_level: 0.3 }, "kitchen", 90);
+add("media_player.bedroom_tv", "off", { friendly_name: "Bedroom TV", supported_features: 21437 }, "bedroom", 300);`);
+const POPUP_CLIMATE = popupOf(["climate.living_ac", "climate.bedroom_ac", "climate.office_heater"], "Climate", "#7FC4E8", `
+add("climate.living_ac", "cool", { friendly_name: "Living Room AC", hvac_modes: ["off", "cool", "heat", "fan_only"], min_temp: 16, max_temp: 30, target_temp_step: 0.5, temperature: 22, current_temperature: 23.4, hvac_action: "cooling", fan_mode: "medium" }, "living_room", 25);
+add("climate.bedroom_ac", "heat", { friendly_name: "Bedroom AC", hvac_modes: ["off", "cool", "heat"], min_temp: 16, max_temp: 30, target_temp_step: 0.5, temperature: 24, current_temperature: 21.8, hvac_action: "idle" }, "bedroom", 50);
+add("climate.office_heater", "off", { friendly_name: "Office Heater", hvac_modes: ["off", "heat"], min_temp: 10, max_temp: 28, temperature: 20, current_temperature: 19.2 }, "office", 400);`);
 const SHOTS = [
   ["lights", "savvy-lights-card", { area: "living_room", featured: ["light.living_room_ceiling"], chips: [{ entity: "switch.living_room_plug", name: "Plug" }] }, 520],
   ["lights-compact", "savvy-lights-card", { area: "living_room", layout: "compact" }, 520],
@@ -68,6 +89,9 @@ const SHOTS = [
     entities: [{ entity: "input_boolean.movie_mode", name: "Movie", icon: "mdi:movie-open" }] }, 600],
   ["section-title", "savvy-section-title-card", { area: "living_room", control: "input_select.living_room_scene" }, 520],
   ["home-header-popup", "savvy-home-header-card", { control: "input_select.house_mode", lights: { navigation_path: "/lovelace/lights" } }, 520, POPUP],
+  ["popup-lock", "savvy-home-header-card", { health: false }, 520, POPUP_LOCKS],
+  ["popup-media", "savvy-home-header-card", { health: false }, 520, POPUP_MEDIA],
+  ["popup-climate", "savvy-home-header-card", { health: false }, 520, POPUP_CLIMATE],
   ["tiles", "savvy-room-tile", { area: "living_room", control: "input_select.living_room_scene" }, 260, TILES],
   ["entity", "savvy-entity-card", { entity: "person.alex", chips: [{ entity: "switch.living_room_plug", name: "Plug", icon: "mdi:power-plug", color: "blue" },
     { entity: "sensor.alex_phone_battery", name: "Phone" }] }, 340],

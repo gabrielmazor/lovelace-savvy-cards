@@ -130,29 +130,39 @@ const areaLights = (hass, area) => pick(hass, areaEntities(hass, area), { domain
 
 // Every light and every media player in the house that sits in an area (integration and
 // cloud entities without a room aren't the house's lights).
-const houseOf = (hass, domain) => houseEntities(hass, { inArea: true })
-  .filter((id) => domainOf(id) === domain && !isGroup(hass.states[id]));
+const houseOf = (hass, domain, skip = NONE) => houseEntities(hass, { inArea: true })
+  .filter((id) => domainOf(id) === domain && !isGroup(hass.states[id]) && !skip(id));
+
+// A chip's ignore list: `exclude` (entities) and `exclude_areas` (rooms). Counting and the
+// popup both go through it, so the number is always what the popup lists.
+const NONE = () => false;
+function ignoring(hass, cfg = {}) {
+  const ids = new Set([].concat(cfg.exclude || []));
+  const areas = new Set([].concat(cfg.exclude_areas || []));
+  if (!ids.size && !areas.size) return NONE;
+  return (id) => ids.has(id) || (areas.size > 0 && areas.has(entityArea(hass, id)));
+}
 
 // Every light in the house: with an area or not, hidden or not (a group's members are
 // often hidden), in the registry or not (YAML lights). Groups are left out so nothing
 // counts twice, and so are disabled lights and config/diagnostic ones.
-function houseLights(hass) {
+function houseLights(hass, skip = NONE) {
   const all = Object.keys(hass.states).filter((id) => {
     if (!id.startsWith("light.")) return false;
     const e = hass.entities?.[id];
-    return !(e && (e.disabled_by || e.entity_category)) && !isGroup(hass.states[id]);
+    return !(e && (e.disabled_by || e.entity_category)) && !isGroup(hass.states[id]) && !skip(id);
   }).sort((a, b) => (hass.states[a].attributes.friendly_name || a).localeCompare(hass.states[b].attributes.friendly_name || b));
   return { all, on: all.filter((id) => hass.states[id].state === "on") };
 }
-function housePlaying(hass) {
-  const all = houseOf(hass, "media_player");
+function housePlaying(hass, skip = NONE) {
+  const all = houseOf(hass, "media_player", skip);
   return { all, on: all.filter((id) => hass.states[id].state === "playing") };
 }
 
 // The average indoor temperature: climate units' own readings, else the temperature
 // sensors assigned to an area. -> { value, unit, ids, running: [climates blowing] }
-function houseTemperature(hass) {
-  const inside = houseEntities(hass, { inArea: true });
+function houseTemperature(hass, skip = NONE) {
+  const inside = houseEntities(hass, { inArea: true }).filter((id) => !skip(id));
   const climates = inside.filter((id) => domainOf(id) === "climate");
   const running = climates.filter((id) => climateRunning(hass.states[id]));
   let ids = climates.filter((id) => Number.isFinite(Number(hass.states[id].attributes.current_temperature)) && hass.states[id].attributes.current_temperature != null);
@@ -169,11 +179,11 @@ function houseTemperature(hass) {
 
 // Security: the alarm panel when there is one; otherwise what's open or unlocked.
 // -> { entity, open: [ids], locks: [every lock], ids: [everything relevant] }
-function houseSecurity(hass) {
-  const inside = houseEntities(hass);
+function houseSecurity(hass, skip = NONE) {
+  const inside = houseEntities(hass).filter((id) => !skip(id));
   const alarm = inside.find((id) => domainOf(id) === "alarm_control_panel") || null;
   const locks = inside.filter((id) => domainOf(id) === "lock");
-  const openings = pick(hass, houseEntities(hass, { inArea: true }), { domains: "binary_sensor", deviceClasses: ["door", "window", "garage_door", "opening"] });
+  const openings = pick(hass, houseEntities(hass, { inArea: true }).filter((id) => !skip(id)), { domains: "binary_sensor", deviceClasses: ["door", "window", "garage_door", "opening"] });
   const open = [...locks, ...openings].filter((id) => isActive(hass.states[id]));
   return { entity: alarm, open, locks, ids: [...(alarm ? [alarm] : []), ...locks, ...openings] };
 }

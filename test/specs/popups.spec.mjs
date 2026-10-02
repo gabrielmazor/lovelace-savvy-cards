@@ -12,7 +12,7 @@ export default async function ({ browser, base, check }) {
   for (const width of [900, 390]) {
     const tag = `[${width}]`;
     const { page, errors } = await openPage(browser, base, { width: width - 80 });
-    await page.setViewportSize({ width, height: 800 });
+    await page.setViewportSize({ width, height: 1100 });
     await page.evaluate((w) => {
       // HA-like: each card in a transformed, contained wrapper; a tall page that scrolls
       const stage = document.getElementById("stage");
@@ -59,7 +59,10 @@ export default async function ({ browser, base, check }) {
 
     // the climate list: the running unit's fan turns, the idle one's doesn't
     await hold(page, await at(page, 0, "#chips .chip:nth-child(2)"));
-    const angles = async () => page.evaluate(() => Object.fromEntries([...window.__savvy.portalRoot().querySelectorAll(".sv-row")].map((r) => [`${r.querySelector(".sv-sub").textContent} ${r.querySelector(".sv-name").textContent}`, r.querySelector(".sv-ic > *").style.transform || "none"])));
+    const angles = async () => page.evaluate(() => Object.fromEntries([...window.__savvy.portalRoot().querySelectorAll(".sv-row")].map((r) => {
+      let head = r.previousElementSibling; while (head && !head.classList.contains("sv-group")) head = head.previousElementSibling;
+      return [`${head ? head.textContent : ""} ${r.querySelector(".sv-name").textContent}`, r.querySelector(".sv-ic > *").style.transform || "none"];
+    })));
     const a1 = await angles();
     await page.waitForTimeout(400);
     const a2 = await angles();

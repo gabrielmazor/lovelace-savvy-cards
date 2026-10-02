@@ -11,7 +11,7 @@ const EDITORS = {
   "savvy-room-header-card": { config: { area: "living_room" },
     want: ["area", "control", "mode_label", "control_tap_action", "control_hold_action", "control_double_tap_action", "home_path", "temperature", "auto_discover", "exclude_kinds", "include", "exclude", "icons_only", "room_path", "exclude_rooms"], lists: ["entities", "chips", "room_order"] },
   "savvy-home-header-card": { config: { control: "input_select.house_mode" },
-    want: ["control", "mode_label", "control_tap_action", "control_hold_action", "control_double_tap_action", "home_path", "weather", "navigation_path", "watchman", "battery_threshold", "warn_above", "exclude_platforms", "hide", "entity", "Home", "Movie Night"], lists: ["chips"] },
+    want: ["control", "mode_label", "control_tap_action", "control_hold_action", "control_double_tap_action", "home_path", "weather", "navigation_path", "watchman", "battery_threshold", "warn_above", "exclude_platforms", "hide", "entity", "exclude_areas", "sort", "sort_toggle", "Home", "Movie Night"], lists: ["chips"] },
 };
 
 export default async function ({ browser, base, check }) {

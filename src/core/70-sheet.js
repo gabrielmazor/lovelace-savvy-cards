@@ -36,13 +36,9 @@ const SHEET_CSS = `
 
   /* the entity list: one row per entity, live */
   .sv-rows { display: flex; flex-direction: column; gap: 4px; }
-  .sv-row { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 6px 8px 6px 6px; border-radius: 14px;
-    cursor: pointer; }
-  .sv-row:hover { background: var(--well); }
   .sv-ic { flex: none; width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center;
     background: var(--well); color: var(--secondary-text-color); --mdc-icon-size: 20px; }
   .sv-row[data-on] .sv-ic { color: var(--row-c, rgb(var(--accent))); background: color-mix(in oklab, var(--row-c, rgb(var(--accent))) 16%, transparent); }
-  .sv-row[data-off] { opacity: 0.55; }
   .sv-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .sv-name { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sv-sub { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -81,7 +77,7 @@ function portalRoot() {
     portalEl.className = "savvy-portal";
     const root = portalEl.attachShadow({ mode: "open" });
     const style = document.createElement("style");
-    style.textContent = SHEET_CSS + PICKER_CSS;
+    style.textContent = SHEET_CSS + ROWS_CSS + PICKER_CSS;
     root.appendChild(style);
     watchKeyboard(portalEl);
     document.body.appendChild(portalEl);
@@ -220,13 +216,24 @@ class Sheet {
   }
 }
 
-// The popup a group chip opens: the entities it counts, live, each with its own control.
-// Row tap opens more-info; the switch on toggleable rows toggles.
+// The popup a group chip opens: the entities it counts, live, each with the controls its kind
+// needs (core/rows.js: a lock's track, a media player's transport, a climate unit's target...).
+// The row's name area opens more-info; the switch on switchable rows toggles.
+//   show(hass, ids, returnTo, { sort: "room" | "recent", toggle: false, storeKey, pinned: [ids] })
+// sort groups the rows under room headings, or lists them by latest change; the toggle at the
+// top lets the user switch, and remembers the choice per storeKey. pinned ids stay first.
 class EntityListSheet {
   constructor(host, { title: heading, color } = {}) {
     this.host = host;
     this.color = color;
     this.sheet = new Sheet(host, { title: heading, onClose: () => { this.open = false; } });
+    this.kit = new RowKit(() => Clock.add(this.ctlJob));
+    this.ctlJob = (now, dt) => {
+      if (!this.open) return false;
+      let busy = this.kit.step(dt);
+      for (const row of this.rows.__rows?.values() || []) if (row.__kit.step(dt)) busy = true;
+      return busy;
+    };
     // A/C rows show a fan that turns while the unit runs
     this.spinJob = (now, dt) => {
       if (!this.open) return false;
@@ -248,13 +255,79 @@ class EntityListSheet {
     this.rows = document.createElement("div");
     this.rows.className = "sv-rows";
     this.sheet.body.appendChild(this.rows);
+    this.opts = {};
+    this.sort = null;
   }
 
-  show(hass, ids, returnTo) {
+  show(hass, ids, returnTo, opts = {}) {
     this.ids = ids;
+    this.opts = opts || {};
+    this.sort = null;
+    if (this.opts.sort) {
+      this.sort = this.opts.sort;
+      if (this.opts.toggle !== false && this.opts.storeKey) {
+        try {
+          const v = localStorage.getItem(`savvy-sort:${this.opts.storeKey}`);
+          if (v === "room" || v === "recent") this.sort = v;
+        } catch (err) { /* private window: the default it is */ }
+      }
+    }
+    this.sortBar(!!this.opts.sort && this.opts.toggle !== false);
     this.open = true;
     this.render(hass);
     this.sheet.open(returnTo);
+  }
+
+  // "Room | Recent" at the top of the list
+  sortBar(on) {
+    if (!on) { this.sortEl?.remove(); this.sortEl = null; this.seg = null; return; }
+    if (!this.sortEl) {
+      this.sortEl = document.createElement("div");
+      this.sortEl.className = "sv-sortbar";
+      this.seg = new Seg(this.kit, { label: "Sort by", items: [{ value: "room", label: "Room", icon: "mdi:floor-plan" }, { value: "recent", label: "Recent", icon: "mdi:clock-outline" }],
+        onPick: (v) => this.setSort(v) });
+      this.sortEl.appendChild(this.seg.el);
+      this.sheet.body.insertBefore(this.sortEl, this.rows);
+    }
+    this.seg.setValue(this.sort, true);
+  }
+
+  setSort(v) {
+    if (v === this.sort) return;
+    this.sort = v;
+    this.seg?.setValue(v);
+    if (this.opts.storeKey) { try { localStorage.setItem(`savvy-sort:${this.opts.storeKey}`, v); } catch (err) { /* not stored */ } }
+    haptic("selection");
+    this.render(this.hass);
+  }
+
+  makeRow(id) {
+    const d = domainOf(id);
+    const row = document.createElement("div");
+    row.className = "sv-row";
+    row.dataset.kind = d;
+    row.dataset.id = id;
+    const fan = d === "climate";
+    row.innerHTML = `<div class="sv-main" role="button" tabindex="0">
+        <span class="sv-ic">${fan ? '<ha-icon icon="mdi:fan"></ha-icon>' : "<ha-state-icon></ha-state-icon>"}</span>
+        <span class="sv-txt"><span class="sv-name"></span><span class="sv-sub"></span></span>
+        <span class="sv-val"></span><button class="sv-tog" hidden></button>
+      </div><div class="sv-ctl" hidden></div>`;
+    row.__main = row.querySelector(".sv-main");
+    row.__ic = row.querySelector(".sv-ic");
+    row.__icon = row.querySelector(".sv-ic > *");
+    row.__ctlBox = row.querySelector(".sv-ctl");
+    if (fan) { row.__spin = new Spring(0, MOTION.spin, "spin", 1e-4); row.__angle = 0; }
+    row.__tog = row.querySelector(".sv-tog");
+    row.__kit = new RowKit(() => Clock.add(this.ctlJob));
+    const kind = ROW_KINDS[d];
+    if (kind) {
+      row.__ctl = kind.build({ id, kit: row.__kit, host: this.host, hass: () => this.hass, refresh: () => this.render(this.hass) });
+      row.__ctlBox.appendChild(row.__ctl.el);
+    }
+    bindPress(row.__main, { onTap: () => moreInfo(this.host, id), haptic: null });
+    bindPress(row.__tog, { onTap: () => toggleEntity(this.hass, id) });
+    return row;
   }
 
   // cards call this from their hass setter while it's open, so rows stay live
@@ -264,50 +337,67 @@ class EntityListSheet {
     const ids = (typeof this.ids === "function" ? this.ids(hass) : this.ids) || [];
     const box = this.rows;
     box.__rows = box.__rows || new Map();
-    const seen = new Set();
+    box.__heads = box.__heads || new Map();
+    const seen = new Set(), seenHeads = new Set();
     let at = 0;
     if (!ids.length) {
       if (!box.__empty) { box.__empty = document.createElement("div"); box.__empty.className = "sv-empty"; box.__empty.textContent = "Nothing right now."; }
       box.appendChild(box.__empty);
     } else box.__empty?.remove();
-    for (const id of ids) {
+    for (const item of sortRows(hass, ids, { sort: this.sort, pinned: this.opts.pinned })) {
+      if (item.head) {
+        let head = box.__heads.get(item.head.key);
+        if (!head) { head = document.createElement("div"); head.className = "sv-group"; box.__heads.set(item.head.key, head); }
+        text(head, item.head.label);
+        seenHeads.add(item.head.key);
+        place(box, head, at++);
+        continue;
+      }
+      const id = item.id;
       seen.add(id);
       let row = box.__rows.get(id);
-      if (!row) {
-        row = document.createElement("div");
-        row.className = "sv-row";
-        row.setAttribute("role", "button");
-        row.setAttribute("tabindex", "0");
-        const fan = domainOf(id) === "climate";
-        row.innerHTML = `<span class="sv-ic">${fan ? '<ha-icon icon="mdi:fan"></ha-icon>' : "<ha-state-icon></ha-state-icon>"}</span>
-          <span class="sv-txt"><span class="sv-name"></span><span class="sv-sub"></span></span>
-          <span class="sv-val"></span><button class="sv-tog" hidden></button>`;
-        row.__icon = row.querySelector(".sv-ic > *");
-        if (fan) { row.__spin = new Spring(0, MOTION.spin, "spin", 1e-4); row.__angle = 0; }
-        row.__tog = row.querySelector(".sv-tog");
-        bindPress(row, { onTap: () => moreInfo(this.host, id), haptic: null });
-        bindPress(row.__tog, { onTap: () => toggleEntity(this.hass, id) });
-        box.__rows.set(id, row);
-      }
-      const st = hass.states[id];
+      if (!row) { row = this.makeRow(id); box.__rows.set(id, row); }
+      const d = domainOf(id), st = hass.states[id];
       const on = isActive(st);
       if (this.color) put(row, "--row-c", colorOf(this.color));
       attr(row, "data-on", on);
       attr(row, "data-off", !st || isOff(st));
+      attr(row.__main, "data-on", on);
       if (row.__spin) {
         row.__spin.to(climateRunning(st) && !MQ.reduced.matches ? fanRate(st) : 0);
         if (!row.__spin.idle || row.__spin.x > 1e-4) Clock.add(this.spinJob);
-      } else if (st && row.__icon.stateObj !== st) { row.__icon.hass = hass; row.__icon.stateObj = st; }
+      } else if (st && row.__icon && row.__icon.stateObj !== st) { row.__icon.hass = hass; row.__icon.stateObj = st; }
       text(row.querySelector(".sv-name"), shortName(hass, id, null));
+      const res = (st && row.__ctl?.update(st, hass)) || {};
+      this.art(row, res.art);
       const area = entityArea(hass, id);
-      text(row.querySelector(".sv-sub"), area ? areaInfo(hass, area).name : "");
-      const toggleable = ["light", "switch", "input_boolean", "fan", "lock", "cover", "media_player", "climate", "siren", "humidifier"].includes(domainOf(id));
-      row.__tog.hidden = !toggleable || !st || isOff(st);
+      const t = Date.parse(st?.last_changed);
+      const parts = [];
+      if (res.sub) parts.push(res.sub);
+      if ((this.sort === "recent" || res.timed) && Number.isFinite(t)) parts.push(since(t, false));
+      if (this.sort !== "room" && area) parts.push(areaInfo(hass, area).name);
+      text(row.querySelector(".sv-sub"), parts.join(" · "));
+      row.__ctlBox.hidden = !res.visible;
+      const switchable = TOGGLE_DOMAINS.has(d);
+      row.__tog.hidden = !switchable || !st || isOff(st);
       attr(row.__tog, "data-on", on);
       attr(row.__tog, "aria-label", on ? "Turn off" : "Turn on");
-      text(row.querySelector(".sv-val"), toggleable ? "" : stateText(hass, st));
-      place(box, row, at++);   // keeps DOM order equal to the ids' order
+      text(row.querySelector(".sv-val"), switchable || ROW_KINDS[d] ? "" : stateText(hass, st));
+      place(box, row, at++);   // keeps DOM order equal to the order
     }
-    for (const [id, row] of box.__rows) if (!seen.has(id)) { row.remove(); box.__rows.delete(id); }
+    for (const [id, row] of box.__rows) if (!seen.has(id)) { row.__kit.dispose(); row.remove(); box.__rows.delete(id); }
+    for (const [key, head] of box.__heads) if (!seenHeads.has(key)) { head.remove(); box.__heads.delete(key); }
+    Clock.add(this.ctlJob);
+  }
+
+  // what's playing replaces the icon in its tile
+  art(row, url) {
+    let img = row.__art;
+    if (!url) { if (img) img.hidden = true; attr(row.__ic, "data-art", false); if (row.__icon) row.__icon.hidden = false; return; }
+    if (!img) { img = row.__art = document.createElement("img"); img.className = "sv-art"; img.alt = ""; row.__ic.appendChild(img); }
+    if (img.__src !== url) { img.__src = url; img.src = url; }
+    img.hidden = false;
+    attr(row.__ic, "data-art", true);
+    row.__icon.hidden = true;
   }
 }

@@ -7,8 +7,8 @@
 //   this._pressable(el, handlers, depth)      tap / hold / double-tap with press feedback
 //   this._chipActions(el, getCtx, defaults)   the same, from a chip's action config
 //   this._spinner(key, el)                    a rotating icon; set .s.to(turnsPerSecond)
-//   this._showList(title, ids, color, from, footer)   the popup of the entities a chip stands for,
-//                                              with an optional pinned page button
+//   this._showList(title, ids, color, from, footer, opts)   the popup of the entities a chip stands for,
+//                                              with an optional pinned page button; opts: { sort, toggle, storeKey, pinned }
 //   _paint(dirty, all)                        the card's own painting, after the shared part
 // ---------------------------------------------------------------------------------------
 
@@ -61,12 +61,12 @@ class SavvyCard extends HTMLElement {
     return spin;
   }
 
-  _showList(heading, ids, color, from, footer = null) {
+  _showList(heading, ids, color, from, footer = null, opts = {}) {
     if (!this._list) this._list = new EntityListSheet(this, { title: heading });
     this._list.sheet.setTitle(heading);
     this._list.sheet.setFooter(footer);
     this._list.color = color;
-    this._list.show(this._hass, ids, from);
+    this._list.show(this._hass, ids, from, opts);
   }
 
   _wake() { if (this.shadowRoot && this.isConnected) Clock.add(this._job); }

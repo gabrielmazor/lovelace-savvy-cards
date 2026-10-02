@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.6.2
+
+The popups get controls instead of switches.
+
+- **The lock track.** A lock in a popup is a track with three stops, Locked, Unlocked and
+  Open. Slide the knob to the middle to unlock and back to lock; a tap does nothing. Open (the
+  latch) is past Unlocked: drag to the end, hold until the ring fills, then let go. The row
+  says "Unlocking…", "Opening…" or "Jammed" and when it last changed. A lock that can't open
+  has two stops. Keyboard: arrows lock and unlock, Enter held opens.
+- **Controls per kind.** Media players: power, previous, play / pause, next, mute and a
+  volume bar with − and +. Climate: the target with − and +, and Off, Cool, Heat and what
+  else the unit has. Lights: a brightness bar. Covers: open, stop, close and a position
+  bar. Alarm panels: the arm modes (disarming and codes go to more-info). Fans: a speed
+  bar. What an entity can't do isn't shown.
+- **Ignore.** The home header's four chips take `exclude` (entities) and `exclude_areas`
+  (rooms). They apply to the count as well as the popup.
+- **Sort.** A popup lists by room under headings (entities with no room under "No room"), or
+  by latest change, with a Room | Recent switch at its top that remembers your choice per
+  chip. `sort` sets the default, `sort_toggle: false` hides the switch. The alarm and the
+  locks stay on top of the security popup.
+- **Fixed.** The popup's own stylesheet had no rule for hidden elements, so a control the
+  entity can't use could still show.
+
 ## 0.6.1
 
 The health card, on a real house: when Zigbee2MQTT stopped, every device showed up on its

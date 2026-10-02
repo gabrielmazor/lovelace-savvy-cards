@@ -112,8 +112,77 @@ works the same way.
 | `home_path` | none | A home button that opens this page. |
 | `weather` | the first weather entity | A weather entity, or `false`. |
 | `health` | on | The cog: `navigation_path` (where the popup's button leads), `popup_button`, `popup_label`, `tap_action` / `hold_action` (default: the list of what needs attention), and the System health card's `watchman`, `watchman_button`, `watchman_report`, `battery_threshold`, `exclude_platforms`, `warn_above`, `group_by`, `group_min`. `false` hides it. |
-| `lights` / `climate` / `media` / `security` | on | Each chip: `false` hides it; or `{ entity, name, icon, color, navigation_path, popup_button, popup_label, tap_action, hold_action }`, where `entity` shows that entity's state instead of the count. Tap and hold list what's counted unless `tap_action` / `hold_action` say otherwise; `navigation_path` only feeds the popup's page button. |
+| `lights` / `climate` / `media` / `security` | on | Each chip: `false` hides it; or `{ entity, name, icon, color, navigation_path, popup_button, popup_label, exclude, exclude_areas, sort, sort_toggle, tap_action, hold_action }`, where `entity` shows that entity's state instead of the count. Tap and hold list what's counted unless `tap_action` / `hold_action` say otherwise; `navigation_path` only feeds the popup's page button. `exclude` and `exclude_areas` leave entities and whole rooms out of the count and the popup alike. `sort` (`room`, the default, or `recent`) is how the popup lists them. |
 | `chips` | none | Your own chips after the four. |
+
+---
+
+## Popups
+
+Hold a chip on the [home header](#home-header), a room's light chip or a room tile and the entities
+behind it open in a popup. Every row has the controls its kind needs, so you rarely have to
+go further than the popup. Tapping a row's name opens its more-info.
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/popup-media-light.png">
+  <img src="docs/images/popup-media-dark.png" width="460" alt="The media popup: transport, mute and volume per player">
+</picture>
+
+| Kind | What the row controls |
+|---|---|
+| **Lock** | The lock track, below. |
+| **Media player** | Power, previous, play / pause, next and mute, and a volume bar with − and +. The bar moves on a sideways drag only. What a player can't do isn't shown; an idle one shows power and play, a player that is off only power. What's playing is the subtitle. |
+| **Climate** | The target with − and + (it respects the unit's step, minimum and maximum, and one write goes out once you stop tapping), and Off, Cool and Heat, then whatever else the unit has: Auto, Dry, Fan, Heat/Cool, up to four. The fan icon turns while the unit runs. |
+| **Light** | The switch, and a slim brightness bar for a dimmable light that is on. |
+| **Cover** | Open, stop and close, and a position bar when the cover has one. |
+| **Alarm panel** | The arm modes it has (Home, Away, Night, Vacation), the current one marked. Disarming, and arming when the panel wants a code, open its more-info, which is where the code goes. |
+| **Fan** | The switch, and a speed bar. |
+| **Switch, sensor, door, window** | A switch, or just the state. |
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/popup-climate-light.png">
+  <img src="docs/images/popup-climate-dark.png" width="460" alt="The climate popup: target and modes per unit">
+</picture>
+
+### The lock track
+
+A lock is a track with a knob and three stops: **Locked, Unlocked, Open**. A tap does
+nothing; the knob is dragged.
+
+- Slide it to the middle and it snaps in place and unlocks. Slide it back and it locks.
+  Let go early and it springs back, and nothing is sent.
+- **Open** (the door's latch, `lock.open`) is past Unlocked. That stretch is heavy. Drag to the
+  end and hold it until a ring has filled, about half a second, then let go. Let go sooner,
+  or slide out of the end, and nothing happens. Then the knob settles back on Unlocked.
+- A lock that can't open has two stops. The row says what the lock is doing ("Unlocking…",
+  "Opening…", "Jammed") and when it last changed, and the knob breathes while Home
+  Assistant confirms.
+- From the keyboard: the arrow keys lock and unlock, and Open needs Enter or Space held for
+  the same half second. The track is a slider with "Locked", "Unlocked" and "Open" as its
+  values.
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/popup-lock-light.png">
+  <img src="docs/images/popup-lock-dark.png" width="460" alt="The lock track, locked and unlocked">
+</picture>
+
+### Ignoring and sorting
+
+The home header's four chips take `exclude` (entities) and `exclude_areas` (rooms): what
+they name is left out of the count **and** the popup, so the number is always what the
+popup lists. The popup lists **by room**, under the room's name (entities with no room
+under "No room"), the active ones first. A **Room | Recent** switch at its top lists them
+flat, newest change first, with when each changed. The alarm and the locks stay on top of the
+security popup either way. The switch remembers your choice per chip; `sort: recent` makes
+Recent the default, and `sort_toggle: false` takes the switch away.
+
+```yaml
+type: custom:savvy-home-header-card
+lights:
+  exclude_areas: [garden]
+  exclude: [light.porch_string]
+  sort: recent
+```
 
 ---
 
