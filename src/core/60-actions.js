@@ -34,9 +34,11 @@ function pageTarget(cfg = {}) {
 }
 
 // The popup's pinned page button for a chip config: popup_button: false hides it, popup_label
-// words it ("Open lights"), and without a target page there's no button.
-function pageButton(cfg = {}, noun = "") {
-  const path = cfg.popup_button === false ? null : pageTarget(cfg);
+// words it ("Open lights"), and without a target page there's no button. `byDefault: false`
+// (the health cog) shows it only when popup_button is true.
+function pageButton(cfg = {}, noun = "", { byDefault = true } = {}) {
+  const on = cfg.popup_button === undefined ? byDefault : cfg.popup_button !== false;
+  const path = on ? pageTarget(cfg) : null;
   if (!path) return null;
   return { label: cfg.popup_label || `Open ${String(noun).toLowerCase()}`.trim(), onTap: () => navigate(path) };
 }

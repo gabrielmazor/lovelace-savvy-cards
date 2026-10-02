@@ -7,6 +7,8 @@
 
 const CTL_PREDICT_MS = 1500;   // an optimistic value waits this long for HA to agree
 const CTL_WRITE_MS = 140;      // a drag sends at most this often; the release always lands
+const LOCK_KNOB = 28;         // the lock track's knob, and the padding round it
+const LOCK_PAD = 4;
 const LOCK_END = 0.96;         // where the finger's travel counts as the end of the track
 const LOCK_HOLD_MS = 500;      // how long the end of the lock track must be held to open
 const LOCK_COLORS = [[76, 175, 80], [232, 163, 61], [224, 102, 102]];   // locked, unlocked, open
@@ -258,11 +260,12 @@ class Seg {
 // - value +: the target of a climate unit. Taps step it; the service call waits until the
 // stepping stops, so three taps are one write.
 class Stepper {
-  constructor(kit, { label, onChange }) {
+  constructor(kit, { label, onChange, compact = false }) {
     this.kit = kit;
     this.onChange = onChange;
     const el = this.el = document.createElement("div");
     el.className = "sv-step";
+    if (compact) el.dataset.compact = "";
     el.setAttribute("role", "group");
     el.setAttribute("aria-label", label);
     this.down = iconButton(kit, { icon: "mdi:minus", label: `${label} down`, onTap: () => this.bump(-1) });
@@ -351,7 +354,7 @@ class LockTrack {
   }
 
   clearTimers() { for (const t of this.timers) clearTimeout(t); this.timers = []; }
-  measure() { this.W = this.el.clientWidth; this.T = Math.max(1, this.W - 44 - 8); }
+  measure() { this.W = this.el.clientWidth; this.T = Math.max(1, this.W - LOCK_KNOB - 2 * LOCK_PAD); }
   stopPos(stop) { return stop === 0 ? 0 : stop === 1 ? this.u : 1; }
   // the knob sits where the finger is, but past Unlocked it lags and then arrives: heavy. The
   // end is the finger's last 4%: a drag only counts from where it became clearly sideways.

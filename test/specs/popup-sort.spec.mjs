@@ -9,7 +9,7 @@ const chipText = (page, card, i) => page.evaluate(({ card, i }) => window.cards[
 const list = (page) => page.evaluate(() => {
   const r = window.__savvy.portalRoot();
   return { rows: [...r.querySelectorAll(".sv-row")].map((x) => x.dataset.id), heads: [...r.querySelectorAll(".sv-group")].map((x) => x.textContent),
-    seg: [...r.querySelectorAll(".sv-sortbar .sv-seg-b")].map((b) => `${b.textContent}${b.hasAttribute("data-on") ? "*" : ""}`), bar: !!r.querySelector(".sv-sortbar"),
+    seg: [...r.querySelectorAll(".sv-tools .sv-seg-b")].map((b) => `${b.textContent}${b.hasAttribute("data-on") ? "*" : ""}`), bar: !!r.querySelector(".sv-tools .sv-seg:not([hidden])"),
     subs: [...r.querySelectorAll(".sv-row .sv-sub")].map((x) => x.textContent) };
 });
 const close = async (page) => { await page.keyboard.press("Escape"); await page.waitForTimeout(450); };
@@ -42,10 +42,10 @@ export default async function ({ browser, base, check }) {
 
     // ---- Recent: one flat list, newest change first, with when
     await page.evaluate(() => {
-      const seg = window.__savvy.portalRoot().querySelectorAll(".sv-sortbar .sv-seg-b")[1];
+      const seg = window.__savvy.portalRoot().querySelectorAll(".sv-tools .sv-seg-b")[1];
       seg.scrollIntoView({ block: "center" });
     });
-    const recentBtn = await page.evaluate(() => { const r = window.__savvy.portalRoot().querySelectorAll(".sv-sortbar .sv-seg-b")[1].getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
+    const recentBtn = await page.evaluate(() => { const r = window.__savvy.portalRoot().querySelectorAll(".sv-tools .sv-seg-b")[1].getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
     // give two lights distinct change times first so the order is certain
     await page.evaluate(() => {
       const on = window.__savvy.houseLights(window.hass).on;
@@ -63,7 +63,7 @@ export default async function ({ browser, base, check }) {
     await close(page);
     await hold(page, await chipAt(page, 0, 0));
     check(`${tag} the popup opens on the remembered choice`, JSON.stringify((await list(page)).seg) === JSON.stringify(["Room", "Recent*"]));
-    const roomBtn = await page.evaluate(() => { const r = window.__savvy.portalRoot().querySelectorAll(".sv-sortbar .sv-seg-b")[0].getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
+    const roomBtn = await page.evaluate(() => { const r = window.__savvy.portalRoot().querySelectorAll(".sv-tools .sv-seg-b")[0].getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
     await page.mouse.click(...roomBtn);
     await page.waitForTimeout(400);
     check(`${tag} switching back to Room restores the headings and stores it`, (await list(page)).heads.length > 0 && (await page.evaluate(() => localStorage.getItem("savvy-sort:lights"))) === "room");
@@ -102,7 +102,7 @@ export default async function ({ browser, base, check }) {
     await hold(page, await chipAt(page, 0, 3));
     const sec = await list(page);
     check(`${tag} the security popup keeps the alarm, then every lock, on top`, sec.rows[0] === "alarm_control_panel.home_alarm" && sec.rows[1] === "lock.front_door" && sec.rows[2] === "lock.back_door", JSON.stringify(sec.rows));
-    const recent = await page.evaluate(() => { const b = window.__savvy.portalRoot().querySelectorAll(".sv-sortbar .sv-seg-b")[1]; b.scrollIntoView({ block: "center" }); const r = b.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
+    const recent = await page.evaluate(() => { const b = window.__savvy.portalRoot().querySelectorAll(".sv-tools .sv-seg-b")[1]; b.scrollIntoView({ block: "center" }); const r = b.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
     await page.mouse.click(...recent);
     await page.waitForTimeout(400);
     const sec2 = await list(page);
@@ -124,7 +124,7 @@ export default async function ({ browser, base, check }) {
     await page.waitForTimeout(500);
     await hold(page, await chipAt(page, 0, 0));
     const before = await list(page);
-    const btn = await page.evaluate(() => { const r = window.__savvy.portalRoot().querySelectorAll(".sv-sortbar .sv-seg-b")[1].getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
+    const btn = await page.evaluate(() => { const r = window.__savvy.portalRoot().querySelectorAll(".sv-tools .sv-seg-b")[1].getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
     await page.mouse.click(...btn);
     await page.waitForTimeout(400);
     const after = await list(page);

@@ -195,7 +195,7 @@ under the list that opens a page: the chip's `navigation_path`, or else the page
 hold action navigates to; `popup_button: false` hides it and `popup_label` words it.
 `navigation_path` only feeds that button: to make a tap go to a page, give it a
 `tap_action` (`action: navigate`), which replaces the tap's default. The health cog's popup
-works the same way.
+works the same way, except that its button is off unless you set `popup_button: true`.
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/images/home-header-popup-light.png">
@@ -210,8 +210,8 @@ works the same way.
 | `control_tap_action` / `control_hold_action` / `control_double_tap_action` | by domain | Override what the control does. |
 | `home_path` | none | A home button that opens this page. |
 | `weather` | the first weather entity | A weather entity, or `false`. |
-| `health` | on | The cog: `navigation_path` (where the popup's button leads), `popup_button`, `popup_label`, `tap_action` / `hold_action` (default: the list of what needs attention), and the System health card's `watchman`, `watchman_button`, `watchman_report`, `battery_threshold`, `exclude_platforms`, `warn_above`, `group_by`, `group_min`. `false` hides it. |
-| `lights` / `climate` / `media` / `security` | on | Each chip: `false` hides it; or `{ entity, name, icon, color, navigation_path, popup_button, popup_label, exclude, exclude_areas, sort, sort_toggle, tap_action, hold_action }`, where `entity` shows that entity's state instead of the count. Tap and hold list what's counted unless `tap_action` / `hold_action` say otherwise; `navigation_path` only feeds the popup's page button. `exclude` and `exclude_areas` leave entities and whole rooms out of the count and the popup alike. `sort` (`room`, the default, or `recent`) is how the popup lists them. |
+| `health` | on | The cog: `navigation_path` (where the popup's button leads), `popup_button` (off by default for the cog), `popup_label`, `tap_action` / `hold_action` (default: the list of what needs attention), and the System health card's `watchman`, `watchman_button`, `watchman_report`, `battery_threshold`, `exclude_platforms`, `warn_above`, `group_by`, `group_min`. `false` hides it. |
+| `lights` / `climate` / `media` / `security` | on | Each chip: `false` hides it; or `{ entity, name, icon, color, navigation_path, popup_button, popup_label, exclude, exclude_areas, sort, sort_toggle, bulk_action, tap_action, hold_action }`, where `entity` shows that entity's state instead of the count. Tap and hold list what's counted unless `tap_action` / `hold_action` say otherwise; `navigation_path` only feeds the popup's page button. `exclude` and `exclude_areas` leave entities and whole rooms out of the count and the popup alike. `sort` (`room`, the default, or `recent`) is how the popup lists them. |
 | `chips` | none | Your own chips after the four. |
 
 ---
@@ -219,34 +219,45 @@ works the same way.
 ## Popups
 
 Hold a chip on the [home header](#home-header), a room's light chip or a room tile and the entities
-behind it open in a popup. Every row has the controls its kind needs, so you rarely have to
-go further than the popup. Tapping a row's name opens its more-info.
+behind it open in a popup. Every row is **one line**: the entity, its main control on the right
+(a switch, play / pause, a target stepper), and, when it has more, a chevron that opens **one extra
+line** of controls under it. One extra line is open at a time. Tapping a row's name opens its
+more-info.
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/images/popup-media-light.png">
-  <img src="docs/images/popup-media-dark.png" width="460" alt="The media popup: transport, mute and volume per player">
+  <img src="docs/images/popup-media-dark.png" width="460" alt="The media popup: one line per player, the open one with its transport and volume">
 </picture>
 
-| Kind | What the row controls |
-|---|---|
-| **Lock** | The lock track, below. |
-| **Media player** | Power, previous, play / pause, next and mute, and a volume bar with − and +. The bar moves on a sideways drag only. What a player can't do isn't shown; an idle one shows power and play, a player that is off only power. What's playing is the subtitle. |
-| **Climate** | The target with − and + (it respects the unit's step, minimum and maximum, and one write goes out once you stop tapping), and Off, Cool and Heat, then whatever else the unit has: Auto, Dry, Fan, Heat/Cool, up to four. The fan icon turns while the unit runs. |
-| **Light** | The switch, and a slim brightness bar for a dimmable light that is on. |
-| **Cover** | Open, stop and close, and a position bar when the cover has one. |
-| **Alarm panel** | The arm modes it has (Home, Away, Night, Vacation), the current one marked. Disarming, and arming when the panel wants a code, open its more-info, which is where the code goes. |
-| **Fan** | The switch, and a speed bar. |
-| **Switch, sensor, door, window** | A switch, or just the state. |
+| Kind | On the line | Under the chevron |
+|---|---|---|
+| **Lock** | The state and when it last changed; the lock track sits on a line of its own, always there (below). | |
+| **Media player** | Play / pause; power when it is off. What's playing is the subtitle. | Power, previous, next, mute, and a volume bar with − and + (on a narrow popup only the bar). The bar moves on a sideways drag only. What a player can't do isn't shown. |
+| **Climate** | A − target + stepper (it respects the unit's step, minimum and maximum, and one write goes out once you stop tapping); a power button when the unit is off. The mode and the reading are the subtitle, and the fan icon turns while it runs. | Off, Cool and Heat, then whatever else the unit has: Auto, Dry, Fan, Heat/Cool, up to four. |
+| **Light** | The switch; the brightness is the subtitle. | A slim brightness bar for a dimmable light that is on. |
+| **Cover** | Open or close (stop while it moves). | Stop, and a position bar when the cover has one. |
+| **Alarm panel** | Its state. | The arm modes it has (Home, Away, Night, Vacation), the current one marked, and Disarm. Disarming, and arming when the panel wants a code, open its more-info, which is where the code goes. |
+| **Fan** | The switch. | A speed bar. |
+| **Switch, sensor, door, window** | A switch, or just the state. | |
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/images/popup-climate-light.png">
-  <img src="docs/images/popup-climate-dark.png" width="460" alt="The climate popup: target and modes per unit">
+  <img src="docs/images/popup-climate-dark.png" width="460" alt="The climate popup: target on the line, modes under the chevron">
 </picture>
+
+### Bulk actions
+
+Next to the Room | Recent switch, each of the home header's four popups has one button that acts
+on exactly what the popup lists: **All off** for lights and for climate, **Pause all** for
+media and **Lock all** for security. It touches only what still needs it (lights that are on,
+players that are playing, locks that aren't locked), leaves out what the chip ignores, and is
+greyed out when there is nothing to do. `bulk_action: false` on a chip hides it. Popups on the
+room header, section title and room tile get it when everything they list is of one kind.
 
 ### The lock track
 
-A lock is a track with a knob and three stops: **Locked, Unlocked, Open**. A tap does
-nothing; the knob is dragged.
+A lock is a slim track on its own line, with a knob and three stops: **Locked, Unlocked,
+Open**. A tap does nothing; the knob is dragged.
 
 - Slide it to the middle and it snaps in place and unlocks. Slide it back and it locks.
   Let go early and it springs back, and nothing is sent.

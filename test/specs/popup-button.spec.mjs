@@ -23,9 +23,11 @@ export default async function ({ browser, base, check }) {
       window.mount("savvy-home-header-card", { lights: { navigation_path: "/lovelace/lights", popup_button: false }, health: false }, width);
       // an explicit tap_action replaces the tap; the button still follows navigation_path
       window.mount("savvy-home-header-card", {
-        health: { navigation_path: "/lovelace/admin", tap_action: { action: "navigate", navigation_path: "/lovelace/admin-tap" } },
+        health: { navigation_path: "/lovelace/admin", popup_button: true, tap_action: { action: "navigate", navigation_path: "/lovelace/admin-tap" } },
         lights: { navigation_path: "/lovelace/lights", tap_action: { action: "navigate", navigation_path: "/lovelace/lights-tap" } },
       }, width);
+      // the cog's page button is off unless asked for
+      window.mount("savvy-home-header-card", { health: { navigation_path: "/lovelace/admin", popup_button: true }, lights: false, climate: false, media: false, security: false }, width);
     }, width);
     await page.waitForTimeout(500);
     const chip = (card, i) => page.evaluate(({ card, i }) => { const r = window.cards[card].shadowRoot.querySelectorAll("#chips .chip")[i].getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; }, { card, i });
@@ -88,7 +90,7 @@ export default async function ({ browser, base, check }) {
     await page.mouse.click(...Object.values(await centerOf(page, 0, "#health")));
     await page.waitForTimeout(600);
     const cogTap = await page.evaluate((GO) => ({ nav: [...window.nav], go: eval(GO)?.text ?? null, title: window.__savvy.portalRoot().querySelector(".sv-sheet .sv-title")?.textContent }), GO);
-    check(`${tag} a tap on the cog opens the health popup; navigation_path does not navigate`, cogTap.nav.length === 0 && cogTap.go === "Open system health" && cogTap.title === "System health", JSON.stringify(cogTap));
+    check(`${tag} a tap on the cog opens the health popup; navigation_path does not navigate`, cogTap.nav.length === 0 && cogTap.go === null && cogTap.title === "System health", JSON.stringify(cogTap));
     await close();
 
     // explicit tap_action: the tap navigates, hold still lists, and the button follows navigation_path
@@ -116,11 +118,15 @@ export default async function ({ browser, base, check }) {
     await page.waitForTimeout(500);
     check(`${tag} ...which goes to /lovelace/admin`, (await page.evaluate(() => [...window.nav])).at(-1) === "/lovelace/admin");
 
-    // the cog's popup
+    // the cog's popup: no page button by default, one when popup_button is on
     await hold(page, await centerOf(page, 0, "#health"));
     await page.waitForTimeout(600);
+    check(`${tag} the cog's popup has no page button by default, target page or not`, (await page.evaluate(GO)) === null);
+    await close();
+    await hold(page, await centerOf(page, 3, "#health"));
+    await page.waitForTimeout(600);
     const cog = await page.evaluate(GO);
-    check(`${tag} the health cog's popup has one too`, cog?.text === "Open system health", JSON.stringify(cog));
+    check(`${tag} popup_button: true gives the cog's popup its button`, cog?.text === "Open system health", JSON.stringify(cog));
     // reachable by keyboard: Tab from the close button reaches it; Enter presses it
     await page.evaluate(() => { window.nav.length = 0; });
     await page.evaluate(() => window.__savvy.portalRoot().querySelector(".sv-go").focus());

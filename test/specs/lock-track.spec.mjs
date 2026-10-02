@@ -30,13 +30,13 @@ const SETUP = () => {
 const geom = (page, id) => page.evaluate((id) => {
   const row = window.__savvy.portalRoot().querySelector(`.sv-row[data-id="${id}"]`);
   const lk = row.querySelector(".sv-lk"), k = lk.querySelector(".sv-lk-knob").getBoundingClientRect(), r = lk.getBoundingClientRect();
-  return { knobX: k.x + k.width / 2, y: k.y + k.height / 2, left: r.x, W: r.width, T: r.width - 52 };
+  return { knobX: k.x + k.width / 2, y: k.y + k.height / 2, left: r.x, W: r.width, T: r.width - 36 };
 }, id);
-const frac = (g) => (g.knobX - g.left - 22) / g.T;
+const frac = (g) => (g.knobX - g.left - 14) / g.T;
 const read = (page, id) => page.evaluate((id) => {
   const row = window.__savvy.portalRoot().querySelector(`.sv-row[data-id="${id}"]`), lk = row.querySelector(".sv-lk");
   const tx = /translateX\(([-\d.]+)px\)/.exec(lk.querySelector(".sv-lk-knob").style.transform);
-  const T = lk.clientWidth - 52;
+  const T = lk.clientWidth - 36;
   return { x: tx ? Number(tx[1]) / T : null, text: lk.getAttribute("aria-valuetext"), stops: lk.dataset.stops, sub: row.querySelector(".sv-sub").textContent,
     armed: lk.hasAttribute("data-armed"), drag: lk.hasAttribute("data-drag"), busy: lk.hasAttribute("data-busy"), bad: lk.hasAttribute("data-bad"), ring: lk.querySelector(".sv-lk-ring circle").style.strokeDashoffset };
 }, id);

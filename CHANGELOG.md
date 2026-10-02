@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.7.1
+
+Popups get smaller and tidier.
+
+- **One line per row.** Every row in a popup is a single line: the entity, its main control on
+  the right (a switch, play / pause, a − target + stepper, open / close, the alarm's state),
+  and a chevron when there is more. The chevron opens one extra line (transport and volume,
+  the modes, brightness, stop and position, the arm modes, speed); one is open at a time, and it
+  opens with a spring. The lock keeps its track on a line of its own, slimmer, always there.
+- **The switch knob is centred.** The popup stylesheet had no reset for its buttons, so the
+  browser's own border and padding pushed the knob down and to the right. Every popup button now
+  starts from nothing, and the switch is smaller (38 x 22) and exact at any pixel ratio.
+- **Bulk actions.** All off for lights and climate, Pause all for media, Lock all for security,
+  beside the sort switch, acting on exactly what the popup lists. `bulk_action: false` hides it.
+- **The health cog's page button is off by default.** Turn it on with `popup_button: true`.
+
 ## 0.7.0
 
 - **Savvy settings**: a new card that holds what you'd repeat on every card: your pages

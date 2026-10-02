@@ -122,7 +122,7 @@ class SavvyRoomHeaderCard extends SavvyCard {
         dim: !b.on, value, caption, aria: `${caption}, ${value}`,
         spin: look.spin ? (b.on && climateRunning(st) ? fanRate(st) : 0) : undefined,
         config: b.cfg, defaults: badgeDefaults(b),
-        list: (from) => this._showList(caption, b.ids, look.color, from),
+        list: (from) => this._showList(caption, b.ids, look.color, from, null, { bulk: "auto" }),
       };
     });
     this._chipRow(this._el.sensors, items, { iconOnly: !!c.icons_only });

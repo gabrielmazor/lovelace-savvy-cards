@@ -237,7 +237,7 @@ class SavvyRoomTile extends SavvyCard {
 
     // the card: its actions, with the lights toggle as a Savvy action of its own
     const ctx = () => ({ config: this._actions(), entity: this._config.toggle || this._lights()[0],
-      list: () => this._showList(this._name(), this._lights(), `rgb(${this._tint().join(" ")})`, card) });
+      list: () => this._showList(this._name(), this._lights(), `rgb(${this._tint().join(" ")})`, card, null, { bulk: "lights" }) });
     const spring = this._spring(0, MOTION.press, "card");
     card.__spring = spring;
     card.__depth = 0.02;
@@ -458,7 +458,7 @@ class SavvyRoomTile extends SavvyCard {
           // the room's toggle, tapped: the same optimistic switch as the card's double tap
           if (kind === "tap" && cur.entity === this._config.toggle && cfgA === undefined) return this._toggleLights();
           runAction(this, this._hass, cfgA !== undefined ? cfgA : badgeDefaults(cur)[kind], { entity: cur.entity,
-            list: () => this._showList(cur.kind?.name || shortName(this._hass, cur.entity), cur.ids, badgeLook(cur).color, node) });
+            list: () => this._showList(cur.kind?.name || shortName(this._hass, cur.entity), cur.ids, badgeLook(cur).color, node, null, { bulk: "auto" }) });
         };
         bindPress(node, { spring: item.press, wake: () => this._wake(), onTap: act("tap"), onHold: act("hold") });
         this._badges.set(b.key, item);

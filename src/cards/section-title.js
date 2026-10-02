@@ -213,7 +213,7 @@ class SavvySectionTitleCard extends SavvyCard {
           shown: this._spring(0, MOTION.ui, `badge:${b.key}`, 0.002), on: this._spring(0, MOTION.ui, `badge:${b.key}`, 0.002) };
         item.b = b;
         this._chipActions(node, () => ({ config: item.b.cfg, entity: item.b.entity,
-          list: () => this._showList(item.b.kind?.name || shortName(h, item.b.entity), item.b.ids, badgeLook(item.b).color, node) }), badgeDefaults(b), 0.12);
+          list: () => this._showList(item.b.kind?.name || shortName(h, item.b.entity), item.b.ids, badgeLook(item.b).color, node, null, { bulk: "auto" }) }), badgeDefaults(b), 0.12);
         this._badges.set(b.key, item);
       }
       item.b = b;

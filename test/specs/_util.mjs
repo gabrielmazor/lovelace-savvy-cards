@@ -6,8 +6,8 @@ import fs from "node:fs";
 const SHOTS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../.test-shots");
 
 // A test page on the made-up house, in a theme, at a viewport width.
-export async function openPage(browser, base, { theme = "dark", width = 1000 } = {}) {
-  const page = await browser.newPage({ viewport: { width: Math.max(width + 80, 480), height: 1400 }, deviceScaleFactor: 2 });
+export async function openPage(browser, base, { theme = "dark", width = 1000, dpr = 2 } = {}) {
+  const page = await browser.newPage({ viewport: { width: Math.max(width + 80, 480), height: 1400 }, deviceScaleFactor: dpr });
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e)));
   page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });

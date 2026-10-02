@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.7.0 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.7.1 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.7.0";
+const SAVVY_VERSION = "0.7.1";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -1312,9 +1312,11 @@ function pageTarget(cfg = {}) {
 }
 
 // The popup's pinned page button for a chip config: popup_button: false hides it, popup_label
-// words it ("Open lights"), and without a target page there's no button.
-function pageButton(cfg = {}, noun = "") {
-  const path = cfg.popup_button === false ? null : pageTarget(cfg);
+// words it ("Open lights"), and without a target page there's no button. `byDefault: false`
+// (the health cog) shows it only when popup_button is true.
+function pageButton(cfg = {}, noun = "", { byDefault = true } = {}) {
+  const on = cfg.popup_button === undefined ? byDefault : cfg.popup_button !== false;
+  const path = on ? pageTarget(cfg) : null;
   if (!path) return null;
   return { label: cfg.popup_label || `Open ${String(noun).toLowerCase()}`.trim(), onTap: () => navigate(path) };
 }
@@ -1474,18 +1476,21 @@ const SHEET_CSS = `
     gap: 10px; container-type: inline-size; }
 
   /* the entity list: one row per entity, live */
-  .sv-rows { display: flex; flex-direction: column; gap: 4px; }
-  .sv-ic { flex: none; width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center;
-    background: var(--well); color: var(--secondary-text-color); --mdc-icon-size: 20px; }
+  .sv-rows { display: flex; flex-direction: column; gap: 2px; }
+  .sv-ic { flex: none; width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center;
+    background: var(--well); color: var(--secondary-text-color); --mdc-icon-size: 18px; }
   .sv-row[data-on] .sv-ic { color: var(--row-c, rgb(var(--accent))); background: color-mix(in oklab, var(--row-c, rgb(var(--accent))) 16%, transparent); }
   .sv-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .sv-name { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .sv-sub { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sv-sub { font-size: 12px; line-height: 15px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sv-sub:empty { display: none; }
   .sv-val { flex: none; font-size: 13px; font-weight: 600; color: var(--secondary-text-color); }
-  .sv-tog { flex: none; width: 44px; height: 26px; border-radius: 13px; background: var(--well); position: relative; }
-  .sv-tog::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%;
+  .sv-val:empty { display: none; }
+  /* the switch: a 38 x 22 track and an 18 knob, 2 px of track all round, whatever the pixel ratio */
+  .sv-tog { flex: none; display: block; position: relative; width: 38px; height: 22px; border-radius: 11px; background: var(--well); }
+  .sv-tog-k { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; box-sizing: border-box;
     background: var(--card-background-color, #fff); box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); transform: translateX(var(--tx, 0px)); }
-  .sv-tog[data-on] { background: var(--row-c, rgb(var(--accent))); --tx: 18px; }
+  .sv-tog[data-on] { background: var(--row-c, rgb(var(--accent))); --tx: 16px; }
   .sv-empty { padding: 18px 8px; text-align: center; font-size: 13px; color: var(--secondary-text-color); }
   .sv-group { margin: 8px 6px 2px; font-size: 11.5px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em;
     text-transform: uppercase; color: var(--secondary-text-color); }
@@ -1655,12 +1660,14 @@ class Sheet {
   }
 }
 
-// The popup a group chip opens: the entities it counts, live, each with the controls its kind
-// needs (core/rows.js: a lock's track, a media player's transport, a climate unit's target...).
-// The row's name area opens more-info; the switch on switchable rows toggles.
-//   show(hass, ids, returnTo, { sort: "room" | "recent", toggle: false, storeKey, pinned: [ids] })
+// The popup a group chip opens: the entities it counts, live. Each row is one line: the entity,
+// its main control on the right (a switch, play / pause, a target stepper...) and, when it has
+// more, a chevron that opens one extra line (core/rows.js says what each kind puts where). One
+// extra line is open at a time. The row's name area opens more-info.
+//   show(hass, ids, returnTo, { sort: "room" | "recent", toggle: false, storeKey, pinned: [ids], bulk: "lights" | ... | "auto" })
 // sort groups the rows under room headings, or lists them by latest change; the toggle at the
-// top lets the user switch, and remembers the choice per storeKey. pinned ids stay first.
+// top lets the user switch, and remembers the choice per storeKey. pinned ids stay first. bulk
+// puts a button next to the toggle that acts on exactly the listed entities (All off, Pause all, Lock all).
 class EntityListSheet {
   constructor(host, { title: heading, color } = {}) {
     this.host = host;
@@ -1696,12 +1703,16 @@ class EntityListSheet {
     this.sheet.body.appendChild(this.rows);
     this.opts = {};
     this.sort = null;
+    this.openId = null;
+    this.curIds = [];
   }
 
   show(hass, ids, returnTo, opts = {}) {
     this.ids = ids;
     this.opts = opts || {};
     this.sort = null;
+    this.openId = null;
+    for (const row of this.rows.__rows?.values() || []) { row.__exp.snap(0); row.__chev && attr(row.__chev, "aria-expanded", "false"); attr(row, "data-open", false); }
     if (this.opts.sort) {
       this.sort = this.opts.sort;
       if (this.opts.toggle !== false && this.opts.storeKey) {
@@ -1711,24 +1722,63 @@ class EntityListSheet {
         } catch (err) { /* private window: the default it is */ }
       }
     }
-    this.sortBar(!!this.opts.sort && this.opts.toggle !== false);
+    this.tools(!!this.opts.sort && this.opts.toggle !== false, !!this.opts.bulk);
     this.open = true;
     this.render(hass);
     this.sheet.open(returnTo);
   }
 
-  // "Room | Recent" at the top of the list
-  sortBar(on) {
-    if (!on) { this.sortEl?.remove(); this.sortEl = null; this.seg = null; return; }
-    if (!this.sortEl) {
-      this.sortEl = document.createElement("div");
-      this.sortEl.className = "sv-sortbar";
+  // the top of the list: "Room | Recent", and the bulk action beside it
+  tools(wantSort, wantBulk) {
+    if (!wantSort && !wantBulk) { if (this.toolsEl) this.toolsEl.hidden = true; return; }
+    if (!this.toolsEl) {
+      this.toolsEl = document.createElement("div");
+      this.toolsEl.className = "sv-tools";
+      this.sheet.body.insertBefore(this.toolsEl, this.rows);
+    }
+    this.toolsEl.hidden = false;
+    attr(this.toolsEl, "data-solo", !wantSort);
+    if (wantSort && !this.seg) {
       this.seg = new Seg(this.kit, { label: "Sort by", items: [{ value: "room", label: "Room", icon: "mdi:floor-plan" }, { value: "recent", label: "Recent", icon: "mdi:clock-outline" }],
         onPick: (v) => this.setSort(v) });
-      this.sortEl.appendChild(this.seg.el);
-      this.sheet.body.insertBefore(this.sortEl, this.rows);
+      this.toolsEl.prepend(this.seg.el);
     }
-    this.seg.setValue(this.sort, true);
+    if (this.seg) { this.seg.el.hidden = !wantSort; if (wantSort) this.seg.setValue(this.sort, true); }
+    if (wantBulk && !this.bulkBtn) {
+      const b = this.bulkBtn = document.createElement("button");
+      b.className = "sv-bulk";
+      b.innerHTML = "<ha-icon></ha-icon><span></span>";
+      this.kit.press(b, () => this.runBulk(), { depth: 0.06, haptic: "medium" });
+      this.toolsEl.appendChild(b);
+    }
+    if (this.bulkBtn) this.bulkBtn.hidden = !wantBulk;
+  }
+
+  bulkKind() {
+    const b = this.opts.bulk;
+    if (!b) return null;
+    return b === "auto" ? bulkKindOf(this.curIds) : BULK[b] ? b : null;
+  }
+
+  runBulk() {
+    const kind = this.bulkKind();
+    if (!kind) return;
+    const targets = bulkTargets(kind, this.curIds, this.hass);
+    if (!targets.length) return;
+    this.hass.callService(BULK[kind].domain, BULK[kind].service, {}, { entity_id: targets });
+  }
+
+  syncBulk() {
+    const b = this.bulkBtn;
+    if (!b || b.hidden) return;
+    const kind = this.bulkKind();
+    b.hidden = !kind;
+    if (!kind) return;
+    const targets = bulkTargets(kind, this.curIds, this.hass);
+    text(b.querySelector("span"), BULK[kind].label);
+    attr(b.querySelector("ha-icon"), "icon", BULK[kind].icon);
+    attr(b, "disabled", !targets.length);
+    attr(b, "aria-label", `${BULK[kind].label}${targets.length ? `, ${targets.length}` : ""}`);
   }
 
   setSort(v) {
@@ -1740,6 +1790,40 @@ class EntityListSheet {
     this.render(this.hass);
   }
 
+  // one extra line open at a time
+  toggleRow(id) {
+    this.openId = this.openId === id ? null : id;
+    for (const [rid, row] of this.rows.__rows || []) this.syncOpen(rid, row);
+    haptic("selection");
+    Clock.add(this.ctlJob);
+    const row = this.rows.__rows?.get(this.openId);
+    if (row) setTimeout(() => row.scrollIntoView?.({ block: "nearest", behavior: MQ.reduced.matches ? "auto" : "smooth" }), 120);
+  }
+
+  syncOpen(id, row) {
+    const open = this.openId === id && row.__hasExtra && !row.__fixed;
+    row.__exp.to(open ? 1 : 0, MOTION.ui);
+    attr(row.__chev, "aria-expanded", String(open));
+    attr(row.__chev, "aria-label", open ? "Fewer controls" : "More controls");
+    attr(row, "data-open", open);
+  }
+
+  // the extra line's height and the chevron, from the row's spring
+  paintOpen(row) {
+    if (row.__fixed) return false;
+    const sp = row.__exp, p = clamp(sp.x);
+    const show = row.__hasExtra && (sp.target === 1 || p > 0.001);
+    if (row.__ctl.hidden === show) row.__ctl.hidden = !show;
+    if (show) {
+      const settled = sp.idle && sp.target === 1;
+      put(row.__ctl, "height", settled ? "" : `${(p * row.__ctlIn.offsetHeight).toFixed(1)}px`);
+      put(row.__ctl, "opacity", p.toFixed(3));
+    }
+    attr(row.__ctl, "inert", !(sp.target === 1));
+    put(row.__chev, "transform", p > 0.001 ? `rotate(${(180 * p).toFixed(1)}deg)` : "");
+    return !sp.idle;
+  }
+
   makeRow(id) {
     const d = domainOf(id);
     const row = document.createElement("div");
@@ -1747,25 +1831,38 @@ class EntityListSheet {
     row.dataset.kind = d;
     row.dataset.id = id;
     const fan = d === "climate";
-    row.innerHTML = `<div class="sv-main" role="button" tabindex="0">
-        <span class="sv-ic">${fan ? '<ha-icon icon="mdi:fan"></ha-icon>' : "<ha-state-icon></ha-state-icon>"}</span>
-        <span class="sv-txt"><span class="sv-name"></span><span class="sv-sub"></span></span>
-        <span class="sv-val"></span><button class="sv-tog" hidden></button>
-      </div><div class="sv-ctl" hidden></div>`;
+    row.innerHTML = `<div class="sv-line1">
+        <div class="sv-main" role="button" tabindex="0">
+          <span class="sv-ic">${fan ? '<ha-icon icon="mdi:fan"></ha-icon>' : "<ha-state-icon></ha-state-icon>"}</span>
+          <span class="sv-txt"><span class="sv-name"></span><span class="sv-sub"></span></span>
+        </div>
+        <span class="sv-val"></span>
+        <div class="sv-act"><button class="sv-tog" hidden><i class="sv-tog-k"></i></button></div>
+        <button class="sv-chev" data-none aria-expanded="false" aria-label="More controls"><ha-icon icon="mdi:chevron-down"></ha-icon></button>
+      </div>
+      <div class="sv-ctl" hidden><div class="sv-ctl-in"></div></div>`;
     row.__main = row.querySelector(".sv-main");
     row.__ic = row.querySelector(".sv-ic");
     row.__icon = row.querySelector(".sv-ic > *");
-    row.__ctlBox = row.querySelector(".sv-ctl");
-    if (fan) { row.__spin = new Spring(0, MOTION.spin, "spin", 1e-4); row.__angle = 0; }
+    row.__act = row.querySelector(".sv-act");
+    row.__ctl = row.querySelector(".sv-ctl");
+    row.__ctlIn = row.querySelector(".sv-ctl-in");
+    row.__chev = row.querySelector(".sv-chev");
     row.__tog = row.querySelector(".sv-tog");
+    if (fan) { row.__spin = new Spring(0, MOTION.spin, "spin", 1e-4); row.__angle = 0; }
     row.__kit = new RowKit(() => Clock.add(this.ctlJob));
+    row.__exp = row.__kit.spring(0, MOTION.ui, 0.002);
+    row.__kit.paints.push(() => this.paintOpen(row));
     const kind = ROW_KINDS[d];
     if (kind) {
-      row.__ctl = kind.build({ id, kit: row.__kit, host: this.host, hass: () => this.hass, refresh: () => this.render(this.hass) });
-      row.__ctlBox.appendChild(row.__ctl.el);
+      row.__ctrl = kind.build({ id, kit: row.__kit, host: this.host, hass: () => this.hass, refresh: () => this.render(this.hass) });
+      row.__fixed = !!row.__ctrl.fixed;
+      if (row.__ctrl.main) row.__act.appendChild(row.__ctrl.main);
+      if (row.__ctrl.extra) row.__ctlIn.appendChild(row.__ctrl.extra);
     }
     bindPress(row.__main, { onTap: () => moreInfo(this.host, id), haptic: null });
     bindPress(row.__tog, { onTap: () => toggleEntity(this.hass, id) });
+    row.__kit.press(row.__chev, () => this.toggleRow(id), { depth: 0.1, haptic: null });
     return row;
   }
 
@@ -1774,6 +1871,8 @@ class EntityListSheet {
     if (!this.open) return;
     this.hass = hass;
     const ids = (typeof this.ids === "function" ? this.ids(hass) : this.ids) || [];
+    this.curIds = ids;
+    this.syncBulk();
     const box = this.rows;
     box.__rows = box.__rows || new Map();
     box.__heads = box.__heads || new Map();
@@ -1807,7 +1906,7 @@ class EntityListSheet {
         if (!row.__spin.idle || row.__spin.x > 1e-4) Clock.add(this.spinJob);
       } else if (st && row.__icon && row.__icon.stateObj !== st) { row.__icon.hass = hass; row.__icon.stateObj = st; }
       text(row.querySelector(".sv-name"), shortName(hass, id, null));
-      const res = (st && row.__ctl?.update(st, hass)) || {};
+      const res = (st && row.__ctrl?.update(st, hass)) || {};
       this.art(row, res.art);
       const area = entityArea(hass, id);
       const t = Date.parse(st?.last_changed);
@@ -1816,12 +1915,23 @@ class EntityListSheet {
       if ((this.sort === "recent" || res.timed) && Number.isFinite(t)) parts.push(since(t, false));
       if (this.sort !== "room" && area) parts.push(areaInfo(hass, area).name);
       text(row.querySelector(".sv-sub"), parts.join(" · "));
-      row.__ctlBox.hidden = !res.visible;
+      // the extra line: always there for a lock's track, else behind the chevron
+      row.__hasExtra = !!res.extra;
+      if (row.__fixed) {
+        row.__ctl.hidden = !res.extra;
+        put(row.__ctl, "height", "");
+        put(row.__ctl, "opacity", "");
+        attr(row.__chev, "data-none", true);
+      } else {
+        if (this.openId === id && !res.extra) this.openId = null;
+        attr(row.__chev, "data-none", !res.extra);
+        this.syncOpen(id, row);
+      }
       const switchable = TOGGLE_DOMAINS.has(d);
       row.__tog.hidden = !switchable || !st || isOff(st);
       attr(row.__tog, "data-on", on);
       attr(row.__tog, "aria-label", on ? "Turn off" : "Turn on");
-      text(row.querySelector(".sv-val"), switchable || ROW_KINDS[d] ? "" : stateText(hass, st));
+      text(row.querySelector(".sv-val"), res.val || (switchable || ROW_KINDS[d] ? "" : stateText(hass, st)));
       place(box, row, at++);   // keeps DOM order equal to the order
     }
     for (const [id, row] of box.__rows) if (!seen.has(id)) { row.__kit.dispose(); row.remove(); box.__rows.delete(id); }
@@ -1851,6 +1961,8 @@ class EntityListSheet {
 
 const CTL_PREDICT_MS = 1500;   // an optimistic value waits this long for HA to agree
 const CTL_WRITE_MS = 140;      // a drag sends at most this often; the release always lands
+const LOCK_KNOB = 28;         // the lock track's knob, and the padding round it
+const LOCK_PAD = 4;
 const LOCK_END = 0.96;         // where the finger's travel counts as the end of the track
 const LOCK_HOLD_MS = 500;      // how long the end of the lock track must be held to open
 const LOCK_COLORS = [[76, 175, 80], [232, 163, 61], [224, 102, 102]];   // locked, unlocked, open
@@ -2102,11 +2214,12 @@ class Seg {
 // - value +: the target of a climate unit. Taps step it; the service call waits until the
 // stepping stops, so three taps are one write.
 class Stepper {
-  constructor(kit, { label, onChange }) {
+  constructor(kit, { label, onChange, compact = false }) {
     this.kit = kit;
     this.onChange = onChange;
     const el = this.el = document.createElement("div");
     el.className = "sv-step";
+    if (compact) el.dataset.compact = "";
     el.setAttribute("role", "group");
     el.setAttribute("aria-label", label);
     this.down = iconButton(kit, { icon: "mdi:minus", label: `${label} down`, onTap: () => this.bump(-1) });
@@ -2195,7 +2308,7 @@ class LockTrack {
   }
 
   clearTimers() { for (const t of this.timers) clearTimeout(t); this.timers = []; }
-  measure() { this.W = this.el.clientWidth; this.T = Math.max(1, this.W - 44 - 8); }
+  measure() { this.W = this.el.clientWidth; this.T = Math.max(1, this.W - LOCK_KNOB - 2 * LOCK_PAD); }
   stopPos(stop) { return stop === 0 ? 0 : stop === 1 ? this.u : 1; }
   // the knob sits where the finger is, but past Unlocked it lags and then arrives: heavy. The
   // end is the finger's last 4%: a drag only counts from where it became clearly sideways.
@@ -2420,7 +2533,9 @@ class LockTrack {
 // a cover its buttons; an alarm panel its arm modes. Everything else is a switch or just
 // its state. Each kind builds its controls once per row and updates them from the state.
 //
-//   ROW_KINDS[domain] = { tog?, build(ctx) -> { el, update(st, hass) -> { visible, sub, timed, art } } }
+//   ROW_KINDS[domain] = { build(ctx) -> { main?, extra?, fixed?, update(st, hass) -> { extra, sub, val, timed, art } } }
+//   main: the control on the row's line (a play button, a stepper); extra: one more line under it,
+//   opened by the row's chevron (or always there, when `fixed`: the lock's track).
 //   ctx: { id, kit, host, hass() }
 // ---------------------------------------------------------------------------------------
 
@@ -2435,59 +2550,62 @@ const dimmable = (st) => {
 
 const ROW_KINDS = {};
 
-// ---- media players: power, previous, play / pause, next, mute; a volume bar with - and +
+// ---- media players: play / pause (power when off) on the line; the rest on the extra line
 ROW_KINDS.media_player = {
   build(ctx) {
     const { kit } = ctx;
-    const el = div("sv-ctl-media");
-    const top = div("sv-line"), vol = div("sv-line sv-vol");
-    const power = iconButton(kit, { icon: "mdi:power", label: "Power", onTap: () => { const s = ctx.hass().states[ctx.id]?.state; call(ctx, "media_player", ["off", "standby"].includes(s) ? "turn_on" : "turn_off"); } });
-    const prev = iconButton(kit, { icon: "mdi:skip-previous", label: "Previous", onTap: () => call(ctx, "media_player", "media_previous_track") });
+    const powerTap = () => { const s = ctx.hass().states[ctx.id]?.state; call(ctx, "media_player", ["off", "standby"].includes(s) ? "turn_on" : "turn_off"); };
+    const main = div("sv-act-in");
+    const mainPower = iconButton(kit, { icon: "mdi:power", label: "Power", onTap: powerTap });
     const play = iconButton(kit, { icon: "mdi:play", label: "Play", solid: true, cls: "sv-play", onTap: () => {
       const s = ctx.hass().states[ctx.id]?.state;
       call(ctx, "media_player", s === "idle" ? "media_play" : "media_play_pause");
     } });
+    main.append(mainPower, play);
+    const extra = div("sv-xline sv-ctl-media");
+    const power = iconButton(kit, { icon: "mdi:power", label: "Power", onTap: powerTap });
+    const prev = iconButton(kit, { icon: "mdi:skip-previous", label: "Previous", onTap: () => call(ctx, "media_player", "media_previous_track") });
     const next = iconButton(kit, { icon: "mdi:skip-next", label: "Next", onTap: () => call(ctx, "media_player", "media_next_track") });
     const mute = iconButton(kit, { icon: "mdi:volume-high", label: "Mute", onTap: () => {
       const st = ctx.hass().states[ctx.id];
       call(ctx, "media_player", "volume_mute", { is_volume_muted: !st?.attributes.is_volume_muted });
     } });
-    const spacer = div("sv-spacer");
-    top.append(power, prev, play, next, spacer, mute);
     const bar = new SideBar(kit, { label: "Volume", onChange: (v) => call(ctx, "media_player", "volume_set", { volume_level: Math.round(v * 100) / 100 }) });
     const down = iconButton(kit, { icon: "mdi:minus", label: "Volume down", onTap: () => bar.nudge(-1) });
     const up = iconButton(kit, { icon: "mdi:plus", label: "Volume up", onTap: () => bar.nudge(1) });
     const pct = document.createElement("span");
     pct.className = "sv-pct";
+    const vol = div("sv-volg");
     vol.append(down, bar.el, up, pct);
-    el.append(top, vol);
+    extra.append(power, prev, next, mute, vol);
     let first = true;
     return {
-      el,
+      main, extra,
       update(st) {
         const s = st.state, f = (bit) => feature(st, bit);
         const off = ["off", "unavailable", "unknown", "standby"].includes(s);
         const active = ["playing", "paused", "buffering"].includes(s);
-        power.hidden = !(f(128) || f(256)) || s === "unavailable";
-        attr(power, "data-on", !off);
-        prev.hidden = !(active && f(16));
-        next.hidden = !(active && f(32));
+        const canPower = (f(128) || f(256)) && s !== "unavailable";
+        mainPower.hidden = !(off && canPower);
         play.hidden = !((active && (f(1) || f(16384))) || (s === "idle" && f(16384)));
         play.setIcon(s === "playing" || s === "buffering" ? "mdi:pause" : "mdi:play");
         attr(play, "aria-label", s === "playing" ? "Pause" : "Play");
+        power.hidden = !(canPower && !off);
+        attr(power, "data-on", !off);
+        prev.hidden = !(active && f(16));
+        next.hidden = !(active && f(32));
         mute.hidden = !(active && f(8));
         const muted = !!st.attributes.is_volume_muted;
         mute.setIcon(muted ? "mdi:volume-off" : "mdi:volume-high");
         attr(mute, "data-on", muted);
         vol.hidden = !(active && f(4));
-        spacer.hidden = mute.hidden;
         const level = clamp(Number(st.attributes.volume_level) || 0);
         bar.setLevel(level, first);
         text(pct, `${Math.round((bar.pending ?? level) * 100)}%`);
         first = false;
         const title = [st.attributes.media_title, st.attributes.media_artist].filter(Boolean).join(" · ");
         return {
-          visible: !top.querySelectorAll(".sv-btn:not([hidden])").length ? !vol.hidden : true,
+          extra: [power, prev, next, mute].some((b) => !b.hidden) || !vol.hidden,
           sub: active ? title || st.attributes.source || null : null,
           art: active ? st.attributes.entity_picture_local || st.attributes.entity_picture || null : null,
         };
@@ -2496,7 +2614,7 @@ ROW_KINDS.media_player = {
   },
 };
 
-// ---- climate: a - target + stepper, and the modes
+// ---- climate: a - target + stepper on the line (power when off); the modes on the extra line
 const HVAC_ORDER = ["off", "cool", "heat", "heat_cool", "auto", "dry", "fan_only"];
 const HVAC_LOOK = {
   off: ["Off", "mdi:power"], cool: ["Cool", "mdi:snowflake"], heat: ["Heat", "mdi:fire"], heat_cool: ["Heat/Cool", "mdi:sun-snowflake-variant"],
@@ -2505,25 +2623,29 @@ const HVAC_LOOK = {
 ROW_KINDS.climate = {
   build(ctx) {
     const { kit } = ctx;
-    const el = div("sv-ctl-climate");
-    const line = div("sv-line");
-    const label = document.createElement("span");
-    label.className = "sv-cap";
-    label.textContent = "Target";
-    const step = new Stepper(kit, { label: "Target temperature", onChange: (v) => call(ctx, "climate", "set_temperature", { temperature: v }) });
-    line.append(label, step.el);
-    el.appendChild(line);
+    const main = div("sv-act-in");
+    const power = iconButton(kit, { icon: "mdi:power", label: "Turn on", onTap: () => {
+      const cur = ctx.hass().states[ctx.id];
+      if (feature(cur, 128)) return call(ctx, "climate", "turn_on");
+      const m = HVAC_ORDER.find((x) => x !== "off" && (cur?.attributes.hvac_modes || []).includes(x));
+      if (m) call(ctx, "climate", "set_hvac_mode", { hvac_mode: m });
+    } });
+    const step = new Stepper(kit, { label: "Target temperature", compact: true, onChange: (v) => call(ctx, "climate", "set_temperature", { temperature: v }) });
+    main.append(power, step.el);
+    const extra = div("sv-xline sv-ctl-climate");
     let seg = null, segKey = "";
     return {
-      el,
+      main, extra,
       update(st, hass) {
         const a = st.attributes, unit = hass.config?.unit_system?.temperature || "°C";
         const target = Number(a.temperature);
-        line.hidden = !(a.temperature != null && Number.isFinite(target));
-        if (!line.hidden) {
+        const hasTarget = a.temperature != null && Number.isFinite(target);
+        const off = st.state === "off";
+        power.hidden = !off;
+        step.el.hidden = off || !hasTarget || st.state === "unavailable";
+        if (!step.el.hidden) {
           step.set({ value: target, min: Number.isFinite(a.min_temp) ? a.min_temp : 7, max: Number.isFinite(a.max_temp) ? a.max_temp : 35,
             step: Number(a.target_temp_step) || (unit.includes("F") ? 1 : 0.5), unit: "°" });
-          attr(line, "data-dim", st.state === "off");
         }
         const have = a.hvac_modes || [];
         // Off, Cool and Heat first, then whatever else the unit has, while there's room for it
@@ -2532,95 +2654,104 @@ ROW_KINDS.climate = {
         if (key !== segKey) {
           seg?.el.remove();
           segKey = key;
-          seg = modes.length ? new Seg(kit, { label: "Mode", items: modes.map((m) => ({ value: m, label: HVAC_LOOK[m][0], icon: HVAC_LOOK[m][1] })),
+          seg = modes.length > 1 ? new Seg(kit, { label: "Mode", items: modes.map((m) => ({ value: m, label: HVAC_LOOK[m][0], icon: HVAC_LOOK[m][1] })),
             onPick: (m) => { if (m !== ctx.hass().states[ctx.id]?.state) call(ctx, "climate", "set_hvac_mode", { hvac_mode: m }); } }) : null;
-          if (seg) el.appendChild(seg.el);
+          if (seg) extra.appendChild(seg.el);
           seg?.setValue(st.state, true);
         }
         seg?.setValue(st.state);
         const cur = Number(a.current_temperature);
         const action = a.hvac_action && !["off", "idle"].includes(a.hvac_action) ? title(a.hvac_action) : null;
-        return { visible: st.state !== "unavailable", sub: [Number.isFinite(cur) ? `${cur.toFixed(1)}° now` : null, action].filter(Boolean).join(" · ") || null };
+        const lead = action || (HVAC_LOOK[st.state]?.[0] ?? title(st.state));
+        const range = !hasTarget && Number.isFinite(Number(a.target_temp_low)) && Number.isFinite(Number(a.target_temp_high)) && !off
+          ? `${Number(a.target_temp_low)}–${Number(a.target_temp_high)}°` : null;
+        return { extra: !!seg && st.state !== "unavailable", sub: [lead, Number.isFinite(cur) ? `${cur.toFixed(1)}° now` : null].filter(Boolean).join(" · "), val: range };
       },
     };
   },
 };
 
-// ---- lights: a brightness bar
+// ---- lights: the switch on the line; a brightness bar on the extra line
 ROW_KINDS.light = {
-  tog: true,
   build(ctx) {
     const { kit } = ctx;
-    const el = div("sv-line sv-ctl-light");
+    const extra = div("sv-xline sv-ctl-light");
     const bar = new SideBar(kit, { label: "Brightness", onChange: (v) => call(ctx, "light", "turn_on", { brightness_pct: Math.max(1, Math.round(v * 100)) }) });
     const pct = document.createElement("span");
     pct.className = "sv-pct";
-    el.append(bar.el, pct);
+    extra.append(bar.el, pct);
     let first = true;
     return {
-      el,
+      extra,
       update(st) {
         const on = st.state === "on" && dimmable(st);
         const level = clamp((Number(st.attributes.brightness) || 0) / 255);
         if (on) bar.setLevel(level, first);
         text(pct, `${Math.round((bar.pending ?? level) * 100)}%`);
         first = !on;
-        return { visible: on };
+        return { extra: on, sub: on ? `${Math.round(level * 100)}%` : null };
       },
     };
   },
 };
 
-// ---- covers: open, stop, close, and a position bar
+// ---- covers: open / close (stop while it moves) on the line; stop and a position bar below
 ROW_KINDS.cover = {
   build(ctx) {
     const { kit } = ctx;
-    const el = div("sv-ctl-cover");
-    const line = div("sv-line");
-    const open = iconButton(kit, { icon: "mdi:arrow-up", label: "Open", onTap: () => call(ctx, "cover", "open_cover") });
+    const main = div("sv-act-in");
+    const go = iconButton(kit, { icon: "mdi:arrow-up", label: "Open", onTap: () => {
+      call(ctx, "cover", go.__mode === "stop" ? "stop_cover" : go.__mode === "close" ? "close_cover" : "open_cover");
+    } });
+    go.__mode = "open";
+    main.appendChild(go);
+    const extra = div("sv-xline sv-ctl-cover");
     const stop = iconButton(kit, { icon: "mdi:stop", label: "Stop", onTap: () => call(ctx, "cover", "stop_cover") });
-    const close = iconButton(kit, { icon: "mdi:arrow-down", label: "Close", onTap: () => call(ctx, "cover", "close_cover") });
-    line.append(open, stop, close);
-    const posLine = div("sv-line");
     const bar = new SideBar(kit, { label: "Position", onChange: (v) => call(ctx, "cover", "set_cover_position", { position: Math.round(v * 100) }) });
     const pct = document.createElement("span");
     pct.className = "sv-pct";
-    posLine.append(bar.el, pct);
-    el.append(line, posLine);
+    extra.append(stop, bar.el, pct);
     let first = true;
     return {
-      el,
+      main, extra,
       update(st) {
         const sf = st.attributes.supported_features ?? 11;
-        open.hidden = !(sf & 1);
-        close.hidden = !(sf & 2);
+        const moving = st.state === "opening" || st.state === "closing";
+        const mode = moving && (sf & 8) ? "stop" : st.state === "closed" ? "open" : "close";
+        go.__mode = mode;
+        go.setIcon({ open: "mdi:arrow-up", close: "mdi:arrow-down", stop: "mdi:stop" }[mode]);
+        attr(go, "aria-label", { open: "Open", close: "Close", stop: "Stop" }[mode]);
+        go.hidden = st.state === "unavailable" || (mode === "open" && !(sf & 1)) || (mode === "close" && !(sf & 2));
         stop.hidden = !(sf & 8);
-        attr(open, "disabled", st.state === "open" && st.attributes.current_position === 100);
-        attr(close, "disabled", st.state === "closed");
         const pos = Number(st.attributes.current_position);
-        posLine.hidden = !((sf & 4) && Number.isFinite(pos));
-        if (!posLine.hidden) { bar.setLevel(clamp(pos / 100), first); text(pct, `${Math.round((bar.pending ?? pos / 100) * 100)}%`); first = false; }
+        const hasPos = !!(sf & 4) && Number.isFinite(pos);
+        bar.el.hidden = pct.hidden = !hasPos;
+        if (hasPos) { bar.setLevel(clamp(pos / 100), first); text(pct, `${Math.round((bar.pending ?? pos / 100) * 100)}%`); first = false; }
         const words = title(st.state);
-        return { visible: st.state !== "unavailable", sub: Number.isFinite(pos) ? `${words} · ${Math.round(pos)}%` : words };
+        return { extra: st.state !== "unavailable" && (!stop.hidden || hasPos), sub: Number.isFinite(pos) ? `${words} · ${Math.round(pos)}%` : words };
       },
     };
   },
 };
 
-// ---- alarm panels: arm modes; disarming (and a code) is the more-info dialog's job
+// ---- alarm panels: the state on the line; arm modes below; disarming (and a code) is the more-info dialog's job
 const ARM = [["home", "Home", 1, "mdi:shield-home"], ["away", "Away", 2, "mdi:shield-lock"], ["night", "Night", 4, "mdi:shield-moon"], ["vacation", "Vacation", 32, "mdi:shield-airplane"]];
 ROW_KINDS.alarm_control_panel = {
   build(ctx) {
     const { kit } = ctx;
-    const el = div("sv-ctl-alarm sv-line");
+    const main = div("sv-act-in");
+    const pill = document.createElement("button");
+    pill.className = "sv-pillbtn sv-state";
+    pill.innerHTML = "<span></span>";
+    attr(pill, "aria-label", "Open alarm panel");
+    kit.press(pill, () => moreInfo(ctx.host, ctx.id), { depth: 0.05 });
+    main.appendChild(pill);
+    const extra = div("sv-xline sv-ctl-alarm");
+    const disarm = iconButton(kit, { icon: "mdi:shield-off", label: "Disarm", onTap: () => moreInfo(ctx.host, ctx.id) });
+    extra.appendChild(disarm);
     let seg = null, segKey = "";
-    const disarm = document.createElement("button");
-    disarm.className = "sv-pillbtn";
-    disarm.innerHTML = '<ha-icon icon="mdi:shield-off"></ha-icon><span>Disarm</span>';
-    kit.press(disarm, () => moreInfo(ctx.host, ctx.id), { depth: 0.05 });
-    el.appendChild(disarm);
     return {
-      el,
+      main, extra,
       update(st) {
         const a = st.attributes, sf = a.supported_features ?? 7;
         const modes = ARM.filter((m) => sf & m[2]);
@@ -2635,44 +2766,46 @@ ROW_KINDS.alarm_control_panel = {
             if (needsCode) moreInfo(ctx.host, ctx.id);
             else call(ctx, "alarm_control_panel", `alarm_arm_${m}`);
           } }) : null;
-          if (seg) el.insertBefore(seg.el, disarm);
+          if (seg) extra.insertBefore(seg.el, disarm);
           seg?.setValue(undefined, true);
         }
         const armed = /^armed_(.+)$/.exec(st.state);
         seg?.setValue(armed && modes.some((m) => m[0] === armed[1]) ? armed[1] : null);
         disarm.hidden = st.state === "disarmed" || st.state === "unavailable";
-        return { visible: st.state !== "unavailable", sub: stateText(ctx.hass(), st) };
+        const words = stateText(ctx.hass(), st);
+        text(pill.firstElementChild, words);
+        attr(pill, "data-armed", armed || st.state === "triggered" || st.state === "arming" || st.state === "pending");
+        return { extra: st.state !== "unavailable" && (modes.length > 0 || !disarm.hidden), sub: null };
       },
     };
   },
 };
 
-// ---- fans: a speed bar
+// ---- fans: the switch on the line; a speed bar on the extra line
 ROW_KINDS.fan = {
-  tog: true,
   build(ctx) {
     const { kit } = ctx;
-    const el = div("sv-line sv-ctl-fan");
+    const extra = div("sv-xline sv-ctl-fan");
     const bar = new SideBar(kit, { label: "Speed", step: 0.1, onChange: (v) => call(ctx, "fan", "set_percentage", { percentage: Math.max(1, Math.round(v * 100)) }) });
     const pct = document.createElement("span");
     pct.className = "sv-pct";
-    el.append(bar.el, pct);
+    extra.append(bar.el, pct);
     let first = true;
     return {
-      el,
+      extra,
       update(st) {
         const p = Number(st.attributes.percentage);
         const on = st.state === "on" && st.attributes.percentage != null && Number.isFinite(p);
         if (on) bar.setLevel(clamp(p / 100), first);
         if (on) text(pct, `${Math.round((bar.pending ?? p / 100) * 100)}%`);
         first = !on;
-        return { visible: on };
+        return { extra: on, sub: on ? `${Math.round(p)}%` : null };
       },
     };
   },
 };
 
-// ---- locks: the track
+// ---- locks: the track, on a line of its own that is always there (a safe drag needs the width)
 ROW_KINDS.lock = {
   build(ctx) {
     const { kit } = ctx;
@@ -2685,16 +2818,32 @@ ROW_KINDS.lock = {
     el.appendChild(track.el);
     let first = true;
     return {
-      el, track,
+      extra: el, fixed: true, track,
       update(st) {
-        if (track.canOpen !== feature(st, 1)) { /* the feature set doesn't change at runtime */ }
         track.setState(st.state, first);
         first = false;
-        return { visible: true, sub: track.words, timed: true };
+        return { extra: true, sub: track.words, timed: true };
       },
     };
   },
 };
+
+// ---- bulk actions: what the popup's top button does to everything it lists
+const BULK = {
+  lights: { label: "All off", icon: "mdi:lightbulb-off-outline", domain: "light", service: "turn_off", needs: (st) => st.state === "on" },
+  climate: { label: "All off", icon: "mdi:power", domain: "climate", service: "turn_off", needs: (st) => !["off", "unavailable", "unknown"].includes(st.state) },
+  media: { label: "Pause all", icon: "mdi:pause", domain: "media_player", service: "media_pause", needs: (st) => st.state === "playing" },
+  security: { label: "Lock all", icon: "mdi:lock", domain: "lock", service: "lock", needs: (st) => !["locked", "locking", "jammed", "unavailable", "unknown"].includes(st.state) },
+};
+// the kind of bulk action a list's entities all agree on (a popup that doesn't name one), or null
+function bulkKindOf(ids) {
+  const doms = new Set(ids.map(domainOf));
+  if (doms.size !== 1) return null;
+  const d = [...doms][0];
+  return Object.keys(BULK).find((k) => BULK[k].domain === d) || null;
+}
+// exactly the listed entities of the kind's domain that still need it
+const bulkTargets = (kind, ids, hass) => ids.filter((id) => domainOf(id) === BULK[kind].domain && hass.states[id] && BULK[kind].needs(hass.states[id]));
 
 // ---- sorting: by room (headings), by recent change (flat), or as given
 function sortRows(hass, ids, { sort, pinned = [] } = {}) {
@@ -2728,30 +2877,48 @@ function sortRows(hass, ids, { sort, pinned = [] } = {}) {
 
 const ROWS_CSS = `
   .sv-sheet [hidden] { display: none !important; }
-  .sv-btn, .sv-seg-b, .sv-pillbtn { border: 0; margin: 0; font: inherit; cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; }
-  .sv-seg-b { background: none; }
+  /* every button in a popup starts from nothing: the browser's border and padding would push anything drawn inside it off centre */
+  :where(.sv-sheet, .sv-scrim) button { appearance: none; -webkit-appearance: none; border: 0; margin: 0; padding: 0; background: none; box-sizing: border-box;
+    font: inherit; color: inherit; cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; }
+  .sv-btn, .sv-seg-b, .sv-pillbtn, .sv-bulk, .sv-chev { cursor: pointer; }
+  /* a row: one line; its chevron opens one more */
   .sv-row { display: flex; flex-direction: column; border-radius: 14px; }
-  .sv-main { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 6px 8px 6px 6px; border-radius: 14px; cursor: pointer; }
+  .sv-line1 { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 3px 4px 3px 4px; border-radius: 14px; }
+  .sv-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; min-height: 38px; border-radius: 12px; cursor: pointer; outline: none; }
   .sv-main:hover { background: var(--well); }
-  .sv-row[data-off] .sv-main { opacity: 0.55; }
+  .sv-row[data-off] .sv-main, .sv-row[data-off] .sv-val { opacity: 0.55; }
+  .sv-act { flex: none; display: flex; align-items: center; gap: 6px; }
+  .sv-act:empty { display: none; }
+  .sv-act-in { display: flex; align-items: center; gap: 6px; }
+  .sv-chev { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 9px; color: var(--secondary-text-color); --mdc-icon-size: 20px; }
+  .sv-chev ha-icon { display: flex; }
+  .sv-chev[data-none] { visibility: hidden; pointer-events: none; }
+  .sv-row[data-open] .sv-chev { color: var(--primary-text-color); background: var(--well); }
   .sv-art { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block; }
   .sv-ic[data-art] { overflow: hidden; padding: 0; }
-  .sv-ctl { display: flex; flex-direction: column; gap: 8px; padding: 2px 8px 10px 54px; }
-  @container (max-width: 380px) { .sv-ctl { padding-inline-start: 8px; } }
-  .sv-ctl > div:not(.sv-line) { display: flex; flex-direction: column; gap: 8px; }
-  .sv-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
-  .sv-line[data-dim] { opacity: 0.5; }
+  /* the extra line: one row of controls, opened with a spring */
+  .sv-ctl { overflow: hidden; }
+  .sv-ctl-in { padding: 2px 6px 8px 46px; }
+  @container (max-width: 380px) { .sv-ctl-in { padding-inline-start: 6px; } }
+  .sv-xline { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .sv-xline .sv-btn { width: 32px; height: 32px; border-radius: 10px; --mdc-icon-size: 18px; }
+  .sv-xline .sv-seg { flex: 1; }
+  .sv-volg { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+  @container (max-width: 330px) { .sv-volg .sv-btn, .sv-volg .sv-pct { display: none; } }
+  .sv-ctl-lock { padding: 0 6px 8px 6px; }
   .sv-spacer { flex: 1; }
   .sv-cap { flex: 1; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--secondary-text-color); }
   .sv-pct { flex: none; min-width: 34px; text-align: end; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--secondary-text-color); }
   /* round buttons */
-  .sv-btn { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; background: var(--well);
+  .sv-btn { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: var(--well);
     color: var(--primary-text-color); --mdc-icon-size: 19px; }
   .sv-btn ha-icon { display: flex; }
   .sv-btn[data-on] { color: var(--row-c, rgb(var(--accent))); background: color-mix(in oklab, var(--row-c, rgb(var(--accent))) 16%, transparent); }
-  .sv-btn[data-solid] { width: 44px; border-radius: 14px; background: var(--row-c, rgb(var(--accent))); color: #fff; --mdc-icon-size: 23px; }
+  .sv-btn[data-solid] { width: 34px; border-radius: 50%; background: var(--row-c, rgb(var(--accent))); color: #fff; --mdc-icon-size: 20px; }
+  .sv-xline .sv-btn[data-solid] { width: 32px; border-radius: 50%; }
   .sv-btn[disabled] { opacity: 0.35; cursor: default; }
-  :host([kbd]) .sv-btn:focus-visible, :host([kbd]) .sv-seg-b:focus-visible, :host([kbd]) .sv-bar:focus-visible, :host([kbd]) .sv-lk:focus-visible, :host([kbd]) .sv-pillbtn:focus-visible, :host([kbd]) .sv-main:focus-visible
+  :host([kbd]) .sv-btn:focus-visible, :host([kbd]) .sv-seg-b:focus-visible, :host([kbd]) .sv-bar:focus-visible, :host([kbd]) .sv-lk:focus-visible, :host([kbd]) .sv-pillbtn:focus-visible, :host([kbd]) .sv-main:focus-visible,
+    :host([kbd]) .sv-chev:focus-visible, :host([kbd]) .sv-bulk:focus-visible, :host([kbd]) .sv-tog:focus-visible
     { outline: 2px solid var(--row-c, rgb(var(--accent))); outline-offset: 2px; }
   /* the bar: a pill that only moves on a sideways drag */
   .sv-bar { position: relative; flex: 1; min-width: 60px; height: 30px; border-radius: 99px; overflow: hidden; background: var(--well);
@@ -2772,29 +2939,38 @@ const ROWS_CSS = `
   /* stepper */
   .sv-step { flex: none; display: flex; align-items: center; gap: 6px; }
   .sv-step-v { min-width: 52px; text-align: center; font-size: 16px; line-height: 20px; font-weight: 650; letter-spacing: -0.01em; }
+  .sv-step[data-compact] { gap: 2px; }
+  .sv-step[data-compact] .sv-btn { width: 28px; height: 28px; border-radius: 9px; --mdc-icon-size: 17px; }
+  .sv-step[data-compact] .sv-step-v { min-width: 42px; font-size: 14px; line-height: 18px; }
   .sv-pillbtn { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 12px; border-radius: 13px; background: var(--well);
     font-size: 12.5px; font-weight: 600; color: var(--primary-text-color); --mdc-icon-size: 17px; }
   .sv-pillbtn ha-icon { display: flex; }
-  .sv-ctl-alarm .sv-seg { flex: 1; }
-  .sv-ctl-climate .sv-seg { flex: none; }
-  /* the sort toggle at the top of a popup's list */
-  .sv-sortbar { display: flex; }
-  .sv-sortbar .sv-seg { flex: 1; }
-  .sv-sortbar .sv-seg-b { height: 28px; }
+  .sv-pillbtn.sv-state { height: 28px; padding: 0 10px; border-radius: 14px; font-size: 12px; max-width: 132px; }
+  .sv-pillbtn.sv-state span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sv-pillbtn.sv-state[data-armed] { color: var(--row-c, rgb(var(--accent))); background: color-mix(in oklab, var(--row-c, rgb(var(--accent))) 16%, transparent); }
+  /* the top of a popup's list: the sort toggle and the bulk action */
+  .sv-tools { display: flex; align-items: center; gap: 8px; }
+  .sv-tools .sv-seg { flex: 1; min-width: 0; }
+  .sv-tools .sv-seg-b { height: 28px; }
+  .sv-bulk { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 34px; padding: 0 12px; border-radius: 12px; background: var(--well);
+    font-size: 12.5px; line-height: 16px; font-weight: 650; color: var(--primary-text-color); --mdc-icon-size: 16px; white-space: nowrap; }
+  .sv-bulk ha-icon { display: flex; }
+  .sv-bulk[disabled] { opacity: 0.4; cursor: default; }
+  .sv-tools[data-solo] .sv-bulk { margin-inline-start: auto; }
   /* the lock track: three stops, one knob */
-  .sv-lk { --lk: 76 175 80; position: relative; box-sizing: border-box; height: 44px; border-radius: 22px; padding: 0 4px; overflow: hidden;
+  .sv-lk { --lk: 76 175 80; position: relative; box-sizing: border-box; height: 36px; border-radius: 18px; padding: 0 4px; overflow: hidden;
     background: rgb(var(--lk) / 0.16); box-shadow: inset 0 0 0 1px rgb(var(--lk) / 0.28); touch-action: pan-y; cursor: grab; outline: none; user-select: none; -webkit-user-select: none; }
   .sv-lk[data-drag] { cursor: grabbing; }
   .sv-lk[aria-disabled="true"] { opacity: 0.45; cursor: default; }
-  .sv-lk-hint { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; font-size: 12.5px; font-weight: 600; letter-spacing: -0.004em;
+  .sv-lk-hint { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; font-size: 12px; font-weight: 600; letter-spacing: -0.004em;
     color: rgb(var(--lk)); pointer-events: none; white-space: nowrap; }
-  .sv-lk-hint.r { right: 18px; }
-  .sv-lk-hint.l { left: 18px; }
-  .sv-lk-knob { position: absolute; top: 4px; left: 4px; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: #fff;
-    background: rgb(var(--lk)); box-shadow: 0 2px 8px rgb(0 0 0 / 0.3); will-change: transform; --mdc-icon-size: 20px; --ring: 0; --breath: 0; }
+  .sv-lk-hint.r { right: 14px; }
+  .sv-lk-hint.l { left: 14px; }
+  .sv-lk-knob { position: absolute; top: 4px; left: 4px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; color: #fff;
+    background: rgb(var(--lk)); box-shadow: 0 2px 6px rgb(0 0 0 / 0.3); will-change: transform; --mdc-icon-size: 17px; --ring: 0; --breath: 0; }
   .sv-lk-knob::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid rgb(var(--lk)); opacity: calc(var(--breath) * 0.7); transform: scale(calc(1 + var(--breath) * 0.2)); pointer-events: none; }
   .sv-lk-knob ha-icon { position: absolute; display: flex; }
-  .sv-lk-ring { position: absolute; inset: -4px; width: 44px; height: 44px; transform: rotate(-90deg); opacity: var(--ring); pointer-events: none; }
+  .sv-lk-ring { position: absolute; inset: -4px; width: 36px; height: 36px; transform: rotate(-90deg); opacity: var(--ring); pointer-events: none; }
   .sv-lk-ring circle { fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 125.7; stroke-dashoffset: 125.7; }
   .sv-lk[data-armed] .sv-lk-knob { box-shadow: 0 0 0 4px rgb(var(--lk) / 0.35), 0 2px 8px rgb(0 0 0 / 0.3); }
   .sv-lk[data-bad] { --lk: 224 102 102 !important; }
@@ -8849,9 +9025,10 @@ registerCard("savvy-graph-card", SavvyGraphCard, "Graph",
 //   weather: auto | weather.home | false
 //   health: { navigation_path: /lovelace/admin, watchman: [...], battery_threshold: 20, group_by: hub } | false
 //   lights / climate / media / security: false | { entity, name, icon, color, navigation_path,
-//       popup_button, popup_label, exclude, exclude_areas, sort, sort_toggle, tap_action, hold_action }
+//       popup_button, popup_label, exclude, exclude_areas, sort, sort_toggle, bulk_action, tap_action, hold_action }
 //       (exclude / exclude_areas: ignored entities and rooms, for the count and the popup alike; sort: room | recent
-//       is how the popup lists them, with a Room | Recent switch at its top unless sort_toggle is false;
+//       is how the popup lists them, with a Room | Recent switch at its top unless sort_toggle is false, and a bulk
+//       action beside it (All off, Pause all, Lock all) unless bulk_action is false;
 //       tap and hold both open the list of what's
 //       counted, unless tap_action / hold_action say otherwise; the popup's page button leads to
 //       navigation_path, or to the page its tap or hold action navigates to. navigation_path never
@@ -8973,7 +9150,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
     }
     const card = document.createElement("savvy-system-health-card");
     const { navigation_path, tap_action, hold_action, popup_button, popup_label, ...opts } = this._healthCfg() || {};
-    this._healthSheet.setFooter(pageButton(this._healthCfg() || {}, "system health"));
+    this._healthSheet.setFooter(pageButton(this._healthCfg() || {}, "system health", { byDefault: false }));
     card.setConfig({ ...opts, source: "all", max_rows: 30, title: " " });
     this._healthSheet.body.replaceChildren(card);
     card.hass = this._hass;
@@ -9080,7 +9257,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
       config: { ...cfg },
       defaults: { tap: { action: "list" }, hold: { action: "list" } },
       list: (from) => this._showList(listTitle, snapshot, cfg.color ? colorOf(cfg.color) : base.color, from, pageButton(cfg, cfg.name || base.name),
-        { sort: cfg.sort === "recent" ? "recent" : "room", toggle: cfg.sort_toggle !== false, storeKey: key, pinned }),
+        { sort: cfg.sort === "recent" ? "recent" : "room", toggle: cfg.sort_toggle !== false, storeKey: key, pinned, bulk: cfg.bulk_action === false ? null : key }),
     };
   }
 
@@ -9102,6 +9279,7 @@ const autoSection = (key, what) => ({ type: "expandable", name: key, title: `${A
   { name: "exclude_areas", label: "Ignored rooms", helper: "Everything in these rooms is left out.", selector: { area: { multiple: true } } },
   S.select("sort", "Sort by", [{ value: "room", label: "Room" }, { value: "recent", label: "Recent" }]),
   S.bool("sort_toggle", "Sort toggle", "A Room | Recent switch at the top of the popup.", true),
+  S.bool("bulk_action", "Bulk action", `${BULK[key].label} for everything listed, at the top of the popup.`, true),
   S.action("tap_action", "Tap action", "Default: open the list."),
   S.action("hold_action", "Hold action", "Default: open the list."),
 ] });
@@ -9111,8 +9289,8 @@ const EDITOR = defineEditor("savvy-home-header-card", (hass, c) => [
   S.nav("home_path", "Home button", "The page it opens. Empty hides the button."),
   { name: "weather", label: "Weather", helper: "Empty: the first weather entity.", selector: { entity: { domain: "weather" } } },
   { type: "expandable", name: "health", title: "Health cog", schema: [
-    S.nav("navigation_path", "Target page", "The popup gets a button to it."),
-    S.bool("popup_button", "Page button", "In the popup, when there is a target page.", true),
+    S.nav("navigation_path", "Target page", "Where the popup's page button leads."),
+    S.bool("popup_button", "Page button", "Off by default: turn it on for a button under the popup that opens the target page.", false),
     S.text("popup_label", "Button text", "Default: Open system health"),
     S.action("tap_action", "Tap action", "Default: open the list of what needs attention."),
     S.action("hold_action", "Hold action", "Default: open the list of what needs attention."),
@@ -12793,7 +12971,7 @@ class SavvyRoomHeaderCard extends SavvyCard {
         dim: !b.on, value, caption, aria: `${caption}, ${value}`,
         spin: look.spin ? (b.on && climateRunning(st) ? fanRate(st) : 0) : undefined,
         config: b.cfg, defaults: badgeDefaults(b),
-        list: (from) => this._showList(caption, b.ids, look.color, from),
+        list: (from) => this._showList(caption, b.ids, look.color, from, null, { bulk: "auto" }),
       };
     });
     this._chipRow(this._el.sensors, items, { iconOnly: !!c.icons_only });
@@ -13383,7 +13561,7 @@ class SavvySectionTitleCard extends SavvyCard {
           shown: this._spring(0, MOTION.ui, `badge:${b.key}`, 0.002), on: this._spring(0, MOTION.ui, `badge:${b.key}`, 0.002) };
         item.b = b;
         this._chipActions(node, () => ({ config: item.b.cfg, entity: item.b.entity,
-          list: () => this._showList(item.b.kind?.name || shortName(h, item.b.entity), item.b.ids, badgeLook(item.b).color, node) }), badgeDefaults(b), 0.12);
+          list: () => this._showList(item.b.kind?.name || shortName(h, item.b.entity), item.b.ids, badgeLook(item.b).color, node, null, { bulk: "auto" }) }), badgeDefaults(b), 0.12);
         this._badges.set(b.key, item);
       }
       item.b = b;
@@ -14476,7 +14654,7 @@ class SavvyRoomTile extends SavvyCard {
 
     // the card: its actions, with the lights toggle as a Savvy action of its own
     const ctx = () => ({ config: this._actions(), entity: this._config.toggle || this._lights()[0],
-      list: () => this._showList(this._name(), this._lights(), `rgb(${this._tint().join(" ")})`, card) });
+      list: () => this._showList(this._name(), this._lights(), `rgb(${this._tint().join(" ")})`, card, null, { bulk: "lights" }) });
     const spring = this._spring(0, MOTION.press, "card");
     card.__spring = spring;
     card.__depth = 0.02;
@@ -14697,7 +14875,7 @@ class SavvyRoomTile extends SavvyCard {
           // the room's toggle, tapped: the same optimistic switch as the card's double tap
           if (kind === "tap" && cur.entity === this._config.toggle && cfgA === undefined) return this._toggleLights();
           runAction(this, this._hass, cfgA !== undefined ? cfgA : badgeDefaults(cur)[kind], { entity: cur.entity,
-            list: () => this._showList(cur.kind?.name || shortName(this._hass, cur.entity), cur.ids, badgeLook(cur).color, node) });
+            list: () => this._showList(cur.kind?.name || shortName(this._hass, cur.entity), cur.ids, badgeLook(cur).color, node, null, { bulk: "auto" }) });
         };
         bindPress(node, { spring: item.press, wake: () => this._wake(), onTap: act("tap"), onHold: act("hold") });
         this._badges.set(b.key, item);

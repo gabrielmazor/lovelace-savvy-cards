@@ -35,18 +35,21 @@ const SHEET_CSS = `
     gap: 10px; container-type: inline-size; }
 
   /* the entity list: one row per entity, live */
-  .sv-rows { display: flex; flex-direction: column; gap: 4px; }
-  .sv-ic { flex: none; width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center;
-    background: var(--well); color: var(--secondary-text-color); --mdc-icon-size: 20px; }
+  .sv-rows { display: flex; flex-direction: column; gap: 2px; }
+  .sv-ic { flex: none; width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center;
+    background: var(--well); color: var(--secondary-text-color); --mdc-icon-size: 18px; }
   .sv-row[data-on] .sv-ic { color: var(--row-c, rgb(var(--accent))); background: color-mix(in oklab, var(--row-c, rgb(var(--accent))) 16%, transparent); }
   .sv-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .sv-name { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .sv-sub { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sv-sub { font-size: 12px; line-height: 15px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sv-sub:empty { display: none; }
   .sv-val { flex: none; font-size: 13px; font-weight: 600; color: var(--secondary-text-color); }
-  .sv-tog { flex: none; width: 44px; height: 26px; border-radius: 13px; background: var(--well); position: relative; }
-  .sv-tog::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%;
+  .sv-val:empty { display: none; }
+  /* the switch: a 38 x 22 track and an 18 knob, 2 px of track all round, whatever the pixel ratio */
+  .sv-tog { flex: none; display: block; position: relative; width: 38px; height: 22px; border-radius: 11px; background: var(--well); }
+  .sv-tog-k { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; box-sizing: border-box;
     background: var(--card-background-color, #fff); box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); transform: translateX(var(--tx, 0px)); }
-  .sv-tog[data-on] { background: var(--row-c, rgb(var(--accent))); --tx: 18px; }
+  .sv-tog[data-on] { background: var(--row-c, rgb(var(--accent))); --tx: 16px; }
   .sv-empty { padding: 18px 8px; text-align: center; font-size: 13px; color: var(--secondary-text-color); }
   .sv-group { margin: 8px 6px 2px; font-size: 11.5px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em;
     text-transform: uppercase; color: var(--secondary-text-color); }
@@ -216,12 +219,14 @@ class Sheet {
   }
 }
 
-// The popup a group chip opens: the entities it counts, live, each with the controls its kind
-// needs (core/rows.js: a lock's track, a media player's transport, a climate unit's target...).
-// The row's name area opens more-info; the switch on switchable rows toggles.
-//   show(hass, ids, returnTo, { sort: "room" | "recent", toggle: false, storeKey, pinned: [ids] })
+// The popup a group chip opens: the entities it counts, live. Each row is one line: the entity,
+// its main control on the right (a switch, play / pause, a target stepper...) and, when it has
+// more, a chevron that opens one extra line (core/rows.js says what each kind puts where). One
+// extra line is open at a time. The row's name area opens more-info.
+//   show(hass, ids, returnTo, { sort: "room" | "recent", toggle: false, storeKey, pinned: [ids], bulk: "lights" | ... | "auto" })
 // sort groups the rows under room headings, or lists them by latest change; the toggle at the
-// top lets the user switch, and remembers the choice per storeKey. pinned ids stay first.
+// top lets the user switch, and remembers the choice per storeKey. pinned ids stay first. bulk
+// puts a button next to the toggle that acts on exactly the listed entities (All off, Pause all, Lock all).
 class EntityListSheet {
   constructor(host, { title: heading, color } = {}) {
     this.host = host;
@@ -257,12 +262,16 @@ class EntityListSheet {
     this.sheet.body.appendChild(this.rows);
     this.opts = {};
     this.sort = null;
+    this.openId = null;
+    this.curIds = [];
   }
 
   show(hass, ids, returnTo, opts = {}) {
     this.ids = ids;
     this.opts = opts || {};
     this.sort = null;
+    this.openId = null;
+    for (const row of this.rows.__rows?.values() || []) { row.__exp.snap(0); row.__chev && attr(row.__chev, "aria-expanded", "false"); attr(row, "data-open", false); }
     if (this.opts.sort) {
       this.sort = this.opts.sort;
       if (this.opts.toggle !== false && this.opts.storeKey) {
@@ -272,24 +281,63 @@ class EntityListSheet {
         } catch (err) { /* private window: the default it is */ }
       }
     }
-    this.sortBar(!!this.opts.sort && this.opts.toggle !== false);
+    this.tools(!!this.opts.sort && this.opts.toggle !== false, !!this.opts.bulk);
     this.open = true;
     this.render(hass);
     this.sheet.open(returnTo);
   }
 
-  // "Room | Recent" at the top of the list
-  sortBar(on) {
-    if (!on) { this.sortEl?.remove(); this.sortEl = null; this.seg = null; return; }
-    if (!this.sortEl) {
-      this.sortEl = document.createElement("div");
-      this.sortEl.className = "sv-sortbar";
+  // the top of the list: "Room | Recent", and the bulk action beside it
+  tools(wantSort, wantBulk) {
+    if (!wantSort && !wantBulk) { if (this.toolsEl) this.toolsEl.hidden = true; return; }
+    if (!this.toolsEl) {
+      this.toolsEl = document.createElement("div");
+      this.toolsEl.className = "sv-tools";
+      this.sheet.body.insertBefore(this.toolsEl, this.rows);
+    }
+    this.toolsEl.hidden = false;
+    attr(this.toolsEl, "data-solo", !wantSort);
+    if (wantSort && !this.seg) {
       this.seg = new Seg(this.kit, { label: "Sort by", items: [{ value: "room", label: "Room", icon: "mdi:floor-plan" }, { value: "recent", label: "Recent", icon: "mdi:clock-outline" }],
         onPick: (v) => this.setSort(v) });
-      this.sortEl.appendChild(this.seg.el);
-      this.sheet.body.insertBefore(this.sortEl, this.rows);
+      this.toolsEl.prepend(this.seg.el);
     }
-    this.seg.setValue(this.sort, true);
+    if (this.seg) { this.seg.el.hidden = !wantSort; if (wantSort) this.seg.setValue(this.sort, true); }
+    if (wantBulk && !this.bulkBtn) {
+      const b = this.bulkBtn = document.createElement("button");
+      b.className = "sv-bulk";
+      b.innerHTML = "<ha-icon></ha-icon><span></span>";
+      this.kit.press(b, () => this.runBulk(), { depth: 0.06, haptic: "medium" });
+      this.toolsEl.appendChild(b);
+    }
+    if (this.bulkBtn) this.bulkBtn.hidden = !wantBulk;
+  }
+
+  bulkKind() {
+    const b = this.opts.bulk;
+    if (!b) return null;
+    return b === "auto" ? bulkKindOf(this.curIds) : BULK[b] ? b : null;
+  }
+
+  runBulk() {
+    const kind = this.bulkKind();
+    if (!kind) return;
+    const targets = bulkTargets(kind, this.curIds, this.hass);
+    if (!targets.length) return;
+    this.hass.callService(BULK[kind].domain, BULK[kind].service, {}, { entity_id: targets });
+  }
+
+  syncBulk() {
+    const b = this.bulkBtn;
+    if (!b || b.hidden) return;
+    const kind = this.bulkKind();
+    b.hidden = !kind;
+    if (!kind) return;
+    const targets = bulkTargets(kind, this.curIds, this.hass);
+    text(b.querySelector("span"), BULK[kind].label);
+    attr(b.querySelector("ha-icon"), "icon", BULK[kind].icon);
+    attr(b, "disabled", !targets.length);
+    attr(b, "aria-label", `${BULK[kind].label}${targets.length ? `, ${targets.length}` : ""}`);
   }
 
   setSort(v) {
@@ -301,6 +349,40 @@ class EntityListSheet {
     this.render(this.hass);
   }
 
+  // one extra line open at a time
+  toggleRow(id) {
+    this.openId = this.openId === id ? null : id;
+    for (const [rid, row] of this.rows.__rows || []) this.syncOpen(rid, row);
+    haptic("selection");
+    Clock.add(this.ctlJob);
+    const row = this.rows.__rows?.get(this.openId);
+    if (row) setTimeout(() => row.scrollIntoView?.({ block: "nearest", behavior: MQ.reduced.matches ? "auto" : "smooth" }), 120);
+  }
+
+  syncOpen(id, row) {
+    const open = this.openId === id && row.__hasExtra && !row.__fixed;
+    row.__exp.to(open ? 1 : 0, MOTION.ui);
+    attr(row.__chev, "aria-expanded", String(open));
+    attr(row.__chev, "aria-label", open ? "Fewer controls" : "More controls");
+    attr(row, "data-open", open);
+  }
+
+  // the extra line's height and the chevron, from the row's spring
+  paintOpen(row) {
+    if (row.__fixed) return false;
+    const sp = row.__exp, p = clamp(sp.x);
+    const show = row.__hasExtra && (sp.target === 1 || p > 0.001);
+    if (row.__ctl.hidden === show) row.__ctl.hidden = !show;
+    if (show) {
+      const settled = sp.idle && sp.target === 1;
+      put(row.__ctl, "height", settled ? "" : `${(p * row.__ctlIn.offsetHeight).toFixed(1)}px`);
+      put(row.__ctl, "opacity", p.toFixed(3));
+    }
+    attr(row.__ctl, "inert", !(sp.target === 1));
+    put(row.__chev, "transform", p > 0.001 ? `rotate(${(180 * p).toFixed(1)}deg)` : "");
+    return !sp.idle;
+  }
+
   makeRow(id) {
     const d = domainOf(id);
     const row = document.createElement("div");
@@ -308,25 +390,38 @@ class EntityListSheet {
     row.dataset.kind = d;
     row.dataset.id = id;
     const fan = d === "climate";
-    row.innerHTML = `<div class="sv-main" role="button" tabindex="0">
-        <span class="sv-ic">${fan ? '<ha-icon icon="mdi:fan"></ha-icon>' : "<ha-state-icon></ha-state-icon>"}</span>
-        <span class="sv-txt"><span class="sv-name"></span><span class="sv-sub"></span></span>
-        <span class="sv-val"></span><button class="sv-tog" hidden></button>
-      </div><div class="sv-ctl" hidden></div>`;
+    row.innerHTML = `<div class="sv-line1">
+        <div class="sv-main" role="button" tabindex="0">
+          <span class="sv-ic">${fan ? '<ha-icon icon="mdi:fan"></ha-icon>' : "<ha-state-icon></ha-state-icon>"}</span>
+          <span class="sv-txt"><span class="sv-name"></span><span class="sv-sub"></span></span>
+        </div>
+        <span class="sv-val"></span>
+        <div class="sv-act"><button class="sv-tog" hidden><i class="sv-tog-k"></i></button></div>
+        <button class="sv-chev" data-none aria-expanded="false" aria-label="More controls"><ha-icon icon="mdi:chevron-down"></ha-icon></button>
+      </div>
+      <div class="sv-ctl" hidden><div class="sv-ctl-in"></div></div>`;
     row.__main = row.querySelector(".sv-main");
     row.__ic = row.querySelector(".sv-ic");
     row.__icon = row.querySelector(".sv-ic > *");
-    row.__ctlBox = row.querySelector(".sv-ctl");
-    if (fan) { row.__spin = new Spring(0, MOTION.spin, "spin", 1e-4); row.__angle = 0; }
+    row.__act = row.querySelector(".sv-act");
+    row.__ctl = row.querySelector(".sv-ctl");
+    row.__ctlIn = row.querySelector(".sv-ctl-in");
+    row.__chev = row.querySelector(".sv-chev");
     row.__tog = row.querySelector(".sv-tog");
+    if (fan) { row.__spin = new Spring(0, MOTION.spin, "spin", 1e-4); row.__angle = 0; }
     row.__kit = new RowKit(() => Clock.add(this.ctlJob));
+    row.__exp = row.__kit.spring(0, MOTION.ui, 0.002);
+    row.__kit.paints.push(() => this.paintOpen(row));
     const kind = ROW_KINDS[d];
     if (kind) {
-      row.__ctl = kind.build({ id, kit: row.__kit, host: this.host, hass: () => this.hass, refresh: () => this.render(this.hass) });
-      row.__ctlBox.appendChild(row.__ctl.el);
+      row.__ctrl = kind.build({ id, kit: row.__kit, host: this.host, hass: () => this.hass, refresh: () => this.render(this.hass) });
+      row.__fixed = !!row.__ctrl.fixed;
+      if (row.__ctrl.main) row.__act.appendChild(row.__ctrl.main);
+      if (row.__ctrl.extra) row.__ctlIn.appendChild(row.__ctrl.extra);
     }
     bindPress(row.__main, { onTap: () => moreInfo(this.host, id), haptic: null });
     bindPress(row.__tog, { onTap: () => toggleEntity(this.hass, id) });
+    row.__kit.press(row.__chev, () => this.toggleRow(id), { depth: 0.1, haptic: null });
     return row;
   }
 
@@ -335,6 +430,8 @@ class EntityListSheet {
     if (!this.open) return;
     this.hass = hass;
     const ids = (typeof this.ids === "function" ? this.ids(hass) : this.ids) || [];
+    this.curIds = ids;
+    this.syncBulk();
     const box = this.rows;
     box.__rows = box.__rows || new Map();
     box.__heads = box.__heads || new Map();
@@ -368,7 +465,7 @@ class EntityListSheet {
         if (!row.__spin.idle || row.__spin.x > 1e-4) Clock.add(this.spinJob);
       } else if (st && row.__icon && row.__icon.stateObj !== st) { row.__icon.hass = hass; row.__icon.stateObj = st; }
       text(row.querySelector(".sv-name"), shortName(hass, id, null));
-      const res = (st && row.__ctl?.update(st, hass)) || {};
+      const res = (st && row.__ctrl?.update(st, hass)) || {};
       this.art(row, res.art);
       const area = entityArea(hass, id);
       const t = Date.parse(st?.last_changed);
@@ -377,12 +474,23 @@ class EntityListSheet {
       if ((this.sort === "recent" || res.timed) && Number.isFinite(t)) parts.push(since(t, false));
       if (this.sort !== "room" && area) parts.push(areaInfo(hass, area).name);
       text(row.querySelector(".sv-sub"), parts.join(" · "));
-      row.__ctlBox.hidden = !res.visible;
+      // the extra line: always there for a lock's track, else behind the chevron
+      row.__hasExtra = !!res.extra;
+      if (row.__fixed) {
+        row.__ctl.hidden = !res.extra;
+        put(row.__ctl, "height", "");
+        put(row.__ctl, "opacity", "");
+        attr(row.__chev, "data-none", true);
+      } else {
+        if (this.openId === id && !res.extra) this.openId = null;
+        attr(row.__chev, "data-none", !res.extra);
+        this.syncOpen(id, row);
+      }
       const switchable = TOGGLE_DOMAINS.has(d);
       row.__tog.hidden = !switchable || !st || isOff(st);
       attr(row.__tog, "data-on", on);
       attr(row.__tog, "aria-label", on ? "Turn off" : "Turn on");
-      text(row.querySelector(".sv-val"), switchable || ROW_KINDS[d] ? "" : stateText(hass, st));
+      text(row.querySelector(".sv-val"), res.val || (switchable || ROW_KINDS[d] ? "" : stateText(hass, st)));
       place(box, row, at++);   // keeps DOM order equal to the order
     }
     for (const [id, row] of box.__rows) if (!seen.has(id)) { row.__kit.dispose(); row.remove(); box.__rows.delete(id); }
