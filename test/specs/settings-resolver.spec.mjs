@@ -34,8 +34,7 @@ export default async function ({ browser, base, check }) {
   check("section title: the room's name, icon, control, temperature, include and exclude",
     r.config.name === "Cook" && r.config.icon === "mdi:pot" && r.config.control === "input_select.kitchen_mode" && r.config.temperature === "sensor.kitchen_t"
     && JSON.stringify(r.config.include) === '["lock.k"]' && JSON.stringify(r.config.exclude) === '["light.k2"]', JSON.stringify(r.config));
-  check("section title: the room's light helper is pinned first as Light",
-    r.config.entities?.[0]?.entity === "input_boolean.kitchen_light" && r.config.entities[0].name === "Light", JSON.stringify(r.config.entities));
+  check("section title: the room's light helper is not pinned as a badge", r.config.entities === undefined && !by(r, "entities"), JSON.stringify(r.config.entities));
   check("section title: the room's page, else the pattern", r.config.navigation_path === "/lovelace/kitchen-x");
   r = await R("savvy-section-title-card", { area: "living_room" });
   check("section title: with no page of its own the pattern fills in ({slug})", r.config.navigation_path === "/lovelace/living-room" && by(r, "navigation_path").from === "pages.room", JSON.stringify(r.inherited));
@@ -55,11 +54,11 @@ export default async function ({ browser, base, check }) {
   r = await R("savvy-section-title-card", { area: "kitchen", exclude: ["light.k2"] });
   check("lists: nothing new, nothing changes", by(r, "exclude") === undefined);
 
-  // the pinned light helper
+  // the light helper is not a badge: a card's own pins are its own
   r = await R("savvy-section-title-card", { area: "kitchen", entities: [{ entity: "input_boolean.kitchen_light" }] });
-  check("pin: not added twice", r.config.entities.length === 1 && !by(r, "entities"));
+  check("pin: a card can still pin the helper itself, once", r.config.entities.length === 1 && !by(r, "entities"));
   r = await R("savvy-section-title-card", { area: "kitchen", entities: [{ entity: "binary_sensor.door" }] });
-  check("pin: goes before the card's own", r.config.entities.map((e) => e.entity).join() === "input_boolean.kitchen_light,binary_sensor.door");
+  check("pin: the card's own entities are left alone", r.config.entities.map((e) => e.entity).join() === "binary_sensor.door" && !by(r, "entities"));
   r = await R("savvy-section-title-card", { area: "kitchen", entities: false });
   check("pin: entities: false is respected", r.config.entities === false);
 
@@ -78,7 +77,7 @@ export default async function ({ browser, base, check }) {
   // room header
   r = await R("savvy-room-header-card", { area: "kitchen" });
   check("room header: control, temperature, include, exclude, pin, home button, room pages",
-    r.config.control === "input_select.kitchen_mode" && r.config.temperature === "sensor.kitchen_t" && r.config.entities[0].entity === "input_boolean.kitchen_light"
+    r.config.control === "input_select.kitchen_mode" && r.config.temperature === "sensor.kitchen_t" && r.config.entities === undefined
     && r.config.home_path === "/lovelace/home" && r.config.room_path === "/lovelace/{slug}" && r.config.include[0] === "lock.k" && r.config.exclude[0] === "light.k2", JSON.stringify(r.config));
   check("room header: no name or icon of its own to fill", r.config.name === undefined && r.config.icon === undefined);
 

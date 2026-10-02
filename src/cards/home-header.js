@@ -24,6 +24,7 @@
 const STYLE = `${BASE_CSS}${HEADER_CSS}${CHIP_ROW_CSS}`;
 
 // The four chips: how each counts, and its look.
+const ALERT_COLOR = "#E06666";
 const AUTO = {
   lights: { name: "Lights", icon: "mdi:lightbulb", color: "#F5B83D", domain: "light" },
   climate: { name: "Climate", icon: "mdi:fan", color: "#7FC4E8", domain: ["climate", "sensor"] },
@@ -137,7 +138,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
     const card = document.createElement("savvy-system-health-card");
     const { navigation_path, tap_action, hold_action, popup_button, popup_label, ...opts } = this._healthCfg() || {};
     this._healthSheet.setFooter(pageButton(this._healthCfg() || {}, "system health", { byDefault: false }));
-    card.setConfig({ ...opts, source: "all", max_rows: 30, title: " " });
+    card.setConfig({ ...opts, source: "all", max_rows: 30, title: " ", columns: 1 });
     this._healthSheet.body.replaceChildren(card);
     card.hass = this._hass;
     this._healthCard = card;
@@ -211,10 +212,10 @@ class SavvyHomeHeaderCard extends SavvyCard {
     const h = this._hass, base = AUTO[key];
     const own = cfg.entity && h.states[cfg.entity];
     const skip = ignoring(h, cfg);
-    let value, ids, spin, pinned, listTitle = cfg.name || base.name;
+    let value, ids, spin, pinned, alert = false, listTitle = cfg.name || base.name;
     if (key === "lights") {
       const l = houseLights(h, skip);
-      value = l.on.length ? `${l.on.length} on` : "Off";
+      value = l.on.length ? `${l.on.length} on` : "All off";
       ids = l.on.length ? l.on : l.all;
       listTitle = l.on.length ? "Lights on" : "Lights";
     } else if (key === "media") {
@@ -229,15 +230,20 @@ class SavvyHomeHeaderCard extends SavvyCard {
     } else {
       const s = houseSecurity(h, skip);
       value = s.entity ? stateText(h, h.states[s.entity]) : s.open.length ? `${s.open.length} open` : "Secure";
-      // every lock is always there, in any state; then what is open (or, when nothing is, every opening)
-      const rest = (s.open.length ? s.open : s.ids).filter((id) => id !== s.entity && domainOf(id) !== "lock");
-      ids = [...(s.entity ? [s.entity] : []), ...s.locks, ...rest];
-      pinned = ids.slice(0, (s.entity ? 1 : 0) + s.locks.length);     // the alarm and the locks stay on top, whatever the sort
+      // a tripped leak / smoke / gas sensor is the loudest thing the house can say
+      alert = s.tripped.length > 0;
+      if (alert) value = securityAlertWord(h, s.tripped);
+      // every lock is always there, in any state; then what is open (or, when nothing is, every
+      // opening), then the safety sensors, then who is about: presence and motion
+      const first = new Set([...(s.entity ? [s.entity] : []), ...s.locks]);
+      const rest = (s.open.length ? s.open : s.ids.filter((id) => !s.safety.includes(id) && !s.presence.includes(id))).filter((id) => !first.has(id));
+      ids = [...first, ...s.tripped, ...rest, ...s.safety.filter((id) => !s.tripped.includes(id)), ...s.presence];
+      pinned = ids.slice(0, first.size + s.tripped.length);     // the alarm, the locks and anything tripped stay on top, whatever the sort
     }
     if (own) value = chipState(h, own);
     const snapshot = [...ids];     // what was counted when opened: turning one off keeps its row
     return {
-      key, icon: cfg.icon || base.icon, entity: cfg.entity, color: colorOf(cfg.color) || base.color,
+      key, icon: cfg.icon || base.icon, entity: cfg.entity, color: alert ? ALERT_COLOR : colorOf(cfg.color) || base.color,
       value, caption: cfg.name || base.name, aria: `${cfg.name || base.name}, ${value}`,
       spin: key === "climate" ? spin : undefined,
       config: { ...cfg },

@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.7.4
+
+- **System health in columns.** With `source: all` the categories (Offline devices, Low
+  batteries, Watchman) sit side by side when the card is wide enough, each with its own title,
+  line, facts and list; a narrow card stacks them as before. They are at least about 240 px wide
+  each. `columns` caps the number (`1` keeps them stacked); a card with no Watchman sensors has
+  two. Each column scrolls on its own with `max_rows`. The cog's health popup stays one column.
+- **A short list no longer swallows the scroll.** The health card's list claimed the wheel and touch
+  gestures even when it had nothing to scroll (with `max_rows: 250` it never does), so the page
+  would not scroll while the pointer or finger was over the card. It now claims them only when it
+  really scrolls. The row of chips under the home header had the same trouble with vertical swipes;
+  it now lets them through.
+- **Going to the page you are already on does nothing.** Pushing the same path makes the dashboard
+  rebuild the view, and the page jumps to the top. Every navigate action, and the lights and vacuum
+  cards, now skip it; another page, or another query, still navigates.
+- **The security popup lists who is about and the safety sensors.** Presence, motion and
+  occupancy sensors are read-only rows ("Detected", "Clear", and when it last changed); leak,
+  smoke, gas and carbon monoxide sensors are listed too, and while one is tripped the chip says
+  so ("Leak", "Smoke", "2 alerts") in red and that row is pinned right after the locks, red. Presence
+  and motion never change the chip. They follow `exclude`, `exclude_areas`, the sort and the room
+  order like everything else.
+- **The footer button is off unless it has an action.** The system health card showed a "Run" button
+  whenever `action` existed in its config, and the editor writes `action: { tap_action: { action: none } }`
+  as soon as the Footer button section is touched, so the button appeared on its own and did nothing. It
+  now needs a `tap_action` that is not `none` (or the older `service` form); an empty `action`, `none`
+  or a label alone makes no button, and the editor no longer saves an empty `action`. If your config has
+  one of those, you can delete it.
+- **The lights chip says "All off"** when no light is on (it said "Off"), next to "3 on" when some are; the lights
+  card's header already said it. The room header, section title and room tile don't count lights, so
+  they have nothing to change.
+- **Section title badges.** From the right edge going left: the temperature, presence, the door,
+  the window (always there when the room has them, dimmed while idle), then whatever else is
+  active, growing leftwards so the always-there ones never move; pinned entities lead on the left.
+- **No Light badge from the settings.** The room's `light_state` in the Savvy settings is no longer
+  pinned as a badge on the section title and the room header. It still feeds the lights card's pill
+  and the room tile's toggle; to show it as a badge, pin it under `entities`.
+
 ## 0.7.3
 
 - **Icons**: no entity ever shows a bookmark again. Home Assistant's state icon falls back to

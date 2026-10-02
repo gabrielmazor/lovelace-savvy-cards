@@ -40,6 +40,7 @@ const isGroup = (st) => Array.isArray(st?.attributes.entity_id) || st?.attribute
 
 // The badge row for an area: [{ key, entity, ids, kind, on, pinned, cfg }]
 // opts.idle: every kind the area has, active or not (the room card's full sensor row)
+// opts.alwaysKinds: kind keys that show even when idle, besides presence and doors
 function roomBadges(hass, area, cfg = {}, opts = {}) {
   const out = [], pinnedIds = new Set(), pinnedKinds = new Set();
   for (const item of asItems(cfg.entities)) {
@@ -59,7 +60,7 @@ function roomBadges(hass, area, cfg = {}, opts = {}) {
     const found = pick(hass, ids, { domains: kind.domain, deviceClasses: kind.dc, exclude: [...skip] }).filter((id) => !isGroup(hass.states[id]));
     if (!found.length) continue;
     const active = found.find((id) => isActive(hass.states[id]));
-    if (!active && !kind.always && !opts.idle) continue;
+    if (!active && !kind.always && !opts.idle && !(opts.alwaysKinds || []).includes(kind.key)) continue;
     out.push({ key: kind.key, entity: active || found[0], ids: found, kind, on: !!active, pinned: false, cfg: {} });
   }
   return out;
@@ -177,15 +178,30 @@ function houseTemperature(hass, skip = NONE) {
   return { value, unit, ids: [...new Set([...climates, ...ids])], running };
 }
 
-// Security: the alarm panel when there is one; otherwise what's open or unlocked.
-// -> { entity, open: [ids], locks: [every lock], ids: [everything relevant] }
+// Security: the alarm panel when there is one; otherwise what's open or unlocked. A tripped
+// leak / smoke / gas / CO sensor is an alert on top of that; presence and motion are listed
+// for information and never change the word.
+// -> { entity, open, locks, presence, safety, tripped, ids: [everything relevant] }
+const SAFETY_CLASSES = ["moisture", "smoke", "gas", "carbon_monoxide"];
+const PRESENCE_CLASSES = ["occupancy", "motion", "presence"];
+const SAFETY_WORD = { moisture: "Leak", smoke: "Smoke", gas: "Gas", carbon_monoxide: "CO" };
 function houseSecurity(hass, skip = NONE) {
   const inside = houseEntities(hass).filter((id) => !skip(id));
   const alarm = inside.find((id) => domainOf(id) === "alarm_control_panel") || null;
   const locks = inside.filter((id) => domainOf(id) === "lock");
   const openings = pick(hass, houseEntities(hass, { inArea: true }).filter((id) => !skip(id)), { domains: "binary_sensor", deviceClasses: ["door", "window", "garage_door", "opening"] });
+  const presence = pick(hass, inside, { domains: "binary_sensor", deviceClasses: PRESENCE_CLASSES });
+  const safety = pick(hass, inside, { domains: "binary_sensor", deviceClasses: SAFETY_CLASSES });
+  const tripped = safety.filter((id) => hass.states[id]?.state === "on");
   const open = [...locks, ...openings].filter((id) => isActive(hass.states[id]));
-  return { entity: alarm, open, locks, ids: [...(alarm ? [alarm] : []), ...locks, ...openings] };
+  return { entity: alarm, open, locks, presence, safety, tripped, ids: [...(alarm ? [alarm] : []), ...locks, ...openings, ...safety, ...presence] };
+}
+
+// what a tripped safety sensor is called: "Leak", "Smoke", or "2 alerts"
+function securityAlertWord(hass, tripped) {
+  if (!tripped.length) return "";
+  const kinds = [...new Set(tripped.map((id) => SAFETY_WORD[hass.states[id]?.attributes.device_class] || "Alert"))];
+  return tripped.length === 1 ? kinds[0] : `${tripped.length} alerts`;
 }
 
 // The pre-Savvy badge keys, for the room / heading / tile cards: `locks: lock.x` (or any

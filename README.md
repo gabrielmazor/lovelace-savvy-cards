@@ -134,7 +134,7 @@ to leave the settings' list out.
 | `room_order` | a list of area ids | The order of the rooms in the home header's popups and in the room header's row of other rooms: the rooms you list come first, in this order; the rest follow by name; "No room" is always last. Ids that aren't rooms are ignored. The editor lists it above Rooms (starting as the Rooms' order), and a button adds every room. |
 | `rooms.<area>` | `name`, `icon`, `page` | The room's title and tile name and icon, and where they lead (else the `room` pattern). |
 | | `control` | The room's control chip. |
-| | `light_state` | The helper pinned as the room's **Light** badge, and the lights card's pill. |
+| | `light_state` | The helper behind the lights card's pill and the room tile's toggle. It is not shown as a badge: pin it under `entities` on a card if you want one. |
 | | `temperature`, `humidity` | The room's readings for the headers, the tile and the climate card. |
 | | `include`, `exclude` | Entities to treat as in this room, or to leave out of it. |
 
@@ -185,7 +185,7 @@ admin page. On top, a control (the house mode, say: tap to change it), the
 weather, and the health cog: its number is exactly what the [System health](#system-health) card
 lists (a device or a hub counts once, however many entities it has), and holding it
 shows that list. Below, four chips that count by themselves, with
-no helper sensors: lights on (every light in the house, groups left out so nothing counts
+no helper sensors: lights on ("3 on", or "All off"; every light in the house, groups left out so nothing counts
 twice), the average indoor temperature (the fan spins while an A/C
 runs), what's playing, and security (the alarm panel; with none, what's open or
 unlocked). Hold any of them for the entities behind it, each with its switch.
@@ -247,6 +247,8 @@ more-info.
 | **Cover** | Open or close (stop while it moves). | Stop, and a position bar when the cover has one. |
 | **Alarm panel** | Its state. | The arm modes it has (Home, Away, Night, Vacation), the current one marked, and Disarm. Disarming, and arming when the panel wants a code, open its more-info, which is where the code goes. |
 | **Fan** | The switch. | A speed bar. |
+| **Presence, motion** | Detected or Clear, and when it last changed. Read-only. | |
+| **Leak, smoke, gas, CO** | Their state; red while tripped. Read-only. | |
 | **Switch, sensor, door, window** | A switch, or just the state. | |
 
 <picture>
@@ -283,6 +285,20 @@ Open**. A tap does nothing; the knob is dragged.
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/images/popup-lock-light.png">
   <img src="docs/images/popup-lock-dark.png" width="460" alt="The lock track, locked and unlocked">
+</picture>
+
+### The security popup
+
+Besides the alarm, the locks and what is open, the security popup lists the **presence and
+motion** sensors (read-only: who is about, and when it last changed) and the **leak, smoke, gas
+and CO** sensors. Presence and motion never change the chip, which says "Secure", "2 open" or the
+alarm's state. A tripped leak, smoke, gas or CO sensor does: the chip reads "Leak", "Smoke" or
+"2 alerts" in red, and that sensor is pinned right after the locks, red, until it clears. An
+`entity` you chose for the chip still decides its word, but the chip turns red too.
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/popup-security-light.png">
+  <img src="docs/images/popup-security-dark.png" width="460" alt="The security popup: the alarm, the locks, a tripped leak sensor, then presence and motion">
 </picture>
 
 ### Ignoring and sorting
@@ -372,9 +388,17 @@ control: input_select.living_room_scene
 | `navigation_path` | none | Tapping the name opens it (or set `tap_action` / `hold_action`). |
 | `control`, `mode_label`, `mode_icons`, `mode_colors`, `control_*_action` | none | The room's mode, or any entity (see [Control](#how-every-savvy-card-behaves)). |
 | `temperature` | found | As on the Room header. |
-| `entities`, `auto_discover`, `exclude_kinds`, `include`, `exclude` | discovered | The badges. |
+| `entities`, `auto_discover`, `exclude_kinds`, `include`, `exclude` | discovered | The badges: see below. |
 | `heading_style` | `title` | `subtitle` for a smaller one. |
 | `filled` | `false` | Sit on a card background. |
+
+**The badges** sit at the end of the row. From the right edge going left: the **temperature**,
+**presence**, the **door** and the **window**: always there when the room has them, dimmed while
+idle. Whatever else is active (media playing, a lock open, a climate unit running, a leak) joins
+on their left, so those never move. Entities you pin under `entities` lead, on the far left.
+`auto_discover: false` turns the discovery off and leaves the pinned ones and the temperature. A
+room's `light_state` from the [Savvy settings](#savvy-settings) is not a badge: pin it yourself
+if you want it.
 
 ---
 
@@ -738,6 +762,15 @@ Offline devices are grouped the way you think about them:
 - Tap a row to open it, tap an entity for its more-info, hold a device for its page in Home
   Assistant (an integration, for its page).
 
+Wide enough, the three sections become **columns**, each with its own title, line and list
+(and its own scrolling, so one long list never pushes the others down); a narrow card, and the
+home header's cog popup, stack them. A card without Watchman sensors has two columns.
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/system-health-columns-light.png">
+  <img src="docs/images/system-health-columns-dark.png" width="760" alt="Savvy system health card in columns">
+</picture>
+
 The Watchman section has a small chip, **Run report**, that asks Watchman for a new
 report: it spins while it runs and says Done when Watchman's last-parse time changes.
 
@@ -759,9 +792,10 @@ type: custom:savvy-system-health-card
 | `watchman_report` | `{ parse_config: true }` | The data the chip sends to `watchman.report`. |
 | `watchman_last_run` | found | Watchman's "last parse" timestamp, shown as "Checked 2 h ago" (under the title with `source: watchman`, in the details line otherwise). Found from the Watchman integration; name another sensor, or `false` to hide it. |
 | `warn_above` | `6` | The count turns red at this many issues (an integration, a hub or a device counts as one). |
-| `max_rows` | `7` | Rows before the list scrolls. |
+| `columns` | automatic | With `source: all`, how many categories sit side by side when the card is wide: one per category at most, each at least about 240 px; `1` keeps them stacked. |
+| `max_rows` | `7` | Rows before a column's list scrolls. |
 | `show_all_batteries` | `true` | With `source: battery`: every battery, low ones first. |
-| `action` | none | A footer button: `{label, tap_action}`. |
+| `action` | none | A footer button: `{label, tap_action}`. It only appears when there is an action to run: a `tap_action` that is not `none` (an empty `action`, or a label alone, makes no button). |
 
 A hub opened, and one of its devices opened inside it, and the same with `details: true`:
 

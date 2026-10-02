@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.7.3 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.7.4 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.7.3";
+const SAVVY_VERSION = "0.7.4";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -158,9 +158,20 @@ const moreInfo = (host, entityId) => {
   host.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId }, bubbles: true, composed: true }));
 };
 
+// Going to the page that is already open does nothing: pushing the same path makes the
+// dashboard rebuild its view, and the page jumps back to the top.
+const samePage = (url) => {
+  try {
+    const to = new URL(url, location.href), here = location;
+    const norm = (p) => p.replace(/\/+$/, "") || "/";
+    return norm(to.pathname) === norm(here.pathname) && to.search === here.search && (!to.hash || to.hash === here.hash);
+  } catch (err) { return false; }
+};
+
 const navigate = (path, replace = false) => {
   if (!path) return;
   const url = path.startsWith("/") ? path : `${location.pathname.replace(/\/[^/]*$/, "")}/${path}`;
+  if (samePage(url)) return;
   history[replace ? "replaceState" : "pushState"](null, "", url);
   window.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true, detail: { replace } }));
 };
@@ -508,6 +519,7 @@ const isGroup = (st) => Array.isArray(st?.attributes.entity_id) || st?.attribute
 
 // The badge row for an area: [{ key, entity, ids, kind, on, pinned, cfg }]
 // opts.idle: every kind the area has, active or not (the room card's full sensor row)
+// opts.alwaysKinds: kind keys that show even when idle, besides presence and doors
 function roomBadges(hass, area, cfg = {}, opts = {}) {
   const out = [], pinnedIds = new Set(), pinnedKinds = new Set();
   for (const item of asItems(cfg.entities)) {
@@ -527,7 +539,7 @@ function roomBadges(hass, area, cfg = {}, opts = {}) {
     const found = pick(hass, ids, { domains: kind.domain, deviceClasses: kind.dc, exclude: [...skip] }).filter((id) => !isGroup(hass.states[id]));
     if (!found.length) continue;
     const active = found.find((id) => isActive(hass.states[id]));
-    if (!active && !kind.always && !opts.idle) continue;
+    if (!active && !kind.always && !opts.idle && !(opts.alwaysKinds || []).includes(kind.key)) continue;
     out.push({ key: kind.key, entity: active || found[0], ids: found, kind, on: !!active, pinned: false, cfg: {} });
   }
   return out;
@@ -645,15 +657,30 @@ function houseTemperature(hass, skip = NONE) {
   return { value, unit, ids: [...new Set([...climates, ...ids])], running };
 }
 
-// Security: the alarm panel when there is one; otherwise what's open or unlocked.
-// -> { entity, open: [ids], locks: [every lock], ids: [everything relevant] }
+// Security: the alarm panel when there is one; otherwise what's open or unlocked. A tripped
+// leak / smoke / gas / CO sensor is an alert on top of that; presence and motion are listed
+// for information and never change the word.
+// -> { entity, open, locks, presence, safety, tripped, ids: [everything relevant] }
+const SAFETY_CLASSES = ["moisture", "smoke", "gas", "carbon_monoxide"];
+const PRESENCE_CLASSES = ["occupancy", "motion", "presence"];
+const SAFETY_WORD = { moisture: "Leak", smoke: "Smoke", gas: "Gas", carbon_monoxide: "CO" };
 function houseSecurity(hass, skip = NONE) {
   const inside = houseEntities(hass).filter((id) => !skip(id));
   const alarm = inside.find((id) => domainOf(id) === "alarm_control_panel") || null;
   const locks = inside.filter((id) => domainOf(id) === "lock");
   const openings = pick(hass, houseEntities(hass, { inArea: true }).filter((id) => !skip(id)), { domains: "binary_sensor", deviceClasses: ["door", "window", "garage_door", "opening"] });
+  const presence = pick(hass, inside, { domains: "binary_sensor", deviceClasses: PRESENCE_CLASSES });
+  const safety = pick(hass, inside, { domains: "binary_sensor", deviceClasses: SAFETY_CLASSES });
+  const tripped = safety.filter((id) => hass.states[id]?.state === "on");
   const open = [...locks, ...openings].filter((id) => isActive(hass.states[id]));
-  return { entity: alarm, open, locks, ids: [...(alarm ? [alarm] : []), ...locks, ...openings] };
+  return { entity: alarm, open, locks, presence, safety, tripped, ids: [...(alarm ? [alarm] : []), ...locks, ...openings, ...safety, ...presence] };
+}
+
+// what a tripped safety sensor is called: "Leak", "Smoke", or "2 alerts"
+function securityAlertWord(hass, tripped) {
+  if (!tripped.length) return "";
+  const kinds = [...new Set(tripped.map((id) => SAFETY_WORD[hass.states[id]?.attributes.device_class] || "Alert"))];
+  return tripped.length === 1 ? kinds[0] : `${tripped.length} alerts`;
 }
 
 // The pre-Savvy badge keys, for the room / heading / tile cards: `locks: lock.x` (or any
@@ -1648,6 +1675,8 @@ const SHEET_CSS = `
   .sv-ic { flex: none; width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center;
     background: var(--well); color: var(--secondary-text-color); --mdc-icon-size: 18px; }
   .sv-row[data-on] .sv-ic { color: var(--row-c, rgb(var(--accent))); background: color-mix(in oklab, var(--row-c, rgb(var(--accent))) 16%, transparent); }
+  .sv-row[data-alert] .sv-ic { color: #E06666; background: color-mix(in oklab, #E06666 18%, transparent); }
+  .sv-row[data-alert] .sv-val { color: #E06666; }
   .sv-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .sv-name { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sv-sub { font-size: 12px; line-height: 15px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2075,6 +2104,7 @@ class EntityListSheet {
       } else if (st && row.__icon && row.__icon.stateObj !== st) { row.__icon.hass = hass; row.__icon.stateObj = st; }
       text(row.querySelector(".sv-name"), shortName(hass, id, null));
       const res = (st && row.__ctrl?.update(st, hass)) || {};
+      attr(row, "data-alert", !!res.alert);
       this.art(row, res.art);
       const area = entityArea(hass, id);
       const t = Date.parse(st?.last_changed);
@@ -2717,6 +2747,21 @@ const dimmable = (st) => {
 };
 
 const ROW_KINDS = {};
+
+// ---- binary sensors: read-only. Presence and motion say when it last changed; a tripped
+// leak / smoke / gas / CO sensor is red.
+ROW_KINDS.binary_sensor = {
+  build(ctx) {
+    return {
+      update(st, hass) {
+        const dc = st.attributes.device_class;
+        const unavailable = st.state === "unavailable" || st.state === "unknown";
+        return { val: stateText(hass, st), timed: !unavailable && PRESENCE_CLASSES.includes(dc),
+          alert: !unavailable && SAFETY_CLASSES.includes(dc) && st.state === "on" };
+      },
+    };
+  },
+};
 
 // ---- media players: play / pause (power when off) on the line; the rest on the extra line
 ROW_KINDS.media_player = {
@@ -3577,7 +3622,7 @@ const HEADER_CSS = `
 
 const CHIP_ROW_CSS = `
   /* one row always: the chips share the width, and slide when there isn't enough of it */
-  .chips { display: flex; gap: 8px; margin: 0 -2px; padding: 0 2px; overflow-x: auto; overscroll-behavior-x: contain; touch-action: pan-x;
+  .chips { display: flex; gap: 8px; margin: 0 -2px; padding: 0 2px; overflow-x: auto; overscroll-behavior-x: contain; touch-action: pan-x pan-y;
     scrollbar-width: none; scroll-snap-type: x proximity; }
   .chips::-webkit-scrollbar { display: none; }
   .chips[data-overflow] { -webkit-mask-image: linear-gradient(to left, transparent 0, #000 26px); mask-image: linear-gradient(to left, transparent 0, #000 26px); }
@@ -3825,9 +3870,12 @@ class SavvyEditor extends HTMLElement {
   // climate lists the area's climate entities).
   schema() { return []; }
 
+  // cards can tidy what the form wrote before it is saved (see defineEditor)
+  tidy(config) { return config; }
+
   _emit(config) {
     // an option equal to its default is left out, so the YAML stays as short as the choices
-    const out = { ...config };
+    const out = this.tidy({ ...config });
     for (const [k, v] of this._defaults || []) if (out[k] === v) delete out[k];
     this._config = cleanConfig(out);
     // HA answers config-changed with setConfig, but the forms mustn't show stale values
@@ -4027,12 +4075,13 @@ class SavvyListEditor extends HTMLElement {
 if (!customElements.get("savvy-list-editor")) customElements.define("savvy-list-editor", SavvyListEditor);
 
 // Defines `<type>-editor` for a card from a schema function.
-const defineEditor = (type, schemaFn) => {
+const defineEditor = (type, schemaFn, tidy) => {
   const name = `${type}-editor`;
   if (!customElements.get(name)) {
     customElements.define(name, class extends SavvyEditor {
       get cardType() { return type; }
       schema(hass, config) { return schemaFn(hass, config); }
+      tidy(config) { return tidy ? tidy(config) : config; }
     });
   }
   return name;
@@ -4171,7 +4220,6 @@ const SETTINGS_RULES = {
     { path: "temperature", label: "Temperature", get: room("temperature") },
     { path: "include", label: "Include", kind: "union", get: room("include") },
     { path: "exclude", label: "Exclude", kind: "union", get: room("exclude") },
-    { path: "entities", label: "Light helper", kind: "pin", get: room("light_state") },
     { path: "home_path", label: "Home button", get: glob("pages", "home"), src: "pages" },
     { path: "room_path", label: "Room pages", get: glob("pages", "room"), src: "pages" },
     // the card's own `order` (the pre-Savvy name) counts as its own
@@ -4184,7 +4232,6 @@ const SETTINGS_RULES = {
     { path: "temperature", label: "Temperature", get: room("temperature") },
     { path: "include", label: "Include", kind: "union", get: room("include") },
     { path: "exclude", label: "Exclude", kind: "union", get: room("exclude") },
-    { path: "entities", label: "Light helper", kind: "pin", get: room("light_state") },
     { path: "navigation_path", label: "Target page", get: roomPage },
   ],
   "savvy-room-tile": [
@@ -4512,7 +4559,7 @@ if (window.__SAVVY_TEST__) {
     duration, since, relativeTime, axisLabel, momentLabel, fmtNumber, withUnit, isTimestamp,
     fetchHistory, fetchRange, fetchAttributeHistory, resample, seriesStats, stateRuns, numericPoints, linePath,
     entityIcon, fallbackIcon, NEUTRAL_ICON, offLast, Sheet, EntityListSheet, SavvyEditor, defineEditor, S, version: SAVVY_VERSION,
-    SettingsStore, SETTINGS_RULES, resolveSettings, findSettingsCards, normalizeSettings, countDefaults, dashboardPath, SavvyCard, roomBadges, roomTemperature, areaLights, houseLights, housePlaying, houseTemperature, houseSecurity, ignoring, sortRows, RowKit, SideBar, Seg, Stepper, LockTrack, ROW_KINDS, modeInfo, legacyBadges, chipState, portalRoot,
+    SettingsStore, SETTINGS_RULES, resolveSettings, findSettingsCards, normalizeSettings, countDefaults, dashboardPath, SavvyCard, roomBadges, roomTemperature, areaLights, houseLights, housePlaying, houseTemperature, houseSecurity, ignoring, sortRows, RowKit, SideBar, Seg, Stepper, LockTrack, ROW_KINDS, modeInfo, legacyBadges, chipState, portalRoot, navigate, samePage, securityAlertWord,
   };
 }
 
@@ -9221,6 +9268,7 @@ registerCard("savvy-graph-card", SavvyGraphCard, "Graph",
 const STYLE = `${BASE_CSS}${HEADER_CSS}${CHIP_ROW_CSS}`;
 
 // The four chips: how each counts, and its look.
+const ALERT_COLOR = "#E06666";
 const AUTO = {
   lights: { name: "Lights", icon: "mdi:lightbulb", color: "#F5B83D", domain: "light" },
   climate: { name: "Climate", icon: "mdi:fan", color: "#7FC4E8", domain: ["climate", "sensor"] },
@@ -9334,7 +9382,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
     const card = document.createElement("savvy-system-health-card");
     const { navigation_path, tap_action, hold_action, popup_button, popup_label, ...opts } = this._healthCfg() || {};
     this._healthSheet.setFooter(pageButton(this._healthCfg() || {}, "system health", { byDefault: false }));
-    card.setConfig({ ...opts, source: "all", max_rows: 30, title: " " });
+    card.setConfig({ ...opts, source: "all", max_rows: 30, title: " ", columns: 1 });
     this._healthSheet.body.replaceChildren(card);
     card.hass = this._hass;
     this._healthCard = card;
@@ -9408,10 +9456,10 @@ class SavvyHomeHeaderCard extends SavvyCard {
     const h = this._hass, base = AUTO[key];
     const own = cfg.entity && h.states[cfg.entity];
     const skip = ignoring(h, cfg);
-    let value, ids, spin, pinned, listTitle = cfg.name || base.name;
+    let value, ids, spin, pinned, alert = false, listTitle = cfg.name || base.name;
     if (key === "lights") {
       const l = houseLights(h, skip);
-      value = l.on.length ? `${l.on.length} on` : "Off";
+      value = l.on.length ? `${l.on.length} on` : "All off";
       ids = l.on.length ? l.on : l.all;
       listTitle = l.on.length ? "Lights on" : "Lights";
     } else if (key === "media") {
@@ -9426,15 +9474,20 @@ class SavvyHomeHeaderCard extends SavvyCard {
     } else {
       const s = houseSecurity(h, skip);
       value = s.entity ? stateText(h, h.states[s.entity]) : s.open.length ? `${s.open.length} open` : "Secure";
-      // every lock is always there, in any state; then what is open (or, when nothing is, every opening)
-      const rest = (s.open.length ? s.open : s.ids).filter((id) => id !== s.entity && domainOf(id) !== "lock");
-      ids = [...(s.entity ? [s.entity] : []), ...s.locks, ...rest];
-      pinned = ids.slice(0, (s.entity ? 1 : 0) + s.locks.length);     // the alarm and the locks stay on top, whatever the sort
+      // a tripped leak / smoke / gas sensor is the loudest thing the house can say
+      alert = s.tripped.length > 0;
+      if (alert) value = securityAlertWord(h, s.tripped);
+      // every lock is always there, in any state; then what is open (or, when nothing is, every
+      // opening), then the safety sensors, then who is about: presence and motion
+      const first = new Set([...(s.entity ? [s.entity] : []), ...s.locks]);
+      const rest = (s.open.length ? s.open : s.ids.filter((id) => !s.safety.includes(id) && !s.presence.includes(id))).filter((id) => !first.has(id));
+      ids = [...first, ...s.tripped, ...rest, ...s.safety.filter((id) => !s.tripped.includes(id)), ...s.presence];
+      pinned = ids.slice(0, first.size + s.tripped.length);     // the alarm, the locks and anything tripped stay on top, whatever the sort
     }
     if (own) value = chipState(h, own);
     const snapshot = [...ids];     // what was counted when opened: turning one off keeps its row
     return {
-      key, icon: cfg.icon || base.icon, entity: cfg.entity, color: colorOf(cfg.color) || base.color,
+      key, icon: cfg.icon || base.icon, entity: cfg.entity, color: alert ? ALERT_COLOR : colorOf(cfg.color) || base.color,
       value, caption: cfg.name || base.name, aria: `${cfg.name || base.name}, ${value}`,
       spin: key === "climate" ? spin : undefined,
       config: { ...cfg },
@@ -10254,9 +10307,7 @@ class LightsCard extends HTMLElement {
   }
 
   _navigate(path) {
-    history.pushState(null, "", path.startsWith("/") ? path
-      : `${location.pathname.replace(/\/[^/]*$/, "")}/${path}`);
-    window.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true }));
+    navigate(path);
   }
 
   _moreInfo(entityId) {
@@ -13273,7 +13324,7 @@ const STYLE = `${BASE_CSS}
   .grid[data-noicon] .tile { padding-left: 12px; }
   .grid[data-noicon] .tile .ic { display: none; }
 
-  .grid[data-compact] { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; touch-action: pan-x; padding: 3px; margin: -3px; }
+  .grid[data-compact] { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; touch-action: pan-x pan-y; padding: 3px; margin: -3px; }
   .grid[data-compact]::-webkit-scrollbar { display: none; }
   .grid[data-compact][data-overflow] { mask-image: linear-gradient(to left, transparent 0, #000 26px); -webkit-mask-image: linear-gradient(to left, transparent 0, #000 26px); }
   .grid[data-compact] .tile { flex: none; height: 34px; padding: 0 12px 0 5px; border-radius: 11px; gap: 7px; }
@@ -13538,8 +13589,8 @@ registerCard("savvy-scene-card", SavvySceneCard, "Scenes",
 (() => {
 // savvy-section-title-card: the first card in a room's section. The room's name and icon (from
 // the area), its control, its temperature, and a row of badges for what's going on in it:
-// pinned entities first, then what the area has (presence and doors always, the rest while
-// active). A heading, not a panel: no plate unless `filled: true`.
+// pinned entities first, then what is active, then doors and windows, presence and the
+// temperature, which are always there. A heading, not a panel: no plate unless `filled: true`.
 //
 //   type: custom:savvy-section-title-card
 //   area: living_room            name / icon: from the area
@@ -13549,6 +13600,10 @@ registerCard("savvy-scene-card", SavvySceneCard, "Scenes",
 //   temperature: sensor.x | false               heading_style: title | subtitle
 
 const BADGE_W = 30;          // icon plus spacing
+// The row is anchored at its end. On screen, left to right: the pinned badges, whatever else is
+// active (it grows leftwards), then these always-there kinds, then the temperature. To flip the
+// order, change this list.
+const TRIO = ["window", "door", "presence"];
 
 const STYLE = `${BASE_CSS}
   ha-card { --mode: var(--secondary-text-color); display: block; background: none; border: 0; box-shadow: none;
@@ -13585,7 +13640,7 @@ const STYLE = `${BASE_CSS}
      (flex-end in a scroll container leaves the first items unreachable) and rests at the end. */
   .badges { position: relative; flex: 1 1 0; min-width: 34px; display: flex; align-items: center; justify-content: flex-end;
     height: 28px; padding: 6px 0; margin: -6px 0; overflow: hidden; }
-  .badges[data-overflow] { justify-content: flex-start; overflow-x: auto; overscroll-behavior-x: contain; touch-action: pan-x;
+  .badges[data-overflow] { justify-content: flex-start; overflow-x: auto; overscroll-behavior-x: contain; touch-action: pan-x pan-y;
     scrollbar-width: none; -webkit-mask-image: linear-gradient(to right, transparent 0, #000 26px); mask-image: linear-gradient(to right, transparent 0, #000 26px); }
   .badges::-webkit-scrollbar { display: none; }
   .badge { position: relative; flex: none; width: 0; height: 28px; outline: none; }
@@ -13597,7 +13652,7 @@ const STYLE = `${BASE_CSS}
   :host([kbd]) .badge:focus-visible .chip { box-shadow: 0 0 0 2px var(--bc); }
 
   /* the temperature is a reading, so it keeps its number */
-  .temp { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 2px 5px; margin-inline-end: 2px; border-radius: 8px;
+  .temp { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 2px 5px; margin-inline-start: 2px; border-radius: 8px;
     color: var(--secondary-text-color); font-size: 12.5px; line-height: 16px; font-weight: 600; letter-spacing: -0.006em; }
   .temp ha-icon { --mdc-icon-size: 17px; display: flex; color: var(--tc, var(--secondary-text-color)); }
   :host([kbd]) :focus-visible { outline-color: color-mix(in oklab, var(--mode) 80%, var(--primary-text-color)); }
@@ -13736,7 +13791,8 @@ class SavvySectionTitleCard extends SavvyCard {
   }
 
   _renderBadges() {
-    const h = this._hass, list = roomBadges(h, this._config.area, this._config);
+    const h = this._hass, found = roomBadges(h, this._config.area, this._config, { alwaysKinds: TRIO });
+    const list = [...found.filter((b) => b.pinned), ...found.filter((b) => !b.pinned && !TRIO.includes(b.key)), ...TRIO.map((k) => found.find((b) => !b.pinned && b.key === k)).filter(Boolean)];
     const seen = new Set(), red = MQ.reduced.matches;
     for (const b of list) {
       seen.add(b.key);
@@ -13783,11 +13839,11 @@ class SavvySectionTitleCard extends SavvyCard {
       item.el.tabIndex = -1;
       attr(item.el, "aria-hidden", "true");
     }
-    // DOM order follows the list: the temperature, pinned, then kinds in reading order
-    const want = [this._el.temp, ...list.map((b) => this._badges.get(b.key).el)];
+    // DOM order follows the list, and the temperature closes the row
     const leaving = [...this._badges.values()].filter((i) => !seen.has(i.b.key)).map((i) => i.el);
+    const want = [...list.map((b) => this._badges.get(b.key).el), ...leaving, this._el.temp];
     const kids = [...this._el.badges.children];
-    if (want.some((n, i) => kids[i] !== n)) for (const n of [...want, ...leaving]) this._el.badges.appendChild(n);
+    if (want.some((n, i) => kids[i] !== n)) for (const n of want) this._el.badges.appendChild(n);
   }
 
   _fitBadges() {
@@ -14060,7 +14116,7 @@ class SettingsEditor extends SavvyEditor {
           S.grid(S.text("name", "Name"), S.icon()),
           S.nav("page", "Target page"),
           S.entity("control", "Control"),
-          S.entity("light_state", "Light helper", undefined, { helper: "Pinned as the room's Light chip and the lights card's pill." }),
+          S.entity("light_state", "Light helper", undefined, { helper: "Used by the lights card's pill and the room tile's toggle. Not shown as a badge: pin it yourself under entities if you want one." }),
           S.grid(S.entity("temperature", "Temperature", "sensor"), S.entity("humidity", "Humidity", "sensor")),
           { name: "include", label: "Include", helper: "Entities to treat as in this room (a lock with no area).", selector: { entity: { multiple: true } } },
           { name: "exclude", label: "Exclude", selector: { entity: { multiple: true } } },
@@ -14095,9 +14151,10 @@ registerCard("savvy-settings-card", SavvySettingsCard, "settings",
 //   battery_threshold: 20        exclude_platforms: [mobile_app]
 //   watchman: [sensor.watchman_missing_entities, sensor.watchman_missing_actions]
 //   group_by: hub | device | none      group_min: 3      details: false
-//   warn_above: 6  max_rows: 7   title: …
+//   warn_above: 6  max_rows: 7   title: …     columns: auto | 1 | 2 | 3   (source all: a column per category when wide)
 //   watchman_button: true        watchman_report: { parse_config: true }
 //   action: { label: Generate report, tap_action: { action: perform-action, perform_action: watchman.report } }
+//           (a footer button only when there is an action to run: none by default, and `none` is none)
 
 const SOURCES = {
   all: { title: "Health", noun: "issue", nouns: "issues" },
@@ -14108,11 +14165,12 @@ const SOURCES = {
 const GROUP_TITLE = { watchman: "Watchman", unavailable: "Offline devices", battery: "Low batteries" };
 const ALL_FINE = { watchman: "Nothing missing", unavailable: "All devices online", battery: "All batteries fine" };
 const REPORT_TIMEOUT = 60000;
+const COL_MIN = 240, COL_GAP = 14;
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const joinAnd = (parts) => (parts.length < 2 ? parts.join("") : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`);
 
 const STYLE = `${BASE_CSS}
-  ha-card { display: flex; flex-direction: column; gap: 10px; padding: var(--pad); overflow: hidden; --lvl: var(--secondary-text-color); }
+  ha-card { display: flex; flex-direction: column; gap: 10px; padding: var(--pad); overflow: hidden; --lvl: var(--secondary-text-color); container-name: card; }
   .head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .name { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pill { flex: none; display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 11px;
@@ -14120,10 +14178,12 @@ const STYLE = `${BASE_CSS}
     font-size: 11px; line-height: 14px; font-weight: 650; letter-spacing: 0.02em; white-space: nowrap; text-transform: uppercase; }
   .empty { display: flex; align-items: center; gap: 8px; padding: 2px 0; color: var(--secondary-text-color); font-size: 12.5px; line-height: 16px; font-weight: 500; }
   .empty ha-icon { --mdc-icon-size: 17px; display: flex; color: var(--lvl-good); }
-  .rows { display: flex; flex-direction: column; max-height: calc(var(--max-rows, 7) * 38px); overflow-y: auto; overscroll-behavior-y: contain;
+  .cols { display: grid; gap: 14px; align-items: start; grid-template-columns: minmax(0, 1fr); }
+  .rows { container: rows / inline-size; display: flex; flex-direction: column; min-width: 0; max-height: calc(var(--max-rows, 7) * 38px); overflow-y: auto;
     scrollbar-width: none; margin: 0 -4px; padding: 0 4px; }
   .rows::-webkit-scrollbar { display: none; }
-  .rows[data-overflow] { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent 100%);
+  /* only a list that really scrolls keeps the gesture to itself: a short one lets the page scroll over it */
+  .rows[data-overflow] { overscroll-behavior-y: contain; -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent 100%);
     mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent 100%); }
   .titles { display: flex; flex-direction: column; min-width: 0; }
   .when { font-size: 11.5px; line-height: 15px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -14161,8 +14221,37 @@ const STYLE = `${BASE_CSS}
     background: color-mix(in oklab, rgb(var(--accent)) 16%, transparent); color: rgb(var(--accent));
     font-size: 12.5px; line-height: 16px; font-weight: 650; letter-spacing: -0.006em; transform-origin: 50% 50%; }
   @media (prefers-contrast: more) { .row .s { color: var(--primary-text-color); opacity: 0.8; } }
-  @container (max-width: 260px) { .row .s { display: none; } }
+  @container card (max-width: 260px) { .row .s { display: none; } }
+  /* a narrow column: the title and the chip on one line, what is wrong under them */
+  @container rows (max-width: 340px) {
+    .group { flex-wrap: wrap; row-gap: 2px; }
+    .group .gt { white-space: nowrap; flex: 1 1 auto; }
+    .group .report { order: 2; margin-inline-start: auto; }
+    .group .gw { order: 3; flex: 1 0 100%; margin-inline-start: 0; white-space: normal; }
+  }
 `;
+
+// What the footer button does, or null: it needs a tap_action that is not "none" (or the pre-Savvy
+// shape { label, service, data, target }). A label alone, or an empty action, makes no button.
+const footerAction = (a) => {
+  if (!a || typeof a !== "object") return null;
+  let t = a.tap_action;
+  if (typeof t === "string") t = { action: t };
+  if (!t && a.service) t = { action: "perform-action", perform_action: a.service, data: a.data, target: a.target };
+  return t && t.action && t.action !== "none" ? t : null;
+};
+
+// The editor's footer section writes `action: { tap_action: { action: none } }` as soon as it is
+// touched: that is no action, so it is not saved.
+const tidyFooter = (c) => {
+  const a = c.action;
+  if (!a || typeof a !== "object") return c;
+  const out = { ...a };
+  const t = out.tap_action;
+  if (t === "none" || t?.action === "none" || (t && typeof t === "object" && !Object.keys(t).length)) delete out.tap_action;
+  if (!Object.keys(out).filter((k) => out[k] !== "" && out[k] != null).length) { const { action, ...rest } = c; return rest; }
+  return { ...c, action: out };
+};
 
 class SavvySystemHealthCard extends HTMLElement {
   static getStubConfig() { return {}; }
@@ -14233,32 +14322,52 @@ class SavvySystemHealthCard extends HTMLElement {
     this._root.innerHTML = `<style>${STYLE}</style>
       <ha-card>
         <div class="head" id="head"><span class="titles"><span class="name" id="name"></span><span class="when" id="when" hidden></span></span><span class="pill" id="pill"></span></div>
-        <div class="rows" id="rows"></div>
+        <div class="cols" id="cols"></div>
         <button class="action" id="action" hidden></button>
         <button class="report" id="report" hidden><ha-icon icon="mdi:refresh"></ha-icon><span>Run report</span></button>
       </ha-card>`;
     const $ = (id) => this._root.getElementById(id);
-    this._el = { card: this._root.querySelector("ha-card"), head: $("head"), name: $("name"), when: $("when"), pill: $("pill"), rows: $("rows"), action: $("action"), report: $("report") };
+    this._el = { card: this._root.querySelector("ha-card"), head: $("head"), name: $("name"), when: $("when"), pill: $("pill"), cols: $("cols"), action: $("action"), report: $("report") };
+    this._boxes = new Map();
     this._el.report.remove();
     this._pressable(this._el.report, () => this._runReport());
     this._angle = 0;
     const c = this._config;
-    put(this._el.rows, "--max-rows", c.max_rows);
+    put(this._el.cols, "--max-rows", c.max_rows);
     text(this._el.name, c.title || SOURCES[c.source].title);
-    if (c.action) {
+    // the footer button is off unless it has something to do
+    const footer = footerAction(c.action);
+    if (footer) {
       this._el.action.hidden = false;
       text(this._el.action, c.action.label || "Run");
       this._pressable(this._el.action, () => {
-        const a = c.action;
-        // the pre-Savvy shape { label, service, data, target } still works
-        const act = a.tap_action || (a.service ? { action: "perform-action", perform_action: a.service, data: a.data, target: a.target } : null);
         haptic("medium");
-        runAction(this, this._hass, act, {});
+        runAction(this, this._hass, footer, {});
       });
     }
     this._ro?.disconnect();
     this._ro = new ResizeObserver(() => this._fit());
-    this._ro.observe(this._el.rows);
+  }
+
+  // One list per category: they sit side by side when the card is wide, and stack when it isn't.
+  _box(key) {
+    let box = this._boxes.get(key);
+    if (!box) {
+      box = document.createElement("div");
+      box.className = "rows";
+      box.__key = key;
+      this._boxes.set(key, box);
+      this._ro.observe(box);
+    }
+    return box;
+  }
+
+  // `columns`: auto is as many as there are categories, never narrower than COL_MIN each; 1 stacks them
+  _layoutCols(count) {
+    const want = Number(this._config.columns) || count;
+    const n = Math.max(1, Math.min(want, count));
+    put(this._el.cols, "grid-template-columns", n === 1 ? "minmax(0, 1fr)"
+      : `repeat(auto-fit, minmax(max(${COL_MIN}px, calc((100% - ${(n - 1) * COL_GAP}px) / ${n})), 1fr))`);
   }
 
   _pressable(el, onTap, onHold) {
@@ -14381,15 +14490,15 @@ class SavvySystemHealthCard extends HTMLElement {
       out.push(...rows);
       return out;
     };
-    if (src === "watchman") return { total: sum.counts.watchman, rows: section("watchman", watchRows(), false) };
-    if (src === "unavailable") return { total: sum.counts.unavailable, rows: section("unavailable", this._offlineRows(sum.offline), false) };
-    if (src === "battery") return { total: sum.counts.battery, rows: section("battery", this._batteryRows(sum, c.show_all_batteries !== false), false) };
+    if (src === "watchman") return { total: sum.counts.watchman, sections: [{ key: "watchman", rows: section("watchman", watchRows(), false) }] };
+    if (src === "unavailable") return { total: sum.counts.unavailable, sections: [{ key: "unavailable", rows: section("unavailable", this._offlineRows(sum.offline), false) }] };
+    if (src === "battery") return { total: sum.counts.battery, sections: [{ key: "battery", rows: section("battery", this._batteryRows(sum, c.show_all_batteries !== false), false) }] };
     // every category shows, with its issue line or a tick and what's fine
-    const rows = [];
-    if (sum.opts.watchman.length) rows.push(...section("watchman", watchRows(), true));
-    rows.push(...section("unavailable", this._offlineRows(sum.offline), true));
-    rows.push(...section("battery", this._batteryRows(sum, false), true));
-    return { total: sum.total, rows };
+    const sections = [];
+    if (sum.opts.watchman.length) sections.push({ key: "watchman", rows: section("watchman", watchRows(), true) });
+    sections.push({ key: "unavailable", rows: section("unavailable", this._offlineRows(sum.offline), true) });
+    sections.push({ key: "battery", rows: section("battery", this._batteryRows(sum, false), true) });
+    return { total: sum.total, sections };
   }
 
   _update() {
@@ -14400,13 +14509,13 @@ class SavvySystemHealthCard extends HTMLElement {
     this._lastRun = c.source === "all" || c.source === "watchman" ? watchmanLastRun(h, c) : null;
     if (c.source === "all" || c.source === "unavailable") refreshConfigEntries(h);
     this._checkReport();
-    const { total, rows } = this._compute();
+    const { total, sections } = this._compute();
     const label = SOURCES[c.source];
     const lvl = total === 0 ? "var(--lvl-good)" : total < c.warn_above ? "var(--lvl-warn)" : "var(--lvl-bad)";
     put(this._el.card, "--lvl", lvl);
     text(this._el.pill, total === 0 ? "All good" : `${total} ${total === 1 ? label.noun : label.nouns}`);
     attr(this._el.card, "aria-label", `${c.title || label.title}, ${total === 0 ? "all good" : `${total} ${label.nouns}`}`);
-    this._renderRows(rows);
+    this._renderRows(sections);
     this._placeReport();
     this._tickWhen();
     this._wake();
@@ -14487,19 +14596,25 @@ class SavvySystemHealthCard extends HTMLElement {
     return node;
   }
 
-  _renderRows(rows) {
-    const box = this._el.rows, seen = new Set();
-    let at = 0;
-    for (const r of rows) {
-      seen.add(r.key);
-      let node = this._rows.get(r.key);
-      if (!node) { node = this._node(r); this._rows.set(r.key, node); }
-      if (r.type === "ok") text(node.querySelector("span"), r.text);
-      else if (r.type === "group") { text(node.querySelector(".gt"), r.title); text(node.querySelector(".gw"), r.line); }
-      else if (r.type === "facts") text(node, r.text);
-      else this._fillRow(node, r);
-      place(box, node, at++);
-    }
+  _renderRows(sections) {
+    const seen = new Set(), liveBoxes = new Set();
+    this._layoutCols(sections.length);
+    sections.forEach((sec, bi) => {
+      const box = this._box(sec.key);
+      liveBoxes.add(sec.key);
+      place(this._el.cols, box, bi);
+      let at = 0;
+      for (const r of sec.rows) {
+        seen.add(r.key);
+        let node = this._rows.get(r.key);
+        if (!node) { node = this._node(r); this._rows.set(r.key, node); }
+        if (r.type === "ok") text(node.querySelector("span"), r.text);
+        else if (r.type === "group") { text(node.querySelector(".gt"), r.title); text(node.querySelector(".gw"), r.line); }
+        else if (r.type === "facts") text(node, r.text);
+        else this._fillRow(node, r);
+        place(box, node, at++);
+      }
+    });
     for (const [key, node] of this._rows) {
       if (seen.has(key)) continue;
       for (const s of [node.__enter, node.__spring, node.__chev]) { const i = this._springs.indexOf(s); if (i >= 0) this._springs.splice(i, 1); }
@@ -14507,6 +14622,12 @@ class SavvySystemHealthCard extends HTMLElement {
       if (p >= 0) this._pressNodes.splice(p, 1);
       node.remove();
       this._rows.delete(key);
+    }
+    for (const [key, box] of this._boxes) {
+      if (liveBoxes.has(key)) continue;
+      this._ro.unobserve(box);
+      box.remove();
+      this._boxes.delete(key);
     }
     this._fit();
   }
@@ -14556,9 +14677,15 @@ class SavvySystemHealthCard extends HTMLElement {
     else if (r.entity) moreInfo(this, r.entity);
   }
 
+  // Does a list scroll? Measured from where its rows sit, not from scrollHeight: a row that is
+  // still sliding in is translated, which grows scrollHeight for a moment and would leave the
+  // flag set once it has settled.
   _fit() {
-    const el = this._el?.rows;
-    if (el) attr(el, "data-overflow", el.scrollHeight > el.clientHeight + 1);
+    for (const box of this._boxes?.values() || []) {
+      const first = box.firstElementChild, last = box.lastElementChild;
+      const content = first ? last.offsetTop + last.offsetHeight - first.offsetTop : 0;
+      attr(box, "data-overflow", content > box.clientHeight + 2);
+    }
   }
 
   _wake() { if (this._root && this.isConnected) Clock.add(this._job); }
@@ -14611,6 +14738,8 @@ const EDITOR = defineEditor("savvy-system-health-card", (hass, c) => [
   S.text("title", "Title"),
   S.grid(S.number("battery_threshold", "Battery alert", 1, 100, 1, "%"), S.number("warn_above", "Red threshold", 1, 99)),
   S.number("max_rows", "Max rows", 3, 30),
+  { name: "columns", label: "Columns", helper: "Side by side when the card is wide: one column per category. Empty: automatic. 1 keeps them stacked.",
+    selector: { number: { min: 1, max: 4, step: 1, mode: "box" } } },
   S.bool("details", "Show details", "A line of facts under each section (how many devices, the lowest battery, when Watchman checked), and area and integration on the rows."),
   S.select("group_by", "Grouping", [
     { value: "hub", label: "Device, and the hub behind it" }, { value: "device", label: "Device" }, { value: "none", label: "Nothing: one row per entity" },
@@ -14628,9 +14757,9 @@ const EDITOR = defineEditor("savvy-system-health-card", (hass, c) => [
   // nested under `action`: ha-form's expandable with a name keeps its fields in that key
   { type: "expandable", name: "action", title: "Footer button", schema: [
     { name: "label", label: "Label", selector: { text: {} } },
-    { name: "tap_action", label: "Action", selector: { ui_action: {} } },
+    { name: "tap_action", label: "Action", helper: "Off unless you pick an action.", selector: { ui_action: {} } },
   ] },
-]);
+], tidyFooter);
 
 registerCard("savvy-system-health-card", SavvySystemHealthCard, "System health",
   "What needs attention: offline devices (grouped by device, hub and integration), low batteries and Watchman's findings, with a count.");
@@ -16856,9 +16985,7 @@ class VacuumCard extends HTMLElement {
 
   // ---------- helpers ----------
   _navigate(path) {
-    if (!path) return;
-    history.pushState(null, "", path.startsWith("/") ? path : `${location.pathname.replace(/\/[^/]*$/, "")}/${path}`);
-    window.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true }));
+    navigate(path);
   }
   _moreInfo(entityId) {
     if (!entityId || !this._hass?.states[entityId]) return;

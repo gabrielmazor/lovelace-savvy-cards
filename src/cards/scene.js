@@ -45,7 +45,7 @@ const STYLE = `${BASE_CSS}
   .grid[data-noicon] .tile { padding-left: 12px; }
   .grid[data-noicon] .tile .ic { display: none; }
 
-  .grid[data-compact] { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; touch-action: pan-x; padding: 3px; margin: -3px; }
+  .grid[data-compact] { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; touch-action: pan-x pan-y; padding: 3px; margin: -3px; }
   .grid[data-compact]::-webkit-scrollbar { display: none; }
   .grid[data-compact][data-overflow] { mask-image: linear-gradient(to left, transparent 0, #000 26px); -webkit-mask-image: linear-gradient(to left, transparent 0, #000 26px); }
   .grid[data-compact] .tile { flex: none; height: 34px; padding: 0 12px 0 5px; border-radius: 11px; gap: 7px; }

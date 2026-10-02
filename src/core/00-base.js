@@ -152,9 +152,20 @@ const moreInfo = (host, entityId) => {
   host.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId }, bubbles: true, composed: true }));
 };
 
+// Going to the page that is already open does nothing: pushing the same path makes the
+// dashboard rebuild its view, and the page jumps back to the top.
+const samePage = (url) => {
+  try {
+    const to = new URL(url, location.href), here = location;
+    const norm = (p) => p.replace(/\/+$/, "") || "/";
+    return norm(to.pathname) === norm(here.pathname) && to.search === here.search && (!to.hash || to.hash === here.hash);
+  } catch (err) { return false; }
+};
+
 const navigate = (path, replace = false) => {
   if (!path) return;
   const url = path.startsWith("/") ? path : `${location.pathname.replace(/\/[^/]*$/, "")}/${path}`;
+  if (samePage(url)) return;
   history[replace ? "replaceState" : "pushState"](null, "", url);
   window.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true, detail: { replace } }));
 };

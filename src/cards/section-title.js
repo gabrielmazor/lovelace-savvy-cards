@@ -1,7 +1,7 @@
 // savvy-section-title-card: the first card in a room's section. The room's name and icon (from
 // the area), its control, its temperature, and a row of badges for what's going on in it:
-// pinned entities first, then what the area has (presence and doors always, the rest while
-// active). A heading, not a panel: no plate unless `filled: true`.
+// pinned entities first, then what is active, then doors and windows, presence and the
+// temperature, which are always there. A heading, not a panel: no plate unless `filled: true`.
 //
 //   type: custom:savvy-section-title-card
 //   area: living_room            name / icon: from the area
@@ -11,6 +11,10 @@
 //   temperature: sensor.x | false               heading_style: title | subtitle
 
 const BADGE_W = 30;          // icon plus spacing
+// The row is anchored at its end. On screen, left to right: the pinned badges, whatever else is
+// active (it grows leftwards), then these always-there kinds, then the temperature. To flip the
+// order, change this list.
+const TRIO = ["window", "door", "presence"];
 
 const STYLE = `${BASE_CSS}
   ha-card { --mode: var(--secondary-text-color); display: block; background: none; border: 0; box-shadow: none;
@@ -47,7 +51,7 @@ const STYLE = `${BASE_CSS}
      (flex-end in a scroll container leaves the first items unreachable) and rests at the end. */
   .badges { position: relative; flex: 1 1 0; min-width: 34px; display: flex; align-items: center; justify-content: flex-end;
     height: 28px; padding: 6px 0; margin: -6px 0; overflow: hidden; }
-  .badges[data-overflow] { justify-content: flex-start; overflow-x: auto; overscroll-behavior-x: contain; touch-action: pan-x;
+  .badges[data-overflow] { justify-content: flex-start; overflow-x: auto; overscroll-behavior-x: contain; touch-action: pan-x pan-y;
     scrollbar-width: none; -webkit-mask-image: linear-gradient(to right, transparent 0, #000 26px); mask-image: linear-gradient(to right, transparent 0, #000 26px); }
   .badges::-webkit-scrollbar { display: none; }
   .badge { position: relative; flex: none; width: 0; height: 28px; outline: none; }
@@ -59,7 +63,7 @@ const STYLE = `${BASE_CSS}
   :host([kbd]) .badge:focus-visible .chip { box-shadow: 0 0 0 2px var(--bc); }
 
   /* the temperature is a reading, so it keeps its number */
-  .temp { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 2px 5px; margin-inline-end: 2px; border-radius: 8px;
+  .temp { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 2px 5px; margin-inline-start: 2px; border-radius: 8px;
     color: var(--secondary-text-color); font-size: 12.5px; line-height: 16px; font-weight: 600; letter-spacing: -0.006em; }
   .temp ha-icon { --mdc-icon-size: 17px; display: flex; color: var(--tc, var(--secondary-text-color)); }
   :host([kbd]) :focus-visible { outline-color: color-mix(in oklab, var(--mode) 80%, var(--primary-text-color)); }
@@ -198,7 +202,8 @@ class SavvySectionTitleCard extends SavvyCard {
   }
 
   _renderBadges() {
-    const h = this._hass, list = roomBadges(h, this._config.area, this._config);
+    const h = this._hass, found = roomBadges(h, this._config.area, this._config, { alwaysKinds: TRIO });
+    const list = [...found.filter((b) => b.pinned), ...found.filter((b) => !b.pinned && !TRIO.includes(b.key)), ...TRIO.map((k) => found.find((b) => !b.pinned && b.key === k)).filter(Boolean)];
     const seen = new Set(), red = MQ.reduced.matches;
     for (const b of list) {
       seen.add(b.key);
@@ -245,11 +250,11 @@ class SavvySectionTitleCard extends SavvyCard {
       item.el.tabIndex = -1;
       attr(item.el, "aria-hidden", "true");
     }
-    // DOM order follows the list: the temperature, pinned, then kinds in reading order
-    const want = [this._el.temp, ...list.map((b) => this._badges.get(b.key).el)];
+    // DOM order follows the list, and the temperature closes the row
     const leaving = [...this._badges.values()].filter((i) => !seen.has(i.b.key)).map((i) => i.el);
+    const want = [...list.map((b) => this._badges.get(b.key).el), ...leaving, this._el.temp];
     const kids = [...this._el.badges.children];
-    if (want.some((n, i) => kids[i] !== n)) for (const n of [...want, ...leaving]) this._el.badges.appendChild(n);
+    if (want.some((n, i) => kids[i] !== n)) for (const n of want) this._el.badges.appendChild(n);
   }
 
   _fitBadges() {

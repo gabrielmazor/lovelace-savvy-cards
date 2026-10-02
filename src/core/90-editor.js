@@ -128,9 +128,12 @@ class SavvyEditor extends HTMLElement {
   // climate lists the area's climate entities).
   schema() { return []; }
 
+  // cards can tidy what the form wrote before it is saved (see defineEditor)
+  tidy(config) { return config; }
+
   _emit(config) {
     // an option equal to its default is left out, so the YAML stays as short as the choices
-    const out = { ...config };
+    const out = this.tidy({ ...config });
     for (const [k, v] of this._defaults || []) if (out[k] === v) delete out[k];
     this._config = cleanConfig(out);
     // HA answers config-changed with setConfig, but the forms mustn't show stale values
@@ -330,12 +333,13 @@ class SavvyListEditor extends HTMLElement {
 if (!customElements.get("savvy-list-editor")) customElements.define("savvy-list-editor", SavvyListEditor);
 
 // Defines `<type>-editor` for a card from a schema function.
-const defineEditor = (type, schemaFn) => {
+const defineEditor = (type, schemaFn, tidy) => {
   const name = `${type}-editor`;
   if (!customElements.get(name)) {
     customElements.define(name, class extends SavvyEditor {
       get cardType() { return type; }
       schema(hass, config) { return schemaFn(hass, config); }
+      tidy(config) { return tidy ? tidy(config) : config; }
     });
   }
   return name;

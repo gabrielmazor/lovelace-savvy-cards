@@ -39,6 +39,8 @@ const SHEET_CSS = `
   .sv-ic { flex: none; width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center;
     background: var(--well); color: var(--secondary-text-color); --mdc-icon-size: 18px; }
   .sv-row[data-on] .sv-ic { color: var(--row-c, rgb(var(--accent))); background: color-mix(in oklab, var(--row-c, rgb(var(--accent))) 16%, transparent); }
+  .sv-row[data-alert] .sv-ic { color: #E06666; background: color-mix(in oklab, #E06666 18%, transparent); }
+  .sv-row[data-alert] .sv-val { color: #E06666; }
   .sv-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .sv-name { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sv-sub { font-size: 12px; line-height: 15px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -466,6 +468,7 @@ class EntityListSheet {
       } else if (st && row.__icon && row.__icon.stateObj !== st) { row.__icon.hass = hass; row.__icon.stateObj = st; }
       text(row.querySelector(".sv-name"), shortName(hass, id, null));
       const res = (st && row.__ctrl?.update(st, hass)) || {};
+      attr(row, "data-alert", !!res.alert);
       this.art(row, res.art);
       const area = entityArea(hass, id);
       const t = Date.parse(st?.last_changed);

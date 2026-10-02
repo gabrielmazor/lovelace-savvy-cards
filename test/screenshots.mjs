@@ -57,15 +57,23 @@ const SEED = `const add = (id, state, attributes, area, minutesAgo = 20) => {
   window.house.states[id] = { entity_id: id, state, attributes, last_changed: new Date(Date.now() - minutesAgo * 60000).toISOString(), last_updated: new Date().toISOString() };
   window.house.entities[id] = { entity_id: id, area_id: area, device_id: null, platform: "demo", entity_category: null, hidden: false, disabled_by: null };
 };`;
-const popupOf = (ids, title, color, seed, { bulk = null, open = null } = {}) => `${SEED}${seed}
+const popupOf = (ids, title, color, seed, { bulk = null, open = null, pinned = [] } = {}) => `${SEED}${seed}
 window.hass = { ...window.hass, states: { ...window.house.states } };
 window.__popup = true;
-window.__after = () => { window.cards[0]._showList(${JSON.stringify(title)}, ${JSON.stringify(ids)}, ${JSON.stringify(color)}, null, null, { sort: "room", toggle: true, storeKey: "shot", bulk: ${JSON.stringify(bulk)} });
+window.__after = () => { window.cards[0]._showList(${JSON.stringify(title)}, ${JSON.stringify(ids)}, ${JSON.stringify(color)}, null, null, { sort: "room", toggle: true, storeKey: "shot", bulk: ${JSON.stringify(bulk)}, pinned: ${JSON.stringify(pinned)} });
   ${open ? `setTimeout(() => window.__savvy.portalRoot().querySelector('.sv-row[data-id="${open}"] .sv-chev')?.click(), 300);` : ""} };`;
 const POPUP_LOCKS = popupOf(["lock.front_door", "lock.back_door", "lock.garage"], "Security", "#E6C48F", `
 add("lock.front_door", "locked", { friendly_name: "Front Door", supported_features: 1 }, "hallway", 180);
 add("lock.back_door", "unlocked", { friendly_name: "Back Door", supported_features: 1 }, "kitchen", 4);
 add("lock.garage", "locked", { friendly_name: "Garage Door" }, "bedroom", 600);`, { bulk: "security" });
+const POPUP_SECURITY = popupOf(["alarm_control_panel.home_alarm", "lock.front_door", "binary_sensor.hallway_leak", "binary_sensor.living_room_presence", "binary_sensor.kitchen_motion", "binary_sensor.front_window"], "Security", "#E6C48F", `
+add("alarm_control_panel.home_alarm", "armed_home", { friendly_name: "Home Alarm", supported_features: 15 }, null, 300);
+add("lock.front_door", "locked", { friendly_name: "Front Door", supported_features: 1 }, "hallway", 180);
+add("binary_sensor.hallway_leak", "on", { friendly_name: "Hallway Leak", device_class: "moisture" }, "hallway", 3);
+add("binary_sensor.living_room_presence", "on", { friendly_name: "Living Room Presence", device_class: "occupancy" }, "living_room", 12);
+add("binary_sensor.kitchen_motion", "off", { friendly_name: "Kitchen Motion", device_class: "motion" }, "kitchen", 25);
+add("binary_sensor.front_window", "off", { friendly_name: "Front Window", device_class: "window" }, "living_room", 90);`,
+  { bulk: "security", pinned: ["alarm_control_panel.home_alarm", "lock.front_door", "binary_sensor.hallway_leak"] });
 const POPUP_MEDIA = popupOf(["media_player.living_tv", "media_player.kitchen_speaker", "media_player.bedroom_tv"], "Media", "#C98BD9", `
 add("media_player.living_tv", "playing", { friendly_name: "Living Room TV", supported_features: 21437, volume_level: 0.42, media_title: "Slow Horses", media_artist: "Apple TV+" }, "living_room", 12);
 add("media_player.kitchen_speaker", "idle", { friendly_name: "Kitchen Speaker", supported_features: 21437, volume_level: 0.3 }, "kitchen", 90);
@@ -92,6 +100,7 @@ const SHOTS = [
   ["vacuum", "savvy-vacuum-card", { entity: "vacuum.robot", start: "button.robot_vacuum" }, 520, VACUUM_WS],
   ["vacuum-compact", "savvy-vacuum-card", { entity: "vacuum.robot", layout: "compact" }, 460, VACUUM_WS],
   ["system-health", "savvy-system-health-card", { watchman: ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"], max_rows: 10 }, 420, OFFLINE],
+  ["system-health-columns", "savvy-system-health-card", { watchman: ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"], max_rows: 6 }, 900, OFFLINE],
   ["system-health-expanded", "savvy-system-health-card", { max_rows: 16 }, 420, OFFLINE_OPEN],
   ["system-health-details", "savvy-system-health-card", { watchman: ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"], max_rows: 10, details: true }, 420, OFFLINE],
   ["system-health-batteries", "savvy-system-health-card", { source: "battery" }, 420],
@@ -102,6 +111,7 @@ const SHOTS = [
   ["section-title", "savvy-section-title-card", { area: "living_room", control: "input_select.living_room_scene" }, 520],
   ["home-header-popup", "savvy-home-header-card", { control: "input_select.house_mode", lights: { navigation_path: "/lovelace/lights" } }, 520, POPUP],
   ["popup-lock", "savvy-home-header-card", { health: false }, 520, POPUP_LOCKS],
+  ["popup-security", "savvy-home-header-card", { health: false }, 520, POPUP_SECURITY],
   ["popup-media", "savvy-home-header-card", { health: false }, 520, POPUP_MEDIA],
   ["popup-climate", "savvy-home-header-card", { health: false }, 520, POPUP_CLIMATE],
   ["tiles", "savvy-room-tile", { area: "living_room", control: "input_select.living_room_scene" }, 260, TILES],

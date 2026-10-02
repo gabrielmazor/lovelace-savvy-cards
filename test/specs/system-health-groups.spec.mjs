@@ -133,7 +133,7 @@ export default async function ({ browser, base, check }) {
     check(`${tag} tapping a device opens its entities`, byName(c.rows, "Hall Door Sensor").x === "true" && hall.length === 3 && hall.every((n) => n.startsWith("Hall Door Sensor ")), JSON.stringify(hall));
     // a state update keeps what's open, and moves nothing
     const moved = await page.evaluate(async () => {
-      const rows = window.cards[0].shadowRoot.getElementById("rows");
+      const rows = window.cards[0].shadowRoot.querySelector(".rows");
       let n = 0;
       const mo = new MutationObserver((l) => { n += l.reduce((x, m) => x + m.addedNodes.length + m.removedNodes.length, 0); });
       mo.observe(rows, { childList: true });
@@ -220,10 +220,11 @@ export default async function ({ browser, base, check }) {
       form.set("details", true);
       form.set("group_by", "device");
       form.set("group_min", 4);
+      form.set("columns", 2);
       return { fields, last: changes[changes.length - 1] };
     });
-    check("editor: details, group_by and group_min round-trip into the config", ["details", "group_by", "group_min"].every((f) => ed.fields.includes(f))
-      && ed.last.details === true && ed.last.group_by === "device" && ed.last.group_min === 4, JSON.stringify(ed));
+    check("editor: details, group_by, group_min and columns round-trip into the config", ["details", "group_by", "group_min", "columns"].every((f) => ed.fields.includes(f))
+      && ed.last.details === true && ed.last.group_by === "device" && ed.last.group_min === 4 && ed.last.columns === 2, JSON.stringify(ed));
     const home = await page.evaluate(async () => {
       const el = document.createElement("savvy-home-header-card-editor");
       document.body.appendChild(el);

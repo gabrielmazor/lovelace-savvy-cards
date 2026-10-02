@@ -61,7 +61,7 @@ export default async function ({ browser, base, check }) {
       t.log[0] === "input_boolean.toggle {} input_boolean.movie_mode" && !t.nav.length && t.optimistic, JSON.stringify(t));
 
     // keyboard: Enter on the card taps it; Enter on a badge only the badge
-    await page.evaluate(() => { window.nav.length = 0; window.log.length = 0; window.cards[0].shadowRoot.querySelector("ha-card").focus(); });
+    await page.evaluate(() => { history.replaceState({}, "", "/lovelace/somewhere-else"); window.nav.length = 0; window.log.length = 0; window.cards[0].shadowRoot.querySelector("ha-card").focus(); });
     await page.keyboard.press("Enter");
     await page.waitForTimeout(400);
     await page.evaluate(() => window.cards[2].shadowRoot.querySelector(".badge").focus());

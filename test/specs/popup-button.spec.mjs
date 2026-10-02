@@ -128,7 +128,7 @@ export default async function ({ browser, base, check }) {
     const cog = await page.evaluate(GO);
     check(`${tag} popup_button: true gives the cog's popup its button`, cog?.text === "Open system health", JSON.stringify(cog));
     // reachable by keyboard: Tab from the close button reaches it; Enter presses it
-    await page.evaluate(() => { window.nav.length = 0; });
+    await page.evaluate(() => { history.replaceState({}, "", "/lovelace/somewhere-else"); window.nav.length = 0; });
     await page.evaluate(() => window.__savvy.portalRoot().querySelector(".sv-go").focus());
     await page.keyboard.press("Enter");
     await page.waitForTimeout(500);

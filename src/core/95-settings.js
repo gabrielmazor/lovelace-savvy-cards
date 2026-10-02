@@ -70,7 +70,6 @@ const SETTINGS_RULES = {
     { path: "temperature", label: "Temperature", get: room("temperature") },
     { path: "include", label: "Include", kind: "union", get: room("include") },
     { path: "exclude", label: "Exclude", kind: "union", get: room("exclude") },
-    { path: "entities", label: "Light helper", kind: "pin", get: room("light_state") },
     { path: "home_path", label: "Home button", get: glob("pages", "home"), src: "pages" },
     { path: "room_path", label: "Room pages", get: glob("pages", "room"), src: "pages" },
     // the card's own `order` (the pre-Savvy name) counts as its own
@@ -83,7 +82,6 @@ const SETTINGS_RULES = {
     { path: "temperature", label: "Temperature", get: room("temperature") },
     { path: "include", label: "Include", kind: "union", get: room("include") },
     { path: "exclude", label: "Exclude", kind: "union", get: room("exclude") },
-    { path: "entities", label: "Light helper", kind: "pin", get: room("light_state") },
     { path: "navigation_path", label: "Target page", get: roomPage },
   ],
   "savvy-room-tile": [

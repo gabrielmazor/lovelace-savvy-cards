@@ -745,9 +745,7 @@ class LightsCard extends HTMLElement {
   }
 
   _navigate(path) {
-    history.pushState(null, "", path.startsWith("/") ? path
-      : `${location.pathname.replace(/\/[^/]*$/, "")}/${path}`);
-    window.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true }));
+    navigate(path);
   }
 
   _moreInfo(entityId) {

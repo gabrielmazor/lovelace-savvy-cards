@@ -1592,9 +1592,7 @@ class VacuumCard extends HTMLElement {
 
   // ---------- helpers ----------
   _navigate(path) {
-    if (!path) return;
-    history.pushState(null, "", path.startsWith("/") ? path : `${location.pathname.replace(/\/[^/]*$/, "")}/${path}`);
-    window.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true }));
+    navigate(path);
   }
   _moreInfo(entityId) {
     if (!entityId || !this._hass?.states[entityId]) return;

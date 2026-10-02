@@ -21,6 +21,21 @@ const dimmable = (st) => {
 
 const ROW_KINDS = {};
 
+// ---- binary sensors: read-only. Presence and motion say when it last changed; a tripped
+// leak / smoke / gas / CO sensor is red.
+ROW_KINDS.binary_sensor = {
+  build(ctx) {
+    return {
+      update(st, hass) {
+        const dc = st.attributes.device_class;
+        const unavailable = st.state === "unavailable" || st.state === "unknown";
+        return { val: stateText(hass, st), timed: !unavailable && PRESENCE_CLASSES.includes(dc),
+          alert: !unavailable && SAFETY_CLASSES.includes(dc) && st.state === "on" };
+      },
+    };
+  },
+};
+
 // ---- media players: play / pause (power when off) on the line; the rest on the extra line
 ROW_KINDS.media_player = {
   build(ctx) {

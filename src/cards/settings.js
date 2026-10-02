@@ -205,7 +205,7 @@ class SettingsEditor extends SavvyEditor {
           S.grid(S.text("name", "Name"), S.icon()),
           S.nav("page", "Target page"),
           S.entity("control", "Control"),
-          S.entity("light_state", "Light helper", undefined, { helper: "Pinned as the room's Light chip and the lights card's pill." }),
+          S.entity("light_state", "Light helper", undefined, { helper: "Used by the lights card's pill and the room tile's toggle. Not shown as a badge: pin it yourself under entities if you want one." }),
           S.grid(S.entity("temperature", "Temperature", "sensor"), S.entity("humidity", "Humidity", "sensor")),
           { name: "include", label: "Include", helper: "Entities to treat as in this room (a lock with no area).", selector: { entity: { multiple: true } } },
           { name: "exclude", label: "Exclude", selector: { entity: { multiple: true } } },

@@ -58,8 +58,8 @@ export default async function ({ browser, base, check }) {
       home.c.control === "input_select.house_mode" && home.c.weather === "weather.home" && home.c.home_path === "/lovelace/home"
       && home.c.lights.navigation_path === "/lovelace/lights" && home.c.health.navigation_path === "/lovelace/admin" && home.c.health.battery_threshold === 25 && home.inherited > 10, JSON.stringify(home.c).slice(0, 400));
     check(`${tag} system health takes the health options`, health.c.battery_threshold === 25 && health.c.warn_above === 5 && health.c.group_by === "device" && health.c.group_min === 4);
-    check(`${tag} room header: the room's control, temperature and pinned light helper`,
-      header.c.control === "input_select.kitchen_mode" && header.c.temperature === "sensor.kitchen_t" && header.c.entities[0].entity === "input_boolean.kitchen_light");
+    check(`${tag} room header: the room's control and temperature, and no Light badge`,
+      header.c.control === "input_select.kitchen_mode" && header.c.temperature === "sensor.kitchen_t" && header.c.entities === undefined);
     check(`${tag} section title: name, icon, control, page`, title.c.name === "Cook" && title.c.icon === "mdi:pot" && title.c.control === "input_select.kitchen_mode" && title.c.navigation_path === "/lovelace/kitchen-x");
     check(`${tag} room tile: name, toggle, page`, tile.c.name === "Cook" && tile.c.toggle === "input_boolean.kitchen_light" && tile.c.navigation_path === "/lovelace/kitchen-x");
     check(`${tag} lights: the pill's toggle is the room's light helper`, lights.c.toggle?.entity === "input_boolean.kitchen_light");
