@@ -12,7 +12,7 @@
 //   type: custom:savvy-graph-card
 //   title: System
 //   entities:
-//     - entity: sensor.processor_use
+//     - entity: sensor.server_cpu
 //       thresholds: [{ value: 0, level: good }, { value: 60, level: warn }, { value: 85, level: bad }]
 
 const CHART_H = 72;

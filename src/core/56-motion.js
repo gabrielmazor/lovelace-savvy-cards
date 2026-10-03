@@ -30,7 +30,7 @@ const ROLL_MIN_GAP = 250;      // ms: a value that changes every frame (a drag) 
 const NUM_RE = /-?\d+(?:\.\d+)?/;
 const FLIP_MAX = 120;         // children: a longer list just updates (measuring it every update costs more than it gives)
 
-MOTION.blend = { response: 0.5, damping: 1 };
+MOTION.blend = { response: 0.3, damping: 1 };
 MOTION.roll = { response: 0.4, damping: 1 };
 MOTION.flip = { response: 0.5, damping: 0.88 };
 MOTION.leave = { response: 0.32, damping: 1 };
@@ -318,15 +318,25 @@ function tintRead(els) {
   });
 }
 
+// Everything under one element moves together: every running override is dropped first and
+// every target read before any animation starts (a child must not read its parent's half-way
+// colour as its target), and the whole group shares one start, so a tile's background, its
+// icon box and its icon never drift apart.
 function tintDiff(els, before) {
-  els.forEach((e, i) => {
+  for (const e of els) {
     const mt = e.__mt;
     if (mt) for (const p in mt) { mt[p].dead = true; e.style.removeProperty(p); delete mt[p]; }   // read the CSS target, not our override
-    const cs = getComputedStyle(e);
-    let delay = null;
+  }
+  const after = els.map((e) => {
+    const cs = getComputedStyle(e), v = {};
+    for (const p of TINT_PROPS) v[p] = cs.getPropertyValue(p);
+    return v;
+  });
+  let delay = null;
+  els.forEach((e, i) => {
     for (const p of TINT_PROPS) {
       if (e.style.getPropertyValue(p)) continue;         // a card writes this one itself
-      const a = before[i][p], b = cs.getPropertyValue(p);
+      const a = before[i][p], b = after[i][p];
       if (a === b || !COLOR_FN.test(a) || !COLOR_FN.test(b)) continue;
       if (delay === null) delay = Motion.stagger();
       const anim = Motion.start(new MotionAnim(0, 1, MOTION.blend, delay, (t) => {

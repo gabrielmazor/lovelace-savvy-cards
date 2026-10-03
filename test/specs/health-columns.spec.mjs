@@ -109,12 +109,16 @@ export default async function ({ browser, base, check }) {
         window.mount("savvy-system-health-card", { watchman: ["sensor.watchman_missing_entities"], max_rows: 250 }, 420);
       });
       await t.waitForTimeout(500);
-      const q = await t.evaluate(() => { const r = window.cards[0].shadowRoot.querySelector(".row").getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+      // the swipe starts inside the visible page whatever the fonts of this machine make of the layout
+      const q = await t.evaluate(() => {
+        const r = window.cards[0].shadowRoot.querySelector(".row").getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: Math.min(r.y + r.height / 2, innerHeight - 40), vh: innerHeight, row: Math.round(r.y) };
+      });
       const cdp = await ctx.newCDPSession(t);
       await cdp.send("Input.synthesizeScrollGesture", { x: q.x, y: q.y, yDistance: -300, speed: 800, gestureSourceType: "touch" });
       await t.waitForTimeout(600);
       const ty = await t.evaluate(() => Math.round(window.scrollY));
-      check("[touch] a swipe starting on a short health card scrolls the page", ty > 100, String(ty));
+      check("[touch] a swipe starting on a short health card scrolls the page", ty > 100, `${ty} (swipe from ${JSON.stringify(q)})`);
       await ctx.close();
     }
   }

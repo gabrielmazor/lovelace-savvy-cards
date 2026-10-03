@@ -80,6 +80,7 @@ export default async function ({ browser, base, check }) {
     check(`${tag} tint: nothing is left behind when it settles (no inline colour, clock asleep)`, clean.inline === "" && !clean.busy, JSON.stringify(clean));
 
     // ---- interruption: reversing half way continues from where the colour is
+    // (the slide takes about a third of a second, so a long frame in WebKit can be a quarter of it: a jump is anything near all of it)
     await page.evaluate(() => window.__savvy.attr(window.boxes[1], "data-on", ""));
     await page.waitForTimeout(1200);
     const rev = await afterChange(page, () => {
@@ -90,7 +91,7 @@ export default async function ({ browser, base, check }) {
     const rp = rev.map(prog);
     const jump = Math.max(...rp.map((r, i) => (i ? Math.abs(r - rp[i - 1]) : 0)));
     check(`${tag} interruption: flipping back and forth mid-way never jumps (largest frame step ${(jump * 100).toFixed(0)}% of the slide)`,
-      Number.isFinite(jump) && jump < 0.2 && Math.max(...rp) > 0.15 && rev[rev.length - 1] === "rgb(0, 0, 255)", `${rev[rev.length - 1]} max ${Math.max(...rp).toFixed(2)}`);
+      Number.isFinite(jump) && jump < 0.3 && Math.max(...rp) > 0.15 && rev[rev.length - 1] === "rgb(0, 0, 255)", `${rev[rev.length - 1]} max ${Math.max(...rp).toFixed(2)}`);
 
     // ---- Cascade: changes in the same tick start one after another, capped
     await settle(page);

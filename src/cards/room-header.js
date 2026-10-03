@@ -5,8 +5,8 @@
 //
 //   type: custom:savvy-room-header-card
 //   area: living_room
-//   control: input_select.living_room_mode   home_path: /lovelace/home
-//   entities: [input_boolean.living_room_lights, …]     auto_discover: true
+//   control: input_select.living_room_scene   home_path: /lovelace/home
+//   entities: [switch.living_room_lights, …]     auto_discover: true
 //   chips: [...]                              room_path: /lovelace/{slug}
 
 const STYLE = `${BASE_CSS}${HEADER_CSS}${CHIP_ROW_CSS}`;

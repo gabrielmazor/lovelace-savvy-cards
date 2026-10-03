@@ -9,8 +9,8 @@
 //          value and opens more-info. Hold opens more-info.
 //
 //   type: custom:savvy-entity-card
-//   entity: person.alex
-//   chips: [{ entity: switch.scooter_plug, name: Scooter, icon: mdi:scooter-electric, color: blue }]
+//   entity: person.sam
+//   chips: [{ entity: switch.charger_plug, name: Charger, icon: mdi:ev-plug-type2, color: blue }]
 
 const TICK_MS = 30000;
 const PREDICT_MS = 4000;
@@ -320,7 +320,7 @@ class SavvyEntityCard extends SavvyCard {
   }
 
   // A chip reads as its value ("On", "82 %", "Charging"); a configured name leads it
-  // ("Scooter On"); a toggle's on/off is carried by its tint as well as the word.
+  // ("Charger On"); a toggle's on/off is carried by its tint as well as the word.
   _renderPill(node, item, st) {
     const h = this._hass, kind = this._kind(item);
     attr(node, "data-kind", kind);

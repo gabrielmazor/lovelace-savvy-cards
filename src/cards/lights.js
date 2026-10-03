@@ -7,6 +7,8 @@
 //   area: living_room               (or areas: [...], or lights: [...])
 //   toggle: { entity: input_boolean.room_lights }   show_toggle: true
 //   featured: [light.ceiling]   order: [...]   exclude: [...]   chips: [...]
+//   order: with none of its own, a card takes the order of the first lights card for the same room that has one
+//   (read from the dashboard); sync_order: false keeps a card independent
 
 
 
@@ -332,6 +334,7 @@ class LightsCard extends HTMLElement {
 
   connectedCallback() { this._observe(); this._wake(); }
   disconnectedCallback() {
+    clearTimeout(this._wantTimer);
     Clock.remove(this._job);
     this._list?.sheet.close(true);
     clearTimeout(this._tapTimer);
@@ -677,15 +680,41 @@ class LightsCard extends HTMLElement {
   _toggle(id) {
     this._haptic("light");
     const power = this._opts(id).power;
+    this._hint([id], !this._isOn(id));
     if (power) return this._hass.callService(power.split(".")[0], "toggle", {}, { entity_id: power });
     this._service("toggle", {}, id);
   }
 
+  // A tap shows its result at once: the lamps move to the state they were asked for, and move
+  // back if Home Assistant has not followed within two seconds.
+  _hint(ids, on) {
+    const want = this._want || (this._want = new Map());
+    const until = performance.now() + 2000;
+    for (const id of ids) {
+      const st = this._hass.states[this._opts(id).power || id];
+      if (!st || st.state === "unavailable" || st.state === "unknown") continue;
+      want.set(id, { on, until });
+    }
+    if (!want.size) return;
+    clearTimeout(this._wantTimer);
+    this._wantTimer = setTimeout(() => { this._want?.clear(); if (this._el && this._hass) this._update(); }, 2050);
+    if (this._el) this._update();
+  }
+
   // Is this lamp on? Its own switch decides when it has one.
-  _isOn(id) {
+  // `real`: what Home Assistant says, ignoring a tap that is still waiting for its answer (a second tap
+  // asks for the same thing again instead of reversing the first)
+  _isOn(id, real = false) {
     const power = this._opts(id).power;
-    if (power) return this._hass.states[power]?.state === "on";
-    return this._hass.states[id]?.state === "on";
+    const now = (power ? this._hass.states[power] : this._hass.states[id])?.state === "on";
+    if (real) return now;
+    return this._shown(id, now);
+  }
+  _shown(id, real) {
+    const w = this._want?.get(id);
+    if (!w) return real;
+    if (real === w.on || performance.now() > w.until) { this._want.delete(id); return real; }
+    return w.on;
   }
 
   // The header pill. Built in: a tap is all on or all off. With an entity in it
@@ -726,14 +755,15 @@ class LightsCard extends HTMLElement {
   _allOff() {
     const ids = this._ids || [];
     this._haptic("medium");
-    if (ids.length) this._service("turn_off", {}, ids);
+    if (ids.length) { this._hint(ids, false); this._service("turn_off", {}, ids); }
   }
 
   _toggleAll() {
     const ids = this._ids || [];
     if (!ids.length) return;
-    const anyOn = ids.some((id) => this._isOn(id));
+    const anyOn = ids.some((id) => this._isOn(id, true));
     this._haptic("light");
+    this._hint(ids, !anyOn);
     this._service(anyOn ? "turn_off" : "turn_on", {}, ids);
   }
 
@@ -1174,8 +1204,9 @@ const EDITOR = defineEditor("savvy-lights-card", (hass, c) => [
     { name: "double_tap_action", label: "Double tap action", selector: { ui_action: {} } },
     { name: "hold_action", label: "Hold action", selector: { ui_action: {} } },
   ] },
-  { name: "order", label: "Order", type: "list", helper: "Drag order with the arrows. Lights not listed follow, by name.",
+  { name: "order", label: "Order", type: "list", helper: "Drag order with the arrows. Lights not listed follow, by name. Without one, the first lights card for this room that has an order lends its own.",
     initial: (h, cfg) => (h ? lightsOf(h, cfg) : []), add: { selector: { entity: { domain: "light" } }, label: "Add a light" } },
+  S.bool("sync_order", "Follow other cards", "Take the order from the first lights card for this room that has one, when this card has none.", true),
   { name: "featured", label: "Wide tiles", selector: { entity: { domain: "light", multiple: true } } },
   { name: "exclude", label: "Leave out", selector: { entity: { domain: "light", multiple: true } } },
   S.grid(S.number("columns", "Columns", 1, 6), S.bool("power_button", "Power buttons", null, false)),

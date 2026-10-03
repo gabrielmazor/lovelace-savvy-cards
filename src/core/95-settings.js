@@ -24,11 +24,37 @@ const navTo = (path) => (path ? { action: "navigate", navigation_path: path } : 
 const pagePattern = (pattern, x) => (pattern ? String(pattern).replace(/\{area\}/g, x.area || "").replace(/\{slug\}/g, x.slug || "") : undefined);
 // a room's own value, else nothing: the source says which room
 const room = (key) => (s, c, x) => (x.room?.[key] != null && x.room[key] !== "" ? { v: x.room[key], src: `rooms.${x.area}` } : undefined);
+const AUTO = "found automatically";
+// a page the settings name; else the dashboard's own view of that name; `false` says there is none
+const pageFor = (kind) => (s) => {
+  const own = s.pages?.[kind];
+  if (own) return { v: own, src: "pages" };
+  if (own === false) return undefined;
+  const v = SettingsStore.autoPage(kind);
+  return v ? { v, src: AUTO } : undefined;
+};
 const roomPage = (s, c, x) => {
   if (!x.area) return undefined;
   if (x.room?.page) return { v: x.room.page, src: `rooms.${x.area}` };
   const v = pagePattern(s.pages?.room, x);
-  return v ? { v, src: "pages.room" } : undefined;
+  if (v) return { v, src: "pages.room" };
+  if (s.pages?.room === false) return undefined;
+  const a = SettingsStore.autoRoom(x.area);
+  return a ? { v: a, src: AUTO } : undefined;
+};
+const roomPattern = (s) => {
+  if (s.pages?.room) return { v: s.pages.room, src: "pages" };
+  if (s.pages?.room === false) return undefined;
+  const v = SettingsStore.autoRoomPattern();
+  return v ? { v, src: AUTO } : undefined;
+};
+// a card with no order of its own takes the first card of its kind for the same room that has one
+const ORDER_CARDS = { "custom:savvy-lights-card": { label: "Lights card", legacy: ["main", "side", "master"] } };
+const followOrder = (type) => (s, c, x) => {
+  if (!x.area || c.sync_order === false || ORDER_CARDS[type].legacy.some((k) => c[k] !== undefined)) return undefined;
+  const m = SettingsStore.orderFor(type, x.area);
+  if (!m) return undefined;
+  return { v: m.order, src: `read from the ${ORDER_CARDS[type].label} on ${m.where}${m.count > 1 ? `, the first of ${m.count}` : ""}`, unlink: true };
 };
 const glob = (section, key) => (s) => s[section]?.[key];
 // what a room card leaves out: the room's own `exclude` and the global ignore list, one list
@@ -61,10 +87,10 @@ const SETTINGS_RULES = {
     { path: "weather", label: "Weather", get: glob("house", "weather"), src: "house" },
     { path: "home_path", label: "Home button", get: glob("pages", "home"), src: "pages" },
     ...HOME_CHIPS.flatMap((k) => [
-      { path: `${k}.navigation_path`, label: `${cap(k)} page`, get: (s) => s.pages?.[k], src: "pages" },
+      { path: `${k}.navigation_path`, label: `${cap(k)} page`, get: pageFor(k) },
       // a tap goes to the page and the hold lists, unless the chip already has gestures of its own
       { path: `${k}.tap_action`, label: `${cap(k)} tap`, src: "house",
-        get: (s, c) => (s.house?.tap === "navigate" && c[k]?.hold_action === undefined ? navTo(c[k]?.navigation_path ?? s.pages?.[k]) : undefined) },
+        get: (s, c) => (s.house?.tap === "navigate" && c[k]?.hold_action === undefined ? navTo(c[k]?.navigation_path ?? pageFor(k)(s)?.v) : undefined) },
       { path: `${k}.exclude`, label: `${cap(k)} ignored`, kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
       { path: `${k}.exclude_areas`, label: `${cap(k)} ignored rooms`, kind: "union", get: (s) => s.ignore?.areas, src: "ignore" },
       // the card's own room_order covers all four chips; the settings' order fills in under both
@@ -85,7 +111,7 @@ const SETTINGS_RULES = {
     { path: "include", label: "Include", kind: "union", get: room("include") },
     { path: "exclude", label: "Exclude", kind: "union", get: roomExclude },
     { path: "home_path", label: "Home button", get: glob("pages", "home"), src: "pages" },
-    { path: "room_path", label: "Room pages", get: glob("pages", "room"), src: "pages" },
+    { path: "room_path", label: "Room pages", get: roomPattern },
     // the card's own `order` (the pre-Savvy name) counts as its own
     { path: "room_order", label: "Room order", get: (s, c) => (c.order !== undefined ? undefined : s.room_order), src: "room_order" },
   ],
@@ -111,6 +137,7 @@ const SETTINGS_RULES = {
     { path: "navigation_path", label: "Target page", get: roomPage },
   ],
   "savvy-lights-card": [
+    { path: "order", label: "Order", get: followOrder("custom:savvy-lights-card") },
     { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
     { path: "toggle", label: "Light helper",
       get: (s, c, x) => {
@@ -194,14 +221,15 @@ const showValue = (v) => {
 // resolveSettings(type, cfg, settings) -> { config, inherited: [{ path, label, value, from }] }
 function resolveSettings(type, cfg, settings) {
   const rules = SETTINGS_RULES[type];
-  if (!rules || !settings || !cfg || typeof cfg !== "object") return { config: cfg, inherited: [] };
+  if (!rules || !cfg || typeof cfg !== "object") return { config: cfg, inherited: [] };
+  settings = settings || {};         // the dashboard's own pages and orders count even with no settings card
   const x = settingsArea(cfg, settings);
   let out = cfg;
   const inherited = [];
   for (const r of rules) {
     const got = r.get(settings, cfg, x);
     if (got === undefined || got === null) continue;
-    const { v, src } = typeof got === "object" && !Array.isArray(got) && "v" in got ? got : { v: got, src: r.src };
+    const { v, src, unlink } = typeof got === "object" && !Array.isArray(got) && "v" in got ? got : { v: got, src: r.src };
     if (v === undefined || v === null || v === "" || (Array.isArray(v) && !v.length)) continue;
     if (blockedPath(cfg, r.path)) continue;
     const own = getPath(cfg, r.path);
@@ -219,7 +247,7 @@ function resolveSettings(type, cfg, settings) {
       if (own !== undefined && own !== null) continue;
       out = setPath(out, r.path, v);
     }
-    inherited.push({ path: r.path, label: r.label, value: showValue(v), from: src });
+    inherited.push({ path: r.path, label: r.label, value: showValue(v), from: src, ...(unlink ? { unlink: true, raw: v } : {}) });
   }
   return { config: out, inherited };
 }
@@ -260,6 +288,56 @@ function normalizeSettings(config) {
   return Object.keys(out).length ? out : null;
 }
 
+// ---- what the dashboard itself says: its views, and the orders its cards were given -----------
+
+const slugOf = (v) => String(v ?? "").trim().toLowerCase().replace(/[\s_]+/g, "-");
+const DOMAIN_PAGES = { lights: ["lights", "lighting", "light"], climate: ["climate"], media: ["media"], security: ["security"] };
+
+// the dashboard's views that can be opened by name
+function collectViews(conf) {
+  return (Array.isArray(conf?.views) ? conf.views : [])
+    .filter((v) => v && typeof v.path === "string" && v.path)
+    .map((v) => ({ path: v.path, title: typeof v.title === "string" ? v.title : "" }));
+}
+
+// the one view a name belongs to: by its path first, else by its title. Two different views: no guess.
+function findView(views, names) {
+  const want = new Set(names.map(slugOf).filter(Boolean));
+  if (!want.size) return null;
+  for (const by of ["path", "title"]) {
+    const hit = [...new Set(views.filter((v) => want.has(slugOf(v[by]))).map((v) => v.path))];
+    if (hit.length === 1) return hit[0];
+    if (hit.length > 1) return null;
+  }
+  return null;
+}
+const viewUrl = (path) => `/${(location.pathname || "").split("/").filter(Boolean)[0] || "lovelace"}/${path}`;
+
+// per card kind and room, the first card (in the dashboard's own order) that has an order of its own
+function collectOrders(conf) {
+  const out = {};
+  (Array.isArray(conf?.views) ? conf.views : []).forEach((view, vi) => {
+    const where = view?.title || view?.path || `view ${vi + 1}`;
+    const walk = (node) => {
+      if (Array.isArray(node)) return node.forEach(walk);
+      if (!node || typeof node !== "object") return;
+      const o = ORDER_CARDS[node.type];
+      if (o && Array.isArray(node.order) && node.order.length) {
+        let a = node.area ?? node.areas;
+        if (Array.isArray(a)) a = a.length === 1 ? a[0] : null;
+        if (typeof a === "string" && a) {
+          const key = `${node.type}|${a}`;
+          if (out[key]) out[key].count++;
+          else out[key] = { order: node.order.filter((e) => typeof e === "string"), where, count: 1 };
+        }
+      }
+      for (const v of Object.values(node)) if (v && typeof v === "object") walk(v);
+    };
+    walk(view);
+  });
+  return out;
+}
+
 // how many values are set: what the settings card reports as "defaults"
 function countDefaults(s) {
   let n = 0;
@@ -275,6 +353,8 @@ function countDefaults(s) {
 const SettingsStore = {
   settings: null,
   found: 0,
+  views: [],            // the dashboard's views with a path
+  orders: {},           // `type|area` -> the first card's order
   live: null,           // the settings card on this page that publishes while it is edited
   hass: null,
   cards: new Set(),
@@ -294,8 +374,9 @@ const SettingsStore = {
   },
   _writeCache() {
     try {
-      if (this.settings) localStorage.setItem(this._key(), JSON.stringify({ settings: this.settings, found: this.found }));
-      else localStorage.removeItem(this._key());
+      if (this.settings || this.views.length || Object.keys(this.orders).length) {
+        localStorage.setItem(this._key(), JSON.stringify({ settings: this.settings, found: this.found, views: this.views, orders: this.orders }));
+      } else localStorage.removeItem(this._key());
     } catch (err) { /* storage can be blocked: the cards still work from the fetch */ }
   },
 
@@ -309,6 +390,45 @@ const SettingsStore = {
     const c = this._readCache();
     this.settings = c?.settings || null;
     this.found = c?.found || 0;
+    this.views = Array.isArray(c?.views) ? c.views : [];
+    this.orders = c?.orders && typeof c.orders === "object" ? c.orders : {};
+  },
+
+  // what the dashboard says about itself changed: its views and the orders its cards hold
+  setDashboard(views, orders) {
+    if (JSON.stringify(views) === JSON.stringify(this.views) && JSON.stringify(orders) === JSON.stringify(this.orders)) return false;
+    this.views = views;
+    this.orders = orders;
+    return true;
+  },
+
+  // pages found by name, for the cards that would otherwise need them written down
+  autoPage(kind) {
+    const p = DOMAIN_PAGES[kind] && findView(this.views, DOMAIN_PAGES[kind]);
+    return p ? viewUrl(p) : undefined;
+  },
+  autoRoom(area) {
+    const p = findView(this.views, [area, this.hass?.areas?.[area]?.name]);
+    return p ? viewUrl(p) : undefined;
+  },
+  // `/lovelace/{slug}` when the dashboard's views carry the rooms' names (with dashes, else with underscores)
+  autoRoomPattern() {
+    const ids = Object.keys(this.hass?.areas || {});
+    if (!ids.length || !this.views.length) return undefined;
+    const paths = new Set(this.views.map((v) => v.path));
+    const dashed = ids.filter((a) => paths.has(a.replace(/_/g, "-"))).length, plain = ids.filter((a) => a.includes("_") && paths.has(a)).length;
+    const base = viewUrl("").replace(/\/$/, "");
+    if (dashed >= plain && dashed > 0) return `${base}/{slug}`;
+    return plain > 0 ? `${base}/{area}` : undefined;
+  },
+  orderFor(type, area) { return this.orders[`${type}|${area}`] || null; },
+  // every page this dashboard gave a name to: what the settings card lists
+  autoPages() {
+    const out = {};
+    for (const k of Object.keys(DOMAIN_PAGES)) { const v = this.autoPage(k); if (v) out[k] = v; }
+    const room = this.autoRoomPattern();
+    if (room) out.room = room;
+    return out;
   },
 
   subscribe(fn) { this.subs.add(fn); return () => this.subs.delete(fn); },
@@ -379,9 +499,15 @@ const SettingsStore = {
     if (!conf || typeof conf !== "object") return;
     this._fetchedAt = Date.now();
     const cards = findSettingsCards(conf);
+    const dash = this.setDashboard(collectViews(conf), collectOrders(conf));
     // the settings card on this page is the freshest source while it is there
-    if (this.live) { this.found = Math.max(cards.length, 1); this._statsSoon(); return; }
+    if (this.live) {
+      this.found = Math.max(cards.length, 1);
+      if (dash) { this._writeCache(); this._changed(); } else this._statsSoon();
+      return;
+    }
     this.set(normalizeSettings(cards[0]), cards.length);
+    if (dash) { this._writeCache(); this._changed(); }
     this._statsSoon();
   },
   _watch() {
@@ -394,7 +520,7 @@ const SettingsStore = {
 
   // test pages reset it between runs
   reset() {
-    this.settings = null; this.found = 0; this.live = null; this.hass = null; this.cards.clear(); this.subs.clear();
+    this.settings = null; this.found = 0; this.views = []; this.orders = {}; this.live = null; this.hass = null; this.cards.clear(); this.subs.clear();
     this._path = undefined; this._fetched = false; this._fetchedAt = 0;
   },
 };

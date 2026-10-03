@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.9.1 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.9.2 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.9.1";
+const SAVVY_VERSION = "0.9.2";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -1597,7 +1597,7 @@ const ROLL_MIN_GAP = 250;      // ms: a value that changes every frame (a drag) 
 const NUM_RE = /-?\d+(?:\.\d+)?/;
 const FLIP_MAX = 120;         // children: a longer list just updates (measuring it every update costs more than it gives)
 
-MOTION.blend = { response: 0.5, damping: 1 };
+MOTION.blend = { response: 0.3, damping: 1 };
 MOTION.roll = { response: 0.4, damping: 1 };
 MOTION.flip = { response: 0.5, damping: 0.88 };
 MOTION.leave = { response: 0.32, damping: 1 };
@@ -1885,15 +1885,25 @@ function tintRead(els) {
   });
 }
 
+// Everything under one element moves together: every running override is dropped first and
+// every target read before any animation starts (a child must not read its parent's half-way
+// colour as its target), and the whole group shares one start, so a tile's background, its
+// icon box and its icon never drift apart.
 function tintDiff(els, before) {
-  els.forEach((e, i) => {
+  for (const e of els) {
     const mt = e.__mt;
     if (mt) for (const p in mt) { mt[p].dead = true; e.style.removeProperty(p); delete mt[p]; }   // read the CSS target, not our override
-    const cs = getComputedStyle(e);
-    let delay = null;
+  }
+  const after = els.map((e) => {
+    const cs = getComputedStyle(e), v = {};
+    for (const p of TINT_PROPS) v[p] = cs.getPropertyValue(p);
+    return v;
+  });
+  let delay = null;
+  els.forEach((e, i) => {
     for (const p of TINT_PROPS) {
       if (e.style.getPropertyValue(p)) continue;         // a card writes this one itself
-      const a = before[i][p], b = cs.getPropertyValue(p);
+      const a = before[i][p], b = after[i][p];
       if (a === b || !COLOR_FN.test(a) || !COLOR_FN.test(b)) continue;
       if (delay === null) delay = Motion.stagger();
       const anim = Motion.start(new MotionAnim(0, 1, MOTION.blend, delay, (t) => {
@@ -4425,6 +4435,9 @@ const EDITOR_CSS = `
   .sv-inherit .l b { flex: none; font-weight: 600; color: var(--primary-text-color); }
   .sv-inherit .l span { min-width: 0; overflow-wrap: anywhere; }
   .sv-inherit .l i { font-style: normal; opacity: 0.7; }
+  .sv-inherit .l { align-items: baseline; }
+  .sv-inherit .unlink { flex: none; margin-inline-start: auto; padding: 2px 10px; border: 0; border-radius: 8px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+    color: var(--primary-color, #58a6ff); background: color-mix(in oklab, var(--primary-color, #58a6ff) 14%, transparent); }
   .sv-inherit .n { font-size: 11.5px; color: var(--secondary-text-color); margin-top: 6px; }
 `;
 
@@ -4459,9 +4472,11 @@ class SavvyEditor extends HTMLElement {
     if (!box) {
       box = document.createElement("div");
       box.className = "sv-inherit";
-      box.innerHTML = '<div class="h"><ha-icon icon="mdi:cog-sync-outline"></ha-icon><span>From Savvy settings</span></div><div class="rows"></div><div class="n">Set a value on this card to override it.</div>';
+      box.innerHTML = '<div class="h"><ha-icon icon="mdi:cog-sync-outline"></ha-icon><span></span></div><div class="rows"></div><div class="n">Set a value on this card to override it.</div>';
       wrap.insertBefore(box, wrap.firstChild);
     }
+    // what is not from the settings card is found on the dashboard itself
+    box.querySelector(".h span").textContent = list.every((i) => i.unlink || i.from === AUTO) ? "Found on the dashboard" : "From Savvy settings";
     const key = JSON.stringify(list);
     if (box.__key === key) return;
     box.__key = key;
@@ -4475,6 +4490,15 @@ class SavvyEditor extends HTMLElement {
       f.textContent = ` (${i.from})`;
       v.appendChild(f);
       row.append(b, v);
+      // a value read from another card can be taken over: it is copied here and no longer follows
+      if (i.unlink) {
+        const u = document.createElement("button");
+        u.type = "button";
+        u.className = "unlink";
+        u.textContent = "Unlink";
+        u.addEventListener("click", () => { this._emit({ ...this._config, [i.path]: i.raw }); this._render(); });
+        row.appendChild(u);
+      }
       return row;
     }));
   }
@@ -4807,11 +4831,37 @@ const navTo = (path) => (path ? { action: "navigate", navigation_path: path } : 
 const pagePattern = (pattern, x) => (pattern ? String(pattern).replace(/\{area\}/g, x.area || "").replace(/\{slug\}/g, x.slug || "") : undefined);
 // a room's own value, else nothing: the source says which room
 const room = (key) => (s, c, x) => (x.room?.[key] != null && x.room[key] !== "" ? { v: x.room[key], src: `rooms.${x.area}` } : undefined);
+const AUTO = "found automatically";
+// a page the settings name; else the dashboard's own view of that name; `false` says there is none
+const pageFor = (kind) => (s) => {
+  const own = s.pages?.[kind];
+  if (own) return { v: own, src: "pages" };
+  if (own === false) return undefined;
+  const v = SettingsStore.autoPage(kind);
+  return v ? { v, src: AUTO } : undefined;
+};
 const roomPage = (s, c, x) => {
   if (!x.area) return undefined;
   if (x.room?.page) return { v: x.room.page, src: `rooms.${x.area}` };
   const v = pagePattern(s.pages?.room, x);
-  return v ? { v, src: "pages.room" } : undefined;
+  if (v) return { v, src: "pages.room" };
+  if (s.pages?.room === false) return undefined;
+  const a = SettingsStore.autoRoom(x.area);
+  return a ? { v: a, src: AUTO } : undefined;
+};
+const roomPattern = (s) => {
+  if (s.pages?.room) return { v: s.pages.room, src: "pages" };
+  if (s.pages?.room === false) return undefined;
+  const v = SettingsStore.autoRoomPattern();
+  return v ? { v, src: AUTO } : undefined;
+};
+// a card with no order of its own takes the first card of its kind for the same room that has one
+const ORDER_CARDS = { "custom:savvy-lights-card": { label: "Lights card", legacy: ["main", "side", "master"] } };
+const followOrder = (type) => (s, c, x) => {
+  if (!x.area || c.sync_order === false || ORDER_CARDS[type].legacy.some((k) => c[k] !== undefined)) return undefined;
+  const m = SettingsStore.orderFor(type, x.area);
+  if (!m) return undefined;
+  return { v: m.order, src: `read from the ${ORDER_CARDS[type].label} on ${m.where}${m.count > 1 ? `, the first of ${m.count}` : ""}`, unlink: true };
 };
 const glob = (section, key) => (s) => s[section]?.[key];
 // what a room card leaves out: the room's own `exclude` and the global ignore list, one list
@@ -4844,10 +4894,10 @@ const SETTINGS_RULES = {
     { path: "weather", label: "Weather", get: glob("house", "weather"), src: "house" },
     { path: "home_path", label: "Home button", get: glob("pages", "home"), src: "pages" },
     ...HOME_CHIPS.flatMap((k) => [
-      { path: `${k}.navigation_path`, label: `${cap(k)} page`, get: (s) => s.pages?.[k], src: "pages" },
+      { path: `${k}.navigation_path`, label: `${cap(k)} page`, get: pageFor(k) },
       // a tap goes to the page and the hold lists, unless the chip already has gestures of its own
       { path: `${k}.tap_action`, label: `${cap(k)} tap`, src: "house",
-        get: (s, c) => (s.house?.tap === "navigate" && c[k]?.hold_action === undefined ? navTo(c[k]?.navigation_path ?? s.pages?.[k]) : undefined) },
+        get: (s, c) => (s.house?.tap === "navigate" && c[k]?.hold_action === undefined ? navTo(c[k]?.navigation_path ?? pageFor(k)(s)?.v) : undefined) },
       { path: `${k}.exclude`, label: `${cap(k)} ignored`, kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
       { path: `${k}.exclude_areas`, label: `${cap(k)} ignored rooms`, kind: "union", get: (s) => s.ignore?.areas, src: "ignore" },
       // the card's own room_order covers all four chips; the settings' order fills in under both
@@ -4868,7 +4918,7 @@ const SETTINGS_RULES = {
     { path: "include", label: "Include", kind: "union", get: room("include") },
     { path: "exclude", label: "Exclude", kind: "union", get: roomExclude },
     { path: "home_path", label: "Home button", get: glob("pages", "home"), src: "pages" },
-    { path: "room_path", label: "Room pages", get: glob("pages", "room"), src: "pages" },
+    { path: "room_path", label: "Room pages", get: roomPattern },
     // the card's own `order` (the pre-Savvy name) counts as its own
     { path: "room_order", label: "Room order", get: (s, c) => (c.order !== undefined ? undefined : s.room_order), src: "room_order" },
   ],
@@ -4894,6 +4944,7 @@ const SETTINGS_RULES = {
     { path: "navigation_path", label: "Target page", get: roomPage },
   ],
   "savvy-lights-card": [
+    { path: "order", label: "Order", get: followOrder("custom:savvy-lights-card") },
     { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
     { path: "toggle", label: "Light helper",
       get: (s, c, x) => {
@@ -4977,14 +5028,15 @@ const showValue = (v) => {
 // resolveSettings(type, cfg, settings) -> { config, inherited: [{ path, label, value, from }] }
 function resolveSettings(type, cfg, settings) {
   const rules = SETTINGS_RULES[type];
-  if (!rules || !settings || !cfg || typeof cfg !== "object") return { config: cfg, inherited: [] };
+  if (!rules || !cfg || typeof cfg !== "object") return { config: cfg, inherited: [] };
+  settings = settings || {};         // the dashboard's own pages and orders count even with no settings card
   const x = settingsArea(cfg, settings);
   let out = cfg;
   const inherited = [];
   for (const r of rules) {
     const got = r.get(settings, cfg, x);
     if (got === undefined || got === null) continue;
-    const { v, src } = typeof got === "object" && !Array.isArray(got) && "v" in got ? got : { v: got, src: r.src };
+    const { v, src, unlink } = typeof got === "object" && !Array.isArray(got) && "v" in got ? got : { v: got, src: r.src };
     if (v === undefined || v === null || v === "" || (Array.isArray(v) && !v.length)) continue;
     if (blockedPath(cfg, r.path)) continue;
     const own = getPath(cfg, r.path);
@@ -5002,7 +5054,7 @@ function resolveSettings(type, cfg, settings) {
       if (own !== undefined && own !== null) continue;
       out = setPath(out, r.path, v);
     }
-    inherited.push({ path: r.path, label: r.label, value: showValue(v), from: src });
+    inherited.push({ path: r.path, label: r.label, value: showValue(v), from: src, ...(unlink ? { unlink: true, raw: v } : {}) });
   }
   return { config: out, inherited };
 }
@@ -5043,6 +5095,56 @@ function normalizeSettings(config) {
   return Object.keys(out).length ? out : null;
 }
 
+// ---- what the dashboard itself says: its views, and the orders its cards were given -----------
+
+const slugOf = (v) => String(v ?? "").trim().toLowerCase().replace(/[\s_]+/g, "-");
+const DOMAIN_PAGES = { lights: ["lights", "lighting", "light"], climate: ["climate"], media: ["media"], security: ["security"] };
+
+// the dashboard's views that can be opened by name
+function collectViews(conf) {
+  return (Array.isArray(conf?.views) ? conf.views : [])
+    .filter((v) => v && typeof v.path === "string" && v.path)
+    .map((v) => ({ path: v.path, title: typeof v.title === "string" ? v.title : "" }));
+}
+
+// the one view a name belongs to: by its path first, else by its title. Two different views: no guess.
+function findView(views, names) {
+  const want = new Set(names.map(slugOf).filter(Boolean));
+  if (!want.size) return null;
+  for (const by of ["path", "title"]) {
+    const hit = [...new Set(views.filter((v) => want.has(slugOf(v[by]))).map((v) => v.path))];
+    if (hit.length === 1) return hit[0];
+    if (hit.length > 1) return null;
+  }
+  return null;
+}
+const viewUrl = (path) => `/${(location.pathname || "").split("/").filter(Boolean)[0] || "lovelace"}/${path}`;
+
+// per card kind and room, the first card (in the dashboard's own order) that has an order of its own
+function collectOrders(conf) {
+  const out = {};
+  (Array.isArray(conf?.views) ? conf.views : []).forEach((view, vi) => {
+    const where = view?.title || view?.path || `view ${vi + 1}`;
+    const walk = (node) => {
+      if (Array.isArray(node)) return node.forEach(walk);
+      if (!node || typeof node !== "object") return;
+      const o = ORDER_CARDS[node.type];
+      if (o && Array.isArray(node.order) && node.order.length) {
+        let a = node.area ?? node.areas;
+        if (Array.isArray(a)) a = a.length === 1 ? a[0] : null;
+        if (typeof a === "string" && a) {
+          const key = `${node.type}|${a}`;
+          if (out[key]) out[key].count++;
+          else out[key] = { order: node.order.filter((e) => typeof e === "string"), where, count: 1 };
+        }
+      }
+      for (const v of Object.values(node)) if (v && typeof v === "object") walk(v);
+    };
+    walk(view);
+  });
+  return out;
+}
+
 // how many values are set: what the settings card reports as "defaults"
 function countDefaults(s) {
   let n = 0;
@@ -5058,6 +5160,8 @@ function countDefaults(s) {
 const SettingsStore = {
   settings: null,
   found: 0,
+  views: [],            // the dashboard's views with a path
+  orders: {},           // `type|area` -> the first card's order
   live: null,           // the settings card on this page that publishes while it is edited
   hass: null,
   cards: new Set(),
@@ -5077,8 +5181,9 @@ const SettingsStore = {
   },
   _writeCache() {
     try {
-      if (this.settings) localStorage.setItem(this._key(), JSON.stringify({ settings: this.settings, found: this.found }));
-      else localStorage.removeItem(this._key());
+      if (this.settings || this.views.length || Object.keys(this.orders).length) {
+        localStorage.setItem(this._key(), JSON.stringify({ settings: this.settings, found: this.found, views: this.views, orders: this.orders }));
+      } else localStorage.removeItem(this._key());
     } catch (err) { /* storage can be blocked: the cards still work from the fetch */ }
   },
 
@@ -5092,6 +5197,45 @@ const SettingsStore = {
     const c = this._readCache();
     this.settings = c?.settings || null;
     this.found = c?.found || 0;
+    this.views = Array.isArray(c?.views) ? c.views : [];
+    this.orders = c?.orders && typeof c.orders === "object" ? c.orders : {};
+  },
+
+  // what the dashboard says about itself changed: its views and the orders its cards hold
+  setDashboard(views, orders) {
+    if (JSON.stringify(views) === JSON.stringify(this.views) && JSON.stringify(orders) === JSON.stringify(this.orders)) return false;
+    this.views = views;
+    this.orders = orders;
+    return true;
+  },
+
+  // pages found by name, for the cards that would otherwise need them written down
+  autoPage(kind) {
+    const p = DOMAIN_PAGES[kind] && findView(this.views, DOMAIN_PAGES[kind]);
+    return p ? viewUrl(p) : undefined;
+  },
+  autoRoom(area) {
+    const p = findView(this.views, [area, this.hass?.areas?.[area]?.name]);
+    return p ? viewUrl(p) : undefined;
+  },
+  // `/lovelace/{slug}` when the dashboard's views carry the rooms' names (with dashes, else with underscores)
+  autoRoomPattern() {
+    const ids = Object.keys(this.hass?.areas || {});
+    if (!ids.length || !this.views.length) return undefined;
+    const paths = new Set(this.views.map((v) => v.path));
+    const dashed = ids.filter((a) => paths.has(a.replace(/_/g, "-"))).length, plain = ids.filter((a) => a.includes("_") && paths.has(a)).length;
+    const base = viewUrl("").replace(/\/$/, "");
+    if (dashed >= plain && dashed > 0) return `${base}/{slug}`;
+    return plain > 0 ? `${base}/{area}` : undefined;
+  },
+  orderFor(type, area) { return this.orders[`${type}|${area}`] || null; },
+  // every page this dashboard gave a name to: what the settings card lists
+  autoPages() {
+    const out = {};
+    for (const k of Object.keys(DOMAIN_PAGES)) { const v = this.autoPage(k); if (v) out[k] = v; }
+    const room = this.autoRoomPattern();
+    if (room) out.room = room;
+    return out;
   },
 
   subscribe(fn) { this.subs.add(fn); return () => this.subs.delete(fn); },
@@ -5162,9 +5306,15 @@ const SettingsStore = {
     if (!conf || typeof conf !== "object") return;
     this._fetchedAt = Date.now();
     const cards = findSettingsCards(conf);
+    const dash = this.setDashboard(collectViews(conf), collectOrders(conf));
     // the settings card on this page is the freshest source while it is there
-    if (this.live) { this.found = Math.max(cards.length, 1); this._statsSoon(); return; }
+    if (this.live) {
+      this.found = Math.max(cards.length, 1);
+      if (dash) { this._writeCache(); this._changed(); } else this._statsSoon();
+      return;
+    }
     this.set(normalizeSettings(cards[0]), cards.length);
+    if (dash) { this._writeCache(); this._changed(); }
     this._statsSoon();
   },
   _watch() {
@@ -5177,7 +5327,7 @@ const SettingsStore = {
 
   // test pages reset it between runs
   reset() {
-    this.settings = null; this.found = 0; this.live = null; this.hass = null; this.cards.clear(); this.subs.clear();
+    this.settings = null; this.found = 0; this.views = []; this.orders = {}; this.live = null; this.hass = null; this.cards.clear(); this.subs.clear();
     this._path = undefined; this._fetched = false; this._fetchedAt = 0;
   },
 };
@@ -8924,8 +9074,8 @@ registerCard("savvy-climate-card", ClimateCard, "Climate",
 //          value and opens more-info. Hold opens more-info.
 //
 //   type: custom:savvy-entity-card
-//   entity: person.alex
-//   chips: [{ entity: switch.scooter_plug, name: Scooter, icon: mdi:scooter-electric, color: blue }]
+//   entity: person.sam
+//   chips: [{ entity: switch.charger_plug, name: Charger, icon: mdi:ev-plug-type2, color: blue }]
 
 const TICK_MS = 30000;
 const PREDICT_MS = 4000;
@@ -9235,7 +9385,7 @@ class SavvyEntityCard extends SavvyCard {
   }
 
   // A chip reads as its value ("On", "82 %", "Charging"); a configured name leads it
-  // ("Scooter On"); a toggle's on/off is carried by its tint as well as the word.
+  // ("Charger On"); a toggle's on/off is carried by its tint as well as the word.
   _renderPill(node, item, st) {
     const h = this._hass, kind = this._kind(item);
     attr(node, "data-kind", kind);
@@ -9379,7 +9529,7 @@ registerCard("savvy-entity-card", SavvyEntityCard, "Entity",
 //   type: custom:savvy-graph-card
 //   title: System
 //   entities:
-//     - entity: sensor.processor_use
+//     - entity: sensor.server_cpu
 //       thresholds: [{ value: 0, level: good }, { value: 60, level: warn }, { value: 85, level: bad }]
 
 const CHART_H = 72;
@@ -10286,6 +10436,8 @@ registerCard("savvy-home-header-card", SavvyHomeHeaderCard, "Home header",
 //   area: living_room               (or areas: [...], or lights: [...])
 //   toggle: { entity: input_boolean.room_lights }   show_toggle: true
 //   featured: [light.ceiling]   order: [...]   exclude: [...]   chips: [...]
+//   order: with none of its own, a card takes the order of the first lights card for the same room that has one
+//   (read from the dashboard); sync_order: false keeps a card independent
 
 
 
@@ -10611,6 +10763,7 @@ class LightsCard extends HTMLElement {
 
   connectedCallback() { this._observe(); this._wake(); }
   disconnectedCallback() {
+    clearTimeout(this._wantTimer);
     Clock.remove(this._job);
     this._list?.sheet.close(true);
     clearTimeout(this._tapTimer);
@@ -10956,15 +11109,41 @@ class LightsCard extends HTMLElement {
   _toggle(id) {
     this._haptic("light");
     const power = this._opts(id).power;
+    this._hint([id], !this._isOn(id));
     if (power) return this._hass.callService(power.split(".")[0], "toggle", {}, { entity_id: power });
     this._service("toggle", {}, id);
   }
 
+  // A tap shows its result at once: the lamps move to the state they were asked for, and move
+  // back if Home Assistant has not followed within two seconds.
+  _hint(ids, on) {
+    const want = this._want || (this._want = new Map());
+    const until = performance.now() + 2000;
+    for (const id of ids) {
+      const st = this._hass.states[this._opts(id).power || id];
+      if (!st || st.state === "unavailable" || st.state === "unknown") continue;
+      want.set(id, { on, until });
+    }
+    if (!want.size) return;
+    clearTimeout(this._wantTimer);
+    this._wantTimer = setTimeout(() => { this._want?.clear(); if (this._el && this._hass) this._update(); }, 2050);
+    if (this._el) this._update();
+  }
+
   // Is this lamp on? Its own switch decides when it has one.
-  _isOn(id) {
+  // `real`: what Home Assistant says, ignoring a tap that is still waiting for its answer (a second tap
+  // asks for the same thing again instead of reversing the first)
+  _isOn(id, real = false) {
     const power = this._opts(id).power;
-    if (power) return this._hass.states[power]?.state === "on";
-    return this._hass.states[id]?.state === "on";
+    const now = (power ? this._hass.states[power] : this._hass.states[id])?.state === "on";
+    if (real) return now;
+    return this._shown(id, now);
+  }
+  _shown(id, real) {
+    const w = this._want?.get(id);
+    if (!w) return real;
+    if (real === w.on || performance.now() > w.until) { this._want.delete(id); return real; }
+    return w.on;
   }
 
   // The header pill. Built in: a tap is all on or all off. With an entity in it
@@ -11005,14 +11184,15 @@ class LightsCard extends HTMLElement {
   _allOff() {
     const ids = this._ids || [];
     this._haptic("medium");
-    if (ids.length) this._service("turn_off", {}, ids);
+    if (ids.length) { this._hint(ids, false); this._service("turn_off", {}, ids); }
   }
 
   _toggleAll() {
     const ids = this._ids || [];
     if (!ids.length) return;
-    const anyOn = ids.some((id) => this._isOn(id));
+    const anyOn = ids.some((id) => this._isOn(id, true));
     this._haptic("light");
+    this._hint(ids, !anyOn);
     this._service(anyOn ? "turn_off" : "turn_on", {}, ids);
   }
 
@@ -11453,8 +11633,9 @@ const EDITOR = defineEditor("savvy-lights-card", (hass, c) => [
     { name: "double_tap_action", label: "Double tap action", selector: { ui_action: {} } },
     { name: "hold_action", label: "Hold action", selector: { ui_action: {} } },
   ] },
-  { name: "order", label: "Order", type: "list", helper: "Drag order with the arrows. Lights not listed follow, by name.",
+  { name: "order", label: "Order", type: "list", helper: "Drag order with the arrows. Lights not listed follow, by name. Without one, the first lights card for this room that has an order lends its own.",
     initial: (h, cfg) => (h ? lightsOf(h, cfg) : []), add: { selector: { entity: { domain: "light" } }, label: "Add a light" } },
+  S.bool("sync_order", "Follow other cards", "Take the order from the first lights card for this room that has one, when this card has none.", true),
   { name: "featured", label: "Wide tiles", selector: { entity: { domain: "light", multiple: true } } },
   { name: "exclude", label: "Leave out", selector: { entity: { domain: "light", multiple: true } } },
   S.grid(S.number("columns", "Columns", 1, 6), S.bool("power_button", "Power buttons", null, false)),
@@ -14487,8 +14668,8 @@ registerCard("savvy-room-activity-card", SavvyRoomActivityCard, "Room activity",
 //
 //   type: custom:savvy-room-header-card
 //   area: living_room
-//   control: input_select.living_room_mode   home_path: /lovelace/home
-//   entities: [input_boolean.living_room_lights, …]     auto_discover: true
+//   control: input_select.living_room_scene   home_path: /lovelace/home
+//   entities: [switch.living_room_lights, …]     auto_discover: true
 //   chips: [...]                              room_path: /lovelace/{slug}
 
 const STYLE = `${BASE_CSS}${HEADER_CSS}${CHIP_ROW_CSS}`;
@@ -14991,7 +15172,7 @@ registerCard("savvy-scene-card", SavvySceneCard, "Scenes",
 //   type: custom:savvy-section-title-card
 //   area: living_room            name / icon: from the area
 //   navigation_path: /lovelace/living-room      (or tap_action on the title)
-//   control: input_select.living_room_mode
+//   control: input_select.living_room_scene
 //   entities: [binary_sensor.front_door]        auto_discover: true
 //   temperature: sensor.x | false               heading_style: title | subtitle
 
@@ -15391,6 +15572,8 @@ class SavvySettingsCard extends SavvyCard {
     const many = found > 1;
     let words = defaults ? `${defaults} ${defaults === 1 ? "default" : "defaults"} · used by ${cards} on this page` : "No defaults set yet";
     if (many) words = `${found} settings cards found: using the first. ${words}`;
+    const pages = Object.keys(SettingsStore.autoPages()).length;
+    if (pages) words += ` · ${pages} ${pages === 1 ? "page" : "pages"} found by name`;
     attr(el.disc, "data-warn", many);
     attr(el.sub, "data-warn", many);
     text(el.sub, words);
@@ -15471,13 +15654,16 @@ class SettingsEditor extends SavvyEditor {
 
   schema(hass) {
     const areaName = (id) => hass?.areas?.[id]?.name || title(id);
+    // a page the dashboard already has by name needs no entry here
+    const found = SettingsStore.autoPages();
+    const page = (key, label) => S.nav(key, label, found[key] ? `Found automatically: ${found[key]}. Fill it in to use another page; false for none.` : undefined);
     return [
       S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact" }]),
       { type: "expandable", name: "pages", title: "Pages", schema: [
         S.nav("home", "Home", "Where the home button goes."),
-        S.nav("lights", "Lights page"), S.nav("climate", "Climate page"), S.nav("media", "Media page"), S.nav("security", "Security page"),
+        page("lights", "Lights page"), page("climate", "Climate page"), page("media", "Media page"), page("security", "Security page"),
         S.nav("health", "System health page"),
-        S.text("room", "Room pages", "A pattern: /lovelace/{slug} (the room with dashes) or {area} (its id)."),
+        S.text("room", "Room pages", `A pattern: /lovelace/{slug} (the room with dashes) or {area} (its id).${found.room ? ` Found automatically: ${found.room}.` : " Each room's page is also found by its name."}`),
       ] },
       { type: "expandable", name: "house", title: "Home", schema: [
         S.entity("control", "Control", undefined, { helper: "The house mode: a select opens a picker; a button, scene or switch acts." }),
@@ -16211,7 +16397,7 @@ registerCard("savvy-system-health-card", SavvySystemHealthCard, "System health",
 //   area: kitchen
 //   navigation_path: /lovelace/kitchen     tap: go there (else: list the room's lights)
 //   double tap: the room's lights on/off   hold: list the room's lights
-//   control: input_select.kitchen_mode    toggle: input_boolean.kitchen_lights (optional)
+//   control: input_select.kitchen_scene    toggle: switch.kitchen_lights (optional)
 //   lights / count / color_lights: overrides    entities / auto_discover: the badges
 //
 // The drop's outline is a circle plus three lobes (2, 3 and 4 around the rim), each its

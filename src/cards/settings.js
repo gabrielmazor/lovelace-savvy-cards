@@ -84,6 +84,8 @@ class SavvySettingsCard extends SavvyCard {
     const many = found > 1;
     let words = defaults ? `${defaults} ${defaults === 1 ? "default" : "defaults"} · used by ${cards} on this page` : "No defaults set yet";
     if (many) words = `${found} settings cards found: using the first. ${words}`;
+    const pages = Object.keys(SettingsStore.autoPages()).length;
+    if (pages) words += ` · ${pages} ${pages === 1 ? "page" : "pages"} found by name`;
     attr(el.disc, "data-warn", many);
     attr(el.sub, "data-warn", many);
     text(el.sub, words);
@@ -164,13 +166,16 @@ class SettingsEditor extends SavvyEditor {
 
   schema(hass) {
     const areaName = (id) => hass?.areas?.[id]?.name || title(id);
+    // a page the dashboard already has by name needs no entry here
+    const found = SettingsStore.autoPages();
+    const page = (key, label) => S.nav(key, label, found[key] ? `Found automatically: ${found[key]}. Fill it in to use another page; false for none.` : undefined);
     return [
       S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact" }]),
       { type: "expandable", name: "pages", title: "Pages", schema: [
         S.nav("home", "Home", "Where the home button goes."),
-        S.nav("lights", "Lights page"), S.nav("climate", "Climate page"), S.nav("media", "Media page"), S.nav("security", "Security page"),
+        page("lights", "Lights page"), page("climate", "Climate page"), page("media", "Media page"), page("security", "Security page"),
         S.nav("health", "System health page"),
-        S.text("room", "Room pages", "A pattern: /lovelace/{slug} (the room with dashes) or {area} (its id)."),
+        S.text("room", "Room pages", `A pattern: /lovelace/{slug} (the room with dashes) or {area} (its id).${found.room ? ` Found automatically: ${found.room}.` : " Each room's page is also found by its name."}`),
       ] },
       { type: "expandable", name: "house", title: "Home", schema: [
         S.entity("control", "Control", undefined, { helper: "The house mode: a select opens a picker; a button, scene or switch acts." }),

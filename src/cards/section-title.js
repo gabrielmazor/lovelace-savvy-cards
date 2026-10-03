@@ -6,7 +6,7 @@
 //   type: custom:savvy-section-title-card
 //   area: living_room            name / icon: from the area
 //   navigation_path: /lovelace/living-room      (or tap_action on the title)
-//   control: input_select.living_room_mode
+//   control: input_select.living_room_scene
 //   entities: [binary_sensor.front_door]        auto_discover: true
 //   temperature: sensor.x | false               heading_style: title | subtitle
 

@@ -50,6 +50,9 @@ const EDITOR_CSS = `
   .sv-inherit .l b { flex: none; font-weight: 600; color: var(--primary-text-color); }
   .sv-inherit .l span { min-width: 0; overflow-wrap: anywhere; }
   .sv-inherit .l i { font-style: normal; opacity: 0.7; }
+  .sv-inherit .l { align-items: baseline; }
+  .sv-inherit .unlink { flex: none; margin-inline-start: auto; padding: 2px 10px; border: 0; border-radius: 8px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+    color: var(--primary-color, #58a6ff); background: color-mix(in oklab, var(--primary-color, #58a6ff) 14%, transparent); }
   .sv-inherit .n { font-size: 11.5px; color: var(--secondary-text-color); margin-top: 6px; }
 `;
 
@@ -84,9 +87,11 @@ class SavvyEditor extends HTMLElement {
     if (!box) {
       box = document.createElement("div");
       box.className = "sv-inherit";
-      box.innerHTML = '<div class="h"><ha-icon icon="mdi:cog-sync-outline"></ha-icon><span>From Savvy settings</span></div><div class="rows"></div><div class="n">Set a value on this card to override it.</div>';
+      box.innerHTML = '<div class="h"><ha-icon icon="mdi:cog-sync-outline"></ha-icon><span></span></div><div class="rows"></div><div class="n">Set a value on this card to override it.</div>';
       wrap.insertBefore(box, wrap.firstChild);
     }
+    // what is not from the settings card is found on the dashboard itself
+    box.querySelector(".h span").textContent = list.every((i) => i.unlink || i.from === AUTO) ? "Found on the dashboard" : "From Savvy settings";
     const key = JSON.stringify(list);
     if (box.__key === key) return;
     box.__key = key;
@@ -100,6 +105,15 @@ class SavvyEditor extends HTMLElement {
       f.textContent = ` (${i.from})`;
       v.appendChild(f);
       row.append(b, v);
+      // a value read from another card can be taken over: it is copied here and no longer follows
+      if (i.unlink) {
+        const u = document.createElement("button");
+        u.type = "button";
+        u.className = "unlink";
+        u.textContent = "Unlink";
+        u.addEventListener("click", () => { this._emit({ ...this._config, [i.path]: i.raw }); this._render(); });
+        row.appendChild(u);
+      }
       return row;
     }));
   }

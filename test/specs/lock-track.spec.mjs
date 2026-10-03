@@ -164,6 +164,7 @@ export default async function ({ browser, base, check }) {
     await drag(page, "lock.nuki", 0.7);
     await page.waitForTimeout(500);
     check(`${tag} sliding an open lock locks it`, JSON.stringify(await log(page)) === JSON.stringify(["lock.lock {} lock.nuki"]), JSON.stringify(await log(page)));
+    await page.waitForTimeout(1600);     // the slide's own "Locking…" waits 1.5 s for the house to agree; a jam is news after that
     await page.evaluate(() => window.push("lock.nuki", "jammed"));
     await page.waitForTimeout(500);
     const jam = await read(page, "lock.nuki");

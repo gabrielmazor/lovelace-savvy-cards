@@ -1,7 +1,18 @@
 # Changelog
 
-## Unreleased
+## 0.9.2
 
+- **Pages are found by name.** A dashboard view called `lights`, `climate`, `media` or `security` is the page for that chip
+  and its popup button, and a view named after a room (`living-room`, or its name) is the room's page for room tiles, section
+  titles and the room header's row. What you write in a card or the settings card wins, `pages: { lights: false }` turns one
+  off, two views claiming one name means no guess, and the health page is still yours to set. A found page never changes what
+  a tap does. The editors say "found automatically", and the settings card lists what it found.
+- **Lights cards share an order.** A lights card with no `order` takes the one from the first lights card for the same room
+  that has one, anywhere on the dashboard. The editor says which card it reads from and has an **Unlink** button, and
+  `sync_order: false` keeps a card independent.
+- **The lights tile changes colour as one move.** The orb, its icon and the tile used to drift apart (the icon waited on the
+  old colour until the last frame); they now share one start and finish together in about a third of a second, for every card
+  that fades colours. A tap shows its result at once and moves back if Home Assistant has not followed within two seconds.
 - **The health cog's popup has its page button whenever it has a target page**, like the four chips.
 - **Home button and control can be switched off in the editor** ("Show home button", "Show control"),
   even when the Savvy settings supply a home page and a control. No more `control: ""` in YAML.

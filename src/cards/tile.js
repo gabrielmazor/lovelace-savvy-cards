@@ -7,7 +7,7 @@
 //   area: kitchen
 //   navigation_path: /lovelace/kitchen     tap: go there (else: list the room's lights)
 //   double tap: the room's lights on/off   hold: list the room's lights
-//   control: input_select.kitchen_mode    toggle: input_boolean.kitchen_lights (optional)
+//   control: input_select.kitchen_scene    toggle: switch.kitchen_lights (optional)
 //   lights / count / color_lights: overrides    entities / auto_discover: the badges
 //
 // The drop's outline is a circle plus three lobes (2, 3 and 4 around the rim), each its

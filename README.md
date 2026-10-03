@@ -55,21 +55,29 @@ work this way. Give them an `area` (or an `entity`) and leave the rest at its de
 - **Pinned, then discovered.** Where a card shows a row of things, `entities:` lists the ones you want
   first, always shown. Then, unless `auto_discover: false`, the card adds what the area has.
 - **Order of authority**, when the same option is set in several places: the card, then the room's
-  entry in the settings card, then the settings card's global value, then auto-discovery.
+  entry in the settings card, then the settings card's global value, then what the cards find on
+  their own (auto-discovery, and the dashboard's own pages).
 - **Counting needs no helpers.** Lights on, players playing, average temperature and open doors all come
   straight from your states.
 
 ## What the cards expect from your dashboard
 
 Savvy never creates pages. It links to pages you already have, so a few cards need to know where those
-are. Without an address a card still works; it just has nothing to link to.
+are. Most of them are found by name, so there is usually nothing to write down. Without an address a card
+still works; it just has nothing to link to.
+
+**Found by name.** The cards read your dashboard's views. A view whose path (or, failing that, title) is
+`lights`, `climate`, `media` or `security` becomes that chip's page, and a view named after a room
+(`living-room`, or the room's own name) is that room's page. If two different views claim the same name,
+nothing is guessed. The health page is never guessed: set it yourself. What you write always wins, and
+`false` (in the settings card's `pages`) switches a page off.
 
 | What | Used by | Example |
 |---|---|---|
-| A home page | the home button on the headers | `/lovelace/home` |
-| One page per room | room tiles, the row of rooms on the room header, the section title | `/lovelace/{slug}` |
-| A page per domain: lights, climate, media, security | the four chips on the home header (an "open page" button in each popup) | `/lovelace/lights` |
-| A health page | the health cog on the home header | `/lovelace/admin` |
+| A home page | the home button on the headers | `/lovelace/home` (set it) |
+| One page per room | room tiles, the row of rooms on the room header, the section title | `/lovelace/{slug}` (found by the room's name) |
+| A page per domain: lights, climate, media, security | the four chips on the home header (an "open page" button in each popup) | `/lovelace/lights` (found by name) |
+| A health page | the health cog on the home header | `/lovelace/admin` (set it) |
 
 For the room pattern, `{slug}` is the area id with dashes (`living_room` becomes `living-room`) and
 `{area}` is the id as it is. If your rooms live at `/lovelace/living-room`, use `/lovelace/{slug}`.
@@ -83,6 +91,7 @@ Three cards mark where you are:
 ### Set them once with the settings card
 
 Put one [Savvy settings](#savvy-settings) card on any page. Every Savvy card on that dashboard reads it.
+You only need the pages that cannot be found by name: the example below writes them all out.
 
 ```yaml
 type: custom:savvy-settings-card
@@ -104,8 +113,8 @@ health:
 room_order: [living_room, kitchen, bedroom]
 rooms:
   kitchen:
-    control: input_select.kitchen_mode
-    light_state: input_boolean.kitchen_light
+    control: input_select.kitchen_scene
+    light_state: switch.kitchen_lights
     temperature: sensor.kitchen_temperature
 ```
 
@@ -264,11 +273,11 @@ control: input_select.living_room_scene
 mode_label: Scene
 home_path: /lovelace/home
 temperature: sensor.living_room_temperature
-entities: [input_boolean.living_room_light]   # pinned first
+entities: [switch.living_room_lights]   # pinned first
 auto_discover: true
 exclude_kinds: [fan]
 include: [lock.front_door]                    # a lock that has no area
-exclude: [binary_sensor.old_motion]
+exclude: [binary_sensor.hallway_motion]
 aggregate: true
 icons_only: false
 chips:
@@ -318,11 +327,11 @@ icon: mdi:sofa
 navigation_path: /lovelace/living-room
 control: input_select.living_room_scene
 temperature: sensor.living_room_temperature
-entities: [input_boolean.living_room_light]
+entities: [switch.living_room_lights]
 auto_discover: true
 exclude_kinds: [window]
 include: [lock.front_door]
-exclude: [binary_sensor.old_motion]
+exclude: [binary_sensor.hallway_motion]
 aggregate: [presence, door]
 heading_style: title
 filled: false
@@ -368,11 +377,11 @@ area: kitchen
 name: Kitchen
 icon: mdi:silverware-fork-knife
 navigation_path: /lovelace/kitchen
-control: input_select.kitchen_mode
+control: input_select.kitchen_scene
 temperature: sensor.kitchen_temperature
-toggle: input_boolean.kitchen_light
+toggle: switch.kitchen_lights
 lights: [light.kitchen_ceiling, light.kitchen_counter]
-count: sensor.kitchen_lights_on
+count: sensor.kitchen_lights_count
 color_lights: [light.kitchen_counter]
 tint: "#F5B83D"
 entities: [binary_sensor.kitchen_presence]
@@ -429,7 +438,7 @@ temperature: sensor.living_room_temperature
 door: binary_sensor.patio_door
 include: [lock.front_door]                 # a lock with no area
 exclude_kinds: [humidity]
-exclude: [binary_sensor.old_motion]
+exclude: [binary_sensor.hallway_motion]
 alarm: alarm_control_panel.home
 aggregate: true
 history: { hours: 24, ranges: [6, 24, 72] }
@@ -454,7 +463,8 @@ for warmth and colour. The pill at the top switches the room, or an entity of yo
 | `area` | area or list | **required** (or `lights`) | The room, or several for one card across rooms. |
 | `lights` | list | discovered | Only these lights, in this order. An item is an entity id or `{ entity, power }`, where `power` is a smart plug the light sits behind. |
 | `title` | string | the area's name | Card title. |
-| `order` | list of lights | by name | Listed lights come first, in this order. |
+| `order` | list of lights | by name | Listed lights come first, in this order. With none, the card takes the `order` of the first lights card for the same room that has one, wherever it is on the dashboard (the editor says which, with an **Unlink** button). |
+| `sync_order` | boolean | `true` | `false`: never take another card's order. |
 | `featured` | list of lights | none | Lights that get a wide tile. |
 | `exclude` | list of lights | none | Lights left out. |
 | `show_header` | boolean | `true` | The title row. |
@@ -484,7 +494,7 @@ layout: full
 show_header: true
 show_toggle: true
 toggle:
-  entity: input_boolean.downstairs_lights
+  entity: switch.downstairs_lights
   name: All
 order: [light.ceiling, light.floor_lamp]
 featured: [light.ceiling]
@@ -555,14 +565,14 @@ humidity_name: Humidity
 state_name: A/C
 timer:
   entity: timer.ac_off
-  select: input_select.ac_timer_minutes
+  select: input_select.ac_timer
 history: { hours: 48, show_state: true }
 temperature_scale:
   - { value: 16, color: "#4f9de8" }
   - { value: 30, color: "#e8584f" }
 humidity_color: teal
 chips:
-  - entity: button.ac_assume_on
+  - entity: button.ac_sleep_mode
     name: Assume on
 ```
 
@@ -615,23 +625,23 @@ video:
     name: TV
     power: switch.tv_plug
   - entity: media_player.console
-    artwork: binary_sensor.console_artwork
+    artwork: binary_sensor.console_online
 audio:
   - entity: media_player.soundbar
 video_output: media_player.soundbar
 presets:
-  - entity: script.radio_jazz
+  - entity: script.play_radio
     name: Jazz
 tts:
   action: tts.speak
   data: { media_player_entity_id: media_player.soundbar, message: $MSG }
   placeholder: Say something
 alarm:
-  entity: input_boolean.wake_alarm
+  entity: switch.wake_up_alarm
   time: input_datetime.wake_time
   name: Wake up
 chips:
-  - entity: input_boolean.dynamic_lighting
+  - entity: switch.adaptive_lighting
 labels: { video: Watch, audio: Listen }
 artwork: true
 artwork_max_height: 320
@@ -811,7 +821,7 @@ dock: auto
 maintenance: auto
 stats: off
 hide_modes: [select.vacuum_water_level]
-exclude: [sensor.vacuum_error_history]
+exclude: [sensor.vacuum_last_error]
 battery_warn: 20
 battery_critical: 10
 ```
@@ -861,7 +871,7 @@ entities:
     icon: mdi:sofa
     color: amber
 auto_discover: true
-exclude: [scene.office_test]
+exclude: [scene.office_reading]
 strip: '^.*//\s*|\s*-\s*on$'      # "Office // Work - On" reads "Work"
 color: blue
 show_icon: true
@@ -933,7 +943,7 @@ watchman_button: true
 watchman_report: { parse_config: true }
 ignore:
   devices: [3f9c2a7e1d4b4a0e9c1d]
-  entities: [sensor.old_thermostat_battery]
+  entities: [sensor.bedroom_thermostat_battery]
 columns: 3
 max_rows: 7
 action:
@@ -965,25 +975,25 @@ Minimum:
 
 ```yaml
 type: custom:savvy-entity-card
-entity: person.alex
+entity: person.sam
 ```
 
 Full:
 
 ```yaml
 type: custom:savvy-entity-card
-entity: person.alex
-name: Alex
+entity: person.sam
+name: Sam
 icon: mdi:account
 color: blue
-picture: /local/alex.jpg
+picture: /local/sam.jpg
 show_state: true
 show_since: true
 navigation_path: /lovelace/people
 chips:
-  - entity: switch.scooter_plug
-    name: Scooter
-  - entity: sensor.alex_phone_battery
+  - entity: switch.charger_plug
+    name: Charger
+  - entity: sensor.phone_battery
     name: Phone
 ```
 
@@ -1014,7 +1024,7 @@ Minimum:
 ```yaml
 type: custom:savvy-graph-card
 entities:
-  - sensor.processor_use
+  - sensor.server_cpu
 ```
 
 Full:
@@ -1026,7 +1036,7 @@ hours_to_show: 24
 ranges: [24, 168, 720]
 columns: 2
 entities:
-  - entity: sensor.processor_use
+  - entity: sensor.server_cpu
     name: CPU
     unit: "%"
     hours_to_show: 48
@@ -1055,7 +1065,7 @@ browser, and follow it live while you edit. With two settings cards the first is
 
 | Option | Type | Default | What it does |
 |---|---|---|---|
-| `pages` | object | none | `home`, `lights`, `climate`, `media`, `security`, `health`: the page each home header chip, the cog and the home button lead to. `room`: a pattern for room pages (`/lovelace/{slug}`). |
+| `pages` | object | found by name | `home`, `lights`, `climate`, `media`, `security`, `health`: the page each home header chip, the cog and the home button lead to. `room`: a pattern for room pages (`/lovelace/{slug}`). `lights`, `climate`, `media`, `security` and each room's page are found by view name when left out; `false` turns one off. |
 | `house` | object | none | `control` (the home header's control chip), `weather`, `security` (an entity for the security chip instead of the alarm), `tap` (`list`: a tap opens the popup; `navigate`: a tap goes to the chip's page and hold opens the popup). |
 | `health` | object | none | `watchman`, `battery_threshold`, `warn_above`, `exclude_platforms`, `group_by`, `group_min`, `watchman_last_run`, and `ignore` (`{ devices, entities }`). Used by the card and the home header's cog. |
 | `ignore` | object | none | `entities`: left out of everything the cards discover (room headers, section titles, tiles, room activity, locks, lights, scenes, vacuums) and the home header counts; `areas`: left out of the home header counts. A card that names an entity still shows it. |
@@ -1114,7 +1124,7 @@ health:
   group_min: 3
   ignore:
     devices: [3f9c2a7e1d4b4a0e9c1d]
-    entities: [sensor.old_thermostat_battery]
+    entities: [sensor.bedroom_thermostat_battery]
 ignore:
   entities: [light.garden_string]
   areas: [garage]
@@ -1125,12 +1135,12 @@ rooms:
     name: Kitchen
     icon: mdi:silverware-fork-knife
     page: /lovelace/kitchen
-    control: input_select.kitchen_mode
-    light_state: input_boolean.kitchen_light
+    control: input_select.kitchen_scene
+    light_state: switch.kitchen_lights
     temperature: sensor.kitchen_temperature
     humidity: sensor.kitchen_humidity
     include: [lock.back_door]
-    exclude: [binary_sensor.old_motion]
+    exclude: [binary_sensor.hallway_motion]
 ```
 
 ---
