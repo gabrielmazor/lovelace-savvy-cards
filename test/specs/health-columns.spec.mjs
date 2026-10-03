@@ -98,7 +98,9 @@ export default async function ({ browser, base, check }) {
     check("[wheel] no errors", errors.length === 0, errors.join(" | "));
     await page.close();
 
-    if (engine === "chromium") {
+    // CDP touch gestures do nothing in the headless Chromium CI runs on Linux (the swipe scrolls 0 there whatever the page),
+    // so this check runs on a real machine only; the wheel check above covers the same rule in CI
+    if (engine === "chromium" && !process.env.CI) {
       const ctx = await browser.newContext({ viewport: { width: 500, height: 700 }, hasTouch: true });
       const t = await ctx.newPage();
       await t.goto(base + "page.html");
