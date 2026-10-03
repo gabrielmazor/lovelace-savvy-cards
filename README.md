@@ -15,7 +15,7 @@ same way: springs, not transitions; feedback the moment you touch; nothing that 
 - Cards: [Home header](#home-header) · [Room header](#room-header) · [Section title](#section-title) ·
   [Room tile](#room-tile) · [Room activity](#room-activity) · [System health](#system-health) ·
   [Lights](#lights) · [Climate](#climate) · [Media](#media) · [Camera](#camera) ·
-  [Vacuum](#vacuum) · [Entity](#entity) · [Graph](#graph) · [Scenes](#scenes)
+  [Vacuum](#vacuum) · [Lock](#lock) · [Entity](#entity) · [Graph](#graph) · [Scenes](#scenes)
 
 ## Install
 
@@ -149,7 +149,8 @@ to leave the settings' list out.
 | Room tile | the room's `name`, `icon`, `control`, `temperature`, light helper (`toggle`, and its Light badge) and page |
 | Lights | the room's light helper as the pill's toggle |
 | Climate | the room's `temperature` and `humidity` |
-| Room activity | the room's `exclude` |
+| Room activity | the room's `include` and `exclude` |
+| Lock | the security entity (as the lock, when none is named), the room's `include` and `exclude` |
 
 A card works on its own area when it has exactly one. Every card's editor lists what it
 is taking from the settings at the top, under **From Savvy settings**, so nothing is
@@ -540,8 +541,8 @@ area: living_room
 | Option | Default | What it does |
 |---|---|---|
 | `area` | **required** (or `video` / `audio`) | The room's players: speakers and receivers are the output, TVs and the rest the sources. |
-| `video` / `audio` | found | The players instead: `{ entity, name, icon, power, output, volume, artwork }`. `power`: a switch that powers it; `output`: where its sound comes out; `volume`: a helper that's its real volume; `artwork`: a binary sensor that says its artwork is worth showing. |
-| `video_output` | none | Where every video source's sound comes out (a soundbar). Its volume then sits under it. |
+| `video` / `audio` | found | The players instead: `{ entity, name, icon, power, output, volume, artwork }`. `power`: a switch that powers it; `output` (**Sound output**): where this source's sound comes out (empty: it plays through itself; it overrides `video_output`); `volume`: a helper that's its real volume, for a player whose own isn't (an amplifier on infrared); `artwork`: a binary sensor that says its artwork is worth showing. |
+| `video_output` | none | **Sound output for all sources**: the speaker, receiver or soundbar every video source plays through (your living room's Apple TV, PS5 and TV through the soundbar). Its volume then sits under the picked source. A source's own `output` overrides it; an empty `output` means that source plays through itself. |
 | `name` | the area's | Title. |
 | `presets` | none | Chips for stations and playlists. |
 | `tts` | none | `{ action, data, placeholder }`: a text box; `$MSG` in `data` is where the text goes. |
@@ -596,9 +597,9 @@ area: [living_room, kitchen]
 </picture>
 
 What is happening in a room, and when did it last happen?
-Presence, doors and windows with "for 12 min" or "4 min ago", the room's readings, smoke,
+Presence, doors and windows with "for 12 min" or "4 min ago", the room's locks ("Locked", "Unlocked"), the room's readings, smoke,
 gas and leak sensors that stay quiet until one trips (then a banner and a red wash). While
-the alarm is armed, an open door turns amber. Swipe left for the room's history: a lane
+the alarm is armed, an open door or an unlocked lock turns amber. Swipe left for the room's history: a lane
 per sensor over its temperature, and scrubbing snaps to each change.
 
 ```yaml
@@ -609,8 +610,9 @@ area: living_room
 | Option | Default | What it does |
 |---|---|---|
 | `area` | **required** (or `chips`) | The room: its sensors, by what they are. |
-| `presence` / `door` / `window` / `temperature` / `humidity` / `illuminance` / `smoke` / `gas` / `co` / `leak` | found | Name one (or several) instead, or `false` for none. |
-| `exclude_kinds` / `exclude` | none | Kinds, or entities, to leave out. |
+| `presence` / `door` / `window` / `lock` / `temperature` / `humidity` / `illuminance` / `smoke` / `gas` / `co` / `leak` | found | Name one (or several) instead, or `false` for none. |
+| `include` | none | Entities that have no area, shown with this room (a lock, a door contact). The Savvy settings' room `include` adds to it. |
+| `exclude_kinds` / `exclude` | none | Kinds (`lock` too), or entities, to leave out. |
 | `alarm` | found | The alarm panel (`false`: none). |
 | `chips` | none | Your own: a toggle becomes a chip, a door or a number takes its place with the rest. With no `area`, a hand-picked overview. |
 | `name` / `icon` | the area's | Title and icon. |
@@ -845,3 +847,59 @@ strip: '^.*//\s*|\s*-\s*on$'      # "Office // Work - On" reads "Work"
 | `strip` | the area's name | A regular expression taken out of every name (any case, every match); then the area's name is taken off the front. `false`: names stay whole. A pinned scene's own `name` is used as written. |
 | `color` / `show_icon` | `blue` / on | The tint (an HA colour name or hex), and the icons. |
 | `navigation_path` | none | Tapping the title goes there (the heading reads "Scenes" if you gave no `title`). |
+
+---
+
+## Lock
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/lock-light.png">
+  <img src="docs/images/lock-dark.png" width="460" alt="Savvy lock card">
+</picture>
+
+A door, handled the way you'd want to. The state is the biggest thing on the card, and a
+glow behind it follows it: green when locked, amber when not, red when open or jammed.
+The lock is a track you slide, with three stops: **Locked, Unlocked, Open**. A tap does
+nothing; the knob is dragged. Past Unlocked the track gets heavy, and the end has to be held
+until a ring fills (then let go) before the door's latch opens. A lock that can't open has
+two stops. It shows the door contact and the battery, who last changed it and when, nudges
+when it has been unlocked a while, and can carry the house alarm and a live camera.
+
+```yaml
+type: custom:savvy-lock-card
+entity: lock.front_door
+```
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/lock-unlocked-light.png">
+  <img src="docs/images/lock-unlocked-dark.png" width="460" alt="Savvy lock card, unlocked for a while">
+</picture>
+
+| Option | Default | What it does |
+|---|---|---|
+| `entity` | the Savvy settings' security entity, else the first lock | One lock. |
+| `entities` | none | Several locks, each `{ entity, name, icon, door, battery, camera }`. Several get a row each, a summary ("All locked" / "2 unlocked") and **Lock all**. |
+| `area` | none | Every lock of these areas. A lock that has no area: `include`. |
+| `include` / `exclude` | none | Locks added to, or kept out of, an area's. The Savvy settings' room lists add to them. |
+| `name` / `icon` | the lock's | Title and icon (for several locks, the card's title). |
+| `door` | found | The door contact: a binary sensor on the lock's device, or the only door sensor of its area. `false` or `hide_door` hides it. A locked lock with its door open is a warning: amber, "Door open". |
+| `battery` | found | The battery sensor of the lock's device. `false` or `hide_battery` hides it. |
+| `battery_warn` | `40` | The battery turns amber below this, red at 15. |
+| `unlocked_warn` | `15` | Minutes unlocked before "Unlocked for 25 min" nudges, with a **Lock now** button. `0`: never. |
+| `alarm` | found | The house's alarm panel: its state and the arm modes as buttons. Disarming, and any code, is the more-info dialog's job: the card never holds a code. A triggered alarm is a red banner and a red glow. `false` or `hide_alarm` hides it. |
+| `camera` | found | A camera in the lock's area: a live still that opens a popup with the camera card. An entity names one; `false` or `hide_camera` hides it. |
+| `layout` | `full` | `compact`: one row per lock, a small track beside the name. |
+| `chips` | none | The standard chips, under it. |
+
+Tap a lock's name for its details. The track works from the keyboard too: the arrow keys
+lock and unlock, and Enter or Space held opens.
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/lock-several-light.png">
+  <img src="docs/images/lock-several-dark.png" width="460" alt="Savvy lock card, several doors">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/lock-compact-light.png">
+  <img src="docs/images/lock-compact-dark.png" width="460" alt="Savvy lock card, compact">
+</picture>

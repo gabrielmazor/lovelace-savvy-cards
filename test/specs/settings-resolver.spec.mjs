@@ -95,7 +95,10 @@ export default async function ({ browser, base, check }) {
   r = await R("savvy-climate-card", { entity: "climate.k" });
   check("climate: with no area, nothing", !r.inherited.length);
   r = await R("savvy-room-activity-card", { area: "kitchen", exclude: ["x.y"] });
-  check("room activity: the room's exclude joins the card's", r.config.exclude.includes("light.k2") && r.config.exclude.includes("x.y") && r.config.include === undefined);
+  check("room activity: the room's exclude joins the card's", r.config.exclude.includes("light.k2") && r.config.exclude.includes("x.y"));
+  check("room activity: the room's include is taken too (0.8.0: a lock that has no area)", JSON.stringify(r.config.include) === '["lock.k"]', JSON.stringify(r.config.include));
+  r = await R("savvy-room-activity-card", { area: "kitchen", include: false });
+  check("room activity: include: false turns it off", r.config.include === false);
 
   // system health
   r = await R("savvy-system-health-card", {});

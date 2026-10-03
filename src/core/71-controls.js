@@ -14,6 +14,29 @@ const LOCK_HOLD_MS = 500;      // how long the end of the lock track must be hel
 const LOCK_COLORS = [[76, 175, 80], [232, 163, 61], [224, 102, 102]];   // locked, unlocked, open
 const mixRgb = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
 
+// The lock track's stylesheet: shared by the popup rows (small) and the lock card (large).
+const LOCK_TRACK_CSS = `/* the lock track: three stops, one knob; --k is the knob, --p the padding round it */
+  .sv-lk { --lk: 76 175 80; --k: 28px; --p: 4px; position: relative; box-sizing: border-box; height: calc(var(--k) + 2 * var(--p)); border-radius: calc(var(--k) / 2 + var(--p));
+    padding: 0 var(--p); overflow: hidden; background: rgb(var(--lk) / 0.16); box-shadow: inset 0 0 0 1px rgb(var(--lk) / 0.28);
+    touch-action: pan-y; cursor: grab; outline: none; user-select: none; -webkit-user-select: none; }
+  .sv-lk[data-size="lg"] { --k: 48px; --p: 8px; }
+  .sv-lk[data-drag] { cursor: grabbing; }
+  .sv-lk[aria-disabled="true"] { opacity: 0.45; cursor: default; }
+  .sv-lk-hint { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; font-size: 12px; font-weight: 600; letter-spacing: -0.004em;
+    color: rgb(var(--lk)); pointer-events: none; white-space: nowrap; }
+  .sv-lk[data-size="lg"] .sv-lk-hint { font-size: 14px; }
+  .sv-lk-hint.r { right: calc(var(--p) + 10px); }
+  .sv-lk-hint.l { left: calc(var(--p) + 10px); }
+  .sv-lk-knob { position: absolute; top: var(--p); left: var(--p); width: var(--k); height: var(--k); border-radius: 50%; display: grid; place-items: center; color: #fff;
+    background: rgb(var(--lk)); box-shadow: 0 2px 6px rgb(0 0 0 / 0.3); will-change: transform; --mdc-icon-size: calc(var(--k) * 0.6); --ring: 0; --breath: 0; }
+  .sv-lk-knob::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid rgb(var(--lk)); opacity: calc(var(--breath) * 0.7); transform: scale(calc(1 + var(--breath) * 0.2)); pointer-events: none; }
+  .sv-lk-knob ha-icon { position: absolute; display: flex; }
+  .sv-lk-ring { position: absolute; inset: -4px; width: calc(var(--k) + 8px); height: calc(var(--k) + 8px); transform: rotate(-90deg); opacity: var(--ring); pointer-events: none; }
+  .sv-lk-ring circle { fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 125.7; stroke-dashoffset: 125.7; }
+  .sv-lk[data-armed] .sv-lk-knob { box-shadow: 0 0 0 4px rgb(var(--lk) / 0.35), 0 2px 8px rgb(0 0 0 / 0.3); }
+  .sv-lk[data-bad] { --lk: 224 102 102 !important; }
+  @media (prefers-contrast: more) { .sv-lk { box-shadow: inset 0 0 0 1.5px rgb(var(--lk)); } }`;
+
 // The springs and press feedback of one row's controls.
 class RowKit {
   constructor(wake) {
@@ -303,9 +326,11 @@ class Stepper {
 // dragged. Past Unlocked the track gets heavy and the end has to be held until a ring fills
 // (and then released) before the door's latch opens. A lock that can't open has two stops.
 class LockTrack {
-  constructor(kit, { label, canOpen, onLock, onUnlock, onOpen }) {
+  constructor(kit, { label, canOpen, onLock, onUnlock, onOpen, size = "sm" }) {
     this.kit = kit;
     this.canOpen = canOpen;
+    this.K = size === "lg" ? 48 : LOCK_KNOB;       // the knob, and the padding round it
+    this.P = size === "lg" ? 8 : LOCK_PAD;
     this.onLock = onLock;
     this.onUnlock = onUnlock;
     this.onOpen = onOpen;
@@ -314,6 +339,7 @@ class LockTrack {
     const el = this.el = document.createElement("div");
     el.className = "sv-lk";
     el.dataset.stops = canOpen ? "3" : "2";
+    el.dataset.size = size;
     el.setAttribute("role", "slider");
     el.tabIndex = 0;
     el.setAttribute("aria-label", label);
@@ -354,7 +380,7 @@ class LockTrack {
   }
 
   clearTimers() { for (const t of this.timers) clearTimeout(t); this.timers = []; }
-  measure() { this.W = this.el.clientWidth; this.T = Math.max(1, this.W - LOCK_KNOB - 2 * LOCK_PAD); }
+  measure() { this.W = this.el.clientWidth; this.T = Math.max(1, this.W - this.K - 2 * this.P); }
   stopPos(stop) { return stop === 0 ? 0 : stop === 1 ? this.u : 1; }
   // the knob sits where the finger is, but past Unlocked it lags and then arrives: heavy. The
   // end is the finger's last 4%: a drag only counts from where it became clearly sideways.
@@ -395,14 +421,19 @@ class LockTrack {
     return { locked: "Locked", unlocked: "Unlocked", locking: "Locking…", unlocking: "Unlocking…", opening: "Opening…", open: "Open", jammed: "Jammed" }[this.state] || title(this.state);
   }
 
+  // the track's colour where the knob sits: green, amber, red
+  colorAt(x) {
+    const u = this.u;
+    return this.canOpen
+      ? (x <= u ? mixRgb(LOCK_COLORS[0], LOCK_COLORS[1], u ? x / u : 1) : mixRgb(LOCK_COLORS[1], LOCK_COLORS[2], clamp((x - u) / (1 - u))))
+      : mixRgb(LOCK_COLORS[0], LOCK_COLORS[1], clamp(x));
+  }
+
   paint(dt) {
     if (!this.W) this.measure();
     const x = clamp(this.x.x, 0, 1.04), u = this.u;
     put(this.knob, "transform", `translateX(${(x * this.T).toFixed(2)}px)`);
-    const c = this.canOpen
-      ? (x <= u ? mixRgb(LOCK_COLORS[0], LOCK_COLORS[1], u ? x / u : 1) : mixRgb(LOCK_COLORS[1], LOCK_COLORS[2], clamp((x - u) / (1 - u))))
-      : mixRgb(LOCK_COLORS[0], LOCK_COLORS[1], clamp(x));
-    put(this.el, "--lk", c.join(" "));
+    put(this.el, "--lk", this.colorAt(x).join(" "));
     // the icon crossfades between the stops it sits between
     const pos = this.canOpen ? [0, u, 1] : [0, 1, 1];
     const span = this.canOpen ? u : 1;

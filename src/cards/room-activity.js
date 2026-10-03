@@ -37,6 +37,7 @@ const SLOTS = [
     on: "Open", off: "Closed", icon: "mdi:door-open", iconOff: "mdi:door-closed" },
   { key: "window", kind: "event", domain: "binary_sensor", dc: ["window"], label: "Window",
     on: "Open", off: "Closed", icon: "mdi:window-open-variant", iconOff: "mdi:window-closed-variant" },
+  { key: "lock", kind: "event", domain: "lock", dc: [], label: "Lock", on: "Unlocked", off: "Locked", icon: "mdi:lock-open-variant", iconOff: "mdi:lock" },
   { key: "temperature", kind: "read", domain: "sensor", dc: ["temperature"], label: "Temperature", single: true, icon: "mdi:thermometer" },
   { key: "humidity", kind: "read", domain: "sensor", dc: ["humidity"], label: "Humidity", single: true, icon: "mdi:water-percent" },
   { key: "illuminance", kind: "read", domain: "sensor", dc: ["illuminance"], label: "Light", single: true, icon: "mdi:brightness-5" },
@@ -354,8 +355,16 @@ class SavvyRoomActivityCard extends SavvyCard {
     if (conf === false || [].concat(c.exclude_kinds || []).includes(slot.key)) return [];
     if (conf != null) return asItems(conf);
     if (!c.area) return [];
-    let ids = pick(h, areaEntities(h, c.area), { domains: slot.domain, deviceClasses: slot.dc, exclude: asItems(c.exclude).map((i) => i.entity) });
+    const skip = asItems(c.exclude).map((i) => i.entity);
+    let ids = pick(h, areaEntities(h, c.area), { domains: slot.domain, deviceClasses: slot.dc.length ? slot.dc : undefined, exclude: skip });
     if (slot.single && ids.length > 1) ids = rankBy(h, ids, slot.dc).slice(0, 1);
+    // `include`: entities that have no area, shown with this room (a lock, a door contact)
+    for (const id of asItems(c.include).map((i) => i.entity)) {
+      const st = h.states[id];
+      if (!st || skip.includes(id) || ids.includes(id) || domainOf(id) !== slot.domain) continue;
+      if (slot.dc.length && !slot.dc.includes(st.attributes.device_class)) continue;
+      ids.push(id);
+    }
     return ids.map((entity) => ({ entity }));
   }
 
@@ -370,6 +379,7 @@ class SavvyRoomActivityCard extends SavvyCard {
     const st = item.entity ? this._hass.states[item.entity] : null;
     const d = domainOf(item.entity);
     if (item.navigation_path || item.tap_action || CHIP_TOGGLES.has(d) || PRESSES.has(d) || TURN_ON.has(d)) return { kind: "chip" };
+    if (d === "lock") return { kind: "event", slot: SLOT.lock };
     const dc = st?.attributes.device_class;
     const slot = dc && SLOTS.find((s) => s.domain === d && s.dc.includes(dc));
     return slot ? { kind: slot.kind, slot } : { kind: "read", slot: null };
@@ -382,6 +392,15 @@ class SavvyRoomActivityCard extends SavvyCard {
     name = name.replace(/\s+(sensor\s+)?(contact|occupancy|presence)$/i, "") || name;
     const noun = slotLabel && new RegExp(`\\s+${slotLabel}$`, "i");
     return (noun && name.replace(noun, "")) || name;
+  }
+
+  // A lock reads like a door: on is what deserves a look (unlocked, open, jammed), off is calm.
+  _ev(id) {
+    const st = id ? this._hass.states[id] : null;
+    if (!st || domainOf(id) !== "lock") return st;
+    const s = st.state;
+    const state = ["locked", "locking"].includes(s) ? "off" : ["unlocked", "unlocking", "open", "opening", "jammed"].includes(s) ? "on" : s;
+    return { ...st, state, __lock: s };
   }
 
   _areaName() {
@@ -402,7 +421,7 @@ class SavvyRoomActivityCard extends SavvyCard {
   _escalates(slot, on, alarm) {
     if (!on || !alarm) return false;
     if (!(alarm.startsWith("armed_") || alarm === "triggered")) return false;
-    if (slot.key === "door" || slot.key === "window") return true;
+    if (slot.key === "door" || slot.key === "window" || slot.key === "lock") return true;
     if (slot.key === "presence") return alarm === "triggered" || [].concat(this._config.alarm_presence_states || ["armed_away", "armed_vacation"]).includes(alarm);
     return false;
   }
@@ -436,7 +455,7 @@ class SavvyRoomActivityCard extends SavvyCard {
       for (const item of items) {
         const key = `${slot.key}|${item.entity}`;
         seen.add(key);
-        tally(slot, item, h.states[item.entity]);
+        tally(slot, item, this._ev(item.entity));
         if (slot.kind === "event") lanes.push(this._lane(slot, item, items.length));
         if (slot.key === "temperature" && !temp) temp = item;
         if (this._compact) {
@@ -528,6 +547,7 @@ class SavvyRoomActivityCard extends SavvyCard {
   _stateWord(slot, st) {
     if (!st) return "Not found";
     if (isOff(st)) return "Offline";
+    if (slot?.key === "lock" && st.__lock) return { locked: "Locked", unlocked: "Unlocked", locking: "Locking", unlocking: "Unlocking", open: "Open", opening: "Opening", jammed: "Jammed" }[st.__lock] || title(st.__lock);
     if (slot && st.state === "on" && slot.on) return slot.on;
     if (slot && st.state === "off" && slot.off) return slot.off;
     if (slot?.kind === "alert") return st.state === "on" ? "Detected" : "Clear";
@@ -543,7 +563,7 @@ class SavvyRoomActivityCard extends SavvyCard {
   }
 
   _renderEvent(key, slot, item, siblings, alarm) {
-    const st = this._hass.states[item.entity];
+    const st = this._ev(item.entity);
     const node = this._node(key, this._el.events, "ev", `<span class="disc"><ha-icon></ha-icon></span><span class="st"></span><span class="l2"><span class="lbl"></span><span class="when"></span></span>`);
     if (!node.__el) node.__el = { icon: node.querySelector("ha-icon"), st: node.querySelector(".st"), when: node.querySelector(".when"), lbl: node.querySelector(".lbl") };
     node.__item = item;
@@ -565,7 +585,7 @@ class SavvyRoomActivityCard extends SavvyCard {
   }
 
   _renderGlyph(key, slot, item, siblings, alarm) {
-    const st = this._hass.states[item.entity];
+    const st = this._ev(item.entity);
     const on = st?.state === "on";
     // a quiet alert sensor stays out of the compact row entirely
     if (slot.kind === "alert" && !on) {
@@ -751,6 +771,8 @@ class SavvyRoomActivityCard extends SavvyCard {
     } else {
       const parts = [];
       if (sum.active.includes("presence")) parts.push("Occupied");
+      const unlocked = sum.active.filter((a) => a === "lock").length;
+      if (unlocked) parts.push(unlocked === 1 ? "Unlocked" : `${unlocked} unlocked`);
       for (const k of ["door", "window"]) {
         const n = sum.active.filter((a) => a === k).length;
         if (n === 1) parts.push(`${SLOT[k].label} open`);
@@ -845,7 +867,11 @@ class SavvyRoomActivityCard extends SavvyCard {
     if (this._loading === key) return;
     this._loading = key;
     let raw = null, err = null;
-    try { raw = await fetchHistory(this._hass, ids, this._hours); }
+    try {
+      raw = await fetchHistory(this._hass, ids, this._hours);
+      // a lock's history reads like a door's: unlocked is on
+      for (const id of ids) if (domainOf(id) === "lock" && raw[id]) raw[id] = raw[id].map((r) => ({ ...r, s: ["locked", "locking"].includes(r.s) ? "off" : ["unlocked", "unlocking", "open", "opening", "jammed"].includes(r.s) ? "on" : r.s }));
+    }
     catch (e) { err = "History isn't available. The recorder may not be keeping these sensors."; }
     if (this._loading !== key) return;                  // a newer request took over
     this._loading = null;
@@ -866,7 +892,7 @@ class SavvyRoomActivityCard extends SavvyCard {
     // quantized, so a burst of state updates doesn't rebuild the lanes every time
     const end = Math.ceil(Date.now() / 15000) * 15000;
     const start = end - this._hours * 3600000;
-    const lanes = tg.lanes.map((l) => ({ ...l, runs: stateRuns(this._raw[l.entity], start, end, h.states[l.entity]) }));
+    const lanes = tg.lanes.map((l) => ({ ...l, runs: stateRuns(this._raw[l.entity], start, end, this._ev(l.entity)) }));
     const trans = [];
     for (const l of lanes) l.runs.forEach((r, i) => { if (i > 0 || r.t0 > start) trans.push({ t: r.t0, lane: l, state: r.state }); });
     trans.sort((a, b) => a.t - b.t);
@@ -1019,11 +1045,13 @@ class SavvyRoomActivityCard extends SavvyCard {
       const w = on ? "Occupied" : "Cleared";
       return lane.label === lane.slot.label ? w : `${lane.label} ${w.toLowerCase()}`;
     }
+    if (lane.slot.key === "lock") return `${lane.label} ${on ? "unlocked" : "locked"}`;
     return `${lane.label} ${on ? "opened" : "closed"}`;
   }
 
   _activeWord(lane) {
     if (lane.slot.key === "presence") return lane.label === lane.slot.label ? "Occupied" : `${lane.label} occupied`;
+    if (lane.slot.key === "lock") return `${lane.label} unlocked`;
     return `${lane.label} open`;
   }
 
@@ -1032,7 +1060,7 @@ class SavvyRoomActivityCard extends SavvyCard {
     for (const l of this._hist?.lanes || this._histTargets?.lanes || []) {
       const row = this._laneEls.get(l.key);
       if (!row) continue;
-      const state = t == null ? this._hass?.states[l.entity]?.state : this._stateAt(l, t);
+      const state = t == null ? this._ev(l.entity)?.state : this._stateAt(l, t);
       const on = state === "on";
       attr(row.icon, "icon", on ? l.slot.icon : (l.slot.iconOff || l.slot.icon));
       attr(row.gi, "data-on", on);
@@ -1346,7 +1374,7 @@ const EDITOR = defineEditor("savvy-room-activity-card", (hass, c) => [
   { name: "exclude_kinds", label: "Hide kinds", selector: { select: { multiple: true, options: SLOTS.map((s) => ({ value: s.key, label: s.label })) } } },
   { name: "exclude", label: "Exclude", selector: { entity: { multiple: true } } },
   S.section("Sensor overrides", SLOTS.map((s) => ({ name: s.key, label: s.label,
-    selector: { entity: { domain: s.domain, device_class: s.dc, multiple: !s.single } } }))),
+    selector: { entity: { domain: s.domain, device_class: s.dc.length ? s.dc : undefined, multiple: !s.single } } }))),
   S.section("History page", [
     { name: "history", label: "", selector: { object: {} }, helper: "false turns it off; { hours: 24, ranges: [6, 24, 72] }" },
   ]),

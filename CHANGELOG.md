@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.8.0
+
+- **Lock**: a new card for a door. The state is the biggest thing on it, a glow behind it follows
+  (green locked, amber unlocked, red open or jammed), and the lock is the popups' three-stop track
+  at full size: slide to unlock, slide back to lock, past Unlocked drag to the end and hold until
+  the ring fills to open the latch. It shows the door contact and the battery (found on the lock's
+  device, or named), who last changed it and when, warns when a locked lock has its door open, and
+  nudges "Unlocked for 25 min" with a Lock now button. Optional: the house alarm with its arm modes
+  (disarming and codes stay in more-info), and a live camera that opens a popup above the page.
+  Several locks get a row each and a "Lock all"; `layout: compact` is one row per lock. Full visual
+  editor. With no lock named it shows the Savvy settings' security entity.
+- **Room activity knows locks.** A room's lock reads "Locked" or "Unlocked" with how long, turns amber
+  while unlocked and the alarm is armed (like an open door), has a `lock` option and shows up in the
+  history page and in `exclude_kinds`. New `include` (and the Savvy settings' room `include`) adds
+  entities that have no area, such as the lock of a front door.
+- **Media editor wording.** A source's `output` is "Sound output" and the card's `video_output` is
+  "Sound output for all sources", each with a line saying what it does; the README says it in the
+  same words.
+- **The chip row no longer re-appends its chips on every update**, on every card that has one.
+
 ## 0.7.4
 
 - **System health in columns.** With `source: all` the categories (Offline devices, Low

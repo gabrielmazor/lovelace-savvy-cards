@@ -259,7 +259,34 @@
     return { patch, entries };
   }
 
+
+  // The front door of a real house, for the lock card: a Nuki-like lock that can open, with
+  // no area, a door contact and a battery on its device, and who last changed it; a plain
+  // lock that can't open (no companions); the house alarm in a chosen state. Apply the
+  // returned patch with setStates; the house's own lock.front_door (hallway) and
+  // camera.hallway are there already.
+  //   entranceFixture(house, { lock, door, battery, changedBy, changed, alarm, alarmFeatures })
+  function entranceFixture(house, o = {}) {
+    const patch = {};
+    house.devices.dev_entrance = { id: "dev_entrance", name: "Entrance Door", area_id: null, via_device_id: null };
+    const ent = (id, device, platform, state, attrs, changed = 3 * HOUR) => {
+      house.entities[id] = { entity_id: id, area_id: null, device_id: device, platform, entity_category: null, hidden: false, disabled_by: null };
+      patch[id] = { entity_id: id, state: String(state), attributes: attrs, last_changed: ago(changed), last_updated: ago(changed) };
+    };
+    ent("lock.entrance_door", "dev_entrance", "nuki", o.lock || "locked",
+      { friendly_name: "Entrance Door", supported_features: 1, ...(o.changedBy === null ? {} : { changed_by: o.changedBy || "Gabriel" }) }, o.changed ?? 3 * HOUR);
+    ent("binary_sensor.entrance_door_contact", "dev_entrance", "nuki", o.door || "off", { device_class: "door", friendly_name: "Entrance Door Contact" }, 20 * MIN);
+    ent("sensor.entrance_door_battery", "dev_entrance", "nuki", o.battery ?? 84, { device_class: "battery", unit_of_measurement: "%", friendly_name: "Entrance Door Battery" });
+    ent("lock.shed", null, "demo", "locked", { friendly_name: "Shed" });
+    if (o.alarm) {
+      patch["alarm_control_panel.home_alarm"] = { ...house.states["alarm_control_panel.home_alarm"], state: o.alarm,
+        attributes: { friendly_name: "Home Alarm", supported_features: o.alarmFeatures ?? 7, ...(o.alarmCode ? { code_format: "number", code_arm_required: true } : {}) } };
+    }
+    return patch;
+  }
+
   window.makeHouse = makeHouse;
+  window.entranceFixture = entranceFixture;
   window.hubFixture = hubFixture;
   window.offlineFixture = offlineFixture;
 })();

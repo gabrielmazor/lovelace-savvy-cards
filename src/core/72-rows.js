@@ -447,22 +447,6 @@ const ROWS_CSS = `
   .sv-bulk ha-icon { display: flex; }
   .sv-bulk[disabled] { opacity: 0.4; cursor: default; }
   .sv-tools[data-solo] .sv-bulk { margin-inline-start: auto; }
-  /* the lock track: three stops, one knob */
-  .sv-lk { --lk: 76 175 80; position: relative; box-sizing: border-box; height: 36px; border-radius: 18px; padding: 0 4px; overflow: hidden;
-    background: rgb(var(--lk) / 0.16); box-shadow: inset 0 0 0 1px rgb(var(--lk) / 0.28); touch-action: pan-y; cursor: grab; outline: none; user-select: none; -webkit-user-select: none; }
-  .sv-lk[data-drag] { cursor: grabbing; }
-  .sv-lk[aria-disabled="true"] { opacity: 0.45; cursor: default; }
-  .sv-lk-hint { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; font-size: 12px; font-weight: 600; letter-spacing: -0.004em;
-    color: rgb(var(--lk)); pointer-events: none; white-space: nowrap; }
-  .sv-lk-hint.r { right: 14px; }
-  .sv-lk-hint.l { left: 14px; }
-  .sv-lk-knob { position: absolute; top: 4px; left: 4px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; color: #fff;
-    background: rgb(var(--lk)); box-shadow: 0 2px 6px rgb(0 0 0 / 0.3); will-change: transform; --mdc-icon-size: 17px; --ring: 0; --breath: 0; }
-  .sv-lk-knob::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid rgb(var(--lk)); opacity: calc(var(--breath) * 0.7); transform: scale(calc(1 + var(--breath) * 0.2)); pointer-events: none; }
-  .sv-lk-knob ha-icon { position: absolute; display: flex; }
-  .sv-lk-ring { position: absolute; inset: -4px; width: 36px; height: 36px; transform: rotate(-90deg); opacity: var(--ring); pointer-events: none; }
-  .sv-lk-ring circle { fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 125.7; stroke-dashoffset: 125.7; }
-  .sv-lk[data-armed] .sv-lk-knob { box-shadow: 0 0 0 4px rgb(var(--lk) / 0.35), 0 2px 8px rgb(0 0 0 / 0.3); }
-  .sv-lk[data-bad] { --lk: 224 102 102 !important; }
-  @media (prefers-contrast: more) { .sv-lk { box-shadow: inset 0 0 0 1.5px rgb(var(--lk)); } .sv-seg { box-shadow: inset 0 0 0 1px currentColor; } }
+  ${LOCK_TRACK_CSS}
+  @media (prefers-contrast: more) { .sv-seg { box-shadow: inset 0 0 0 1px currentColor; } }
 `;

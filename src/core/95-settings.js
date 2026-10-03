@@ -106,6 +106,14 @@ const SETTINGS_RULES = {
     { path: "humidity", label: "Humidity", get: room("humidity") },
   ],
   "savvy-room-activity-card": [
+    { path: "include", label: "Include", kind: "union", get: room("include") },
+    { path: "exclude", label: "Exclude", kind: "union", get: room("exclude") },
+  ],
+  "savvy-lock-card": [
+    // with no lock named, the settings' security entity is the lock to show
+    { path: "entity", label: "Lock", src: "house",
+      get: (s, c) => (c.entity !== undefined || c.entities !== undefined || c.area !== undefined || c.areas !== undefined || domainOf(s.house?.security) !== "lock" ? undefined : s.house.security) },
+    { path: "include", label: "Include", kind: "union", get: room("include") },
     { path: "exclude", label: "Exclude", kind: "union", get: room("exclude") },
   ],
 };

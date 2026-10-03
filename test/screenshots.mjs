@@ -27,6 +27,8 @@ window.hass.services = { watchman: { report: {} } };
 window.setStates(f.patch);`;
 const OFFLINE_OPEN = OFFLINE + `window.__after = () => { const c = window.cards[0]; c._open.add("h:dev_n_bridge"); c._open.add("h:dev_n_bridge/d:dev_n_k1"); c._open.add("i:e:entry_tuya"); c._update(); };`;
 // the tiles: three rooms side by side (the first is mounted by the loop)
+// the front door: a Nuki-like lock with its door contact and battery, the house alarm, a camera
+const DOOR = (o) => `window.setStates(window.entranceFixture(window.house, ${JSON.stringify(o)}));`;
 const TILES = `window.__tiles = () => { for (const area of ["bedroom", "office"]) window.mount("savvy-room-tile", { area }, 260); };`;
 // a day of history, and a month of statistics, for the graphs
 const RECORDER = `window.hass.callWS = async (m) => {
@@ -125,6 +127,10 @@ const SHOTS = [
   ["media", "savvy-media-card", { area: "living_room", presets: [{ entity: "script.good_night", name: "Good night" }] }, 460],
   ["media-compact", "savvy-media-card", { area: "kitchen", layout: "compact" }, 460],
   ["scene", "savvy-scene-card", { area: ["living_room", "office"], entities: [{ entity: "scene.party", icon: "mdi:party-popper", color: "purple" }], strip: "^.*//\\s*|\\s*-\\s*on$" }, 460],
+  ["lock", "savvy-lock-card", { entity: "lock.entrance_door", alarm: "alarm_control_panel.home_alarm", camera: "camera.living_room" }, 460, DOOR({})],
+  ["lock-unlocked", "savvy-lock-card", { entity: "lock.entrance_door", camera: false }, 460, DOOR({ lock: "unlocked", changed: 25 * 60000, door: "off", battery: 31 })],
+  ["lock-compact", "savvy-lock-card", { entities: ["lock.entrance_door", "lock.shed"], layout: "compact", alarm: false, camera: false }, 460, DOOR({})],
+  ["lock-several", "savvy-lock-card", { entities: ["lock.entrance_door", "lock.shed", "lock.back_door"], name: "Doors", alarm: false, camera: false }, 460, DOOR({})],
   ["settings", "savvy-settings-card", SETTINGS_CFG, 460, SETTINGS_USERS],
   ["settings-compact", "savvy-settings-card", { ...SETTINGS_CFG, layout: "compact" }, 460, SETTINGS_USERS],
   ["camera", "savvy-camera-card", { area: ["living_room", "kitchen"] }, 820, FRIGATE],

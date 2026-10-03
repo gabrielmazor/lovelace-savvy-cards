@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.7.4 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.8.0 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.7.4";
+const SAVVY_VERSION = "0.8.0";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -2166,6 +2166,29 @@ const LOCK_HOLD_MS = 500;      // how long the end of the lock track must be hel
 const LOCK_COLORS = [[76, 175, 80], [232, 163, 61], [224, 102, 102]];   // locked, unlocked, open
 const mixRgb = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
 
+// The lock track's stylesheet: shared by the popup rows (small) and the lock card (large).
+const LOCK_TRACK_CSS = `/* the lock track: three stops, one knob; --k is the knob, --p the padding round it */
+  .sv-lk { --lk: 76 175 80; --k: 28px; --p: 4px; position: relative; box-sizing: border-box; height: calc(var(--k) + 2 * var(--p)); border-radius: calc(var(--k) / 2 + var(--p));
+    padding: 0 var(--p); overflow: hidden; background: rgb(var(--lk) / 0.16); box-shadow: inset 0 0 0 1px rgb(var(--lk) / 0.28);
+    touch-action: pan-y; cursor: grab; outline: none; user-select: none; -webkit-user-select: none; }
+  .sv-lk[data-size="lg"] { --k: 48px; --p: 8px; }
+  .sv-lk[data-drag] { cursor: grabbing; }
+  .sv-lk[aria-disabled="true"] { opacity: 0.45; cursor: default; }
+  .sv-lk-hint { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; font-size: 12px; font-weight: 600; letter-spacing: -0.004em;
+    color: rgb(var(--lk)); pointer-events: none; white-space: nowrap; }
+  .sv-lk[data-size="lg"] .sv-lk-hint { font-size: 14px; }
+  .sv-lk-hint.r { right: calc(var(--p) + 10px); }
+  .sv-lk-hint.l { left: calc(var(--p) + 10px); }
+  .sv-lk-knob { position: absolute; top: var(--p); left: var(--p); width: var(--k); height: var(--k); border-radius: 50%; display: grid; place-items: center; color: #fff;
+    background: rgb(var(--lk)); box-shadow: 0 2px 6px rgb(0 0 0 / 0.3); will-change: transform; --mdc-icon-size: calc(var(--k) * 0.6); --ring: 0; --breath: 0; }
+  .sv-lk-knob::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid rgb(var(--lk)); opacity: calc(var(--breath) * 0.7); transform: scale(calc(1 + var(--breath) * 0.2)); pointer-events: none; }
+  .sv-lk-knob ha-icon { position: absolute; display: flex; }
+  .sv-lk-ring { position: absolute; inset: -4px; width: calc(var(--k) + 8px); height: calc(var(--k) + 8px); transform: rotate(-90deg); opacity: var(--ring); pointer-events: none; }
+  .sv-lk-ring circle { fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 125.7; stroke-dashoffset: 125.7; }
+  .sv-lk[data-armed] .sv-lk-knob { box-shadow: 0 0 0 4px rgb(var(--lk) / 0.35), 0 2px 8px rgb(0 0 0 / 0.3); }
+  .sv-lk[data-bad] { --lk: 224 102 102 !important; }
+  @media (prefers-contrast: more) { .sv-lk { box-shadow: inset 0 0 0 1.5px rgb(var(--lk)); } }`;
+
 // The springs and press feedback of one row's controls.
 class RowKit {
   constructor(wake) {
@@ -2455,9 +2478,11 @@ class Stepper {
 // dragged. Past Unlocked the track gets heavy and the end has to be held until a ring fills
 // (and then released) before the door's latch opens. A lock that can't open has two stops.
 class LockTrack {
-  constructor(kit, { label, canOpen, onLock, onUnlock, onOpen }) {
+  constructor(kit, { label, canOpen, onLock, onUnlock, onOpen, size = "sm" }) {
     this.kit = kit;
     this.canOpen = canOpen;
+    this.K = size === "lg" ? 48 : LOCK_KNOB;       // the knob, and the padding round it
+    this.P = size === "lg" ? 8 : LOCK_PAD;
     this.onLock = onLock;
     this.onUnlock = onUnlock;
     this.onOpen = onOpen;
@@ -2466,6 +2491,7 @@ class LockTrack {
     const el = this.el = document.createElement("div");
     el.className = "sv-lk";
     el.dataset.stops = canOpen ? "3" : "2";
+    el.dataset.size = size;
     el.setAttribute("role", "slider");
     el.tabIndex = 0;
     el.setAttribute("aria-label", label);
@@ -2506,7 +2532,7 @@ class LockTrack {
   }
 
   clearTimers() { for (const t of this.timers) clearTimeout(t); this.timers = []; }
-  measure() { this.W = this.el.clientWidth; this.T = Math.max(1, this.W - LOCK_KNOB - 2 * LOCK_PAD); }
+  measure() { this.W = this.el.clientWidth; this.T = Math.max(1, this.W - this.K - 2 * this.P); }
   stopPos(stop) { return stop === 0 ? 0 : stop === 1 ? this.u : 1; }
   // the knob sits where the finger is, but past Unlocked it lags and then arrives: heavy. The
   // end is the finger's last 4%: a drag only counts from where it became clearly sideways.
@@ -2547,14 +2573,19 @@ class LockTrack {
     return { locked: "Locked", unlocked: "Unlocked", locking: "Locking…", unlocking: "Unlocking…", opening: "Opening…", open: "Open", jammed: "Jammed" }[this.state] || title(this.state);
   }
 
+  // the track's colour where the knob sits: green, amber, red
+  colorAt(x) {
+    const u = this.u;
+    return this.canOpen
+      ? (x <= u ? mixRgb(LOCK_COLORS[0], LOCK_COLORS[1], u ? x / u : 1) : mixRgb(LOCK_COLORS[1], LOCK_COLORS[2], clamp((x - u) / (1 - u))))
+      : mixRgb(LOCK_COLORS[0], LOCK_COLORS[1], clamp(x));
+  }
+
   paint(dt) {
     if (!this.W) this.measure();
     const x = clamp(this.x.x, 0, 1.04), u = this.u;
     put(this.knob, "transform", `translateX(${(x * this.T).toFixed(2)}px)`);
-    const c = this.canOpen
-      ? (x <= u ? mixRgb(LOCK_COLORS[0], LOCK_COLORS[1], u ? x / u : 1) : mixRgb(LOCK_COLORS[1], LOCK_COLORS[2], clamp((x - u) / (1 - u))))
-      : mixRgb(LOCK_COLORS[0], LOCK_COLORS[1], clamp(x));
-    put(this.el, "--lk", c.join(" "));
+    put(this.el, "--lk", this.colorAt(x).join(" "));
     // the icon crossfades between the stops it sits between
     const pos = this.canOpen ? [0, u, 1] : [0, 1, 1];
     const span = this.canOpen ? u : 1;
@@ -3174,24 +3205,8 @@ const ROWS_CSS = `
   .sv-bulk ha-icon { display: flex; }
   .sv-bulk[disabled] { opacity: 0.4; cursor: default; }
   .sv-tools[data-solo] .sv-bulk { margin-inline-start: auto; }
-  /* the lock track: three stops, one knob */
-  .sv-lk { --lk: 76 175 80; position: relative; box-sizing: border-box; height: 36px; border-radius: 18px; padding: 0 4px; overflow: hidden;
-    background: rgb(var(--lk) / 0.16); box-shadow: inset 0 0 0 1px rgb(var(--lk) / 0.28); touch-action: pan-y; cursor: grab; outline: none; user-select: none; -webkit-user-select: none; }
-  .sv-lk[data-drag] { cursor: grabbing; }
-  .sv-lk[aria-disabled="true"] { opacity: 0.45; cursor: default; }
-  .sv-lk-hint { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; font-size: 12px; font-weight: 600; letter-spacing: -0.004em;
-    color: rgb(var(--lk)); pointer-events: none; white-space: nowrap; }
-  .sv-lk-hint.r { right: 14px; }
-  .sv-lk-hint.l { left: 14px; }
-  .sv-lk-knob { position: absolute; top: 4px; left: 4px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; color: #fff;
-    background: rgb(var(--lk)); box-shadow: 0 2px 6px rgb(0 0 0 / 0.3); will-change: transform; --mdc-icon-size: 17px; --ring: 0; --breath: 0; }
-  .sv-lk-knob::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid rgb(var(--lk)); opacity: calc(var(--breath) * 0.7); transform: scale(calc(1 + var(--breath) * 0.2)); pointer-events: none; }
-  .sv-lk-knob ha-icon { position: absolute; display: flex; }
-  .sv-lk-ring { position: absolute; inset: -4px; width: 36px; height: 36px; transform: rotate(-90deg); opacity: var(--ring); pointer-events: none; }
-  .sv-lk-ring circle { fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 125.7; stroke-dashoffset: 125.7; }
-  .sv-lk[data-armed] .sv-lk-knob { box-shadow: 0 0 0 4px rgb(var(--lk) / 0.35), 0 2px 8px rgb(0 0 0 / 0.3); }
-  .sv-lk[data-bad] { --lk: 224 102 102 !important; }
-  @media (prefers-contrast: more) { .sv-lk { box-shadow: inset 0 0 0 1.5px rgb(var(--lk)); } .sv-seg { box-shadow: inset 0 0 0 1px currentColor; } }
+  ${LOCK_TRACK_CSS}
+  @media (prefers-contrast: more) { .sv-seg { box-shadow: inset 0 0 0 1px currentColor; } }
 `;
 
 // ===== core/75-mode.js =====
@@ -3652,6 +3667,7 @@ SavvyCard.prototype._chipRow = function (row, items, { iconOnly = false } = {}) 
   row.__nodes = row.__nodes || new Map();
   attr(row, "data-icon-only", iconOnly);
   const seen = new Set();
+  let at = 0;
   for (const item of items) {
     seen.add(item.key);
     let node = row.__nodes.get(item.key);
@@ -3688,7 +3704,7 @@ SavvyCard.prototype._chipRow = function (row, items, { iconOnly = false } = {}) 
       spin.s.to(MQ.reduced.matches ? 0 : item.spin || 0);
       if (MQ.reduced.matches) spin.s.snap();
     }
-    row.appendChild(node);      // keeps the DOM in the items' order
+    place(row, node, at++);      // keeps the DOM in the items' order, moving nothing that is already there
   }
   for (const [key, node] of row.__nodes) {
     if (seen.has(key)) continue;
@@ -4256,6 +4272,14 @@ const SETTINGS_RULES = {
     { path: "humidity", label: "Humidity", get: room("humidity") },
   ],
   "savvy-room-activity-card": [
+    { path: "include", label: "Include", kind: "union", get: room("include") },
+    { path: "exclude", label: "Exclude", kind: "union", get: room("exclude") },
+  ],
+  "savvy-lock-card": [
+    // with no lock named, the settings' security entity is the lock to show
+    { path: "entity", label: "Lock", src: "house",
+      get: (s, c) => (c.entity !== undefined || c.entities !== undefined || c.area !== undefined || c.areas !== undefined || domainOf(s.house?.security) !== "lock" ? undefined : s.house.security) },
+    { path: "include", label: "Include", kind: "union", get: room("include") },
     { path: "exclude", label: "Exclude", kind: "union", get: room("exclude") },
   ],
 };
@@ -10752,6 +10776,599 @@ registerCard("savvy-lights-card", LightsCard, "Lights",
   "Every light in a room, found for you, each with only the controls it supports. Reorder in the editor.");
 })();
 
+// ===== cards/lock.js =====
+(() => {
+// savvy-lock-card: a door, the way you'd want to handle it. The state is the biggest thing on
+// the card, a glow behind it follows (green when locked, amber when not, red when open or
+// jammed), and the lock is a track you slide: Locked, Unlocked, Open. A tap does nothing; the
+// knob is dragged, and Open (the latch) needs the end held until a ring fills.
+//
+//   type: custom:savvy-lock-card
+//   entity: lock.front_door                 or  entities: [lock.a, { entity: lock.b, name: Garage }]
+//                                           or  area: hallway   (every lock of the area; `include` adds locks that have none)
+//   name: Front door     icon: mdi:door
+//   door: binary_sensor.front_door          (else the door contact of the lock's device or area; false: none)
+//   battery: sensor.front_door_battery      (else the battery sensor of its device; false: none)
+//   battery_warn: 40                        amber below this, red at 15
+//   unlocked_warn: 15                       minutes before "Unlocked for 25 min" nudges (0: never)
+//   alarm: alarm_control_panel.home         (else the house's alarm panel; false / hide_alarm: none)
+//   camera: camera.porch                    (else a camera in the lock's area; false / hide_camera: none)
+//   layout: full | compact                  chips: [...]  (the one chip spec)
+//
+// With several locks: a row each, a summary and a "Lock all". Tap a name for the lock's
+// details. The alarm's arm modes are buttons; disarming, and any code, is more-info's job:
+// the card never keeps a code. The camera is a live still that opens a popup with the camera card.
+
+const LOCK_CAM_MS = 8000;
+const LOCK_DOOR_CLASSES = ["door", "garage_door", "opening", "window"];
+const lockTone = (t) => (t <= 1 ? mixRgb(LOCK_COLORS[0], LOCK_COLORS[1], clamp(t)) : mixRgb(LOCK_COLORS[1], LOCK_COLORS[2], clamp(t - 1)));
+const LOCK_TONE_WORD = ["rgb(76 175 80)", "rgb(232 163 61)", "rgb(224 102 102)"];
+const LOCK_AMBER = "232 163 61", LOCK_RED = "224 102 102";
+
+const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_TRACK_CSS}
+  ha-card { --pad: 14px; --lk: 76 175 80; --wash: 0.1; --pulse: 0; position: relative; display: flex; flex-direction: column; gap: 12px; padding: var(--pad); overflow: hidden; }
+  ha-card::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(140% 110% at 0% 0%, rgb(var(--lk) / calc(var(--wash) + var(--pulse) * 0.08)), transparent 68%); }
+  ha-card > * { position: relative; }
+  .head { display: flex; align-items: center; gap: 10px; min-height: 30px; }
+  .head .t { flex: 1; min-width: 0; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sum { flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 12px; font-size: 12px; font-weight: 650;
+    color: rgb(var(--lk)); background: rgb(var(--lk) / 0.16); white-space: nowrap; }
+  .btn { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 11px; background: var(--well);
+    font-size: 12.5px; line-height: 16px; font-weight: 650; color: var(--primary-text-color); --mdc-icon-size: 16px; cursor: pointer; }
+  .btn ha-icon { display: flex; }
+  .btn[data-on] { color: rgb(var(--lk)); background: rgb(var(--lk) / 0.16); }
+  .locks { display: flex; flex-direction: column; gap: 16px; }
+  .lk { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .top { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .who { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; text-align: start; border-radius: 12px; cursor: pointer; }
+  .disc { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; color: var(--tone); background: color-mix(in oklab, var(--tone) 18%, transparent); --mdc-icon-size: 21px; }
+  .disc > * { display: flex; align-items: center; justify-content: center; line-height: 0; }
+  .col { min-width: 0; display: flex; flex-direction: column; }
+  .nm { font-size: 12.5px; line-height: 16px; font-weight: 600; letter-spacing: -0.005em; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .st { font-size: 17px; line-height: 22px; font-weight: 700; letter-spacing: -0.02em; color: var(--tone); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  :host([data-solo]) .st { font-size: 28px; line-height: 32px; letter-spacing: -0.03em; }
+  :host([data-solo]) .disc { width: 46px; height: 46px; --mdc-icon-size: 25px; }
+  .sub { font-size: 12.5px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sub:empty { display: none; }
+  .meta { flex: none; display: flex; align-items: center; gap: 8px; }
+  .door, .batt { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px 0 7px; border-radius: 13px; background: var(--well);
+    font-size: 12px; font-weight: 650; color: var(--secondary-text-color); white-space: nowrap; --mdc-icon-size: 16px; }
+  .door ha-icon { display: flex; }
+  .door[data-warn], .batt[data-level="warn"] { color: rgb(${LOCK_AMBER}); background: rgb(${LOCK_AMBER} / 0.16); }
+  .batt[data-level="bad"] { color: rgb(${LOCK_RED}); background: rgb(${LOCK_RED} / 0.16); }
+  .batt svg { width: 16px; height: 16px; transform: rotate(-90deg); }
+  .batt circle { fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; }
+  .batt .bg { opacity: 0.25; }
+  .track { min-width: 0; }
+  /* several locks: a smaller row each */
+  :host(:not([data-solo])) .st { font-size: 15px; line-height: 20px; }
+  /* compact: one row, the track beside the name */
+  :host([data-compact]) .locks { gap: 8px; }
+  :host([data-compact]) .lk { flex-direction: row; align-items: center; gap: 10px; }
+  :host([data-compact]) .top { flex: 1; }
+  :host([data-compact]) .track { flex: none; width: min(46%, 168px); }
+  :host([data-compact]) .disc { width: 34px; height: 34px; --mdc-icon-size: 19px; }
+  :host([data-compact]) .st { font-size: 15px; line-height: 19px; }
+  :host([data-compact]) .sub { display: none; }
+  :host([data-compact]) .meta .door:not([data-warn]), :host([data-compact]) .meta .batt:not([data-level="warn"]):not([data-level="bad"]) { display: none; }
+  :host([data-compact]) .door, :host([data-compact]) .batt { height: 22px; font-size: 11px; }
+  :host([data-compact]) .sv-lk-hint { display: none; }
+  .nudge { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border-radius: 14px; background: rgb(${LOCK_AMBER} / 0.14); color: rgb(${LOCK_AMBER});
+    font-size: 13px; line-height: 17px; font-weight: 650; --mdc-icon-size: 18px; }
+  .nudge ha-icon { display: flex; flex: none; }
+  .nudge .tx { flex: 1; min-width: 0; }
+  .nudge .btn { background: rgb(${LOCK_AMBER} / 0.2); color: inherit; }
+  .alarm { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 10px; border-radius: 14px; background: var(--well); min-width: 0; flex-wrap: wrap; }
+  .alarm[data-triggered] { background: rgb(${LOCK_RED} / 0.18); color: rgb(${LOCK_RED}); }
+  .alarm .ai { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: color-mix(in oklab, var(--secondary-text-color) 14%, transparent);
+    --mdc-icon-size: 17px; color: var(--secondary-text-color); }
+  .alarm[data-armed] .ai { color: rgb(76 175 80); background: rgb(76 175 80 / 0.16); }
+  .alarm[data-triggered] .ai { color: rgb(${LOCK_RED}); background: rgb(${LOCK_RED} / 0.2); }
+  .alarm .ai ha-icon { display: flex; }
+  .alarm .ab { flex: 1; min-width: 92px; display: flex; flex-direction: column; }
+  .alarm .an { font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: var(--secondary-text-color); }
+  .alarm .as { font-size: 14px; line-height: 18px; font-weight: 650; letter-spacing: -0.01em; }
+  .alarm .am { flex: none; display: flex; gap: 6px; flex-wrap: wrap; }
+  .alarm .am .btn { height: 30px; padding: 0 10px; }
+  .alarm .am .btn[data-on] { color: rgb(76 175 80); background: rgb(76 175 80 / 0.16); }
+  .alarm[data-triggered] .am .btn { background: rgb(${LOCK_RED} / 0.14); color: inherit; }
+  .cam { position: relative; display: block; width: 100%; padding: 0; border: 0; border-radius: 14px; overflow: hidden; cursor: pointer; background: var(--well); aspect-ratio: 21 / 9; }
+  .cam img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .cam .cl { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 6px; padding: 18px 12px 9px; color: #fff; --mdc-icon-size: 16px;
+    font-size: 12.5px; font-weight: 650; background: linear-gradient(transparent, rgb(0 0 0 / 0.55)); text-align: start; }
+  .cam .cl ha-icon { display: flex; }
+  .empty { padding: 4px 2px; font-size: 12.5px; font-weight: 500; color: var(--secondary-text-color); }
+  .sep { display: none; }
+  .cam-sheet savvy-camera-card { --ha-card-border-width: 0px; --ha-card-background: transparent; --ha-card-box-shadow: none; margin: -14px -14px 0; }
+  @media (prefers-contrast: more) { .sub, .nm { color: var(--primary-text-color); } }
+`;
+
+class SavvyLockCard extends SavvyCard {
+  static getStubConfig(hass) {
+    const id = Object.keys(hass?.states || {}).find((i) => i.startsWith("lock."));
+    return id ? { entity: id } : {};
+  }
+  static getConfigElement() { return document.createElement(EDITOR); }
+
+  constructor() {
+    super();
+    this._nodes = new Map();
+    this._reg = new WeakMap();
+    this._tint = this._spring(0, MOTION.ui, "tint", 0.002);
+    this._pulse = 0;
+  }
+
+  setConfig(config) {
+    if (!config || typeof config !== "object") throw new Error("savvy-lock-card: invalid configuration");
+    const areas = [].concat(config.area ?? config.areas ?? []).filter(Boolean);
+    const pinned = asItems([...(config.entity ? [config.entity] : []), ...[].concat(config.entities || [])]);
+    this._config = { ...config, areas, pinned, include: asItems(config.include).map((i) => i.entity),
+      exclude: asItems(config.exclude).map((i) => i.entity), chips: [].concat(config.chips || []) };
+    this._compact = config.layout === "compact";
+    if (this._el) { this._build(); if (this._hass) this._update(); }
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._config) return;
+    if (!this._el) this._build();
+    this._update();
+    if (this._camSheet?.isOpen) this._camCard.hass = hass;
+  }
+
+  connectedCallback() {
+    this._observe();
+    this._wake();
+  }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._io?.disconnect();
+    this._io = null;
+    clearTimeout(this._timer);
+    clearInterval(this._camTimer);
+    this._camTimer = 0;
+    this._camSheet?.close(true);
+  }
+  getCardSize() { return this._compact ? 2 : 4 + (this._camId ? 3 : 0); }
+  getGridOptions() { return { columns: 12, min_columns: 4, rows: "auto" }; }
+
+  _observe() {
+    if (!this._el || !this.isConnected || typeof IntersectionObserver !== "function") return;
+    this._io = this._io || new IntersectionObserver(([e]) => { this._onscreen = e.isIntersecting; if (e.isIntersecting) this._camRefresh(); });
+    this._io.disconnect();
+    this._io.observe(this);
+  }
+
+  _build() {
+    const root = this.shadowRoot || this.attachShadow({ mode: "open" });
+    this._resetMotion();
+    this._tint = this._spring(this._tint?.x || 0, MOTION.ui, "tint", 0.002);
+    this._kit = new RowKit(() => this._wake());
+    this._nodes.clear();
+    this._badKey = "";
+    root.innerHTML = `<style>${STYLE}</style>
+      <ha-card>
+        <div class="head" id="head" hidden><span class="t" id="title"></span><span class="sum" id="sum"></span><button class="btn" id="all"><ha-icon icon="mdi:lock"></ha-icon><span>Lock all</span></button></div>
+        <div class="locks" id="locks"></div>
+        <div class="nudge" id="nudge" hidden><ha-icon icon="mdi:lock-clock"></ha-icon><span class="tx" id="nudgeTx"></span><button class="btn" id="nudgeBtn"><ha-icon icon="mdi:lock"></ha-icon><span>Lock now</span></button></div>
+        <div class="alarm" id="alarm" hidden><span class="ai"><ha-icon id="alarmIc"></ha-icon></span><span class="ab"><span class="an">Alarm</span><span class="as" id="alarmSt"></span></span><span class="am" id="alarmModes"></span></div>
+        <button class="cam" id="cam" hidden aria-label="Open camera"><img id="camImg" alt=""><span class="cl"><ha-icon icon="mdi:cctv"></ha-icon><span id="camName"></span></span></button>
+        <div class="empty" id="empty" hidden></div>
+        <div class="chips" id="chips" hidden></div>
+      </ha-card>`;
+    const $ = (id) => root.getElementById(id);
+    this._el = { card: root.querySelector("ha-card"), head: $("head"), title: $("title"), sum: $("sum"), all: $("all"), locks: $("locks"),
+      nudge: $("nudge"), nudgeTx: $("nudgeTx"), nudgeBtn: $("nudgeBtn"), alarm: $("alarm"), alarmIc: $("alarmIc"), alarmSt: $("alarmSt"), alarmModes: $("alarmModes"),
+      cam: $("cam"), camImg: $("camImg"), camName: $("camName"), empty: $("empty"), chips: $("chips") };
+    this._pressable(this._el.all, { onTap: () => this._lockAll() }, 0.05);
+    this._pressable(this._el.nudgeBtn, { onTap: () => this._nudged && this._call(this._nudged, "lock") }, 0.05);
+    this._pressable(this._el.cam, { onTap: () => this._camId && this._openCamera() }, 0.025);
+    this._ro?.disconnect();
+    this._ro = new ResizeObserver(() => this._fitRow(this._el.chips));
+    this._ro.observe(this._el.chips);
+    this._first = true;
+    this._observe();
+  }
+
+  _frame(now, dt) {
+    const a = super._frame(now, dt);
+    const b = this._kit ? this._kit.step(dt) : false;
+    if (this._pulsing && !MQ.reduced.matches) {
+      this._pulse = (this._pulse + dt * 3.4) % (Math.PI * 2);
+      put(this._el.card, "--pulse", (0.5 + 0.5 * Math.sin(this._pulse)).toFixed(3));
+      return true;
+    }
+    return a || b;
+  }
+
+  // ---------- which locks, and what goes with each ----------
+  _registry(id) {
+    const e = this._hass.entities;
+    if (!e) return [];
+    let m = this._reg.get(e);
+    if (!m) { m = new Map(); this._reg.set(e, m); }
+    if (!m.has(id)) {
+      const dev = e[id]?.device_id;
+      m.set(id, dev ? Object.keys(e).filter((k) => k !== id && e[k].device_id === dev) : []);
+    }
+    return m.get(id);
+  }
+
+  _items() {
+    const h = this._hass, c = this._config, out = [], skip = new Set(c.exclude);
+    for (const p of c.pinned) if (p.entity && !skip.has(p.entity) && !out.some((o) => o.entity === p.entity)) out.push(p);
+    const have = () => new Set(out.map((o) => o.entity));
+    for (const a of c.areas) {
+      for (const id of pick(h, areaEntities(h, a), { domains: "lock", exclude: [...skip, ...have()] })) out.push({ entity: id });
+    }
+    for (const id of c.include) if (h.states[id] && !skip.has(id) && !have().has(id)) out.push({ entity: id });
+    if (!out.length && !c.pinned.length && !c.areas.length) {
+      const first = Object.keys(h.states).find((i) => i.startsWith("lock.") && !skip.has(i));
+      if (first) out.push({ entity: first });
+    }
+    return out;
+  }
+
+  _doorOf(item, solo) {
+    const h = this._hass, c = this._config;
+    const own = item.door ?? (solo ? c.door : undefined);
+    if (own === false || (solo && c.hide_door)) return null;
+    if (typeof own === "string" && own) return own;
+    const dc = (id) => h.states[id]?.attributes.device_class;
+    const same = this._registry(item.entity).filter((k) => domainOf(k) === "binary_sensor" && LOCK_DOOR_CLASSES.includes(dc(k)) && h.states[k]);
+    if (same.length) return same.sort((a, b) => LOCK_DOOR_CLASSES.indexOf(dc(a)) - LOCK_DOOR_CLASSES.indexOf(dc(b)))[0];
+    const area = entityArea(h, item.entity);
+    if (area) {
+      const found = pick(h, areaEntities(h, area), { domains: "binary_sensor", deviceClasses: ["door", "garage_door", "opening"] });
+      if (found.length === 1) return found[0];
+    }
+    return null;
+  }
+
+  _batteryOf(item, solo) {
+    const h = this._hass, c = this._config;
+    const own = item.battery ?? (solo ? c.battery : undefined);
+    if (own === false || (solo && c.hide_battery)) return null;
+    if (typeof own === "string" && own) return own;
+    return this._registry(item.entity).find((k) => domainOf(k) === "sensor" && h.states[k]?.attributes.device_class === "battery" && Number.isFinite(parseFloat(h.states[k].state))) || null;
+  }
+
+  _alarmId() {
+    const h = this._hass, c = this._config;
+    if (c.alarm === false || c.hide_alarm) return null;
+    if (typeof c.alarm === "string" && c.alarm) return h.states[c.alarm] ? c.alarm : null;
+    return houseEntities(h).find((id) => domainOf(id) === "alarm_control_panel") || null;
+  }
+
+  _cameraOf(items) {
+    const h = this._hass, c = this._config;
+    if (c.camera === false || c.hide_camera) return null;
+    if (typeof c.camera === "string" && c.camera) return h.states[c.camera] ? c.camera : null;
+    const own = items.map((i) => i.camera).find((x) => typeof x === "string" && h.states[x]);
+    if (own) return own;
+    const area = items.length ? entityArea(h, items[0].entity) : null;
+    return area ? pick(h, areaEntities(h, area), { domains: "camera" })[0] || null : null;
+  }
+
+  // ---------- painting ----------
+  _update() {
+    const h = this._hass;
+    if (!h || !this._el) return;
+    this.toggleAttribute("dark", !!h.themes?.darkMode);
+    const c = this._config, el = this._el;
+    const items = this._items();
+    const solo = items.length === 1;
+    this.toggleAttribute("data-solo", solo && !this._compact);
+    this.toggleAttribute("data-compact", this._compact);
+    let urgency = 0;
+    const seen = new Set();
+    let at = 0, locked = 0, needing = [];
+    const now = Date.now();
+    const warnMin = c.unlocked_warn === undefined ? 15 : Number(c.unlocked_warn);
+    const warnMs = c.unlocked_warn === false || !(warnMin > 0) ? Infinity : warnMin * 60000;
+    let nudged = null, nudgeFor = 0, nextCheck = Infinity;
+    for (const item of items) {
+      const id = item.entity;
+      seen.add(id);
+      const st = h.states[id];
+      const canOpen = (((st?.attributes.supported_features || 0) & 1) === 1);
+      let node = this._nodes.get(id);
+      if (node && node.__canOpen !== canOpen) { node.remove(); this._nodes.delete(id); node = null; }
+      if (!node) { node = this._lockNode(item, canOpen, solo); this._nodes.set(id, node); }
+      node.__item = item;
+      const state = st?.state || "unavailable";
+      const u = this._paintLock(node, item, st, solo);
+      urgency = Math.max(urgency, u);
+      if (state === "locked" || state === "locking") locked++;
+      if (!["locked", "locking", "jammed", "unavailable", "unknown"].includes(state)) needing.push(id);
+      if (state === "unlocked" && st) {
+        const t = Date.parse(st.last_changed), elapsed = Number.isFinite(t) ? now - t : 0;
+        if (elapsed >= warnMs && elapsed > nudgeFor) { nudged = id; nudgeFor = elapsed; }
+        else if (elapsed < warnMs) nextCheck = Math.min(nextCheck, warnMs - elapsed);
+      }
+      place(el.locks, node, at++);
+    }
+    for (const [id, node] of this._nodes) {
+      if (seen.has(id)) continue;
+      node.remove();
+      this._nodes.delete(id);
+    }
+    // header: only with several locks
+    const multi = items.length > 1 && !this._compact;
+    el.head.hidden = !multi;
+    if (multi) {
+      text(el.title, c.name || "Locks");
+      const open = items.length - locked;
+      text(el.sum, open ? `${open} unlocked` : "All locked");
+      el.all.hidden = !needing.length;
+    }
+    // the nudge: unlocked for a while
+    this._nudged = nudged;
+    el.nudge.hidden = !nudged;
+    if (nudged) {
+      const name = items.find((i) => i.entity === nudged);
+      text(el.nudgeTx, `${solo ? "Unlocked" : `${name?.name || shortName(h, nudged, null)} unlocked`} for ${duration(nudgeFor)}`);
+      nextCheck = Math.min(nextCheck, 30000);
+      urgency = Math.max(urgency, 1);
+    }
+    // alarm
+    const alarm = this._renderAlarm();
+    if (alarm.triggered) urgency = 2;
+    // camera
+    this._camId = this._cameraOf(items);
+    this._renderCamera(items);
+    // chips
+    this._chipRow(el.chips, c.chips.map((x, i) => chipItem(h, x, i)));
+    // nothing to show
+    el.empty.hidden = items.length > 0;
+    if (!items.length) text(el.empty, c.areas.length || c.pinned.length ? "No lock found." : "Pick a lock to show.");
+    // the wash follows the most urgent thing
+    this._tint.to(urgency, MOTION.ui);
+    this._pulsing = items.some((i) => ["open", "opening", "jammed"].includes(h.states[i.entity]?.state)) || alarm.triggered;
+    if (!this._pulsing) put(el.card, "--pulse", "0");
+    clearTimeout(this._timer);
+    if (Number.isFinite(nextCheck)) this._timer = setTimeout(() => this._update(), nextCheck + 40);
+    if (this._first) { this._first = false; requestAnimationFrame(() => this._paintAll(null)); }
+    this._wake();
+  }
+
+  _lockNode(item, canOpen, solo) {
+    const id = item.entity;
+    const node = document.createElement("div");
+    node.className = "lk";
+    node.__canOpen = canOpen;
+    node.innerHTML = `<div class="top">
+        <button class="who" aria-label="Open details"><span class="disc"></span><span class="col"><span class="nm"></span><span class="st"></span><span class="sub"></span></span></button>
+        <span class="meta"><span class="door" hidden><ha-icon></ha-icon><span></span></span><span class="batt" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle class="bg" cx="12" cy="12" r="9"></circle><circle class="fg" cx="12" cy="12" r="9"></circle></svg><span></span></span></span>
+      </div>
+      <div class="track"></div>`;
+    const q = (s) => node.querySelector(s);
+    node.__el = { disc: q(".disc"), nm: q(".nm"), st: q(".st"), door: q(".door"), doorIc: q(".door ha-icon"), doorTx: q(".door span:last-child"),
+      batt: q(".batt"), battFg: q(".batt .fg"), battTx: q(".batt > span:last-child"), sub: q(".sub"), track: q(".track") };
+    const call = (svc) => this._call(id, svc);
+    node.__track = new LockTrack(this._kit, { label: "Lock", canOpen, size: solo && !this._compact ? "lg" : "sm",
+      onLock: () => call("lock"), onUnlock: () => call("unlock"), onOpen: () => call("open") });
+    node.__track.onWords = () => this._update();
+    node.__el.track.appendChild(node.__track.el);
+    this._pressable(q(".who"), { onTap: () => moreInfo(this, id) }, 0.03);
+    node.__first = true;
+    return node;
+  }
+
+  // one lock's face; returns how urgent it is: 0 calm, 1 amber, 2 red
+  _paintLock(node, item, st, solo) {
+    const h = this._hass, el = node.__el, id = item.entity;
+    const state = st?.state || "unavailable";
+    const track = node.__track;
+    track.setState(state, node.__first);
+    node.__first = false;
+    text(el.nm, item.name || (solo && this._config.name) || shortName(h, id, null));
+    text(el.st, state === "unavailable" || state === "unknown" ? title(state) : track.words);
+    // the icon
+    const wantState = !(item.icon || (solo && this._config.icon)) && !!st;
+    if (node.__iconKind !== (wantState ? "state" : "plain")) {
+      node.__iconKind = wantState ? "state" : "plain";
+      el.disc.innerHTML = wantState ? "<savvy-state-icon></savvy-state-icon>" : "<ha-icon></ha-icon>";
+    }
+    const ic = el.disc.firstElementChild;
+    if (wantState) { if (ic.stateObj !== st) { ic.hass = h; ic.stateObj = st; } }
+    else attr(ic, "icon", item.icon || this._config.icon || "mdi:lock");
+    // the door
+    const doorId = this._doorOf(item, solo), door = doorId ? h.states[doorId] : null;
+    const doorOpen = !!door && door.state === "on";
+    const doorWords = door ? (door.state === "on" ? "Door open" : door.state === "off" ? "Door closed" : null) : null;
+    el.door.hidden = !doorWords;
+    if (doorWords) {
+      text(el.doorTx, doorWords);
+      attr(el.doorIc, "icon", doorOpen ? "mdi:door-open" : "mdi:door-closed");
+      attr(el.door, "data-warn", doorOpen && (state === "locked" || state === "locking"));
+    }
+    // the battery
+    const battId = this._batteryOf(item, solo), batt = battId ? h.states[battId] : null;
+    const pct = batt ? parseFloat(batt.state) : NaN;
+    el.batt.hidden = !Number.isFinite(pct);
+    if (Number.isFinite(pct)) {
+      const warn = Number(this._config.battery_warn ?? 40);
+      attr(el.batt, "data-level", pct <= 15 ? "bad" : pct < warn ? "warn" : "ok");
+      text(el.battTx, `${Math.round(pct)}%`);
+      put(el.battFg, "stroke-dasharray", "56.55");
+      put(el.battFg, "stroke-dashoffset", (56.55 * (1 - clamp(pct / 100))).toFixed(2));
+    }
+    // the line under the name
+    const parts = [];
+    const by = st?.attributes.changed_by;
+    if (by) parts.push(`by ${by}`);
+    const t = Date.parse(st?.last_changed);
+    if (Number.isFinite(t)) parts.push(since(t, false));
+    text(el.sub, parts.join(" · "));
+    attr(node, "title", parts.length ? parts.join(" · ") : null);
+    // how urgent
+    let u = 0;
+    if (state === "jammed" || state === "open" || state === "opening") u = 2;
+    else if (state === "unlocked" || state === "unlocking") u = 1;
+    else if (doorOpen && (state === "locked" || state === "locking")) u = 1;
+    put(node, "--tone", u === 0 ? LOCK_TONE_WORD[0] : u === 1 ? LOCK_TONE_WORD[1] : LOCK_TONE_WORD[2]);
+    if (state === "unavailable" || state === "unknown") put(node, "--tone", "var(--secondary-text-color)");
+    return u;
+  }
+
+  _call(id, svc) {
+    this._hass.callService("lock", svc, {}, { entity_id: id });
+  }
+
+  _lockAll() {
+    const h = this._hass;
+    let n = 0;
+    for (const [id] of this._nodes) {
+      const s = h.states[id]?.state;
+      if (!s || ["locked", "locking", "jammed", "unavailable", "unknown"].includes(s)) continue;
+      this._call(id, "lock");
+      n++;
+    }
+    if (n) haptic("medium");
+  }
+
+  // ---------- the alarm ----------
+  _renderAlarm() {
+    const h = this._hass, el = this._el, id = this._alarmId();
+    const st = id ? h.states[id] : null;
+    el.alarm.hidden = !st;
+    if (!st) return { triggered: false };
+    const sf = st.attributes.supported_features ?? 7;
+    const modes = ARM.filter((m) => sf & m[2]);
+    const armed = /^armed_(.+)$/.exec(st.state);
+    const triggered = st.state === "triggered";
+    attr(el.alarm, "data-armed", !!armed);
+    attr(el.alarm, "data-triggered", triggered);
+    attr(el.alarmIc, "icon", triggered ? "mdi:shield-alert" : armed ? "mdi:shield-lock" : "mdi:shield-off-outline");
+    text(el.alarmSt, triggered ? "Triggered" : stateText(h, st));
+    const key = `${id}|${modes.map((m) => m[0]).join()}`;
+    if (key !== this._alarmKey) {
+      this._alarmKey = key;
+      for (const b of [...el.alarmModes.children]) { const i = this._pressNodes.indexOf(b); if (i >= 0) this._pressNodes.splice(i, 1); b.remove(); }
+      for (const m of modes) {
+        const b = document.createElement("button");
+        b.className = "btn";
+        b.dataset.mode = m[0];
+        b.innerHTML = `<ha-icon></ha-icon><span></span>`;
+        attr(b.firstElementChild, "icon", m[3]);
+        text(b.querySelector("span"), m[1]);
+        this._pressable(b, { onTap: () => this._arm(id, m[0]) }, 0.05);
+        el.alarmModes.appendChild(b);
+      }
+      const d = document.createElement("button");
+      d.className = "btn";
+      d.dataset.mode = "disarm";
+      d.innerHTML = `<ha-icon icon="mdi:shield-off"></ha-icon><span>Disarm</span>`;
+      this._pressable(d, { onTap: () => moreInfo(this, id) }, 0.05);
+      el.alarmModes.appendChild(d);
+    }
+    for (const b of el.alarmModes.children) {
+      if (b.dataset.mode === "disarm") b.hidden = st.state === "disarmed" || st.state === "unavailable";
+      else attr(b, "data-on", armed && armed[1] === b.dataset.mode);
+    }
+    return { triggered };
+  }
+
+  _arm(id, mode) {
+    const h = this._hass, cur = h.states[id];
+    if (!cur || cur.state === `armed_${mode}`) return;
+    // a code is the more-info dialog's job: nothing here ever holds one
+    const needsCode = cur.attributes.code_format != null && cur.attributes.code_arm_required !== false;
+    if (needsCode) { moreInfo(this, id); return; }
+    h.callService("alarm_control_panel", `alarm_arm_${mode}`, {}, { entity_id: id });
+    haptic("light");
+  }
+
+  // ---------- the camera ----------
+  _renderCamera(items) {
+    const el = this._el, id = this._camId, st = id ? this._hass.states[id] : null;
+    el.cam.hidden = !st || this._compact;
+    if (!st || this._compact) { clearInterval(this._camTimer); this._camTimer = 0; return; }
+    text(el.camName, `${st.attributes.friendly_name || shortName(this._hass, id, null)} · Live`);
+    this._camRefresh(true);
+    if (!this._camTimer) this._camTimer = setInterval(() => this._camRefresh(), LOCK_CAM_MS);
+  }
+
+  // a fresh still while the card is on screen
+  _camRefresh(force = false) {
+    const el = this._el, id = this._camId;
+    if (!el || !id || el.cam.hidden) return;
+    if (!force && (this._onscreen === false || document.hidden)) return;
+    const st = this._hass.states[id];
+    const pic = st?.attributes.entity_picture || `/api/camera_proxy/${id}`;
+    const url = typeof this._hass.hassUrl === "function" ? this._hass.hassUrl(pic) : pic;
+    const next = /^(data|blob):/.test(url) ? url : `${url}${url.includes("?") ? "&" : "?"}_t=${Math.floor(Date.now() / 1000)}`;
+    if (force && el.camImg.__base === url && el.camImg.__at && Date.now() - el.camImg.__at < LOCK_CAM_MS - 500) return;
+    el.camImg.__base = url;
+    el.camImg.__at = Date.now();
+    el.camImg.src = next;
+  }
+
+  _openCamera() {
+    const id = this._camId, h = this._hass;
+    if (!id) return;
+    if (!this._camSheet) {
+      this._camSheet = new Sheet(this, { title: "Camera", wide: true, onClose: () => { this._camCard?.remove(); this._camCard = null; } });
+      this._camSheet.el.classList.add("cam-sheet");
+    }
+    const st = h.states[id];
+    this._camSheet.setTitle(st?.attributes.friendly_name || "Camera");
+    const card = document.createElement("savvy-camera-card");
+    card.setConfig({ cameras: [{ entity: id }], recordings: false, columns: 1 });
+    this._camSheet.body.replaceChildren(card);
+    card.hass = h;
+    this._camCard = card;
+    this._camSheet.open(this._el.cam);
+  }
+
+  _paint(dirty, all, red) {
+    const t = clamp(this._tint.x, 0, 2);
+    const c = lockTone(t);
+    put(this._el.card, "--lk", c.join(" "));
+    put(this._el.card, "--wash", (0.1 + 0.08 * t).toFixed(3));
+  }
+}
+
+// ---------- editor ----------
+const EDITOR = defineEditor("savvy-lock-card", (hass, c) => [
+  S.entity("entity", "Lock", "lock", { helper: "One lock. Or pick an area, or list several below." }),
+  { name: "area", label: "Area", helper: "Every lock in these areas. Locks with no area: add them under Include.", selector: { area: { multiple: true } } },
+  { name: "entities", label: "Locks", helper: "Several locks, each with its own door, battery and camera.", type: "list",
+    item: [
+      { name: "entity", label: "Lock", selector: { entity: { domain: "lock" } } },
+      S.grid(S.text("name", "Name"), S.icon()),
+      { name: "door", label: "Door sensor", selector: { entity: { domain: "binary_sensor" } } },
+      { name: "battery", label: "Battery", selector: { entity: { domain: "sensor", device_class: "battery" } } },
+      { name: "camera", label: "Camera", selector: { entity: { domain: "camera" } } },
+    ],
+    add: { selector: { entity: { domain: "lock" } }, label: "Add a lock" } },
+  { name: "include", label: "Include", helper: "Locks to show with this area, such as one that has no area.", selector: { entity: { domain: "lock", multiple: true } } },
+  { name: "exclude", label: "Never show", selector: { entity: { domain: "lock", multiple: true } } },
+  S.grid(S.text("name", "Name"), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (one row)" }])),
+  S.icon(),
+  { type: "expandable", name: "", title: "Door and battery", schema: [
+    { name: "door", label: "Door sensor", helper: "Empty: the door contact of the lock's device or area.", selector: { entity: { domain: "binary_sensor" } } },
+    S.bool("hide_door", "Hide door"),
+    { name: "battery", label: "Battery", helper: "Empty: the battery sensor of the lock's device.", selector: { entity: { domain: "sensor", device_class: "battery" } } },
+    S.bool("hide_battery", "Hide battery"),
+    S.number("battery_warn", "Battery alert", 5, 90, 1, "%"),
+    S.number("unlocked_warn", "Unlocked nudge", 0, 240, 1, "min"),
+  ] },
+  { type: "expandable", name: "", title: "Alarm and camera", schema: [
+    { name: "alarm", label: "Alarm", helper: "Empty: the house's alarm panel, when there is one.", selector: { entity: { domain: "alarm_control_panel" } } },
+    S.bool("hide_alarm", "Hide alarm"),
+    { name: "camera", label: "Camera", helper: "Empty: a camera in the lock's area.", selector: { entity: { domain: "camera" } } },
+    S.bool("hide_camera", "Hide camera"),
+  ] },
+  S.chips(),
+]);
+
+registerCard("savvy-lock-card", SavvyLockCard, "Lock",
+  "A door at a glance: lock, unlock and open on one slide, the door and battery, an alarm row and a live camera.");
+})();
+
 // ===== cards/media.js =====
 (() => {
 // savvy-media-card: a room's media, organised the way the hardware works: sources feed an
@@ -11693,7 +12310,7 @@ const playerList = (name, label, helper) => ({ name, label, helper, type: "list"
     { name: "entity", label: "Player", selector: { entity: { domain: "media_player" } } },
     { type: "grid", name: "", schema: [{ name: "name", label: "Name", selector: { text: {} } }, { name: "icon", label: "Icon", selector: { icon: {} } }] },
     { name: "power", label: "Power switch", helper: "A switch that powers it, when the player can't turn itself on.", selector: { entity: { domain: ["switch", "input_boolean"] } } },
-    { name: "output", label: "Output", selector: { entity: { domain: "media_player" } } },
+    { name: "output", label: "Sound output", helper: "Where this source's sound comes out. Empty: it plays through itself. Overrides the card's output for all sources.", selector: { entity: { domain: "media_player" } } },
     { name: "volume", label: "Volume helper", helper: "A helper that is the real volume, when the player's own isn't.", selector: { entity: { domain: ["input_number", "number"] } } },
     { name: "artwork", label: "Artwork when", helper: "A binary sensor that says the artwork is worth showing.", selector: { entity: { domain: "binary_sensor" } } },
   ] });
@@ -11702,8 +12319,8 @@ const EDITOR = defineEditor("savvy-media-card", (hass, c) => [
   S.area(),
   S.grid(S.text("name", "Name"), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (one row)" }])),
   playerList("video", "Video sources", "Empty: the area's players (not its speakers)."),
-  playerList("audio", "Speakers", "Empty: the area's speakers and receivers."),
-  { name: "video_output", label: "Video output", selector: { entity: { domain: "media_player" } } },
+  playerList("audio", "Speakers", "The room's speakers: each gets its own row with transport, volume and power. Empty: the area's speakers and receivers."),
+  { name: "video_output", label: "Sound output for all sources", helper: "The speaker, receiver or soundbar every video source plays through. Its volume sits under the picked source.", selector: { entity: { domain: "media_player" } } },
   S.grid(S.bool("artwork", "Show artwork", null, true), S.bool("volume_buttons", "Volume buttons", null, true)),
   S.grid(S.number("volume_step", "Volume step", 1, 25, 1, "%"), S.number("artwork_max_height", "Artwork height", 80, 800, 10, "px")),
   { type: "expandable", name: "labels", title: "Captions", schema: [S.text("video", "Video caption"), S.text("audio", "Speaker caption")] },
@@ -11766,6 +12383,7 @@ const SLOTS = [
     on: "Open", off: "Closed", icon: "mdi:door-open", iconOff: "mdi:door-closed" },
   { key: "window", kind: "event", domain: "binary_sensor", dc: ["window"], label: "Window",
     on: "Open", off: "Closed", icon: "mdi:window-open-variant", iconOff: "mdi:window-closed-variant" },
+  { key: "lock", kind: "event", domain: "lock", dc: [], label: "Lock", on: "Unlocked", off: "Locked", icon: "mdi:lock-open-variant", iconOff: "mdi:lock" },
   { key: "temperature", kind: "read", domain: "sensor", dc: ["temperature"], label: "Temperature", single: true, icon: "mdi:thermometer" },
   { key: "humidity", kind: "read", domain: "sensor", dc: ["humidity"], label: "Humidity", single: true, icon: "mdi:water-percent" },
   { key: "illuminance", kind: "read", domain: "sensor", dc: ["illuminance"], label: "Light", single: true, icon: "mdi:brightness-5" },
@@ -12083,8 +12701,16 @@ class SavvyRoomActivityCard extends SavvyCard {
     if (conf === false || [].concat(c.exclude_kinds || []).includes(slot.key)) return [];
     if (conf != null) return asItems(conf);
     if (!c.area) return [];
-    let ids = pick(h, areaEntities(h, c.area), { domains: slot.domain, deviceClasses: slot.dc, exclude: asItems(c.exclude).map((i) => i.entity) });
+    const skip = asItems(c.exclude).map((i) => i.entity);
+    let ids = pick(h, areaEntities(h, c.area), { domains: slot.domain, deviceClasses: slot.dc.length ? slot.dc : undefined, exclude: skip });
     if (slot.single && ids.length > 1) ids = rankBy(h, ids, slot.dc).slice(0, 1);
+    // `include`: entities that have no area, shown with this room (a lock, a door contact)
+    for (const id of asItems(c.include).map((i) => i.entity)) {
+      const st = h.states[id];
+      if (!st || skip.includes(id) || ids.includes(id) || domainOf(id) !== slot.domain) continue;
+      if (slot.dc.length && !slot.dc.includes(st.attributes.device_class)) continue;
+      ids.push(id);
+    }
     return ids.map((entity) => ({ entity }));
   }
 
@@ -12099,6 +12725,7 @@ class SavvyRoomActivityCard extends SavvyCard {
     const st = item.entity ? this._hass.states[item.entity] : null;
     const d = domainOf(item.entity);
     if (item.navigation_path || item.tap_action || CHIP_TOGGLES.has(d) || PRESSES.has(d) || TURN_ON.has(d)) return { kind: "chip" };
+    if (d === "lock") return { kind: "event", slot: SLOT.lock };
     const dc = st?.attributes.device_class;
     const slot = dc && SLOTS.find((s) => s.domain === d && s.dc.includes(dc));
     return slot ? { kind: slot.kind, slot } : { kind: "read", slot: null };
@@ -12111,6 +12738,15 @@ class SavvyRoomActivityCard extends SavvyCard {
     name = name.replace(/\s+(sensor\s+)?(contact|occupancy|presence)$/i, "") || name;
     const noun = slotLabel && new RegExp(`\\s+${slotLabel}$`, "i");
     return (noun && name.replace(noun, "")) || name;
+  }
+
+  // A lock reads like a door: on is what deserves a look (unlocked, open, jammed), off is calm.
+  _ev(id) {
+    const st = id ? this._hass.states[id] : null;
+    if (!st || domainOf(id) !== "lock") return st;
+    const s = st.state;
+    const state = ["locked", "locking"].includes(s) ? "off" : ["unlocked", "unlocking", "open", "opening", "jammed"].includes(s) ? "on" : s;
+    return { ...st, state, __lock: s };
   }
 
   _areaName() {
@@ -12131,7 +12767,7 @@ class SavvyRoomActivityCard extends SavvyCard {
   _escalates(slot, on, alarm) {
     if (!on || !alarm) return false;
     if (!(alarm.startsWith("armed_") || alarm === "triggered")) return false;
-    if (slot.key === "door" || slot.key === "window") return true;
+    if (slot.key === "door" || slot.key === "window" || slot.key === "lock") return true;
     if (slot.key === "presence") return alarm === "triggered" || [].concat(this._config.alarm_presence_states || ["armed_away", "armed_vacation"]).includes(alarm);
     return false;
   }
@@ -12165,7 +12801,7 @@ class SavvyRoomActivityCard extends SavvyCard {
       for (const item of items) {
         const key = `${slot.key}|${item.entity}`;
         seen.add(key);
-        tally(slot, item, h.states[item.entity]);
+        tally(slot, item, this._ev(item.entity));
         if (slot.kind === "event") lanes.push(this._lane(slot, item, items.length));
         if (slot.key === "temperature" && !temp) temp = item;
         if (this._compact) {
@@ -12257,6 +12893,7 @@ class SavvyRoomActivityCard extends SavvyCard {
   _stateWord(slot, st) {
     if (!st) return "Not found";
     if (isOff(st)) return "Offline";
+    if (slot?.key === "lock" && st.__lock) return { locked: "Locked", unlocked: "Unlocked", locking: "Locking", unlocking: "Unlocking", open: "Open", opening: "Opening", jammed: "Jammed" }[st.__lock] || title(st.__lock);
     if (slot && st.state === "on" && slot.on) return slot.on;
     if (slot && st.state === "off" && slot.off) return slot.off;
     if (slot?.kind === "alert") return st.state === "on" ? "Detected" : "Clear";
@@ -12272,7 +12909,7 @@ class SavvyRoomActivityCard extends SavvyCard {
   }
 
   _renderEvent(key, slot, item, siblings, alarm) {
-    const st = this._hass.states[item.entity];
+    const st = this._ev(item.entity);
     const node = this._node(key, this._el.events, "ev", `<span class="disc"><ha-icon></ha-icon></span><span class="st"></span><span class="l2"><span class="lbl"></span><span class="when"></span></span>`);
     if (!node.__el) node.__el = { icon: node.querySelector("ha-icon"), st: node.querySelector(".st"), when: node.querySelector(".when"), lbl: node.querySelector(".lbl") };
     node.__item = item;
@@ -12294,7 +12931,7 @@ class SavvyRoomActivityCard extends SavvyCard {
   }
 
   _renderGlyph(key, slot, item, siblings, alarm) {
-    const st = this._hass.states[item.entity];
+    const st = this._ev(item.entity);
     const on = st?.state === "on";
     // a quiet alert sensor stays out of the compact row entirely
     if (slot.kind === "alert" && !on) {
@@ -12480,6 +13117,8 @@ class SavvyRoomActivityCard extends SavvyCard {
     } else {
       const parts = [];
       if (sum.active.includes("presence")) parts.push("Occupied");
+      const unlocked = sum.active.filter((a) => a === "lock").length;
+      if (unlocked) parts.push(unlocked === 1 ? "Unlocked" : `${unlocked} unlocked`);
       for (const k of ["door", "window"]) {
         const n = sum.active.filter((a) => a === k).length;
         if (n === 1) parts.push(`${SLOT[k].label} open`);
@@ -12574,7 +13213,11 @@ class SavvyRoomActivityCard extends SavvyCard {
     if (this._loading === key) return;
     this._loading = key;
     let raw = null, err = null;
-    try { raw = await fetchHistory(this._hass, ids, this._hours); }
+    try {
+      raw = await fetchHistory(this._hass, ids, this._hours);
+      // a lock's history reads like a door's: unlocked is on
+      for (const id of ids) if (domainOf(id) === "lock" && raw[id]) raw[id] = raw[id].map((r) => ({ ...r, s: ["locked", "locking"].includes(r.s) ? "off" : ["unlocked", "unlocking", "open", "opening", "jammed"].includes(r.s) ? "on" : r.s }));
+    }
     catch (e) { err = "History isn't available. The recorder may not be keeping these sensors."; }
     if (this._loading !== key) return;                  // a newer request took over
     this._loading = null;
@@ -12595,7 +13238,7 @@ class SavvyRoomActivityCard extends SavvyCard {
     // quantized, so a burst of state updates doesn't rebuild the lanes every time
     const end = Math.ceil(Date.now() / 15000) * 15000;
     const start = end - this._hours * 3600000;
-    const lanes = tg.lanes.map((l) => ({ ...l, runs: stateRuns(this._raw[l.entity], start, end, h.states[l.entity]) }));
+    const lanes = tg.lanes.map((l) => ({ ...l, runs: stateRuns(this._raw[l.entity], start, end, this._ev(l.entity)) }));
     const trans = [];
     for (const l of lanes) l.runs.forEach((r, i) => { if (i > 0 || r.t0 > start) trans.push({ t: r.t0, lane: l, state: r.state }); });
     trans.sort((a, b) => a.t - b.t);
@@ -12748,11 +13391,13 @@ class SavvyRoomActivityCard extends SavvyCard {
       const w = on ? "Occupied" : "Cleared";
       return lane.label === lane.slot.label ? w : `${lane.label} ${w.toLowerCase()}`;
     }
+    if (lane.slot.key === "lock") return `${lane.label} ${on ? "unlocked" : "locked"}`;
     return `${lane.label} ${on ? "opened" : "closed"}`;
   }
 
   _activeWord(lane) {
     if (lane.slot.key === "presence") return lane.label === lane.slot.label ? "Occupied" : `${lane.label} occupied`;
+    if (lane.slot.key === "lock") return `${lane.label} unlocked`;
     return `${lane.label} open`;
   }
 
@@ -12761,7 +13406,7 @@ class SavvyRoomActivityCard extends SavvyCard {
     for (const l of this._hist?.lanes || this._histTargets?.lanes || []) {
       const row = this._laneEls.get(l.key);
       if (!row) continue;
-      const state = t == null ? this._hass?.states[l.entity]?.state : this._stateAt(l, t);
+      const state = t == null ? this._ev(l.entity)?.state : this._stateAt(l, t);
       const on = state === "on";
       attr(row.icon, "icon", on ? l.slot.icon : (l.slot.iconOff || l.slot.icon));
       attr(row.gi, "data-on", on);
@@ -13075,7 +13720,7 @@ const EDITOR = defineEditor("savvy-room-activity-card", (hass, c) => [
   { name: "exclude_kinds", label: "Hide kinds", selector: { select: { multiple: true, options: SLOTS.map((s) => ({ value: s.key, label: s.label })) } } },
   { name: "exclude", label: "Exclude", selector: { entity: { multiple: true } } },
   S.section("Sensor overrides", SLOTS.map((s) => ({ name: s.key, label: s.label,
-    selector: { entity: { domain: s.domain, device_class: s.dc, multiple: !s.single } } }))),
+    selector: { entity: { domain: s.domain, device_class: s.dc.length ? s.dc : undefined, multiple: !s.single } } }))),
   S.section("History page", [
     { name: "history", label: "", selector: { object: {} }, helper: "false turns it off; { hours: 24, ranges: [6, 24, 72] }" },
   ]),

@@ -1,4 +1,4 @@
-// The entity, graph, snapshot, media, camera and scene editors: every option is there; each
+// The entity, graph, snapshot, media, camera, scene and lock editors: every option is there; each
 // card's stub config mounts; navigation fields use HA's page picker.
 import { openPage } from "./_util.mjs";
 
@@ -9,6 +9,7 @@ const EDITORS = {
   "savvy-media-card": { config: { area: "living_room" }, want: ["area", "name", "layout", "video_output", "artwork", "volume_buttons", "volume_step", "artwork_max_height", "video", "audio", "entity", "time", "action", "data", "placeholder"], lists: ["video", "audio", "presets", "chips"] },
   "savvy-scene-card": { config: { area: "office" }, want: ["area", "title", "layout", "columns", "color", "show_icon", "strip", "navigation_path", "auto_discover", "exclude"], lists: ["entities"] },
   "savvy-camera-card": { config: { area: "living_room" }, want: ["area", "recordings", "columns", "days", "aspect_ratio", "instance"], lists: ["cameras"] },
+  "savvy-lock-card": { config: { entity: "lock.front_door" }, want: ["entity", "area", "include", "exclude", "name", "layout", "icon", "door", "hide_door", "battery", "hide_battery", "battery_warn", "unlocked_warn", "alarm", "hide_alarm", "camera", "hide_camera"], lists: ["entities", "chips"] },
 };
 
 export default async function ({ browser, base, check }) {
@@ -34,7 +35,7 @@ export default async function ({ browser, base, check }) {
   }
   const stubs = await page.evaluate(async () => {
     const out = {};
-    for (const type of ["savvy-entity-card", "savvy-graph-card", "savvy-room-activity-card", "savvy-media-card", "savvy-camera-card", "savvy-scene-card", "savvy-settings-card"]) {
+    for (const type of ["savvy-entity-card", "savvy-graph-card", "savvy-room-activity-card", "savvy-media-card", "savvy-camera-card", "savvy-scene-card", "savvy-lock-card", "savvy-settings-card"]) {
       const cfg = customElements.get(type).getStubConfig(window.hass);
       const el = window.mount(type, cfg, 400);
       await new Promise((r) => setTimeout(r, 150));

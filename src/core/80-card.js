@@ -203,6 +203,7 @@ SavvyCard.prototype._chipRow = function (row, items, { iconOnly = false } = {}) 
   row.__nodes = row.__nodes || new Map();
   attr(row, "data-icon-only", iconOnly);
   const seen = new Set();
+  let at = 0;
   for (const item of items) {
     seen.add(item.key);
     let node = row.__nodes.get(item.key);
@@ -239,7 +240,7 @@ SavvyCard.prototype._chipRow = function (row, items, { iconOnly = false } = {}) 
       spin.s.to(MQ.reduced.matches ? 0 : item.spin || 0);
       if (MQ.reduced.matches) spin.s.snap();
     }
-    row.appendChild(node);      // keeps the DOM in the items' order
+    place(row, node, at++);      // keeps the DOM in the items' order, moving nothing that is already there
   }
   for (const [key, node] of row.__nodes) {
     if (seen.has(key)) continue;
