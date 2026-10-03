@@ -9,7 +9,7 @@ const SETTINGS = {
 };
 
 const WANT = ["layout", "home", "lights", "climate", "media", "security", "health", "room", "control", "weather", "tap", "watchman", "battery_threshold", "warn_above",
-  "exclude_platforms", "group_by", "group_min", "watchman_last_run", "entities", "areas"];
+  "exclude_platforms", "group_by", "group_min", "watchman_last_run", "entities", "areas", "devices", "aggregate"];
 const NAV = ["home", "lights", "climate", "media", "security", "health"];
 
 export default async function ({ browser, base, check }) {

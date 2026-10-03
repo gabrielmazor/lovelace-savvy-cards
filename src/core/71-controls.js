@@ -1,41 +1,48 @@
 // ---------------------------------------------------------------------------------------
 // core/controls: the small controls a popup row is built from (CARD-DESIGN.md 3): press
 // buttons, a bar that only moves on a sideways drag, a segmented control, a - / + stepper
-// and the lock track. Each one owns its springs through a RowKit, which the popup's clock
+// and the lock slide. Each one owns its springs through a RowKit, which the popup's clock
 // job steps and paints, so a row never needs its own animation loop.
 // ---------------------------------------------------------------------------------------
 
 const CTL_PREDICT_MS = 1500;   // an optimistic value waits this long for HA to agree
 const CTL_WRITE_MS = 140;      // a drag sends at most this often; the release always lands
-const LOCK_KNOB = 28;         // the lock track's knob, and the padding round it
-const LOCK_PAD = 4;
 const LOCK_END = 0.96;         // where the finger's travel counts as the end of the track
 const LOCK_HOLD_MS = 500;      // how long the end of the lock track must be held to open
 const LOCK_COLORS = [[76, 175, 80], [232, 163, 61], [224, 102, 102]];   // locked, unlocked, open
 const mixRgb = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
 
-// The lock track's stylesheet: shared by the popup rows (small) and the lock card (large).
-const LOCK_TRACK_CSS = `/* the lock track: three stops, one knob; --k is the knob, --p the padding round it */
-  .sv-lk { --lk: 76 175 80; --k: 28px; --p: 4px; position: relative; box-sizing: border-box; height: calc(var(--k) + 2 * var(--p)); border-radius: calc(var(--k) / 2 + var(--p));
-    padding: 0 var(--p); overflow: hidden; background: rgb(var(--lk) / 0.16); box-shadow: inset 0 0 0 1px rgb(var(--lk) / 0.28);
-    touch-action: pan-y; cursor: grab; outline: none; user-select: none; -webkit-user-select: none; }
-  .sv-lk[data-size="lg"] { --k: 48px; --p: 8px; }
-  .sv-lk[data-drag] { cursor: grabbing; }
-  .sv-lk[aria-disabled="true"] { opacity: 0.45; cursor: default; }
-  .sv-lk-hint { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; font-size: 12px; font-weight: 600; letter-spacing: -0.004em;
-    color: rgb(var(--lk)); pointer-events: none; white-space: nowrap; }
-  .sv-lk[data-size="lg"] .sv-lk-hint { font-size: 14px; }
-  .sv-lk-hint.r { right: calc(var(--p) + 10px); }
-  .sv-lk-hint.l { left: calc(var(--p) + 10px); }
-  .sv-lk-knob { position: absolute; top: var(--p); left: var(--p); width: var(--k); height: var(--k); border-radius: 50%; display: grid; place-items: center; color: #fff;
-    background: rgb(var(--lk)); box-shadow: 0 2px 6px rgb(0 0 0 / 0.3); will-change: transform; --mdc-icon-size: calc(var(--k) * 0.6); --ring: 0; --breath: 0; }
-  .sv-lk-knob::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid rgb(var(--lk)); opacity: calc(var(--breath) * 0.7); transform: scale(calc(1 + var(--breath) * 0.2)); pointer-events: none; }
-  .sv-lk-knob ha-icon { position: absolute; display: flex; }
-  .sv-lk-ring { position: absolute; inset: -4px; width: calc(var(--k) + 8px); height: calc(var(--k) + 8px); transform: rotate(-90deg); opacity: var(--ring); pointer-events: none; }
-  .sv-lk-ring circle { fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 125.7; stroke-dashoffset: 125.7; }
-  .sv-lk[data-armed] .sv-lk-knob { box-shadow: 0 0 0 4px rgb(var(--lk) / 0.35), 0 2px 8px rgb(0 0 0 / 0.3); }
-  .sv-lk[data-bad] { --lk: 224 102 102 !important; }
-  @media (prefers-contrast: more) { .sv-lk { box-shadow: inset 0 0 0 1.5px rgb(var(--lk)); } }`;
+// The lock handle's stylesheet, shared by the popup rows and the lock card: the lock's own icon is the
+// handle, its row the track.
+const LOCK_SLIDE_CSS = `/* the lock slide: the icon is the handle, the row is the track */
+  .sv-sl { position: relative; --lk: 76 175 80; --gh: 0; }
+  .sv-sl-ov { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; pointer-events: none; z-index: 0; }
+  .sv-sl-ov::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: rgb(var(--lk) / 0.1); opacity: var(--gh);
+    box-shadow: inset 0 0 0 1px rgb(var(--lk) / 0.32); }
+  .sv-sl-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: rgb(var(--lk) / 0.24); opacity: var(--gh); }
+  .sv-sl[data-rtl] .sv-sl-fill { left: auto; right: 0; }
+  .sv-sl-g { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; font-size: 12px; line-height: 16px; font-weight: 650; letter-spacing: -0.004em;
+    color: rgb(var(--lk)); opacity: var(--gh); white-space: nowrap; }
+  .sv-sl-hint { position: absolute; top: 0; bottom: 0; inset-inline-end: 12px; display: flex; align-items: center; color: rgb(var(--lk)); --mdc-icon-size: 18px;
+    opacity: calc(0.5 * (1 - var(--gh))); pointer-events: none; }
+  .sv-sl-hint[data-inline] { position: static; flex: none; margin-inline-start: auto; }
+  .sv-sl-hint ha-icon { display: flex; }
+  .sv-sl-fade { opacity: calc(1 - var(--gh) * 0.92); }
+  .sv-sl[aria-disabled="true"] .sv-sl-hint { display: none; }
+  .sv-sl-handle { position: relative; z-index: 3; touch-action: pan-y; cursor: grab; user-select: none; -webkit-user-select: none; will-change: transform; outline: none; --ring: 0; --breath: 0; --cov: 0; }
+  .sv-sl[data-drag] .sv-sl-handle { cursor: grabbing; }
+  .sv-sl-handle::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: rgb(var(--lk)); opacity: var(--cov);
+    box-shadow: 0 2px 8px rgb(0 0 0 / 0.3); pointer-events: none; }
+  .sv-sl-handle::after { content: ""; position: absolute; inset: -4px; border-radius: inherit; border: 2px solid rgb(var(--lk)); opacity: calc(var(--breath) * 0.7);
+    transform: scale(calc(1 + var(--breath) * 0.18)); pointer-events: none; }
+  .sv-sl-handle > :not(.sv-sl-ring):not(.sv-sl-ic) { opacity: calc(1 - var(--cov)); }
+  .sv-sl-ic { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; opacity: var(--cov); pointer-events: none; }
+  .sv-sl-ic ha-icon { position: absolute; display: flex; }
+  .sv-sl-ring { position: absolute; inset: -4px; width: calc(100% + 8px); height: calc(100% + 8px); transform: rotate(-90deg); opacity: var(--ring); pointer-events: none; }
+  .sv-sl-ring circle { fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 125.7; stroke-dashoffset: 125.7; }
+  .sv-sl[data-armed] .sv-sl-handle::before { box-shadow: 0 0 0 4px rgb(var(--lk) / 0.35), 0 2px 8px rgb(0 0 0 / 0.3); }
+  .sv-sl[data-bad] { --lk: 224 102 102 !important; }
+  @media (prefers-contrast: more) { .sv-sl-ov::before { box-shadow: inset 0 0 0 1.5px rgb(var(--lk)); } }`;
 
 // The springs and press feedback of one row's controls.
 class RowKit {
@@ -322,48 +329,56 @@ class Stepper {
   }
 }
 
-// Lock, unlock, open: one track, one knob, three stops. A tap does nothing; the knob is
-// dragged. Past Unlocked the track gets heavy and the end has to be held until a ring fills
-// (and then released) before the door's latch opens. A lock that can't open has two stops.
-class LockTrack {
-  constructor(kit, { label, canOpen, onLock, onUnlock, onOpen, size = "sm" }) {
+// Lock, unlock, open, with the lock's own icon as the handle. It rests at the start of its row; drag it
+// across and the row becomes the track. Past the first stop it does the opposite of what the lock is
+// now (unlock when locked, lock when not); a lock that can open has a second stop at the end that has
+// to be held until a ring fills, then released, before the latch opens. A tap on the handle only
+// nudges it, to show that it slides. The handle always comes back to the start; the icon and the
+// colour say what the lock is.
+class LockSlide {
+  constructor(kit, { host, handle, label, canOpen, onLock, onUnlock, onOpen, hintHost = null, fade = [] }) {
     this.kit = kit;
+    this.host = host;
+    this.handle = handle;
     this.canOpen = canOpen;
-    this.K = size === "lg" ? 48 : LOCK_KNOB;       // the knob, and the padding round it
-    this.P = size === "lg" ? 8 : LOCK_PAD;
     this.onLock = onLock;
     this.onUnlock = onUnlock;
     this.onOpen = onOpen;
     this.onWords = null;                        // the row calls this to say its subtitle changed
-    this.u = canOpen ? 0.5 : 1;                 // where Unlocked sits, as a share of the travel
-    const el = this.el = document.createElement("div");
-    el.className = "sv-lk";
-    el.dataset.stops = canOpen ? "3" : "2";
-    el.dataset.size = size;
-    el.setAttribute("role", "slider");
-    el.tabIndex = 0;
-    el.setAttribute("aria-label", label);
-    el.setAttribute("aria-valuemin", "0");
-    el.setAttribute("aria-valuemax", canOpen ? "2" : "1");
-    el.innerHTML = `<span class="sv-lk-hint l"></span><span class="sv-lk-hint r"></span>
-      <span class="sv-lk-knob">
-        <svg class="sv-lk-ring" viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="20"></circle></svg>
-        <ha-icon class="i0"></ha-icon><ha-icon class="i1"></ha-icon><ha-icon class="i2"></ha-icon>
-      </span>`;
-    this.knob = el.querySelector(".sv-lk-knob");
-    this.ring = el.querySelector(".sv-lk-ring circle");
-    this.hl = el.querySelector(".sv-lk-hint.l");
-    this.hr = el.querySelector(".sv-lk-hint.r");
-    this.icons = [el.querySelector(".i0"), el.querySelector(".i1"), el.querySelector(".i2")];
+    this.u = 0.5;                               // where the first stop sits when there are two
+    host.classList.add("sv-sl");
+    host.dataset.stops = canOpen ? "3" : "2";
+    handle.classList.add("sv-sl-handle");
+    handle.setAttribute("role", "slider");
+    handle.tabIndex = 0;
+    handle.setAttribute("aria-label", label);
+    handle.setAttribute("aria-valuemin", "0");
+    handle.setAttribute("aria-valuemax", canOpen ? "2" : "1");
+    host.insertAdjacentHTML("afterbegin", `<span class="sv-sl-ov" aria-hidden="true"><span class="sv-sl-fill"></span><span class="sv-sl-g g1"></span><span class="sv-sl-g g2"></span></span>`);
+    this.fill = host.querySelector(".sv-sl-fill");
+    this.g1 = host.querySelector(".sv-sl-g.g1");
+    this.g2 = host.querySelector(".sv-sl-g.g2");
+    const hint = document.createElement("span");
+    hint.className = "sv-sl-hint";
+    hint.setAttribute("aria-hidden", "true");
+    hint.innerHTML = '<ha-icon icon="mdi:chevron-double-right"></ha-icon>';
+    if (hintHost) { hint.dataset.inline = ""; hintHost.appendChild(hint); } else host.appendChild(hint);
+    for (const f of fade) f.classList.add("sv-sl-fade");
+    handle.insertAdjacentHTML("beforeend", `<svg class="sv-sl-ring" viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="20"></circle></svg>
+      <span class="sv-sl-ic"><ha-icon class="i0"></ha-icon><ha-icon class="i1"></ha-icon><ha-icon class="i2"></ha-icon></span>`);
+    this.ring = handle.querySelector(".sv-sl-ring circle");
+    this.icons = [handle.querySelector(".i0"), handle.querySelector(".i1"), handle.querySelector(".i2")];
     attr(this.icons[0], "icon", "mdi:lock");
     attr(this.icons[1], "icon", "mdi:lock-open-variant");
     attr(this.icons[2], "icon", "mdi:door-open");
-    this.x = kit.spring(0, { response: 0.3, damping: 0.74 }, 0.001);
+    this.x = kit.spring(0, { response: 0.3, damping: 0.74 }, 0.001);   // the handle's place, as a share of the travel
+    this.cv = kit.spring(0, MOTION.ui, 0.002);                           // how far the handle has become a knob
+    this.gh = kit.spring(0, MOTION.ui, 0.002);                           // how visible the track is
     this.pulse = 0;
-    this.W = 0;
+    this.W = 0; this.T = 1; this.H = 0; this.L = 0; this.tx = 0; this.dir = 1;
     this.state = "unknown";
     this.pend = null;                           // { stop, at }: what we asked for
-    this.rest = 0;
+    this.rest = 0;                              // 0 locked, 1 unlocked, 2 open (what the lock is, or is about to be)
     this.drag = null;
     this.holdFrom = 0;
     this.armed = false;
@@ -373,19 +388,32 @@ class LockTrack {
     kit.onDispose(() => { this.clearTimers(); for (const t of this.later) clearTimeout(t); });
     if (typeof ResizeObserver === "function") {
       this.ro = new ResizeObserver(() => { this.measure(); kit.wake(); });
-      this.ro.observe(el);
+      this.ro.observe(host);
       kit.onDispose(() => this.ro.disconnect());
     }
     this.wire();
   }
 
+  get el() { return this.handle; }
+  get openZone() { return this.canOpen && this.rest !== 2; }
+  get target() { return this.rest === 0 ? 1 : 0; }
   clearTimers() { for (const t of this.timers) clearTimeout(t); this.timers = []; }
-  measure() { this.W = this.el.clientWidth; this.T = Math.max(1, this.W - this.K - 2 * this.P); }
-  stopPos(stop) { return stop === 0 ? 0 : stop === 1 ? this.u : 1; }
-  // the knob sits where the finger is, but past Unlocked it lags and then arrives: heavy. The
+
+  // the track is the host's width less the handle and the room round it
+  measure() {
+    const r = this.host.getBoundingClientRect(), hr = this.handle.getBoundingClientRect();
+    if (!r.width || !hr.width) return;
+    this.dir = getComputedStyle(this.host).direction === "rtl" ? -1 : 1;
+    this.host.toggleAttribute("data-rtl", this.dir === -1);
+    this.W = r.width;
+    this.H = hr.width;
+    this.L = this.dir === 1 ? hr.left - r.left - this.tx : r.right - hr.right + this.tx;
+    this.T = Math.max(1, this.W - this.H - 2 * this.L);
+  }
+  // the knob sits where the finger is, but past the first stop it lags and then arrives: heavy. The
   // end is the finger's last 4%: a drag only counts from where it became clearly sideways.
   mapFinger(f) {
-    if (!this.canOpen || f <= this.u) return f;
+    if (!this.openZone || f <= this.u) return f;
     const t = clamp((f - this.u) / (LOCK_END - this.u));
     return this.u + (1 - this.u) * Math.pow(t, 1.8);
   }
@@ -402,16 +430,15 @@ class LockTrack {
     let stop = this.pend ? this.pend.stop : truth;
     if (!this.canOpen && stop === 2) stop = 1;
     this.rest = stop;
-    attr(this.el, "aria-valuenow", String(stop));
-    attr(this.el, "aria-valuetext", ["Locked", "Unlocked", "Open"][stop]);
-    attr(this.el, "data-bad", state === "jammed");
-    attr(this.el, "aria-disabled", this.disabled ? "true" : null);
-    attr(this.el, "data-busy", this.transitional);
-    if (!this.drag) {
-      if (snap) this.x.snap(this.stopPos(stop)); else this.x.to(this.stopPos(stop));
-    }
-    text(this.hr, this.disabled ? "" : stop === 0 ? "Slide to unlock" : stop === 1 && this.canOpen ? "Hold the end to open" : "");
-    text(this.hl, this.disabled ? "" : stop >= 1 ? "Lock" : "");
+    attr(this.handle, "aria-valuenow", String(stop));
+    attr(this.handle, "aria-valuetext", ["Locked", "Unlocked", "Open"][stop]);
+    attr(this.host, "data-bad", state === "jammed");
+    attr(this.host, "aria-disabled", this.disabled ? "true" : null);
+    attr(this.host, "data-busy", this.transitional);
+    if (!this.drag) { if (snap) this.x.snap(0); else this.x.to(0); }
+    this.cv.to(this.drag || this.pend || this.armed ? 1 : 0);
+    text(this.g1, this.openZone ? (this.target === 1 ? "Unlock" : "Lock") : "");
+    text(this.g2, this.openZone ? "Open" : this.target === 1 ? "Unlock" : "Lock");
     this.kit.wake();
   }
 
@@ -421,56 +448,68 @@ class LockTrack {
     return { locked: "Locked", unlocked: "Unlocked", locking: "Locking…", unlocking: "Unlocking…", opening: "Opening…", open: "Open", jammed: "Jammed" }[this.state] || title(this.state);
   }
 
-  // the track's colour where the knob sits: green, amber, red
+  // the track's colour where the handle sits: from what the lock is, to what the slide would make it, to red
   colorAt(x) {
-    const u = this.u;
-    return this.canOpen
-      ? (x <= u ? mixRgb(LOCK_COLORS[0], LOCK_COLORS[1], u ? x / u : 1) : mixRgb(LOCK_COLORS[1], LOCK_COLORS[2], clamp((x - u) / (1 - u))))
-      : mixRgb(LOCK_COLORS[0], LOCK_COLORS[1], clamp(x));
+    const u = this.u, cur = this.rest, tgt = this.target;
+    if (this.openZone) return x <= u ? mixRgb(LOCK_COLORS[cur], LOCK_COLORS[tgt], u ? x / u : 1) : mixRgb(LOCK_COLORS[tgt], LOCK_COLORS[2], clamp((x - u) / (1 - u)));
+    return mixRgb(LOCK_COLORS[cur], LOCK_COLORS[tgt], clamp(x));
   }
 
   paint(dt) {
     if (!this.W) this.measure();
-    const x = clamp(this.x.x, 0, 1.04), u = this.u;
-    put(this.knob, "transform", `translateX(${(x * this.T).toFixed(2)}px)`);
-    put(this.el, "--lk", this.colorAt(x).join(" "));
-    // the icon crossfades between the stops it sits between
-    const pos = this.canOpen ? [0, u, 1] : [0, 1, 1];
-    const span = this.canOpen ? u : 1;
+    const x = clamp(this.x.x, 0, 1.04), u = this.u, cv = clamp(this.cv.x), gh = clamp(this.gh.x);
+    this.tx = this.dir * x * this.T;
+    put(this.handle, "transform", Math.abs(this.tx) < 0.01 ? "" : `translateX(${this.tx.toFixed(2)}px)`);
+    put(this.host, "--lk", (this.pend ? LOCK_COLORS[this.pend.stop] : this.colorAt(x)).join(" "));
+    put(this.host, "--gh", gh.toFixed(3));
+    put(this.handle, "--cov", cv.toFixed(3));
+    // the fill reaches the handle's far edge; the ghosts name the stops ahead of it
+    put(this.fill, "width", `${(x * this.T + this.H + this.L).toFixed(1)}px`);
+    const edge = this.L + this.H + 8;
+    if (this.openZone) put(this.g1, this.dir === 1 ? "left" : "right", `${(edge + u * this.T).toFixed(1)}px`);
+    put(this.g2, this.dir === 1 ? "right" : "left", `${edge.toFixed(1)}px`);
+    put(this.g1, this.dir === 1 ? "right" : "left", "auto");
+    put(this.g2, this.dir === 1 ? "left" : "right", "auto");
+    put(this.g1, "opacity", this.openZone ? (gh * clamp(1 - (x - u) * 5)).toFixed(3) : "0");
+    // the icon crossfades between the stops it sits between: what the lock is, what the slide makes it, open
+    const w = [0, 0, 0];
+    if (this.pend) w[this.pend.stop] = 1;
+    else {
+      const pts = this.openZone ? [[0, this.rest], [u, this.target], [1, 2]] : [[0, this.rest], [1, this.target]];
+      if (x >= pts[pts.length - 1][0]) w[pts[pts.length - 1][1]] = 1;
+      else for (let k = 0; k < pts.length - 1; k++) {
+        if (x >= pts[k][0] && x <= pts[k + 1][0]) { const t = (x - pts[k][0]) / (pts[k + 1][0] - pts[k][0]); w[pts[k][1]] += 1 - t; w[pts[k + 1][1]] += t; }
+      }
+    }
     this.icons.forEach((ic, i) => {
-      const w = i === 2 && !this.canOpen ? 0 : clamp(1 - Math.abs(x - pos[i]) / span);
-      put(ic, "opacity", w.toFixed(3));
-      put(ic, "transform", `scale(${(0.7 + 0.3 * w).toFixed(3)})`);
+      put(ic, "opacity", w[i].toFixed(3));
+      put(ic, "transform", `scale(${(0.7 + 0.3 * w[i]).toFixed(3)})`);
     });
-    // the hints belong to the stop the knob rests on and fade as it leaves
-    const near = this.drag ? 0 : clamp(1 - Math.abs(x - this.stopPos(this.rest)) * 5);
-    put(this.hl, "opacity", near.toFixed(3));
-    put(this.hr, "opacity", near.toFixed(3));
     // the hold ring, from the clock so reduced motion keeps it
     let busy = false;
     let p = 0;
     if (this.holdFrom && !this.armed) { p = clamp((performance.now() - this.holdFrom) / LOCK_HOLD_MS); busy = true; }
     else if (this.armed) p = 1;
     put(this.ring, "strokeDashoffset", (125.7 * (1 - p)).toFixed(2));
-    put(this.knob, "--ring", p > 0 ? "1" : "0");
-    attr(this.el, "data-armed", this.armed);
-    // a knob waiting on HA breathes
+    put(this.handle, "--ring", p > 0 ? "1" : "0");
+    attr(this.host, "data-armed", this.armed);
+    // a handle waiting on HA breathes
     if (this.transitional && !MQ.reduced.matches) {
       this.pulse += (dt || 0) * 5;
-      put(this.knob, "--breath", (0.5 + 0.5 * Math.sin(this.pulse)).toFixed(3));
+      put(this.handle, "--breath", (0.5 + 0.5 * Math.sin(this.pulse)).toFixed(3));
       busy = true;
-    } else put(this.knob, "--breath", "0");
+    } else put(this.handle, "--breath", "0");
     return busy;
   }
 
   // ---- gestures
   wire() {
-    const el = this.el;
-    let id = null, x0 = 0, y0 = 0, xs = 0, from = 0;
+    const el = this.handle;
+    let id = null, x0 = 0, y0 = 0, xs = 0, from = 0, moved = false;
     el.addEventListener("pointerdown", (e) => {
       if (e.button > 0 || this.disabled) return;
       e.stopPropagation();
-      id = e.pointerId; x0 = e.clientX; y0 = e.clientY;
+      id = e.pointerId; x0 = e.clientX; y0 = e.clientY; moved = false;
       this.drag = null;
       try { el.setPointerCapture(e.pointerId); } catch (err) { /* already lifted */ }
     });
@@ -478,37 +517,43 @@ class LockTrack {
       if (e.pointerId !== id) return;
       if (!e.buttons && e.pointerType === "mouse") { id = null; return; }
       if (!this.drag) {
-        const dx = e.clientX - x0, dy = e.clientY - y0;
+        const dx = (e.clientX - x0) * this.dir, dy = e.clientY - y0;
         if (Math.hypot(dx, dy) < SLOP) return;
         if (Math.abs(dy) >= Math.abs(dx)) { id = null; return; }   // vertical: the page scrolls
         this.measure();
-        // relative: the finger moves the knob from wherever it was
-        const cur = this.x.x, f0 = this.canOpen && cur > this.u ? this.u + (LOCK_END - this.u) * Math.pow((cur - this.u) / (1 - this.u), 1 / 1.8) : cur;
-        from = f0; xs = x0;                     // the knob stays under the finger that grabbed it
-        this.drag = { f: f0, zone: false };
+        moved = true;
+        // relative: the finger moves the handle from wherever it was
+        const cur = this.x.x, f0 = this.openZone && cur > this.u ? this.u + (LOCK_END - this.u) * Math.pow((cur - this.u) / (1 - this.u), 1 / 1.8) : cur;
+        from = f0; xs = x0;                     // the handle stays under the finger that grabbed it
+        this.drag = { f: f0 };
         this.last = 0;
-        el.dataset.drag = "";
+        this.host.dataset.drag = "";
+        this.gh.to(1);
+        this.cv.to(1);
       }
-      const f = clamp(from + (e.clientX - xs) / this.T);
+      const f = clamp(from + ((e.clientX - xs) * this.dir) / this.T);
       this.drag.f = f;
       this.x.snap(this.mapFinger(f));
-      const notch = f > this.u ? 2 : f > this.u / 2 ? 1 : 0;
+      const notch = this.openZone ? (f > this.u ? 2 : f > this.u / 2 ? 1 : 0) : (f > 0.6 ? 1 : 0);
       if (notch !== this.last) { this.last = notch; haptic("selection"); }
       this.zone(f >= LOCK_END);
       this.kit.wake();
     });
+    const endDrag = () => { delete this.host.dataset.drag; this.gh.to(0); };
     const end = (e) => {
       if (e.pointerId !== id) return;
       id = null;
-      if (!this.drag) return;
+      if (!this.drag) { if (!moved && e.type === "pointerup") this.nudge(); return; }
       const f = this.drag.f, armed = this.armed;
       this.drag = null;
-      delete el.dataset.drag;
+      endDrag();
       this.zone(false);
       this.release(f, armed);
     };
     el.addEventListener("pointerup", end);
-    el.addEventListener("pointercancel", (e) => { if (e.pointerId === id && this.drag) { id = null; this.drag = null; delete el.dataset.drag; this.zone(false); this.x.to(this.stopPos(this.rest)); this.kit.wake(); } });
+    el.addEventListener("pointercancel", (e) => {
+      if (e.pointerId === id && this.drag) { id = null; this.drag = null; endDrag(); this.zone(false); this.x.to(0); this.cv.to(this.pend ? 1 : 0); this.kit.wake(); }
+    });
     el.addEventListener("click", (e) => e.stopPropagation());
 
     // keyboard: arrows lock and unlock; Open needs Enter or Space held for the same half second
@@ -520,9 +565,11 @@ class LockTrack {
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault(); e.stopPropagation();
         if (e.repeat || keyHold) return;
-        if (this.rest === 0 || !this.canOpen) { this.commit(this.rest === 0 ? 1 : 0); return; }
+        if (this.rest === 0 || !this.openZone) { this.commit(this.target); return; }
         keyHold = true;
         this.x.to(1);
+        this.cv.to(1);
+        this.gh.to(1);
         this.zone(true);
         this.kit.wake();
       }
@@ -533,14 +580,24 @@ class LockTrack {
       keyHold = false;
       const armed = this.armed;
       this.zone(false);
-      this.release(armed ? 1 : this.u, armed);
+      this.gh.to(0);
+      if (armed) this.release(1, true); else { this.x.to(0); this.cv.to(this.pend ? 1 : 0); this.kit.wake(); }
     });
-    el.addEventListener("blur", () => { if (keyHold) { keyHold = false; this.zone(false); this.x.to(this.stopPos(this.rest)); this.kit.wake(); } });
+    el.addEventListener("blur", () => { if (keyHold) { keyHold = false; this.zone(false); this.x.to(0); this.gh.to(0); this.cv.to(this.pend ? 1 : 0); this.kit.wake(); } });
+  }
+
+  // a tap only shows that it slides
+  nudge() {
+    if (this.disabled || MQ.reduced.matches) return;
+    haptic("light");
+    this.x.to(0.09);
+    this.later.push(setTimeout(() => { if (!this.drag) { this.x.to(0); this.kit.wake(); } }, 130));
+    this.kit.wake();
   }
 
   // the end of the track: entering it starts the ring; a half second later it arms
   zone(inside) {
-    if (!this.canOpen) return;
+    if (!this.openZone) return;
     if (inside && !this.holdFrom) {
       this.holdFrom = performance.now();
       this.clearTimers();
@@ -561,13 +618,13 @@ class LockTrack {
 
   // the finger lets go at share f of the travel
   release(f, armed) {
-    if (armed && this.canOpen) {
+    if (armed && this.openZone) {
       this.armed = false;
       this.holdFrom = 0;
-      // the knob shows the latch for a moment, then settles back on Unlocked
+      // the latch shows for a moment, then the handle is back and the lock is what it was
       this.pend = { stop: 2, at: Date.now(), ttl: 700 };
       haptic("success");
-      this.x.to(1);
+      this.x.to(0);
       this.onOpen();
       this.setState(this.state);
       this.onWords?.();
@@ -577,13 +634,13 @@ class LockTrack {
     }
     this.armed = false;
     this.holdFrom = 0;
-    const m = this.canOpen ? this.u / 2 : 0.5;
-    let target = f < m ? 0 : 1;
-    if (this.rest === 2 && f >= m) target = 2;     // already open: a small drag changes nothing
-    this.commit(target);
+    // past the first stop does the opposite of what the lock is; letting go in the end zone early, or short of the stop, does nothing
+    const fire = this.openZone ? 0.4 : 0.6;
+    if (f >= fire && !(this.openZone && f >= LOCK_END)) this.commit(this.target);
+    else { this.x.to(0); this.cv.to(this.pend ? 1 : 0); this.kit.wake(); }
   }
 
-  // settle on a stop; ask HA when it isn't the one it's in
+  // ask HA for a stop it isn't in; the handle goes back to the start
   commit(stop) {
     if (stop !== this.rest) {
       this.pend = { stop, at: Date.now() };
@@ -593,7 +650,7 @@ class LockTrack {
       this.onWords?.();
       this.recheck(CTL_PREDICT_MS + 60);
     }
-    this.x.to(this.stopPos(this.rest));
+    this.x.to(0);
     this.kit.wake();
   }
 

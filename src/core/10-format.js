@@ -99,3 +99,6 @@ const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/;
 // and parseFloat("2026-09-26T…") would otherwise read the year as a number.
 const isTimestamp = (st) => !!st && (st.attributes.device_class === "timestamp" || st.attributes.device_class === "date"
   || ISO_TIMESTAMP.test(st.state || ""));
+
+// "1 device", "3 devices"
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;

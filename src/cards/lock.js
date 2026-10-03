@@ -1,7 +1,8 @@
 // savvy-lock-card: a door, the way you'd want to handle it. The state is the biggest thing on
 // the card, a glow behind it follows (green when locked, amber when not, red when open or
-// jammed), and the lock is a track you slide: Locked, Unlocked, Open. A tap does nothing; the
-// knob is dragged, and Open (the latch) needs the end held until a ring fills.
+// jammed), and the lock's own icon is the handle you slide across its row: past the first stop it
+// does the opposite of what the lock is now, and Open (the latch) needs the end held until a ring fills.
+// A tap on the icon only nudges it.
 //
 //   type: custom:savvy-lock-card
 //   entity: lock.front_door                 or  entities: [lock.a, { entity: lock.b, name: Garage }]
@@ -12,7 +13,9 @@
 //   battery_warn: 40                        amber below this, red at 15
 //   unlocked_warn: 15                       minutes before "Unlocked for 25 min" nudges (0: never)
 //   alarm: alarm_control_panel.home         (else the house's alarm panel; false / hide_alarm: none)
+//   alarm_view: compact | full | hidden     compact: one line, a chevron slides the arm modes open; full: the modes always there
 //   camera: camera.porch                    (else a camera in the lock's area; false / hide_camera: none)
+//   camera_view: compact | full | hidden    compact: a slim row with an Open camera button; full: a live still
 //   layout: full | compact                  chips: [...]  (the one chip spec)
 //
 // With several locks: a row each, a summary and a "Lock all". Tap a name for the lock's
@@ -25,7 +28,7 @@ const lockTone = (t) => (t <= 1 ? mixRgb(LOCK_COLORS[0], LOCK_COLORS[1], clamp(t
 const LOCK_TONE_WORD = ["rgb(76 175 80)", "rgb(232 163 61)", "rgb(224 102 102)"];
 const LOCK_AMBER = "232 163 61", LOCK_RED = "224 102 102";
 
-const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_TRACK_CSS}
+const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_SLIDE_CSS}
   ha-card { --pad: 14px; --lk: 76 175 80; --wash: 0.1; --pulse: 0; position: relative; display: flex; flex-direction: column; gap: 12px; padding: var(--pad); overflow: hidden; }
   ha-card::before { content: ""; position: absolute; inset: 0; pointer-events: none;
     background: radial-gradient(140% 110% at 0% 0%, rgb(var(--lk) / calc(var(--wash) + var(--pulse) * 0.08)), transparent 68%); }
@@ -40,10 +43,11 @@ const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_TRACK_CSS}
   .btn[data-on] { color: rgb(var(--lk)); background: rgb(var(--lk) / 0.16); }
   .locks { display: flex; flex-direction: column; gap: 16px; }
   .lk { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-  .top { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .top { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 4px 8px 4px 4px; border-radius: 32px; }
   .who { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; text-align: start; border-radius: 12px; cursor: pointer; }
   .disc { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; color: var(--tone); background: color-mix(in oklab, var(--tone) 18%, transparent); --mdc-icon-size: 21px; }
-  .disc > * { display: flex; align-items: center; justify-content: center; line-height: 0; }
+  .disc > .dicon { display: flex; align-items: center; justify-content: center; line-height: 0; }
+  .disc > .dicon > * { display: flex; }
   .col { min-width: 0; display: flex; flex-direction: column; }
   .nm { font-size: 12.5px; line-height: 16px; font-weight: 600; letter-spacing: -0.005em; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .st { font-size: 17px; line-height: 22px; font-weight: 700; letter-spacing: -0.02em; color: var(--tone); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -57,40 +61,43 @@ const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_TRACK_CSS}
   .door ha-icon { display: flex; }
   .door[data-warn], .batt[data-level="warn"] { color: rgb(${LOCK_AMBER}); background: rgb(${LOCK_AMBER} / 0.16); }
   .batt[data-level="bad"] { color: rgb(${LOCK_RED}); background: rgb(${LOCK_RED} / 0.16); }
-  .batt svg { width: 16px; height: 16px; transform: rotate(-90deg); }
-  .batt circle { fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; }
-  .batt .bg { opacity: 0.25; }
-  .track { min-width: 0; }
+  .batt ha-icon { display: flex; }
   /* several locks: a smaller row each */
   :host(:not([data-solo])) .st { font-size: 15px; line-height: 20px; }
-  /* compact: one row, the track beside the name */
+  /* compact: one row, the handle at its start */
   :host([data-compact]) .locks { gap: 8px; }
-  :host([data-compact]) .lk { flex-direction: row; align-items: center; gap: 10px; }
-  :host([data-compact]) .top { flex: 1; }
-  :host([data-compact]) .track { flex: none; width: min(46%, 168px); }
+  :host([data-compact]) .top { padding: 3px 8px 3px 3px; border-radius: 26px; }
   :host([data-compact]) .disc { width: 34px; height: 34px; --mdc-icon-size: 19px; }
   :host([data-compact]) .st { font-size: 15px; line-height: 19px; }
   :host([data-compact]) .sub { display: none; }
   :host([data-compact]) .meta .door:not([data-warn]), :host([data-compact]) .meta .batt:not([data-level="warn"]):not([data-level="bad"]) { display: none; }
   :host([data-compact]) .door, :host([data-compact]) .batt { height: 22px; font-size: 11px; }
-  :host([data-compact]) .sv-lk-hint { display: none; }
   .nudge { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border-radius: 14px; background: rgb(${LOCK_AMBER} / 0.14); color: rgb(${LOCK_AMBER});
     font-size: 13px; line-height: 17px; font-weight: 650; --mdc-icon-size: 18px; }
   .nudge ha-icon { display: flex; flex: none; }
   .nudge .tx { flex: 1; min-width: 0; }
   .nudge .btn { background: rgb(${LOCK_AMBER} / 0.2); color: inherit; }
-  .alarm { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 10px; border-radius: 14px; background: var(--well); min-width: 0; flex-wrap: wrap; }
+  .alarm { display: flex; flex-direction: column; gap: 8px; padding: 8px 8px 8px 10px; border-radius: 14px; background: var(--well); min-width: 0; }
   .alarm[data-triggered] { background: rgb(${LOCK_RED} / 0.18); color: rgb(${LOCK_RED}); }
+  .al1 { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 30px; }
   .alarm .ai { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: color-mix(in oklab, var(--secondary-text-color) 14%, transparent);
     --mdc-icon-size: 17px; color: var(--secondary-text-color); }
   .alarm[data-armed] .ai { color: rgb(76 175 80); background: rgb(76 175 80 / 0.16); }
   .alarm[data-triggered] .ai { color: rgb(${LOCK_RED}); background: rgb(${LOCK_RED} / 0.2); }
   .alarm .ai ha-icon { display: flex; }
-  .alarm .ab { flex: 1; min-width: 92px; display: flex; flex-direction: column; }
+  .alarm .ab { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .alarm .an { font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: var(--secondary-text-color); }
-  .alarm .as { font-size: 14px; line-height: 18px; font-weight: 650; letter-spacing: -0.01em; }
-  .alarm .am { flex: none; display: flex; gap: 6px; flex-wrap: wrap; }
-  .alarm .am .btn { height: 30px; padding: 0 10px; }
+  .alarm .as { font-size: 14px; line-height: 18px; font-weight: 650; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .alarm .achev { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: color-mix(in oklab, var(--secondary-text-color) 12%, transparent);
+    color: var(--secondary-text-color); --mdc-icon-size: 20px; cursor: pointer; }
+  .alarm .achev ha-icon { display: flex; transform: rotate(calc(var(--r, 0) * 180deg)); }
+  .alarm[data-view="full"] .achev { display: none; }
+  /* the arm modes slide sideways when there are more than fit: never clipped at the card's edge */
+  .alarm .am { display: flex; flex-wrap: nowrap; gap: 6px; margin: 0 -8px 0 -10px; padding: 0 8px 0 10px; overflow-x: auto; overscroll-behavior-x: contain; touch-action: pan-x pan-y;
+    scrollbar-width: none; scroll-snap-type: x proximity; }
+  .alarm .am::-webkit-scrollbar { display: none; }
+  .alarm .am[data-overflow] { -webkit-mask-image: linear-gradient(to left, transparent 0, #000 26px); mask-image: linear-gradient(to left, transparent 0, #000 26px); }
+  .alarm .am .btn { flex: none; scroll-snap-align: start; height: 30px; padding: 0 10px; }
   .alarm .am .btn[data-on] { color: rgb(76 175 80); background: rgb(76 175 80 / 0.16); }
   .alarm[data-triggered] .am .btn { background: rgb(${LOCK_RED} / 0.14); color: inherit; }
   .cam { position: relative; display: block; width: 100%; padding: 0; border: 0; border-radius: 14px; overflow: hidden; cursor: pointer; background: var(--well); aspect-ratio: 21 / 9; }
@@ -98,6 +105,12 @@ const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_TRACK_CSS}
   .cam .cl { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 6px; padding: 18px 12px 9px; color: #fff; --mdc-icon-size: 16px;
     font-size: 12.5px; font-weight: 650; background: linear-gradient(transparent, rgb(0 0 0 / 0.55)); text-align: start; }
   .cam .cl ha-icon { display: flex; }
+  .camrow { display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 6px; border-radius: 14px; background: var(--well); min-width: 0; }
+  .camrow .cth { flex: none; width: 52px; height: 36px; border-radius: 9px; object-fit: cover; background: color-mix(in oklab, var(--secondary-text-color) 18%, transparent); cursor: pointer; }
+  .camrow .ctx { flex: 1; min-width: 0; display: flex; flex-direction: column; text-align: start; cursor: pointer; }
+  .camrow .cn { font-size: 13px; line-height: 17px; font-weight: 650; letter-spacing: -0.005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .camrow .cs { font-size: 11px; line-height: 14px; font-weight: 600; color: var(--secondary-text-color); display: flex; align-items: center; gap: 5px; }
+  .camrow .cs i { width: 6px; height: 6px; border-radius: 50%; background: rgb(${LOCK_RED}); display: inline-block; }
   .empty { padding: 4px 2px; font-size: 12.5px; font-weight: 500; color: var(--secondary-text-color); }
   .sep { display: none; }
   .cam-sheet savvy-camera-card { --ha-card-border-width: 0px; --ha-card-background: transparent; --ha-card-box-shadow: none; margin: -14px -14px 0; }
@@ -126,6 +139,11 @@ class SavvyLockCard extends SavvyCard {
     this._config = { ...config, areas, pinned, include: asItems(config.include).map((i) => i.entity),
       exclude: asItems(config.exclude).map((i) => i.entity), chips: [].concat(config.chips || []) };
     this._compact = config.layout === "compact";
+    const view = (v, off) => (["full", "compact", "hidden"].includes(v) ? v : off ? "hidden" : "compact");
+    this._alarmView = view(config.alarm_view, config.alarm === false || config.hide_alarm);
+    // a compact card is one row: its camera stays away unless asked for
+    this._camView = view(config.camera_view ?? (this._compact ? "hidden" : undefined), config.camera === false || config.hide_camera);
+    if (this._compact && this._alarmView === "full") this._alarmView = "compact";
     if (this._el) { this._build(); if (this._hass) this._update(); }
   }
 
@@ -150,7 +168,7 @@ class SavvyLockCard extends SavvyCard {
     this._camTimer = 0;
     this._camSheet?.close(true);
   }
-  getCardSize() { return this._compact ? 2 : 4 + (this._camId ? 3 : 0); }
+  getCardSize() { return this._compact ? 2 : 3 + (this._camId && this._camView === "full" ? 3 : this._camId && this._camView === "compact" ? 1 : 0); }
   getGridOptions() { return { columns: 12, min_columns: 4, rows: "auto" }; }
 
   _observe() {
@@ -172,21 +190,27 @@ class SavvyLockCard extends SavvyCard {
         <div class="head" id="head" hidden><span class="t" id="title"></span><span class="sum" id="sum"></span><button class="btn" id="all"><ha-icon icon="mdi:lock"></ha-icon><span>Lock all</span></button></div>
         <div class="locks" id="locks"></div>
         <div class="nudge" id="nudge" hidden><ha-icon icon="mdi:lock-clock"></ha-icon><span class="tx" id="nudgeTx"></span><button class="btn" id="nudgeBtn"><ha-icon icon="mdi:lock"></ha-icon><span>Lock now</span></button></div>
-        <div class="alarm" id="alarm" hidden><span class="ai"><ha-icon id="alarmIc"></ha-icon></span><span class="ab"><span class="an">Alarm</span><span class="as" id="alarmSt"></span></span><span class="am" id="alarmModes"></span></div>
+        <div class="alarm" id="alarm" hidden><div class="al1"><span class="ai"><ha-icon id="alarmIc"></ha-icon></span><span class="ab"><span class="an">Alarm</span><span class="as" id="alarmSt"></span></span><button class="achev" id="alarmChev" aria-expanded="false" aria-label="Arm modes"><ha-icon icon="mdi:chevron-down"></ha-icon></button></div><div class="am" id="alarmModes"></div></div>
         <button class="cam" id="cam" hidden aria-label="Open camera"><img id="camImg" alt=""><span class="cl"><ha-icon icon="mdi:cctv"></ha-icon><span id="camName"></span></span></button>
+        <div class="camrow" id="camRow" hidden><img class="cth" id="camThumb" alt=""><span class="ctx" id="camTx" role="button" tabindex="0"><span class="cn" id="camRowName"></span><span class="cs"><i></i>Live</span></span><button class="btn" id="camBtn"><ha-icon icon="mdi:cctv"></ha-icon><span>Open camera</span></button></div>
         <div class="empty" id="empty" hidden></div>
         <div class="chips" id="chips" hidden></div>
       </ha-card>`;
     const $ = (id) => root.getElementById(id);
     this._el = { card: root.querySelector("ha-card"), head: $("head"), title: $("title"), sum: $("sum"), all: $("all"), locks: $("locks"),
-      nudge: $("nudge"), nudgeTx: $("nudgeTx"), nudgeBtn: $("nudgeBtn"), alarm: $("alarm"), alarmIc: $("alarmIc"), alarmSt: $("alarmSt"), alarmModes: $("alarmModes"),
-      cam: $("cam"), camImg: $("camImg"), camName: $("camName"), empty: $("empty"), chips: $("chips") };
+      nudge: $("nudge"), nudgeTx: $("nudgeTx"), nudgeBtn: $("nudgeBtn"), alarm: $("alarm"), alarmIc: $("alarmIc"), alarmSt: $("alarmSt"), alarmModes: $("alarmModes"), alarmChev: $("alarmChev"),
+      cam: $("cam"), camImg: $("camImg"), camName: $("camName"), camRow: $("camRow"), camThumb: $("camThumb"), camTx: $("camTx"), camBtn: $("camBtn"), camRowName: $("camRowName"), empty: $("empty"), chips: $("chips") };
     this._pressable(this._el.all, { onTap: () => this._lockAll() }, 0.05);
     this._pressable(this._el.nudgeBtn, { onTap: () => this._nudged && this._call(this._nudged, "lock") }, 0.05);
     this._pressable(this._el.cam, { onTap: () => this._camId && this._openCamera() }, 0.025);
+    this._pressable(this._el.camBtn, { onTap: () => this._camId && this._openCamera() }, 0.05);
+    this._pressable(this._el.camTx, { onTap: () => this._camId && this._openCamera() }, 0.03);
+    this._pressable(this._el.alarmChev, { onTap: () => this._toggleAlarm() }, 0.1);
+    this._alarmOpen = false;
     this._ro?.disconnect();
-    this._ro = new ResizeObserver(() => this._fitRow(this._el.chips));
+    this._ro = new ResizeObserver(() => { this._fitRow(this._el.chips); this._fitRow(this._el.alarmModes); });
     this._ro.observe(this._el.chips);
+    this._ro.observe(this._el.alarmModes);
     this._first = true;
     this._observe();
   }
@@ -256,14 +280,14 @@ class SavvyLockCard extends SavvyCard {
 
   _alarmId() {
     const h = this._hass, c = this._config;
-    if (c.alarm === false || c.hide_alarm) return null;
+    if (c.alarm === false || c.hide_alarm || this._alarmView === "hidden") return null;
     if (typeof c.alarm === "string" && c.alarm) return h.states[c.alarm] ? c.alarm : null;
     return houseEntities(h).find((id) => domainOf(id) === "alarm_control_panel") || null;
   }
 
   _cameraOf(items) {
     const h = this._hass, c = this._config;
-    if (c.camera === false || c.hide_camera) return null;
+    if (c.camera === false || c.hide_camera || this._camView === "hidden") return null;
     if (typeof c.camera === "string" && c.camera) return h.states[c.camera] ? c.camera : null;
     const own = items.map((i) => i.camera).find((x) => typeof x === "string" && h.states[x]);
     if (own) return own;
@@ -359,18 +383,17 @@ class SavvyLockCard extends SavvyCard {
     node.className = "lk";
     node.__canOpen = canOpen;
     node.innerHTML = `<div class="top">
-        <button class="who" aria-label="Open details"><span class="disc"></span><span class="col"><span class="nm"></span><span class="st"></span><span class="sub"></span></span></button>
-        <span class="meta"><span class="door" hidden><ha-icon></ha-icon><span></span></span><span class="batt" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle class="bg" cx="12" cy="12" r="9"></circle><circle class="fg" cx="12" cy="12" r="9"></circle></svg><span></span></span></span>
-      </div>
-      <div class="track"></div>`;
+        <span class="disc"><span class="dicon"></span></span>
+        <button class="who" aria-label="Open details"><span class="col"><span class="nm"></span><span class="st"></span><span class="sub"></span></span></button>
+        <span class="meta"><span class="door" hidden><ha-icon></ha-icon><span></span></span><span class="batt" hidden><ha-icon></ha-icon><span></span></span></span>
+      </div>`;
     const q = (s) => node.querySelector(s);
-    node.__el = { disc: q(".disc"), nm: q(".nm"), st: q(".st"), door: q(".door"), doorIc: q(".door ha-icon"), doorTx: q(".door span:last-child"),
-      batt: q(".batt"), battFg: q(".batt .fg"), battTx: q(".batt > span:last-child"), sub: q(".sub"), track: q(".track") };
+    node.__el = { disc: q(".disc"), dicon: q(".dicon"), nm: q(".nm"), st: q(".st"), door: q(".door"), doorIc: q(".door ha-icon"), doorTx: q(".door span:last-child"),
+      batt: q(".batt"), battIc: q(".batt ha-icon"), battTx: q(".batt > span:last-child"), sub: q(".sub") };
     const call = (svc) => this._call(id, svc);
-    node.__track = new LockTrack(this._kit, { label: "Lock", canOpen, size: solo && !this._compact ? "lg" : "sm",
-      onLock: () => call("lock"), onUnlock: () => call("unlock"), onOpen: () => call("open") });
+    node.__track = new LockSlide(this._kit, { host: q(".top"), handle: q(".disc"), label: "Lock", canOpen, hintHost: q(".who"),
+      fade: [q(".who"), q(".meta")], onLock: () => call("lock"), onUnlock: () => call("unlock"), onOpen: () => call("open") });
     node.__track.onWords = () => this._update();
-    node.__el.track.appendChild(node.__track.el);
     this._pressable(q(".who"), { onTap: () => moreInfo(this, id) }, 0.03);
     node.__first = true;
     return node;
@@ -389,9 +412,9 @@ class SavvyLockCard extends SavvyCard {
     const wantState = !(item.icon || (solo && this._config.icon)) && !!st;
     if (node.__iconKind !== (wantState ? "state" : "plain")) {
       node.__iconKind = wantState ? "state" : "plain";
-      el.disc.innerHTML = wantState ? "<savvy-state-icon></savvy-state-icon>" : "<ha-icon></ha-icon>";
+      el.dicon.innerHTML = wantState ? "<savvy-state-icon></savvy-state-icon>" : "<ha-icon></ha-icon>";
     }
-    const ic = el.disc.firstElementChild;
+    const ic = el.dicon.firstElementChild;
     if (wantState) { if (ic.stateObj !== st) { ic.hass = h; ic.stateObj = st; } }
     else attr(ic, "icon", item.icon || this._config.icon || "mdi:lock");
     // the door
@@ -412,8 +435,7 @@ class SavvyLockCard extends SavvyCard {
       const warn = Number(this._config.battery_warn ?? 40);
       attr(el.batt, "data-level", pct <= 15 ? "bad" : pct < warn ? "warn" : "ok");
       text(el.battTx, `${Math.round(pct)}%`);
-      put(el.battFg, "stroke-dasharray", "56.55");
-      put(el.battFg, "stroke-dashoffset", (56.55 * (1 - clamp(pct / 100))).toFixed(2));
+      attr(el.battIc, "icon", pct <= 15 ? "mdi:battery-alert-variant-outline" : batteryLevelIcon(pct));
     }
     // the line under the name
     const parts = [];
@@ -461,6 +483,15 @@ class SavvyLockCard extends SavvyCard {
     const triggered = st.state === "triggered";
     attr(el.alarm, "data-armed", !!armed);
     attr(el.alarm, "data-triggered", triggered);
+    attr(el.alarm, "data-view", this._alarmView);
+    // a triggered alarm opens its modes by itself; otherwise the chevron decides (full: always open)
+    if (triggered && !this._wasTriggered) this._alarmOpen = true;
+    this._wasTriggered = triggered;
+    const open = this._alarmView === "full" || this._alarmOpen;
+    Motion.reveal(el.alarmModes, open);
+    attr(el.alarmChev, "aria-expanded", String(open));
+    Motion.tweenVar(el.alarmChev, "--r", open ? 1 : 0);
+    requestAnimationFrame(() => this._fitRow(el.alarmModes));
     attr(el.alarmIc, "icon", triggered ? "mdi:shield-alert" : armed ? "mdi:shield-lock" : "mdi:shield-off-outline");
     text(el.alarmSt, triggered ? "Triggered" : stateText(h, st));
     const key = `${id}|${modes.map((m) => m[0]).join()}`;
@@ -491,6 +522,12 @@ class SavvyLockCard extends SavvyCard {
     return { triggered };
   }
 
+  _toggleAlarm() {
+    this._alarmOpen = !this._alarmOpen;
+    haptic("selection");
+    if (this._hass) this._update();
+  }
+
   _arm(id, mode) {
     const h = this._hass, cur = h.states[id];
     if (!cur || cur.state === `armed_${mode}`) return;
@@ -503,10 +540,15 @@ class SavvyLockCard extends SavvyCard {
 
   // ---------- the camera ----------
   _renderCamera(items) {
-    const el = this._el, id = this._camId, st = id ? this._hass.states[id] : null;
-    Motion.reveal(el.cam, !!st && !this._compact);
-    if (!st || this._compact) { clearInterval(this._camTimer); this._camTimer = 0; return; }
-    text(el.camName, `${st.attributes.friendly_name || shortName(this._hass, id, null)} · Live`);
+    const el = this._el, id = this._camId, st = id ? this._hass.states[id] : null, view = this._camView;
+    const full = !!st && view === "full", row = !!st && view === "compact";
+    Motion.reveal(el.cam, full);
+    Motion.reveal(el.camRow, row);
+    this._camVisible = full || row;
+    if (!this._camVisible) { clearInterval(this._camTimer); this._camTimer = 0; return; }
+    const name = st.attributes.friendly_name || shortName(this._hass, id, null);
+    text(el.camName, `${name} · Live`);
+    text(el.camRowName, name);
     this._camRefresh(true);
     if (!this._camTimer) this._camTimer = setInterval(() => this._camRefresh(), LOCK_CAM_MS);
   }
@@ -514,16 +556,17 @@ class SavvyLockCard extends SavvyCard {
   // a fresh still while the card is on screen
   _camRefresh(force = false) {
     const el = this._el, id = this._camId;
-    if (!el || !id || el.cam.hidden) return;
+    if (!el || !id || !this._camVisible) return;
     if (!force && (this._onscreen === false || document.hidden)) return;
+    const img = this._camView === "full" ? el.camImg : el.camThumb;
     const st = this._hass.states[id];
     const pic = st?.attributes.entity_picture || `/api/camera_proxy/${id}`;
     const url = typeof this._hass.hassUrl === "function" ? this._hass.hassUrl(pic) : pic;
     const next = /^(data|blob):/.test(url) ? url : `${url}${url.includes("?") ? "&" : "?"}_t=${Math.floor(Date.now() / 1000)}`;
-    if (force && el.camImg.__base === url && el.camImg.__at && Date.now() - el.camImg.__at < LOCK_CAM_MS - 500) return;
-    el.camImg.__base = url;
-    el.camImg.__at = Date.now();
-    el.camImg.src = next;
+    if (force && img.__base === url && img.__at && Date.now() - img.__at < LOCK_CAM_MS - 500) return;
+    img.__base = url;
+    img.__at = Date.now();
+    img.src = next;
   }
 
   _openCamera() {
@@ -536,11 +579,11 @@ class SavvyLockCard extends SavvyCard {
     const st = h.states[id];
     this._camSheet.setTitle(st?.attributes.friendly_name || "Camera");
     const card = document.createElement("savvy-camera-card");
-    card.setConfig({ cameras: [{ entity: id }], recordings: false, columns: 1 });
+    card.setConfig({ cameras: [{ entity: id }], recordings: "inline", columns: 1 });
     this._camSheet.body.replaceChildren(card);
     card.hass = h;
     this._camCard = card;
-    this._camSheet.open(this._el.cam);
+    this._camSheet.open(this._camView === "full" ? this._el.cam : this._el.camBtn);
   }
 
   _paint(dirty, all, red) {
@@ -552,7 +595,9 @@ class SavvyLockCard extends SavvyCard {
 }
 
 // ---------- editor ----------
+const VIEWS = [{ value: "compact", label: "Compact" }, { value: "full", label: "Full" }, { value: "hidden", label: "Hidden" }];
 const EDITOR = defineEditor("savvy-lock-card", (hass, c) => [
+  S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (one row)" }]),
   S.entity("entity", "Lock", "lock", { helper: "One lock. Or pick an area, or list several below." }),
   { name: "area", label: "Area", helper: "Every lock in these areas. Locks with no area: add them under Include.", selector: { area: { multiple: true } } },
   { name: "entities", label: "Locks", helper: "Several locks, each with its own door, battery and camera.", type: "list",
@@ -566,8 +611,7 @@ const EDITOR = defineEditor("savvy-lock-card", (hass, c) => [
     add: { selector: { entity: { domain: "lock" } }, label: "Add a lock" } },
   { name: "include", label: "Include", helper: "Locks to show with this area, such as one that has no area.", selector: { entity: { domain: "lock", multiple: true } } },
   { name: "exclude", label: "Never show", selector: { entity: { domain: "lock", multiple: true } } },
-  S.grid(S.text("name", "Name"), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (one row)" }])),
-  S.icon(),
+  S.grid(S.text("name", "Name"), S.icon()),
   { type: "expandable", name: "", title: "Door and battery", schema: [
     { name: "door", label: "Door sensor", helper: "Empty: the door contact of the lock's device or area.", selector: { entity: { domain: "binary_sensor" } } },
     S.bool("hide_door", "Hide door"),
@@ -578,9 +622,9 @@ const EDITOR = defineEditor("savvy-lock-card", (hass, c) => [
   ] },
   { type: "expandable", name: "", title: "Alarm and camera", schema: [
     { name: "alarm", label: "Alarm", helper: "Empty: the house's alarm panel, when there is one.", selector: { entity: { domain: "alarm_control_panel" } } },
-    S.bool("hide_alarm", "Hide alarm"),
+    S.select("alarm_view", "Alarm view", VIEWS),
     { name: "camera", label: "Camera", helper: "Empty: a camera in the lock's area.", selector: { entity: { domain: "camera" } } },
-    S.bool("hide_camera", "Hide camera"),
+    S.select("camera_view", "Camera view", VIEWS),
   ] },
   S.chips(),
 ]);

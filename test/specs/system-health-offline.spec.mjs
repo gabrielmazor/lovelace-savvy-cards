@@ -250,6 +250,9 @@ export default async function ({ browser, base, check }) {
     check(`${tag} watchman_report sets the service data`, logged[0] === 'watchman.report {"parse_config":false,"create_file":true} -', JSON.stringify(logged));
     // the cog's popup carries the chip
     await seeCard(6);
+    // with no control chip the header is one sliding row and the cog sits at its end
+    await page.evaluate(() => { const r = window.cards[6].shadowRoot.getElementById("row"); r.scrollTo({ left: r.scrollWidth, behavior: "instant" }); });
+    await page.waitForTimeout(150);
     await hold(page, await centerOf(page, 6, "#health"));
     await page.waitForTimeout(600);
     const inPopup = await page.evaluate(() => {

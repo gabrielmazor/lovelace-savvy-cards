@@ -67,7 +67,7 @@ export default async function ({ browser, base, check }) {
     await new Promise((r) => setTimeout(r, 50));
     return [...ed.shadowRoot.querySelectorAll(".stub-field")].map((f) => f.dataset.name);
   });
-  const want = ["source", "title", "battery_threshold", "warn_above", "max_rows", "columns", "details", "group_by", "group_min", "exclude_platforms", "watchman", "watchman_last_run", "show_all_batteries", "label", "tap_action"];
+  const want = ["source", "title", "battery_threshold", "warn_above", "max_rows", "columns", "details", "group_by", "group_min", "exclude_platforms", "watchman", "watchman_last_run", "show_all_batteries", "label", "tap_action", "devices", "entities"];
   check("editor exposes every option", want.every((w) => fields.includes(w)), JSON.stringify(fields));
   await page.close();
 }

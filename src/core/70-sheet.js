@@ -416,7 +416,8 @@ class EntityListSheet {
     row.__kit.paints.push(() => this.paintOpen(row));
     const kind = ROW_KINDS[d];
     if (kind) {
-      row.__ctrl = kind.build({ id, kit: row.__kit, host: this.host, hass: () => this.hass, refresh: () => this.render(this.hass) });
+      row.__ctrl = kind.build({ id, kit: row.__kit, host: this.host, hass: () => this.hass, refresh: () => this.render(this.hass),
+        row, line: row.querySelector(".sv-line1"), handle: row.querySelector(".sv-ic"), text: row.querySelector(".sv-txt") });
       row.__fixed = !!row.__ctrl.fixed;
       if (row.__ctrl.main) row.__act.appendChild(row.__ctrl.main);
       if (row.__ctrl.extra) row.__ctlIn.appendChild(row.__ctrl.extra);

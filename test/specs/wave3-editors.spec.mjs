@@ -9,7 +9,7 @@ const EDITORS = {
   "savvy-media-card": { config: { area: "living_room" }, want: ["area", "name", "layout", "video_output", "artwork", "volume_buttons", "volume_step", "artwork_max_height", "video", "audio", "entity", "time", "action", "data", "placeholder"], lists: ["video", "audio", "presets", "chips"] },
   "savvy-scene-card": { config: { area: "office" }, want: ["area", "title", "layout", "columns", "color", "show_icon", "strip", "navigation_path", "auto_discover", "exclude"], lists: ["entities"] },
   "savvy-camera-card": { config: { area: "living_room" }, want: ["area", "recordings", "columns", "days", "aspect_ratio", "instance"], lists: ["cameras"] },
-  "savvy-lock-card": { config: { entity: "lock.front_door" }, want: ["entity", "area", "include", "exclude", "name", "layout", "icon", "door", "hide_door", "battery", "hide_battery", "battery_warn", "unlocked_warn", "alarm", "hide_alarm", "camera", "hide_camera"], lists: ["entities", "chips"] },
+  "savvy-lock-card": { config: { entity: "lock.front_door" }, want: ["entity", "area", "include", "exclude", "name", "layout", "icon", "door", "hide_door", "battery", "hide_battery", "battery_warn", "unlocked_warn", "alarm", "alarm_view", "camera", "camera_view"], lists: ["entities", "chips"] },
 };
 
 export default async function ({ browser, base, check }) {

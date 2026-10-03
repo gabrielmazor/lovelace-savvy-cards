@@ -17,13 +17,29 @@
 //                       issue, and so is an integration that failed or whose devices are mostly
 //                       offline. integration > hub > device > entity, nothing counted twice.
 //   group_min           how many devices a hub or an integration needs to roll up (default 3)
+//   ignore              known problems: { entities: [...], devices: [device ids] } (or one list of both).
+//                       They leave every count and list, and wait under "Known"
+//
+// A Watchman item whose entity belongs to a device that is already an issue (or is ignored) is not a
+// second problem: it is folded into that device's row and counts once. Only what nothing else explains
+// stays Watchman's own.
 // ---------------------------------------------------------------------------------------
 
 const HEALTH_DEFAULTS = { battery_threshold: 20, exclude_platforms: ["mobile_app"], watchman: [], group_by: "hub", group_min: 3 };
 const GROUP_MODES = ["hub", "device", "none"];
 const WATCHMAN_ICON = { missing: "mdi:cloud-alert", unavail: "mdi:cloud-off-outline" };
 
+// `ignore` as { entities, devices }, or as one list: an id with a dot is an entity, the rest are devices
+function ignoreSets(raw) {
+  const list = Array.isArray(raw) ? raw : null;
+  const ents = list ? list.filter((x) => String(x).includes(".")) : [].concat(raw?.entities || []);
+  const devs = list ? list.filter((x) => !String(x).includes(".")) : [].concat(raw?.devices || []);
+  return { entities: new Set(ents.filter(Boolean)), devices: new Set(devs.filter(Boolean)) };
+}
+const isIgnored = (hass, opts, id) => opts.ignore.entities.has(id) || opts.ignore.devices.has(hass.entities?.[id]?.device_id);
+
 const healthOptions = (cfg = {}) => ({
+  ignore: ignoreSets(cfg.ignore),
   battery_threshold: Number(cfg.battery_threshold ?? HEALTH_DEFAULTS.battery_threshold),
   exclude_platforms: [].concat(cfg.exclude_platforms ?? HEALTH_DEFAULTS.exclude_platforms),
   watchman: [].concat(cfg.watchman || []).filter(Boolean),
@@ -41,6 +57,7 @@ function batteryRows(hass, opts) {
     if (st.attributes.device_class !== "battery") continue;
     const reg = hass.entities?.[id];
     if (reg && (reg.hidden || reg.hidden_by || reg.disabled_by || skip.has(reg.platform))) continue;
+    if (isIgnored(hass, opts, id)) continue;
     const v = parseFloat(st.state);
     if (!Number.isFinite(v)) continue;
     list.push({ id, name: st.attributes.friendly_name || id, value: v, low: v < opts.battery_threshold });
@@ -92,11 +109,17 @@ function offlineIssues(hass, opts) {
   const per = new Map();            // device id -> { all, down: [entity ids], conn: [connectivity entity ids], platforms }
   const loose = [];                 // unavailable entities with no (known) device
   const downEntities = [];          // every unavailable entity, for group_by: none
+  const knownDev = new Map(), knownLoose = [];   // what the user has snoozed, and is down
   for (const id in hass.states) {
     const reg = hass.entities?.[id];
     if (reg && (reg.hidden || reg.hidden_by || reg.disabled_by || skip.has(reg.platform))) continue;
     const st = hass.states[id];
     const down = st.state === "unavailable";
+    if (isIgnored(hass, opts, id)) {
+      // a snoozed device waits as the device; a snoozed entity of a device that isn't, as the entity
+      if (down) { const d = reg?.device_id && opts.ignore.devices.has(reg.device_id) && registry[reg.device_id] ? reg.device_id : null; if (d) (knownDev.get(d) || knownDev.set(d, []).get(d)).push(id); else knownLoose.push(id); }
+      continue;
+    }
     if (down) downEntities.push(id);
     const dev = reg?.device_id && registry[reg.device_id] ? reg.device_id : null;
     if (!dev) { if (down) loose.push(id); continue; }
@@ -116,6 +139,11 @@ function offlineIssues(hass, opts) {
   const sorted = (list) => list.sort(byName);
   const deviceName = (id) => registry[id]?.name_by_user || registry[id]?.name || id;
   const areaOf = (id) => { const a = registry[id]?.area_id; return a ? hass.areas?.[a]?.name || title(a.replace(/_/g, " ")) : ""; };
+  const known = {
+    devices: [...knownDev].map(([id, ids]) => ({ kind: "known", key: `k:d:${id}`, id, name: deviceName(id), since: sinceOf(ids), total: ids.length, area: areaOf(id) })).sort(byName),
+    entities: knownLoose.map((id) => ({ kind: "known", key: `k:e:${id}`, id, entity: id, name: nameOf(id), since: sinceOf([id]) })).sort(byName),
+    refs: 0,
+  };
   const platformOf = (rec) => Object.entries(rec?.platforms || {}).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
 
   const offline = (id) => { const r = per.get(id); return !!r && r.all.length > 0 && r.down.length * 2 >= r.all.length; };
@@ -237,7 +265,7 @@ function offlineIssues(hass, opts) {
   issues.sort((a, b) => rank(a) - rank(b) || byName(a, b));
   let tracked = 0, down = 0;
   for (const id of per.keys()) { tracked++; if (offline(id)) down++; }
-  return { issues, devices: { total: tracked, down } };
+  return { issues, devices: { total: tracked, down }, known };
 }
 
 // Watchman's sensors: their state is the count, their `entities` / `services` attribute
@@ -265,6 +293,30 @@ function watchmanRows(hass, opts) {
   return { total, rows, kinds };
 }
 
+// Which Watchman items an offline issue already explains (the entity's device is in the tree, or is
+// snoozed). Those are counted on the issue, as "N dashboard references broken", and leave Watchman's list.
+function explainWatchman(hass, opts, issues, known, rows) {
+  const dev = new Map(), ent = new Map();
+  const visit = (node, parents) => {
+    const here = [...parents, node];
+    if (node.kind === "device" || node.kind === "hub") dev.set(node.id, here);
+    if (node.kind === "entity") ent.set(node.entity, here);
+    for (const e of node.entities || []) visit(e, here);
+    for (const d of node.devices || []) visit(d, here);
+  };
+  issues.forEach((i) => visit(i, []));
+  const keep = [], gone = [];
+  for (const r of rows) {
+    const d = hass.entities?.[r.entity]?.device_id;
+    // a snoozed problem takes its Watchman items with it; otherwise the device (or entity) that is down explains them
+    const hit = isIgnored(hass, opts, r.entity) ? null : (d && dev.get(d)) || ent.get(r.entity) || null;
+    if (hit) { for (const n of hit) n.refs = (n.refs || 0) + 1; r.explainedBy = hit[0].key; }
+    else if (isIgnored(hass, opts, r.entity)) { r.explainedBy = "known"; known.refs++; }
+    (r.explainedBy ? gone : keep).push(r);
+  }
+  return { keep, gone };
+}
+
 // Everything at once. `total` is what the home card's cog shows: the offline issues
 // (a hub, a device or a loose entity is one each), the low batteries and Watchman's count.
 function healthSummary(hass, cfg) {
@@ -273,11 +325,16 @@ function healthSummary(hass, cfg) {
   const offline = offlineIssues(hass, opts);
   const watchman = watchmanRows(hass, opts);
   const low = battery.filter((b) => b.alert).length;
+  const { keep, gone } = explainWatchman(hass, opts, offline.issues, offline.known, watchman.rows);
+  // what is left of Watchman's count once the items the offline issues explain are taken out
+  const left = Math.max(0, watchman.total - gone.length);
+  const kinds = { entities: Math.max(0, watchman.kinds.entities - gone.length), actions: watchman.kinds.actions };
   return {
-    opts, battery, offline: offline.issues, watchman: watchman.rows,
-    counts: { battery: low, unavailable: offline.issues.length, watchman: watchman.total, watchmanKinds: watchman.kinds },
+    opts, battery, offline: offline.issues, watchman: keep, watchmanExplained: gone, known: offline.known,
+    counts: { battery: low, unavailable: offline.issues.length, watchman: left, watchmanAll: watchman.total, watchmanExplained: gone.length, watchmanKinds: kinds, watchmanAllKinds: watchman.kinds,
+      known: offline.known.devices.length + offline.known.entities.length },
     stats: { devices: offline.devices, batteries: { count: battery.length, lowest: battery.length ? battery[0].num : null } },
-    total: low + offline.issues.length + watchman.total,
+    total: low + offline.issues.length + left,
   };
 }
 

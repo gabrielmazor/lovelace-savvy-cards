@@ -21,7 +21,23 @@
 //                                                    the rest follow by name, "No room" last
 //   chips: [...]                                     your own, after the four
 
-const STYLE = `${BASE_CSS}${HEADER_CSS}${CHIP_ROW_CSS}`;
+// Without a control chip the header is one row: the home button, the chips, then the weather and the
+// health cog at the end; the row slides sideways when it is wider than the card. With a control chip it
+// stays two rows: the control, weather and cog on top, the chips below.
+const ROW_CSS = `
+  .row { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .row[data-single] { flex-direction: row; align-items: center; gap: 8px; margin: 0 -2px; padding: 0 2px; overflow-x: auto; overscroll-behavior-x: contain;
+    touch-action: pan-x pan-y; scrollbar-width: none; scroll-snap-type: x proximity; }
+  .row[data-single]::-webkit-scrollbar { display: none; }
+  .row[data-single] .top, .row[data-single] .chips { display: contents; }
+  .row[data-single] .pill, .row[data-single] .spacer { display: none; }
+  .row[data-single] #home { order: 0; }
+  .row[data-single] .chip { order: 1; }
+  .row[data-single] .wx { order: 2; }
+  .row[data-single] #health { order: 3; }
+  .row[data-single][data-overflow] { -webkit-mask-image: linear-gradient(to left, transparent 0, #000 26px); mask-image: linear-gradient(to left, transparent 0, #000 26px); }
+`;
+const STYLE = `${BASE_CSS}${HEADER_CSS}${CHIP_ROW_CSS}${ROW_CSS}`;
 
 // The four chips: how each counts, and its look.
 const ALERT_COLOR = "#E06666";
@@ -91,6 +107,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
     this._picker = null;
     root.innerHTML = `<style>${STYLE}</style>
       <ha-card>
+        <div class="row" id="row">
         <div class="top">
           <button class="glyph" id="home" aria-label="Home" hidden><ha-icon icon="mdi:home"></ha-icon></button>
           <button class="pill" id="pill" hidden>
@@ -101,9 +118,10 @@ class SavvyHomeHeaderCard extends SavvyCard {
           <button class="glyph" id="health" aria-label="System health" hidden><ha-icon icon="mdi:cog"></ha-icon><span class="count" id="count" hidden></span></button>
         </div>
         <div class="chips" id="chips"></div>
+        </div>
       </ha-card>`;
     const $ = (id) => root.getElementById(id);
-    this._el = { card: root.querySelector("ha-card"), home: $("home"), pill: $("pill"), swap: $("swap"), pillIcon: $("pillIcon"), val: $("val"), pre: $("pre"),
+    this._el = { card: root.querySelector("ha-card"), row: $("row"), home: $("home"), pill: $("pill"), swap: $("swap"), pillIcon: $("pillIcon"), val: $("val"), pre: $("pre"),
       spacer: $("spacer"), weather: $("weather"), wicon: $("wicon"), wtemp: $("wtemp"), health: $("health"), count: $("count"), chips: $("chips") };
     const el = this._el;
     this._swap = new Swap(el.swap, (v) => {
@@ -125,8 +143,9 @@ class SavvyHomeHeaderCard extends SavvyCard {
   _observe() {
     if (!this._el || !this.isConnected) return;
     this._ro?.disconnect();
-    this._ro = new ResizeObserver(() => this._fitRow(this._el.chips));
+    this._ro = new ResizeObserver(() => { this._fitRow(this._el.chips); this._fitRow(this._el.row); });
     this._ro.observe(this._el.chips);
+    this._ro.observe(this._el.row);
   }
 
   // The same list savvy-system-health-card shows, with the same options: its count is the cog's.
@@ -153,6 +172,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
     const info = this._modeInfo();
     this._renderPill(info, c.mode_label);
     el.spacer.hidden = !!info;
+    el.row.toggleAttribute("data-single", !info);
     this._renderWeather();
     this._renderHealth();
     this._renderChips();
@@ -206,6 +226,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
     }
     asItems(c.chips).forEach((x, i) => items.push(chipItem(h, x, i)));
     this._chipRow(this._el.chips, items);
+    this._fitRow(this._el.row);
   }
 
   _auto(key, cfg) {
@@ -299,6 +320,10 @@ const EDITOR = defineEditor("savvy-home-header-card", (hass, c) => [
       { value: "hub", label: "Device, and the hub behind it" }, { value: "device", label: "Device" }, { value: "none", label: "Nothing: one row per entity" },
     ]),
     S.number("group_min", "Hub threshold", 2, 50),
+    { type: "expandable", name: "ignore", title: "Known problems", schema: [
+      { name: "devices", label: "Devices", helper: "Dead and waiting for a replacement? Listed here they leave the count and wait under Known.", selector: { device: { multiple: true } } },
+      { name: "entities", label: "Entities", selector: { entity: { multiple: true } } },
+    ] },
   ] },
   { name: "room_order", label: "Room order", type: "list", helper: "The order of the rooms in the popups: listed first, in this order; the rest follow by name. A chip can have its own.",
     initial: (h) => (h ? allAreas(h).map((a) => a.id) : []), add: { selector: { area: {} }, label: "Add a room" },

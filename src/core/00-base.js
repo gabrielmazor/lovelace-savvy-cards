@@ -165,6 +165,7 @@ const haptic = (type) => window.dispatchEvent(new CustomEvent("haptic", { detail
 
 const moreInfo = (host, entityId) => {
   if (!entityId) return;
+  entityId = AGG_TARGET.get(entityId) || entityId;     // a merged room's stand-in opens the sensor that is on
   host.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId }, bubbles: true, composed: true }));
 };
 

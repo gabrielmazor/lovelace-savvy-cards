@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.9.0 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.9.1 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.9.0";
+const SAVVY_VERSION = "0.9.1";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -171,6 +171,7 @@ const haptic = (type) => window.dispatchEvent(new CustomEvent("haptic", { detail
 
 const moreInfo = (host, entityId) => {
   if (!entityId) return;
+  entityId = AGG_TARGET.get(entityId) || entityId;     // a merged room's stand-in opens the sensor that is on
   host.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId }, bubbles: true, composed: true }));
 };
 
@@ -380,6 +381,9 @@ const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/;
 // and parseFloat("2026-09-26T…") would otherwise read the year as a number.
 const isTimestamp = (st) => !!st && (st.attributes.device_class === "timestamp" || st.attributes.device_class === "date"
   || ISO_TIMESTAMP.test(st.state || ""));
+
+// "1 device", "3 devices"
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 // ===== core/20-registry.js =====
 // ---------------------------------------------------------------------------------------
@@ -912,13 +916,29 @@ function linePath(pts) {
 //                       issue, and so is an integration that failed or whose devices are mostly
 //                       offline. integration > hub > device > entity, nothing counted twice.
 //   group_min           how many devices a hub or an integration needs to roll up (default 3)
+//   ignore              known problems: { entities: [...], devices: [device ids] } (or one list of both).
+//                       They leave every count and list, and wait under "Known"
+//
+// A Watchman item whose entity belongs to a device that is already an issue (or is ignored) is not a
+// second problem: it is folded into that device's row and counts once. Only what nothing else explains
+// stays Watchman's own.
 // ---------------------------------------------------------------------------------------
 
 const HEALTH_DEFAULTS = { battery_threshold: 20, exclude_platforms: ["mobile_app"], watchman: [], group_by: "hub", group_min: 3 };
 const GROUP_MODES = ["hub", "device", "none"];
 const WATCHMAN_ICON = { missing: "mdi:cloud-alert", unavail: "mdi:cloud-off-outline" };
 
+// `ignore` as { entities, devices }, or as one list: an id with a dot is an entity, the rest are devices
+function ignoreSets(raw) {
+  const list = Array.isArray(raw) ? raw : null;
+  const ents = list ? list.filter((x) => String(x).includes(".")) : [].concat(raw?.entities || []);
+  const devs = list ? list.filter((x) => !String(x).includes(".")) : [].concat(raw?.devices || []);
+  return { entities: new Set(ents.filter(Boolean)), devices: new Set(devs.filter(Boolean)) };
+}
+const isIgnored = (hass, opts, id) => opts.ignore.entities.has(id) || opts.ignore.devices.has(hass.entities?.[id]?.device_id);
+
 const healthOptions = (cfg = {}) => ({
+  ignore: ignoreSets(cfg.ignore),
   battery_threshold: Number(cfg.battery_threshold ?? HEALTH_DEFAULTS.battery_threshold),
   exclude_platforms: [].concat(cfg.exclude_platforms ?? HEALTH_DEFAULTS.exclude_platforms),
   watchman: [].concat(cfg.watchman || []).filter(Boolean),
@@ -936,6 +956,7 @@ function batteryRows(hass, opts) {
     if (st.attributes.device_class !== "battery") continue;
     const reg = hass.entities?.[id];
     if (reg && (reg.hidden || reg.hidden_by || reg.disabled_by || skip.has(reg.platform))) continue;
+    if (isIgnored(hass, opts, id)) continue;
     const v = parseFloat(st.state);
     if (!Number.isFinite(v)) continue;
     list.push({ id, name: st.attributes.friendly_name || id, value: v, low: v < opts.battery_threshold });
@@ -987,11 +1008,17 @@ function offlineIssues(hass, opts) {
   const per = new Map();            // device id -> { all, down: [entity ids], conn: [connectivity entity ids], platforms }
   const loose = [];                 // unavailable entities with no (known) device
   const downEntities = [];          // every unavailable entity, for group_by: none
+  const knownDev = new Map(), knownLoose = [];   // what the user has snoozed, and is down
   for (const id in hass.states) {
     const reg = hass.entities?.[id];
     if (reg && (reg.hidden || reg.hidden_by || reg.disabled_by || skip.has(reg.platform))) continue;
     const st = hass.states[id];
     const down = st.state === "unavailable";
+    if (isIgnored(hass, opts, id)) {
+      // a snoozed device waits as the device; a snoozed entity of a device that isn't, as the entity
+      if (down) { const d = reg?.device_id && opts.ignore.devices.has(reg.device_id) && registry[reg.device_id] ? reg.device_id : null; if (d) (knownDev.get(d) || knownDev.set(d, []).get(d)).push(id); else knownLoose.push(id); }
+      continue;
+    }
     if (down) downEntities.push(id);
     const dev = reg?.device_id && registry[reg.device_id] ? reg.device_id : null;
     if (!dev) { if (down) loose.push(id); continue; }
@@ -1011,6 +1038,11 @@ function offlineIssues(hass, opts) {
   const sorted = (list) => list.sort(byName);
   const deviceName = (id) => registry[id]?.name_by_user || registry[id]?.name || id;
   const areaOf = (id) => { const a = registry[id]?.area_id; return a ? hass.areas?.[a]?.name || title(a.replace(/_/g, " ")) : ""; };
+  const known = {
+    devices: [...knownDev].map(([id, ids]) => ({ kind: "known", key: `k:d:${id}`, id, name: deviceName(id), since: sinceOf(ids), total: ids.length, area: areaOf(id) })).sort(byName),
+    entities: knownLoose.map((id) => ({ kind: "known", key: `k:e:${id}`, id, entity: id, name: nameOf(id), since: sinceOf([id]) })).sort(byName),
+    refs: 0,
+  };
   const platformOf = (rec) => Object.entries(rec?.platforms || {}).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
 
   const offline = (id) => { const r = per.get(id); return !!r && r.all.length > 0 && r.down.length * 2 >= r.all.length; };
@@ -1132,7 +1164,7 @@ function offlineIssues(hass, opts) {
   issues.sort((a, b) => rank(a) - rank(b) || byName(a, b));
   let tracked = 0, down = 0;
   for (const id of per.keys()) { tracked++; if (offline(id)) down++; }
-  return { issues, devices: { total: tracked, down } };
+  return { issues, devices: { total: tracked, down }, known };
 }
 
 // Watchman's sensors: their state is the count, their `entities` / `services` attribute
@@ -1160,6 +1192,30 @@ function watchmanRows(hass, opts) {
   return { total, rows, kinds };
 }
 
+// Which Watchman items an offline issue already explains (the entity's device is in the tree, or is
+// snoozed). Those are counted on the issue, as "N dashboard references broken", and leave Watchman's list.
+function explainWatchman(hass, opts, issues, known, rows) {
+  const dev = new Map(), ent = new Map();
+  const visit = (node, parents) => {
+    const here = [...parents, node];
+    if (node.kind === "device" || node.kind === "hub") dev.set(node.id, here);
+    if (node.kind === "entity") ent.set(node.entity, here);
+    for (const e of node.entities || []) visit(e, here);
+    for (const d of node.devices || []) visit(d, here);
+  };
+  issues.forEach((i) => visit(i, []));
+  const keep = [], gone = [];
+  for (const r of rows) {
+    const d = hass.entities?.[r.entity]?.device_id;
+    // a snoozed problem takes its Watchman items with it; otherwise the device (or entity) that is down explains them
+    const hit = isIgnored(hass, opts, r.entity) ? null : (d && dev.get(d)) || ent.get(r.entity) || null;
+    if (hit) { for (const n of hit) n.refs = (n.refs || 0) + 1; r.explainedBy = hit[0].key; }
+    else if (isIgnored(hass, opts, r.entity)) { r.explainedBy = "known"; known.refs++; }
+    (r.explainedBy ? gone : keep).push(r);
+  }
+  return { keep, gone };
+}
+
 // Everything at once. `total` is what the home card's cog shows: the offline issues
 // (a hub, a device or a loose entity is one each), the low batteries and Watchman's count.
 function healthSummary(hass, cfg) {
@@ -1168,11 +1224,16 @@ function healthSummary(hass, cfg) {
   const offline = offlineIssues(hass, opts);
   const watchman = watchmanRows(hass, opts);
   const low = battery.filter((b) => b.alert).length;
+  const { keep, gone } = explainWatchman(hass, opts, offline.issues, offline.known, watchman.rows);
+  // what is left of Watchman's count once the items the offline issues explain are taken out
+  const left = Math.max(0, watchman.total - gone.length);
+  const kinds = { entities: Math.max(0, watchman.kinds.entities - gone.length), actions: watchman.kinds.actions };
   return {
-    opts, battery, offline: offline.issues, watchman: watchman.rows,
-    counts: { battery: low, unavailable: offline.issues.length, watchman: watchman.total, watchmanKinds: watchman.kinds },
+    opts, battery, offline: offline.issues, watchman: keep, watchmanExplained: gone, known: offline.known,
+    counts: { battery: low, unavailable: offline.issues.length, watchman: left, watchmanAll: watchman.total, watchmanExplained: gone.length, watchmanKinds: kinds, watchmanAllKinds: watchman.kinds,
+      known: offline.known.devices.length + offline.known.entities.length },
     stats: { devices: offline.devices, batteries: { count: battery.length, lowest: battery.length ? battery[0].num : null } },
-    total: low + offline.issues.length + watchman.total,
+    total: low + offline.issues.length + left,
   };
 }
 
@@ -1854,6 +1915,78 @@ function tickParts(a, b) {
   return { sa, na, nb, dec };
 }
 
+// ===== core/57-aggregate.js =====
+// ---------------------------------------------------------------------------------------
+// core/aggregate: one item per room for the sensors of a kind. With `aggregate` on, every
+// presence (motion, occupancy) sensor an area has is hidden from discovery and replaced by one
+// stand-in: occupied if any of them is, since the first of those that are on came on (or, when
+// all are clear, the last change). A card that discovers by area then shows the room once. What
+// the user pins or names (`entities`, an explicit sensor) is never merged, and neither is what
+// the ignore lists leave out.
+//
+//   aggregate: true                      presence only
+//   aggregate: [presence, door, window]  those kinds
+//   kinds: presence, door, window, leak, smoke, gas
+// ---------------------------------------------------------------------------------------
+
+const AGG_KINDS = {
+  presence: { dc: ["occupancy", "motion", "presence"], as: "occupancy", label: "presence" },
+  door: { dc: ["door", "garage_door", "opening"], as: "door", label: "doors" },
+  window: { dc: ["window"], as: "window", label: "windows" },
+  leak: { dc: ["moisture"], as: "moisture", label: "leak" },
+  smoke: { dc: ["smoke"], as: "smoke", label: "smoke" },
+  gas: { dc: ["gas", "carbon_monoxide"], as: "gas", label: "gas" },
+};
+const AGG_TARGET = new Map();      // a stand-in's id -> the member a tap should open
+const AGG_PREFIX = "binary_sensor.savvy_agg_";
+const aggKinds = (v) => (v === true ? ["presence"] : [].concat(v || []).filter((k) => AGG_KINDS[k]));
+
+const aggEntries = new WeakMap();  // hass.entities -> { sig, entities }: the derived registry keeps its identity while nothing changes
+
+function aggregateHass(hass, { kinds, exclude = [], excludeAreas = [] } = {}) {
+  const ks = aggKinds(kinds);
+  if (!ks.length || !hass?.entities || !hass.states) return hass;
+  const skip = new Set(exclude), skipAreas = new Set(excludeAreas);
+  const groups = new Map();       // `${area}|${kind}` -> member ids
+  for (const id in hass.entities) {
+    if (!id.startsWith("binary_sensor.") || skip.has(id)) continue;
+    const e = hass.entities[id];
+    const st = hass.states[id];
+    if (!st || !discoverable(e)) continue;
+    const area = e.area_id || hass.devices?.[e.device_id]?.area_id;
+    if (!area || skipAreas.has(area)) continue;
+    const dc = st.attributes.device_class;
+    for (const k of ks) if (AGG_KINDS[k].dc.includes(dc)) { const g = `${area}|${k}`; (groups.get(g) || groups.set(g, []).get(g)).push(id); break; }
+  }
+  const merged = [...groups].filter(([, ids]) => ids.length >= 2).map(([g, ids]) => ({ area: g.split("|")[0], kind: g.split("|")[1], ids: ids.sort() }));
+  if (!merged.length) return hass;
+  const sig = merged.map((m) => `${m.area}|${m.kind}|${m.ids.join(",")}`).sort().join(";");
+  const states = { ...hass.states };
+  let cached = aggEntries.get(hass.entities);
+  const build = !cached || cached.sig !== sig;
+  const entities = build ? { ...hass.entities } : cached.entities;
+  for (const m of merged) {
+    const id = `${AGG_PREFIX}${m.kind}_${m.area}`;
+    const k = AGG_KINDS[m.kind];
+    const members = m.ids.map((i) => hass.states[i]);
+    const on = m.ids.filter((i) => hass.states[i].state === "on");
+    const time = (s) => Date.parse(s.last_changed);
+    const times = (on.length ? on.map((i) => hass.states[i]) : members).map(time).filter(Number.isFinite);
+    const at = times.length ? (on.length ? Math.min(...times) : Math.max(...times)) : Date.now();
+    const dead = members.every((s) => s.state === "unavailable" || s.state === "unknown");
+    states[id] = { entity_id: id, state: on.length ? "on" : dead ? "unavailable" : "off",
+      last_changed: new Date(at).toISOString(), last_updated: new Date(at).toISOString(),
+      attributes: { friendly_name: `${areaInfo(hass, m.area).name} ${title(k.label)}`, device_class: k.as, savvy_members: m.ids, savvy_area: m.area } };
+    AGG_TARGET.set(id, on[0] || m.ids[0]);
+    if (build) {
+      entities[id] = { entity_id: id, area_id: m.area, device_id: null, platform: "savvy", entity_category: null, hidden: false, hidden_by: null, disabled_by: null };
+      for (const i of m.ids) entities[i] = { ...hass.entities[i], hidden_by: "savvy" };
+    }
+  }
+  if (build) aggEntries.set(hass.entities, { sig, entities });
+  return { ...hass, states, entities };
+}
+
 // ===== core/60-actions.js =====
 // ---------------------------------------------------------------------------------------
 // core/actions: tap / hold / double-tap in Home Assistant's standard action format, plus
@@ -2436,7 +2569,8 @@ class EntityListSheet {
     row.__kit.paints.push(() => this.paintOpen(row));
     const kind = ROW_KINDS[d];
     if (kind) {
-      row.__ctrl = kind.build({ id, kit: row.__kit, host: this.host, hass: () => this.hass, refresh: () => this.render(this.hass) });
+      row.__ctrl = kind.build({ id, kit: row.__kit, host: this.host, hass: () => this.hass, refresh: () => this.render(this.hass),
+        row, line: row.querySelector(".sv-line1"), handle: row.querySelector(".sv-ic"), text: row.querySelector(".sv-txt") });
       row.__fixed = !!row.__ctrl.fixed;
       if (row.__ctrl.main) row.__act.appendChild(row.__ctrl.main);
       if (row.__ctrl.extra) row.__ctlIn.appendChild(row.__ctrl.extra);
@@ -2542,41 +2676,48 @@ class EntityListSheet {
 // ---------------------------------------------------------------------------------------
 // core/controls: the small controls a popup row is built from (CARD-DESIGN.md 3): press
 // buttons, a bar that only moves on a sideways drag, a segmented control, a - / + stepper
-// and the lock track. Each one owns its springs through a RowKit, which the popup's clock
+// and the lock slide. Each one owns its springs through a RowKit, which the popup's clock
 // job steps and paints, so a row never needs its own animation loop.
 // ---------------------------------------------------------------------------------------
 
 const CTL_PREDICT_MS = 1500;   // an optimistic value waits this long for HA to agree
 const CTL_WRITE_MS = 140;      // a drag sends at most this often; the release always lands
-const LOCK_KNOB = 28;         // the lock track's knob, and the padding round it
-const LOCK_PAD = 4;
 const LOCK_END = 0.96;         // where the finger's travel counts as the end of the track
 const LOCK_HOLD_MS = 500;      // how long the end of the lock track must be held to open
 const LOCK_COLORS = [[76, 175, 80], [232, 163, 61], [224, 102, 102]];   // locked, unlocked, open
 const mixRgb = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
 
-// The lock track's stylesheet: shared by the popup rows (small) and the lock card (large).
-const LOCK_TRACK_CSS = `/* the lock track: three stops, one knob; --k is the knob, --p the padding round it */
-  .sv-lk { --lk: 76 175 80; --k: 28px; --p: 4px; position: relative; box-sizing: border-box; height: calc(var(--k) + 2 * var(--p)); border-radius: calc(var(--k) / 2 + var(--p));
-    padding: 0 var(--p); overflow: hidden; background: rgb(var(--lk) / 0.16); box-shadow: inset 0 0 0 1px rgb(var(--lk) / 0.28);
-    touch-action: pan-y; cursor: grab; outline: none; user-select: none; -webkit-user-select: none; }
-  .sv-lk[data-size="lg"] { --k: 48px; --p: 8px; }
-  .sv-lk[data-drag] { cursor: grabbing; }
-  .sv-lk[aria-disabled="true"] { opacity: 0.45; cursor: default; }
-  .sv-lk-hint { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; font-size: 12px; font-weight: 600; letter-spacing: -0.004em;
-    color: rgb(var(--lk)); pointer-events: none; white-space: nowrap; }
-  .sv-lk[data-size="lg"] .sv-lk-hint { font-size: 14px; }
-  .sv-lk-hint.r { right: calc(var(--p) + 10px); }
-  .sv-lk-hint.l { left: calc(var(--p) + 10px); }
-  .sv-lk-knob { position: absolute; top: var(--p); left: var(--p); width: var(--k); height: var(--k); border-radius: 50%; display: grid; place-items: center; color: #fff;
-    background: rgb(var(--lk)); box-shadow: 0 2px 6px rgb(0 0 0 / 0.3); will-change: transform; --mdc-icon-size: calc(var(--k) * 0.6); --ring: 0; --breath: 0; }
-  .sv-lk-knob::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid rgb(var(--lk)); opacity: calc(var(--breath) * 0.7); transform: scale(calc(1 + var(--breath) * 0.2)); pointer-events: none; }
-  .sv-lk-knob ha-icon { position: absolute; display: flex; }
-  .sv-lk-ring { position: absolute; inset: -4px; width: calc(var(--k) + 8px); height: calc(var(--k) + 8px); transform: rotate(-90deg); opacity: var(--ring); pointer-events: none; }
-  .sv-lk-ring circle { fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 125.7; stroke-dashoffset: 125.7; }
-  .sv-lk[data-armed] .sv-lk-knob { box-shadow: 0 0 0 4px rgb(var(--lk) / 0.35), 0 2px 8px rgb(0 0 0 / 0.3); }
-  .sv-lk[data-bad] { --lk: 224 102 102 !important; }
-  @media (prefers-contrast: more) { .sv-lk { box-shadow: inset 0 0 0 1.5px rgb(var(--lk)); } }`;
+// The lock handle's stylesheet, shared by the popup rows and the lock card: the lock's own icon is the
+// handle, its row the track.
+const LOCK_SLIDE_CSS = `/* the lock slide: the icon is the handle, the row is the track */
+  .sv-sl { position: relative; --lk: 76 175 80; --gh: 0; }
+  .sv-sl-ov { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; pointer-events: none; z-index: 0; }
+  .sv-sl-ov::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: rgb(var(--lk) / 0.1); opacity: var(--gh);
+    box-shadow: inset 0 0 0 1px rgb(var(--lk) / 0.32); }
+  .sv-sl-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: rgb(var(--lk) / 0.24); opacity: var(--gh); }
+  .sv-sl[data-rtl] .sv-sl-fill { left: auto; right: 0; }
+  .sv-sl-g { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; font-size: 12px; line-height: 16px; font-weight: 650; letter-spacing: -0.004em;
+    color: rgb(var(--lk)); opacity: var(--gh); white-space: nowrap; }
+  .sv-sl-hint { position: absolute; top: 0; bottom: 0; inset-inline-end: 12px; display: flex; align-items: center; color: rgb(var(--lk)); --mdc-icon-size: 18px;
+    opacity: calc(0.5 * (1 - var(--gh))); pointer-events: none; }
+  .sv-sl-hint[data-inline] { position: static; flex: none; margin-inline-start: auto; }
+  .sv-sl-hint ha-icon { display: flex; }
+  .sv-sl-fade { opacity: calc(1 - var(--gh) * 0.92); }
+  .sv-sl[aria-disabled="true"] .sv-sl-hint { display: none; }
+  .sv-sl-handle { position: relative; z-index: 3; touch-action: pan-y; cursor: grab; user-select: none; -webkit-user-select: none; will-change: transform; outline: none; --ring: 0; --breath: 0; --cov: 0; }
+  .sv-sl[data-drag] .sv-sl-handle { cursor: grabbing; }
+  .sv-sl-handle::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: rgb(var(--lk)); opacity: var(--cov);
+    box-shadow: 0 2px 8px rgb(0 0 0 / 0.3); pointer-events: none; }
+  .sv-sl-handle::after { content: ""; position: absolute; inset: -4px; border-radius: inherit; border: 2px solid rgb(var(--lk)); opacity: calc(var(--breath) * 0.7);
+    transform: scale(calc(1 + var(--breath) * 0.18)); pointer-events: none; }
+  .sv-sl-handle > :not(.sv-sl-ring):not(.sv-sl-ic) { opacity: calc(1 - var(--cov)); }
+  .sv-sl-ic { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; opacity: var(--cov); pointer-events: none; }
+  .sv-sl-ic ha-icon { position: absolute; display: flex; }
+  .sv-sl-ring { position: absolute; inset: -4px; width: calc(100% + 8px); height: calc(100% + 8px); transform: rotate(-90deg); opacity: var(--ring); pointer-events: none; }
+  .sv-sl-ring circle { fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 125.7; stroke-dashoffset: 125.7; }
+  .sv-sl[data-armed] .sv-sl-handle::before { box-shadow: 0 0 0 4px rgb(var(--lk) / 0.35), 0 2px 8px rgb(0 0 0 / 0.3); }
+  .sv-sl[data-bad] { --lk: 224 102 102 !important; }
+  @media (prefers-contrast: more) { .sv-sl-ov::before { box-shadow: inset 0 0 0 1.5px rgb(var(--lk)); } }`;
 
 // The springs and press feedback of one row's controls.
 class RowKit {
@@ -2863,48 +3004,56 @@ class Stepper {
   }
 }
 
-// Lock, unlock, open: one track, one knob, three stops. A tap does nothing; the knob is
-// dragged. Past Unlocked the track gets heavy and the end has to be held until a ring fills
-// (and then released) before the door's latch opens. A lock that can't open has two stops.
-class LockTrack {
-  constructor(kit, { label, canOpen, onLock, onUnlock, onOpen, size = "sm" }) {
+// Lock, unlock, open, with the lock's own icon as the handle. It rests at the start of its row; drag it
+// across and the row becomes the track. Past the first stop it does the opposite of what the lock is
+// now (unlock when locked, lock when not); a lock that can open has a second stop at the end that has
+// to be held until a ring fills, then released, before the latch opens. A tap on the handle only
+// nudges it, to show that it slides. The handle always comes back to the start; the icon and the
+// colour say what the lock is.
+class LockSlide {
+  constructor(kit, { host, handle, label, canOpen, onLock, onUnlock, onOpen, hintHost = null, fade = [] }) {
     this.kit = kit;
+    this.host = host;
+    this.handle = handle;
     this.canOpen = canOpen;
-    this.K = size === "lg" ? 48 : LOCK_KNOB;       // the knob, and the padding round it
-    this.P = size === "lg" ? 8 : LOCK_PAD;
     this.onLock = onLock;
     this.onUnlock = onUnlock;
     this.onOpen = onOpen;
     this.onWords = null;                        // the row calls this to say its subtitle changed
-    this.u = canOpen ? 0.5 : 1;                 // where Unlocked sits, as a share of the travel
-    const el = this.el = document.createElement("div");
-    el.className = "sv-lk";
-    el.dataset.stops = canOpen ? "3" : "2";
-    el.dataset.size = size;
-    el.setAttribute("role", "slider");
-    el.tabIndex = 0;
-    el.setAttribute("aria-label", label);
-    el.setAttribute("aria-valuemin", "0");
-    el.setAttribute("aria-valuemax", canOpen ? "2" : "1");
-    el.innerHTML = `<span class="sv-lk-hint l"></span><span class="sv-lk-hint r"></span>
-      <span class="sv-lk-knob">
-        <svg class="sv-lk-ring" viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="20"></circle></svg>
-        <ha-icon class="i0"></ha-icon><ha-icon class="i1"></ha-icon><ha-icon class="i2"></ha-icon>
-      </span>`;
-    this.knob = el.querySelector(".sv-lk-knob");
-    this.ring = el.querySelector(".sv-lk-ring circle");
-    this.hl = el.querySelector(".sv-lk-hint.l");
-    this.hr = el.querySelector(".sv-lk-hint.r");
-    this.icons = [el.querySelector(".i0"), el.querySelector(".i1"), el.querySelector(".i2")];
+    this.u = 0.5;                               // where the first stop sits when there are two
+    host.classList.add("sv-sl");
+    host.dataset.stops = canOpen ? "3" : "2";
+    handle.classList.add("sv-sl-handle");
+    handle.setAttribute("role", "slider");
+    handle.tabIndex = 0;
+    handle.setAttribute("aria-label", label);
+    handle.setAttribute("aria-valuemin", "0");
+    handle.setAttribute("aria-valuemax", canOpen ? "2" : "1");
+    host.insertAdjacentHTML("afterbegin", `<span class="sv-sl-ov" aria-hidden="true"><span class="sv-sl-fill"></span><span class="sv-sl-g g1"></span><span class="sv-sl-g g2"></span></span>`);
+    this.fill = host.querySelector(".sv-sl-fill");
+    this.g1 = host.querySelector(".sv-sl-g.g1");
+    this.g2 = host.querySelector(".sv-sl-g.g2");
+    const hint = document.createElement("span");
+    hint.className = "sv-sl-hint";
+    hint.setAttribute("aria-hidden", "true");
+    hint.innerHTML = '<ha-icon icon="mdi:chevron-double-right"></ha-icon>';
+    if (hintHost) { hint.dataset.inline = ""; hintHost.appendChild(hint); } else host.appendChild(hint);
+    for (const f of fade) f.classList.add("sv-sl-fade");
+    handle.insertAdjacentHTML("beforeend", `<svg class="sv-sl-ring" viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="20"></circle></svg>
+      <span class="sv-sl-ic"><ha-icon class="i0"></ha-icon><ha-icon class="i1"></ha-icon><ha-icon class="i2"></ha-icon></span>`);
+    this.ring = handle.querySelector(".sv-sl-ring circle");
+    this.icons = [handle.querySelector(".i0"), handle.querySelector(".i1"), handle.querySelector(".i2")];
     attr(this.icons[0], "icon", "mdi:lock");
     attr(this.icons[1], "icon", "mdi:lock-open-variant");
     attr(this.icons[2], "icon", "mdi:door-open");
-    this.x = kit.spring(0, { response: 0.3, damping: 0.74 }, 0.001);
+    this.x = kit.spring(0, { response: 0.3, damping: 0.74 }, 0.001);   // the handle's place, as a share of the travel
+    this.cv = kit.spring(0, MOTION.ui, 0.002);                           // how far the handle has become a knob
+    this.gh = kit.spring(0, MOTION.ui, 0.002);                           // how visible the track is
     this.pulse = 0;
-    this.W = 0;
+    this.W = 0; this.T = 1; this.H = 0; this.L = 0; this.tx = 0; this.dir = 1;
     this.state = "unknown";
     this.pend = null;                           // { stop, at }: what we asked for
-    this.rest = 0;
+    this.rest = 0;                              // 0 locked, 1 unlocked, 2 open (what the lock is, or is about to be)
     this.drag = null;
     this.holdFrom = 0;
     this.armed = false;
@@ -2914,19 +3063,32 @@ class LockTrack {
     kit.onDispose(() => { this.clearTimers(); for (const t of this.later) clearTimeout(t); });
     if (typeof ResizeObserver === "function") {
       this.ro = new ResizeObserver(() => { this.measure(); kit.wake(); });
-      this.ro.observe(el);
+      this.ro.observe(host);
       kit.onDispose(() => this.ro.disconnect());
     }
     this.wire();
   }
 
+  get el() { return this.handle; }
+  get openZone() { return this.canOpen && this.rest !== 2; }
+  get target() { return this.rest === 0 ? 1 : 0; }
   clearTimers() { for (const t of this.timers) clearTimeout(t); this.timers = []; }
-  measure() { this.W = this.el.clientWidth; this.T = Math.max(1, this.W - this.K - 2 * this.P); }
-  stopPos(stop) { return stop === 0 ? 0 : stop === 1 ? this.u : 1; }
-  // the knob sits where the finger is, but past Unlocked it lags and then arrives: heavy. The
+
+  // the track is the host's width less the handle and the room round it
+  measure() {
+    const r = this.host.getBoundingClientRect(), hr = this.handle.getBoundingClientRect();
+    if (!r.width || !hr.width) return;
+    this.dir = getComputedStyle(this.host).direction === "rtl" ? -1 : 1;
+    this.host.toggleAttribute("data-rtl", this.dir === -1);
+    this.W = r.width;
+    this.H = hr.width;
+    this.L = this.dir === 1 ? hr.left - r.left - this.tx : r.right - hr.right + this.tx;
+    this.T = Math.max(1, this.W - this.H - 2 * this.L);
+  }
+  // the knob sits where the finger is, but past the first stop it lags and then arrives: heavy. The
   // end is the finger's last 4%: a drag only counts from where it became clearly sideways.
   mapFinger(f) {
-    if (!this.canOpen || f <= this.u) return f;
+    if (!this.openZone || f <= this.u) return f;
     const t = clamp((f - this.u) / (LOCK_END - this.u));
     return this.u + (1 - this.u) * Math.pow(t, 1.8);
   }
@@ -2943,16 +3105,15 @@ class LockTrack {
     let stop = this.pend ? this.pend.stop : truth;
     if (!this.canOpen && stop === 2) stop = 1;
     this.rest = stop;
-    attr(this.el, "aria-valuenow", String(stop));
-    attr(this.el, "aria-valuetext", ["Locked", "Unlocked", "Open"][stop]);
-    attr(this.el, "data-bad", state === "jammed");
-    attr(this.el, "aria-disabled", this.disabled ? "true" : null);
-    attr(this.el, "data-busy", this.transitional);
-    if (!this.drag) {
-      if (snap) this.x.snap(this.stopPos(stop)); else this.x.to(this.stopPos(stop));
-    }
-    text(this.hr, this.disabled ? "" : stop === 0 ? "Slide to unlock" : stop === 1 && this.canOpen ? "Hold the end to open" : "");
-    text(this.hl, this.disabled ? "" : stop >= 1 ? "Lock" : "");
+    attr(this.handle, "aria-valuenow", String(stop));
+    attr(this.handle, "aria-valuetext", ["Locked", "Unlocked", "Open"][stop]);
+    attr(this.host, "data-bad", state === "jammed");
+    attr(this.host, "aria-disabled", this.disabled ? "true" : null);
+    attr(this.host, "data-busy", this.transitional);
+    if (!this.drag) { if (snap) this.x.snap(0); else this.x.to(0); }
+    this.cv.to(this.drag || this.pend || this.armed ? 1 : 0);
+    text(this.g1, this.openZone ? (this.target === 1 ? "Unlock" : "Lock") : "");
+    text(this.g2, this.openZone ? "Open" : this.target === 1 ? "Unlock" : "Lock");
     this.kit.wake();
   }
 
@@ -2962,56 +3123,68 @@ class LockTrack {
     return { locked: "Locked", unlocked: "Unlocked", locking: "Locking…", unlocking: "Unlocking…", opening: "Opening…", open: "Open", jammed: "Jammed" }[this.state] || title(this.state);
   }
 
-  // the track's colour where the knob sits: green, amber, red
+  // the track's colour where the handle sits: from what the lock is, to what the slide would make it, to red
   colorAt(x) {
-    const u = this.u;
-    return this.canOpen
-      ? (x <= u ? mixRgb(LOCK_COLORS[0], LOCK_COLORS[1], u ? x / u : 1) : mixRgb(LOCK_COLORS[1], LOCK_COLORS[2], clamp((x - u) / (1 - u))))
-      : mixRgb(LOCK_COLORS[0], LOCK_COLORS[1], clamp(x));
+    const u = this.u, cur = this.rest, tgt = this.target;
+    if (this.openZone) return x <= u ? mixRgb(LOCK_COLORS[cur], LOCK_COLORS[tgt], u ? x / u : 1) : mixRgb(LOCK_COLORS[tgt], LOCK_COLORS[2], clamp((x - u) / (1 - u)));
+    return mixRgb(LOCK_COLORS[cur], LOCK_COLORS[tgt], clamp(x));
   }
 
   paint(dt) {
     if (!this.W) this.measure();
-    const x = clamp(this.x.x, 0, 1.04), u = this.u;
-    put(this.knob, "transform", `translateX(${(x * this.T).toFixed(2)}px)`);
-    put(this.el, "--lk", this.colorAt(x).join(" "));
-    // the icon crossfades between the stops it sits between
-    const pos = this.canOpen ? [0, u, 1] : [0, 1, 1];
-    const span = this.canOpen ? u : 1;
+    const x = clamp(this.x.x, 0, 1.04), u = this.u, cv = clamp(this.cv.x), gh = clamp(this.gh.x);
+    this.tx = this.dir * x * this.T;
+    put(this.handle, "transform", Math.abs(this.tx) < 0.01 ? "" : `translateX(${this.tx.toFixed(2)}px)`);
+    put(this.host, "--lk", (this.pend ? LOCK_COLORS[this.pend.stop] : this.colorAt(x)).join(" "));
+    put(this.host, "--gh", gh.toFixed(3));
+    put(this.handle, "--cov", cv.toFixed(3));
+    // the fill reaches the handle's far edge; the ghosts name the stops ahead of it
+    put(this.fill, "width", `${(x * this.T + this.H + this.L).toFixed(1)}px`);
+    const edge = this.L + this.H + 8;
+    if (this.openZone) put(this.g1, this.dir === 1 ? "left" : "right", `${(edge + u * this.T).toFixed(1)}px`);
+    put(this.g2, this.dir === 1 ? "right" : "left", `${edge.toFixed(1)}px`);
+    put(this.g1, this.dir === 1 ? "right" : "left", "auto");
+    put(this.g2, this.dir === 1 ? "left" : "right", "auto");
+    put(this.g1, "opacity", this.openZone ? (gh * clamp(1 - (x - u) * 5)).toFixed(3) : "0");
+    // the icon crossfades between the stops it sits between: what the lock is, what the slide makes it, open
+    const w = [0, 0, 0];
+    if (this.pend) w[this.pend.stop] = 1;
+    else {
+      const pts = this.openZone ? [[0, this.rest], [u, this.target], [1, 2]] : [[0, this.rest], [1, this.target]];
+      if (x >= pts[pts.length - 1][0]) w[pts[pts.length - 1][1]] = 1;
+      else for (let k = 0; k < pts.length - 1; k++) {
+        if (x >= pts[k][0] && x <= pts[k + 1][0]) { const t = (x - pts[k][0]) / (pts[k + 1][0] - pts[k][0]); w[pts[k][1]] += 1 - t; w[pts[k + 1][1]] += t; }
+      }
+    }
     this.icons.forEach((ic, i) => {
-      const w = i === 2 && !this.canOpen ? 0 : clamp(1 - Math.abs(x - pos[i]) / span);
-      put(ic, "opacity", w.toFixed(3));
-      put(ic, "transform", `scale(${(0.7 + 0.3 * w).toFixed(3)})`);
+      put(ic, "opacity", w[i].toFixed(3));
+      put(ic, "transform", `scale(${(0.7 + 0.3 * w[i]).toFixed(3)})`);
     });
-    // the hints belong to the stop the knob rests on and fade as it leaves
-    const near = this.drag ? 0 : clamp(1 - Math.abs(x - this.stopPos(this.rest)) * 5);
-    put(this.hl, "opacity", near.toFixed(3));
-    put(this.hr, "opacity", near.toFixed(3));
     // the hold ring, from the clock so reduced motion keeps it
     let busy = false;
     let p = 0;
     if (this.holdFrom && !this.armed) { p = clamp((performance.now() - this.holdFrom) / LOCK_HOLD_MS); busy = true; }
     else if (this.armed) p = 1;
     put(this.ring, "strokeDashoffset", (125.7 * (1 - p)).toFixed(2));
-    put(this.knob, "--ring", p > 0 ? "1" : "0");
-    attr(this.el, "data-armed", this.armed);
-    // a knob waiting on HA breathes
+    put(this.handle, "--ring", p > 0 ? "1" : "0");
+    attr(this.host, "data-armed", this.armed);
+    // a handle waiting on HA breathes
     if (this.transitional && !MQ.reduced.matches) {
       this.pulse += (dt || 0) * 5;
-      put(this.knob, "--breath", (0.5 + 0.5 * Math.sin(this.pulse)).toFixed(3));
+      put(this.handle, "--breath", (0.5 + 0.5 * Math.sin(this.pulse)).toFixed(3));
       busy = true;
-    } else put(this.knob, "--breath", "0");
+    } else put(this.handle, "--breath", "0");
     return busy;
   }
 
   // ---- gestures
   wire() {
-    const el = this.el;
-    let id = null, x0 = 0, y0 = 0, xs = 0, from = 0;
+    const el = this.handle;
+    let id = null, x0 = 0, y0 = 0, xs = 0, from = 0, moved = false;
     el.addEventListener("pointerdown", (e) => {
       if (e.button > 0 || this.disabled) return;
       e.stopPropagation();
-      id = e.pointerId; x0 = e.clientX; y0 = e.clientY;
+      id = e.pointerId; x0 = e.clientX; y0 = e.clientY; moved = false;
       this.drag = null;
       try { el.setPointerCapture(e.pointerId); } catch (err) { /* already lifted */ }
     });
@@ -3019,37 +3192,43 @@ class LockTrack {
       if (e.pointerId !== id) return;
       if (!e.buttons && e.pointerType === "mouse") { id = null; return; }
       if (!this.drag) {
-        const dx = e.clientX - x0, dy = e.clientY - y0;
+        const dx = (e.clientX - x0) * this.dir, dy = e.clientY - y0;
         if (Math.hypot(dx, dy) < SLOP) return;
         if (Math.abs(dy) >= Math.abs(dx)) { id = null; return; }   // vertical: the page scrolls
         this.measure();
-        // relative: the finger moves the knob from wherever it was
-        const cur = this.x.x, f0 = this.canOpen && cur > this.u ? this.u + (LOCK_END - this.u) * Math.pow((cur - this.u) / (1 - this.u), 1 / 1.8) : cur;
-        from = f0; xs = x0;                     // the knob stays under the finger that grabbed it
-        this.drag = { f: f0, zone: false };
+        moved = true;
+        // relative: the finger moves the handle from wherever it was
+        const cur = this.x.x, f0 = this.openZone && cur > this.u ? this.u + (LOCK_END - this.u) * Math.pow((cur - this.u) / (1 - this.u), 1 / 1.8) : cur;
+        from = f0; xs = x0;                     // the handle stays under the finger that grabbed it
+        this.drag = { f: f0 };
         this.last = 0;
-        el.dataset.drag = "";
+        this.host.dataset.drag = "";
+        this.gh.to(1);
+        this.cv.to(1);
       }
-      const f = clamp(from + (e.clientX - xs) / this.T);
+      const f = clamp(from + ((e.clientX - xs) * this.dir) / this.T);
       this.drag.f = f;
       this.x.snap(this.mapFinger(f));
-      const notch = f > this.u ? 2 : f > this.u / 2 ? 1 : 0;
+      const notch = this.openZone ? (f > this.u ? 2 : f > this.u / 2 ? 1 : 0) : (f > 0.6 ? 1 : 0);
       if (notch !== this.last) { this.last = notch; haptic("selection"); }
       this.zone(f >= LOCK_END);
       this.kit.wake();
     });
+    const endDrag = () => { delete this.host.dataset.drag; this.gh.to(0); };
     const end = (e) => {
       if (e.pointerId !== id) return;
       id = null;
-      if (!this.drag) return;
+      if (!this.drag) { if (!moved && e.type === "pointerup") this.nudge(); return; }
       const f = this.drag.f, armed = this.armed;
       this.drag = null;
-      delete el.dataset.drag;
+      endDrag();
       this.zone(false);
       this.release(f, armed);
     };
     el.addEventListener("pointerup", end);
-    el.addEventListener("pointercancel", (e) => { if (e.pointerId === id && this.drag) { id = null; this.drag = null; delete el.dataset.drag; this.zone(false); this.x.to(this.stopPos(this.rest)); this.kit.wake(); } });
+    el.addEventListener("pointercancel", (e) => {
+      if (e.pointerId === id && this.drag) { id = null; this.drag = null; endDrag(); this.zone(false); this.x.to(0); this.cv.to(this.pend ? 1 : 0); this.kit.wake(); }
+    });
     el.addEventListener("click", (e) => e.stopPropagation());
 
     // keyboard: arrows lock and unlock; Open needs Enter or Space held for the same half second
@@ -3061,9 +3240,11 @@ class LockTrack {
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault(); e.stopPropagation();
         if (e.repeat || keyHold) return;
-        if (this.rest === 0 || !this.canOpen) { this.commit(this.rest === 0 ? 1 : 0); return; }
+        if (this.rest === 0 || !this.openZone) { this.commit(this.target); return; }
         keyHold = true;
         this.x.to(1);
+        this.cv.to(1);
+        this.gh.to(1);
         this.zone(true);
         this.kit.wake();
       }
@@ -3074,14 +3255,24 @@ class LockTrack {
       keyHold = false;
       const armed = this.armed;
       this.zone(false);
-      this.release(armed ? 1 : this.u, armed);
+      this.gh.to(0);
+      if (armed) this.release(1, true); else { this.x.to(0); this.cv.to(this.pend ? 1 : 0); this.kit.wake(); }
     });
-    el.addEventListener("blur", () => { if (keyHold) { keyHold = false; this.zone(false); this.x.to(this.stopPos(this.rest)); this.kit.wake(); } });
+    el.addEventListener("blur", () => { if (keyHold) { keyHold = false; this.zone(false); this.x.to(0); this.gh.to(0); this.cv.to(this.pend ? 1 : 0); this.kit.wake(); } });
+  }
+
+  // a tap only shows that it slides
+  nudge() {
+    if (this.disabled || MQ.reduced.matches) return;
+    haptic("light");
+    this.x.to(0.09);
+    this.later.push(setTimeout(() => { if (!this.drag) { this.x.to(0); this.kit.wake(); } }, 130));
+    this.kit.wake();
   }
 
   // the end of the track: entering it starts the ring; a half second later it arms
   zone(inside) {
-    if (!this.canOpen) return;
+    if (!this.openZone) return;
     if (inside && !this.holdFrom) {
       this.holdFrom = performance.now();
       this.clearTimers();
@@ -3102,13 +3293,13 @@ class LockTrack {
 
   // the finger lets go at share f of the travel
   release(f, armed) {
-    if (armed && this.canOpen) {
+    if (armed && this.openZone) {
       this.armed = false;
       this.holdFrom = 0;
-      // the knob shows the latch for a moment, then settles back on Unlocked
+      // the latch shows for a moment, then the handle is back and the lock is what it was
       this.pend = { stop: 2, at: Date.now(), ttl: 700 };
       haptic("success");
-      this.x.to(1);
+      this.x.to(0);
       this.onOpen();
       this.setState(this.state);
       this.onWords?.();
@@ -3118,13 +3309,13 @@ class LockTrack {
     }
     this.armed = false;
     this.holdFrom = 0;
-    const m = this.canOpen ? this.u / 2 : 0.5;
-    let target = f < m ? 0 : 1;
-    if (this.rest === 2 && f >= m) target = 2;     // already open: a small drag changes nothing
-    this.commit(target);
+    // past the first stop does the opposite of what the lock is; letting go in the end zone early, or short of the stop, does nothing
+    const fire = this.openZone ? 0.4 : 0.6;
+    if (f >= fire && !(this.openZone && f >= LOCK_END)) this.commit(this.target);
+    else { this.x.to(0); this.cv.to(this.pend ? 1 : 0); this.kit.wake(); }
   }
 
-  // settle on a stop; ask HA when it isn't the one it's in
+  // ask HA for a stop it isn't in; the handle goes back to the start
   commit(stop) {
     if (stop !== this.rest) {
       this.pend = { stop, at: Date.now() };
@@ -3134,7 +3325,7 @@ class LockTrack {
       this.onWords?.();
       this.recheck(CTL_PREDICT_MS + 60);
     }
-    this.x.to(this.stopPos(this.rest));
+    this.x.to(0);
     this.kit.wake();
   }
 
@@ -3172,11 +3363,39 @@ const ROW_KINDS = {};
 // leak / smoke / gas / CO sensor is red.
 ROW_KINDS.binary_sensor = {
   build(ctx) {
+    // a room's merged sensors: the row's chevron lists the sensors behind it, read only
+    const merged = !!ctx.hass().states[ctx.id]?.attributes.savvy_members;
+    const extra = merged ? div("sv-xline sv-agg") : null;
+    const lines = new Map();
     return {
+      extra,
       update(st, hass) {
         const dc = st.attributes.device_class;
         const unavailable = st.state === "unavailable" || st.state === "unknown";
-        return { val: stateText(hass, st), timed: !unavailable && PRESENCE_CLASSES.includes(dc),
+        if (extra) {
+          const ids = st.attributes.savvy_members || [];
+          ids.forEach((id, i) => {
+            let l = lines.get(id);
+            if (!l) {
+              l = div("sv-agg-l");
+              l.setAttribute("role", "button");
+              l.tabIndex = 0;
+              l.innerHTML = '<span class="n"></span><span class="s"></span>';
+              l.onclick = () => moreInfo(ctx.host, id);
+              l.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); moreInfo(ctx.host, id); } };
+              lines.set(id, l);
+            }
+            const m = hass.states[id];
+            text(l.querySelector(".n"), shortName(hass, id, null));
+            const t = Date.parse(m?.last_changed);
+            text(l.querySelector(".s"), [m ? stateText(hass, m) : "", Number.isFinite(t) ? since(t, false) : ""].filter(Boolean).join(" · "));
+            attr(l, "data-on", m?.state === "on");
+            place(extra, l, i);
+          });
+          for (const [id, l] of lines) if (!ids.includes(id)) { l.remove(); lines.delete(id); }
+        }
+        return { val: stateText(hass, st), timed: !unavailable && (merged || PRESENCE_CLASSES.includes(dc)), extra: merged,
+          sub: merged ? plural(st.attributes.savvy_members.length, "sensor", "sensors") : undefined,
           alert: !unavailable && SAFETY_CLASSES.includes(dc) && st.state === "on" };
       },
     };
@@ -3440,24 +3659,22 @@ ROW_KINDS.fan = {
   },
 };
 
-// ---- locks: the track, on a line of its own that is always there (a safe drag needs the width)
+// ---- locks: the row's own icon is the handle you slide across the row
 ROW_KINDS.lock = {
   build(ctx) {
     const { kit } = ctx;
-    const el = div("sv-ctl-lock");
-    const track = new LockTrack(kit, {
-      label: "Lock", canOpen: feature(ctx.hass().states[ctx.id], 1),
+    const slide = new LockSlide(kit, {
+      host: ctx.line, handle: ctx.handle, label: "Lock", canOpen: feature(ctx.hass().states[ctx.id], 1), fade: [ctx.text],
       onLock: () => call(ctx, "lock", "lock"), onUnlock: () => call(ctx, "lock", "unlock"), onOpen: () => call(ctx, "lock", "open"),
     });
-    track.onWords = () => ctx.refresh?.();
-    el.appendChild(track.el);
+    slide.onWords = () => ctx.refresh?.();
     let first = true;
     return {
-      extra: el, fixed: true, track,
+      track: slide, slide,
       update(st) {
-        track.setState(st.state, first);
+        slide.setState(st.state, first);
         first = false;
-        return { extra: true, sub: track.words, timed: true };
+        return { sub: slide.words, timed: true };
       },
     };
   },
@@ -3540,9 +3757,13 @@ const ROWS_CSS = `
   .sv-xline { display: flex; align-items: center; gap: 6px; min-width: 0; }
   .sv-xline .sv-btn { width: 32px; height: 32px; border-radius: 10px; --mdc-icon-size: 18px; }
   .sv-xline .sv-seg { flex: 1; }
+  .sv-xline.sv-agg { flex-direction: column; align-items: stretch; gap: 2px; padding: 0 6px 6px 48px; }
+  .sv-agg-l { display: flex; justify-content: space-between; gap: 10px; padding: 6px 8px; border-radius: 10px; font-size: 12.5px; line-height: 16px; color: var(--secondary-text-color); cursor: pointer; outline: none; }
+  .sv-agg-l .n { min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sv-agg-l[data-on] .n { color: var(--primary-text-color); }
+  @media (hover: hover) { .sv-agg-l:hover { background: var(--well); } }
   .sv-volg { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
   @container (max-width: 330px) { .sv-volg .sv-btn, .sv-volg .sv-pct { display: none; } }
-  .sv-ctl-lock { padding: 0 6px 8px 6px; }
   .sv-spacer { flex: 1; }
   .sv-cap { flex: 1; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--secondary-text-color); }
   .sv-pct { flex: none; min-width: 34px; text-align: end; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--secondary-text-color); }
@@ -3554,7 +3775,7 @@ const ROWS_CSS = `
   .sv-btn[data-solid] { width: 34px; border-radius: 50%; background: var(--row-c, rgb(var(--accent))); color: #fff; --mdc-icon-size: 20px; }
   .sv-xline .sv-btn[data-solid] { width: 32px; border-radius: 50%; }
   .sv-btn[disabled] { opacity: 0.35; cursor: default; }
-  :host([kbd]) .sv-btn:focus-visible, :host([kbd]) .sv-seg-b:focus-visible, :host([kbd]) .sv-bar:focus-visible, :host([kbd]) .sv-lk:focus-visible, :host([kbd]) .sv-pillbtn:focus-visible, :host([kbd]) .sv-main:focus-visible,
+  :host([kbd]) .sv-btn:focus-visible, :host([kbd]) .sv-seg-b:focus-visible, :host([kbd]) .sv-bar:focus-visible, :host([kbd]) .sv-sl-handle:focus-visible, :host([kbd]) .sv-pillbtn:focus-visible, :host([kbd]) .sv-main:focus-visible,
     :host([kbd]) .sv-chev:focus-visible, :host([kbd]) .sv-bulk:focus-visible, :host([kbd]) .sv-tog:focus-visible
     { outline: 2px solid var(--row-c, rgb(var(--accent))); outline-offset: 2px; }
   /* the bar: a pill that only moves on a sideways drag */
@@ -3594,7 +3815,9 @@ const ROWS_CSS = `
   .sv-bulk ha-icon { display: flex; }
   .sv-bulk[disabled] { opacity: 0.4; cursor: default; }
   .sv-tools[data-solo] .sv-bulk { margin-inline-start: auto; }
-  ${LOCK_TRACK_CSS}
+  ${LOCK_SLIDE_CSS}
+  .sv-row[data-kind="lock"] .sv-line1 { padding: 3px 4px; border-radius: 22px; min-height: 46px; }
+  .sv-row[data-kind="lock"] .sv-main:hover { background: none; }
   @media (prefers-contrast: more) { .sv-seg { box-shadow: inset 0 0 0 1px currentColor; } }
 `;
 
@@ -4596,6 +4819,9 @@ const HEALTH_KEYS = [
   ["exclude_platforms", "Ignored integrations"], ["group_by", "Grouping"], ["group_min", "Hub threshold"], ["watchman_last_run", "Watchman last run"],
 ];
 const healthRules = (prefix = "") => HEALTH_KEYS.map(([k, label]) => ({ path: `${prefix}${k}`, label, get: glob("health", k), src: "health" }));
+// known problems: the settings' list adds to the card's own (devices by id, entities by id)
+const knownRules = (prefix = "") => ["entities", "devices"].map((k) => ({ path: `${prefix}ignore.${k}`, label: "Known problems", kind: "union", src: "health",
+  get: (s) => (Array.isArray(s.health?.ignore) ? s.health.ignore.filter((x) => (k === "entities") === String(x).includes(".")) : s.health?.ignore?.[k]) }));
 
 const HOME_CHIPS = ["lights", "climate", "media", "security"];
 
@@ -4604,6 +4830,7 @@ const HOME_CHIPS = ["lights", "climate", "media", "security"];
 //   kind "pin":   the room's light helper is pinned first in the badge row
 const SETTINGS_RULES = {
   "savvy-home-header-card": [
+    { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
     { path: "control", label: "Control", get: glob("house", "control"), src: "house" },
     { path: "weather", label: "Weather", get: glob("house", "weather"), src: "house" },
     { path: "home_path", label: "Home button", get: glob("pages", "home"), src: "pages" },
@@ -4622,9 +4849,11 @@ const SETTINGS_RULES = {
     { path: "health.tap_action", label: "Health tap", src: "house",
       get: (s, c) => (s.house?.tap === "navigate" && c.health?.hold_action === undefined ? navTo(c.health?.navigation_path ?? s.pages?.health) : undefined) },
     ...healthRules("health."),
+    ...knownRules("health."),
   ],
-  "savvy-system-health-card": healthRules(),
+  "savvy-system-health-card": [...healthRules(), ...knownRules()],
   "savvy-room-header-card": [
+    { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
     { path: "control", label: "Control", get: room("control") },
     { path: "temperature", label: "Temperature", get: room("temperature") },
     { path: "include", label: "Include", kind: "union", get: room("include") },
@@ -4635,6 +4864,7 @@ const SETTINGS_RULES = {
     { path: "room_order", label: "Room order", get: (s, c) => (c.order !== undefined ? undefined : s.room_order), src: "room_order" },
   ],
   "savvy-section-title-card": [
+    { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
     { path: "name", label: "Name", get: room("name") },
     { path: "icon", label: "Icon", get: room("icon") },
     { path: "control", label: "Control", get: room("control") },
@@ -4644,6 +4874,7 @@ const SETTINGS_RULES = {
     { path: "navigation_path", label: "Target page", get: roomPage },
   ],
   "savvy-room-tile": [
+    { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
     { path: "name", label: "Name", get: room("name") },
     { path: "icon", label: "Icon", get: room("icon") },
     { path: "control", label: "Control", get: room("control") },
@@ -4665,6 +4896,7 @@ const SETTINGS_RULES = {
     { path: "humidity", label: "Humidity", get: room("humidity") },
   ],
   "savvy-room-activity-card": [
+    { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
     { path: "include", label: "Include", kind: "union", get: room("include") },
     { path: "exclude", label: "Exclude", kind: "union", get: room("exclude") },
   ],
@@ -4788,6 +5020,9 @@ function normalizeSettings(config) {
     const order = config.room_order.filter((a) => typeof a === "string" && a);
     if (order.length) out.room_order = order;
   }
+  // which kinds of sensor each room shows once (true: presence)
+  const agg = aggKinds(config.aggregate);
+  if (agg.length) out.aggregate = agg;
   return Object.keys(out).length ? out : null;
 }
 
@@ -4933,6 +5168,15 @@ const SettingsStore = {
 // Every card with rules goes through here (registerCard): its setConfig receives the card's
 // config with the settings filled in, and a change in the settings re-runs it, only when
 // what the card would see really changed.
+// A card with `aggregate` sees each room's sensors of those kinds once. What it leaves out
+// (`exclude`, a chip's `exclude`, ignored rooms) is never merged.
+function aggregateFor(config, hass) {
+  if (!config?.aggregate) return hass;
+  const chips = ["lights", "climate", "media", "security"].map((k) => config[k]).filter((c) => c && typeof c === "object");
+  const list = (key) => [config[key], ...chips.map((c) => c[key])].flatMap((x) => asItems(x).map((i) => i.entity || i)).filter((x) => typeof x === "string");
+  return aggregateHass(hass, { kinds: config.aggregate, exclude: list("exclude"), excludeAreas: list("exclude_areas") });
+}
+
 function wireSettings(type, cls) {
   if (!SETTINGS_RULES[type] || cls.prototype.__settingsWired) return;
   const proto = cls.prototype, original = proto.setConfig;
@@ -4955,11 +5199,15 @@ function wireSettings(type, cls) {
     if (key === this._appliedKey) return;
     this._appliedKey = key;
     original.call(this, r.config);
-    if (this._hass) this.hass = this._hass;
+    if (this.__rawHass) this.hass = this.__rawHass;
   };
   const d = Object.getOwnPropertyDescriptor(proto, "hass");
   if (d?.set) {
-    Object.defineProperty(proto, "hass", { ...d, set(v) { SettingsStore.load(v); d.set.call(this, v); } });
+    Object.defineProperty(proto, "hass", { ...d, set(v) {
+      SettingsStore.load(v);
+      this.__rawHass = v;
+      d.set.call(this, aggregateFor(this._config, v));
+    } });
   }
 }
 
@@ -4976,7 +5224,7 @@ if (window.__SAVVY_TEST__) {
     duration, since, relativeTime, axisLabel, momentLabel, fmtNumber, withUnit, isTimestamp,
     fetchHistory, fetchRange, fetchAttributeHistory, resample, seriesStats, stateRuns, numericPoints, linePath,
     entityIcon, fallbackIcon, NEUTRAL_ICON, offLast, Sheet, EntityListSheet, SavvyEditor, defineEditor, S, version: SAVVY_VERSION,
-    SettingsStore, SETTINGS_RULES, resolveSettings, findSettingsCards, normalizeSettings, countDefaults, dashboardPath, SavvyCard, roomBadges, roomTemperature, areaLights, houseLights, housePlaying, houseTemperature, houseSecurity, ignoring, sortRows, RowKit, SideBar, Seg, Stepper, LockTrack, ROW_KINDS, modeInfo, legacyBadges, chipState, portalRoot, navigate, samePage, securityAlertWord,
+    SettingsStore, SETTINGS_RULES, resolveSettings, findSettingsCards, normalizeSettings, countDefaults, dashboardPath, SavvyCard, roomBadges, roomTemperature, areaLights, houseLights, housePlaying, houseTemperature, houseSecurity, ignoring, sortRows, RowKit, SideBar, Seg, Stepper, LockSlide, aggregateHass, aggKinds, AGG_TARGET, ROW_KINDS, modeInfo, legacyBadges, chipState, portalRoot, navigate, samePage, securityAlertWord,
   };
 }
 
@@ -9690,7 +9938,23 @@ registerCard("savvy-graph-card", SavvyGraphCard, "Graph",
 //                                                    the rest follow by name, "No room" last
 //   chips: [...]                                     your own, after the four
 
-const STYLE = `${BASE_CSS}${HEADER_CSS}${CHIP_ROW_CSS}`;
+// Without a control chip the header is one row: the home button, the chips, then the weather and the
+// health cog at the end; the row slides sideways when it is wider than the card. With a control chip it
+// stays two rows: the control, weather and cog on top, the chips below.
+const ROW_CSS = `
+  .row { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .row[data-single] { flex-direction: row; align-items: center; gap: 8px; margin: 0 -2px; padding: 0 2px; overflow-x: auto; overscroll-behavior-x: contain;
+    touch-action: pan-x pan-y; scrollbar-width: none; scroll-snap-type: x proximity; }
+  .row[data-single]::-webkit-scrollbar { display: none; }
+  .row[data-single] .top, .row[data-single] .chips { display: contents; }
+  .row[data-single] .pill, .row[data-single] .spacer { display: none; }
+  .row[data-single] #home { order: 0; }
+  .row[data-single] .chip { order: 1; }
+  .row[data-single] .wx { order: 2; }
+  .row[data-single] #health { order: 3; }
+  .row[data-single][data-overflow] { -webkit-mask-image: linear-gradient(to left, transparent 0, #000 26px); mask-image: linear-gradient(to left, transparent 0, #000 26px); }
+`;
+const STYLE = `${BASE_CSS}${HEADER_CSS}${CHIP_ROW_CSS}${ROW_CSS}`;
 
 // The four chips: how each counts, and its look.
 const ALERT_COLOR = "#E06666";
@@ -9760,6 +10024,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
     this._picker = null;
     root.innerHTML = `<style>${STYLE}</style>
       <ha-card>
+        <div class="row" id="row">
         <div class="top">
           <button class="glyph" id="home" aria-label="Home" hidden><ha-icon icon="mdi:home"></ha-icon></button>
           <button class="pill" id="pill" hidden>
@@ -9770,9 +10035,10 @@ class SavvyHomeHeaderCard extends SavvyCard {
           <button class="glyph" id="health" aria-label="System health" hidden><ha-icon icon="mdi:cog"></ha-icon><span class="count" id="count" hidden></span></button>
         </div>
         <div class="chips" id="chips"></div>
+        </div>
       </ha-card>`;
     const $ = (id) => root.getElementById(id);
-    this._el = { card: root.querySelector("ha-card"), home: $("home"), pill: $("pill"), swap: $("swap"), pillIcon: $("pillIcon"), val: $("val"), pre: $("pre"),
+    this._el = { card: root.querySelector("ha-card"), row: $("row"), home: $("home"), pill: $("pill"), swap: $("swap"), pillIcon: $("pillIcon"), val: $("val"), pre: $("pre"),
       spacer: $("spacer"), weather: $("weather"), wicon: $("wicon"), wtemp: $("wtemp"), health: $("health"), count: $("count"), chips: $("chips") };
     const el = this._el;
     this._swap = new Swap(el.swap, (v) => {
@@ -9794,8 +10060,9 @@ class SavvyHomeHeaderCard extends SavvyCard {
   _observe() {
     if (!this._el || !this.isConnected) return;
     this._ro?.disconnect();
-    this._ro = new ResizeObserver(() => this._fitRow(this._el.chips));
+    this._ro = new ResizeObserver(() => { this._fitRow(this._el.chips); this._fitRow(this._el.row); });
     this._ro.observe(this._el.chips);
+    this._ro.observe(this._el.row);
   }
 
   // The same list savvy-system-health-card shows, with the same options: its count is the cog's.
@@ -9822,6 +10089,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
     const info = this._modeInfo();
     this._renderPill(info, c.mode_label);
     el.spacer.hidden = !!info;
+    el.row.toggleAttribute("data-single", !info);
     this._renderWeather();
     this._renderHealth();
     this._renderChips();
@@ -9875,6 +10143,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
     }
     asItems(c.chips).forEach((x, i) => items.push(chipItem(h, x, i)));
     this._chipRow(this._el.chips, items);
+    this._fitRow(this._el.row);
   }
 
   _auto(key, cfg) {
@@ -9968,6 +10237,10 @@ const EDITOR = defineEditor("savvy-home-header-card", (hass, c) => [
       { value: "hub", label: "Device, and the hub behind it" }, { value: "device", label: "Device" }, { value: "none", label: "Nothing: one row per entity" },
     ]),
     S.number("group_min", "Hub threshold", 2, 50),
+    { type: "expandable", name: "ignore", title: "Known problems", schema: [
+      { name: "devices", label: "Devices", helper: "Dead and waiting for a replacement? Listed here they leave the count and wait under Known.", selector: { device: { multiple: true } } },
+      { name: "entities", label: "Entities", selector: { entity: { multiple: true } } },
+    ] },
   ] },
   { name: "room_order", label: "Room order", type: "list", helper: "The order of the rooms in the popups: listed first, in this order; the rest follow by name. A chip can have its own.",
     initial: (h) => (h ? allAreas(h).map((a) => a.id) : []), add: { selector: { area: {} }, label: "Add a room" },
@@ -11181,8 +11454,9 @@ registerCard("savvy-lights-card", LightsCard, "Lights",
 (() => {
 // savvy-lock-card: a door, the way you'd want to handle it. The state is the biggest thing on
 // the card, a glow behind it follows (green when locked, amber when not, red when open or
-// jammed), and the lock is a track you slide: Locked, Unlocked, Open. A tap does nothing; the
-// knob is dragged, and Open (the latch) needs the end held until a ring fills.
+// jammed), and the lock's own icon is the handle you slide across its row: past the first stop it
+// does the opposite of what the lock is now, and Open (the latch) needs the end held until a ring fills.
+// A tap on the icon only nudges it.
 //
 //   type: custom:savvy-lock-card
 //   entity: lock.front_door                 or  entities: [lock.a, { entity: lock.b, name: Garage }]
@@ -11193,7 +11467,9 @@ registerCard("savvy-lights-card", LightsCard, "Lights",
 //   battery_warn: 40                        amber below this, red at 15
 //   unlocked_warn: 15                       minutes before "Unlocked for 25 min" nudges (0: never)
 //   alarm: alarm_control_panel.home         (else the house's alarm panel; false / hide_alarm: none)
+//   alarm_view: compact | full | hidden     compact: one line, a chevron slides the arm modes open; full: the modes always there
 //   camera: camera.porch                    (else a camera in the lock's area; false / hide_camera: none)
+//   camera_view: compact | full | hidden    compact: a slim row with an Open camera button; full: a live still
 //   layout: full | compact                  chips: [...]  (the one chip spec)
 //
 // With several locks: a row each, a summary and a "Lock all". Tap a name for the lock's
@@ -11206,7 +11482,7 @@ const lockTone = (t) => (t <= 1 ? mixRgb(LOCK_COLORS[0], LOCK_COLORS[1], clamp(t
 const LOCK_TONE_WORD = ["rgb(76 175 80)", "rgb(232 163 61)", "rgb(224 102 102)"];
 const LOCK_AMBER = "232 163 61", LOCK_RED = "224 102 102";
 
-const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_TRACK_CSS}
+const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_SLIDE_CSS}
   ha-card { --pad: 14px; --lk: 76 175 80; --wash: 0.1; --pulse: 0; position: relative; display: flex; flex-direction: column; gap: 12px; padding: var(--pad); overflow: hidden; }
   ha-card::before { content: ""; position: absolute; inset: 0; pointer-events: none;
     background: radial-gradient(140% 110% at 0% 0%, rgb(var(--lk) / calc(var(--wash) + var(--pulse) * 0.08)), transparent 68%); }
@@ -11221,10 +11497,11 @@ const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_TRACK_CSS}
   .btn[data-on] { color: rgb(var(--lk)); background: rgb(var(--lk) / 0.16); }
   .locks { display: flex; flex-direction: column; gap: 16px; }
   .lk { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-  .top { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .top { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 4px 8px 4px 4px; border-radius: 32px; }
   .who { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; text-align: start; border-radius: 12px; cursor: pointer; }
   .disc { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; color: var(--tone); background: color-mix(in oklab, var(--tone) 18%, transparent); --mdc-icon-size: 21px; }
-  .disc > * { display: flex; align-items: center; justify-content: center; line-height: 0; }
+  .disc > .dicon { display: flex; align-items: center; justify-content: center; line-height: 0; }
+  .disc > .dicon > * { display: flex; }
   .col { min-width: 0; display: flex; flex-direction: column; }
   .nm { font-size: 12.5px; line-height: 16px; font-weight: 600; letter-spacing: -0.005em; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .st { font-size: 17px; line-height: 22px; font-weight: 700; letter-spacing: -0.02em; color: var(--tone); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -11238,40 +11515,43 @@ const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_TRACK_CSS}
   .door ha-icon { display: flex; }
   .door[data-warn], .batt[data-level="warn"] { color: rgb(${LOCK_AMBER}); background: rgb(${LOCK_AMBER} / 0.16); }
   .batt[data-level="bad"] { color: rgb(${LOCK_RED}); background: rgb(${LOCK_RED} / 0.16); }
-  .batt svg { width: 16px; height: 16px; transform: rotate(-90deg); }
-  .batt circle { fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; }
-  .batt .bg { opacity: 0.25; }
-  .track { min-width: 0; }
+  .batt ha-icon { display: flex; }
   /* several locks: a smaller row each */
   :host(:not([data-solo])) .st { font-size: 15px; line-height: 20px; }
-  /* compact: one row, the track beside the name */
+  /* compact: one row, the handle at its start */
   :host([data-compact]) .locks { gap: 8px; }
-  :host([data-compact]) .lk { flex-direction: row; align-items: center; gap: 10px; }
-  :host([data-compact]) .top { flex: 1; }
-  :host([data-compact]) .track { flex: none; width: min(46%, 168px); }
+  :host([data-compact]) .top { padding: 3px 8px 3px 3px; border-radius: 26px; }
   :host([data-compact]) .disc { width: 34px; height: 34px; --mdc-icon-size: 19px; }
   :host([data-compact]) .st { font-size: 15px; line-height: 19px; }
   :host([data-compact]) .sub { display: none; }
   :host([data-compact]) .meta .door:not([data-warn]), :host([data-compact]) .meta .batt:not([data-level="warn"]):not([data-level="bad"]) { display: none; }
   :host([data-compact]) .door, :host([data-compact]) .batt { height: 22px; font-size: 11px; }
-  :host([data-compact]) .sv-lk-hint { display: none; }
   .nudge { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border-radius: 14px; background: rgb(${LOCK_AMBER} / 0.14); color: rgb(${LOCK_AMBER});
     font-size: 13px; line-height: 17px; font-weight: 650; --mdc-icon-size: 18px; }
   .nudge ha-icon { display: flex; flex: none; }
   .nudge .tx { flex: 1; min-width: 0; }
   .nudge .btn { background: rgb(${LOCK_AMBER} / 0.2); color: inherit; }
-  .alarm { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 10px; border-radius: 14px; background: var(--well); min-width: 0; flex-wrap: wrap; }
+  .alarm { display: flex; flex-direction: column; gap: 8px; padding: 8px 8px 8px 10px; border-radius: 14px; background: var(--well); min-width: 0; }
   .alarm[data-triggered] { background: rgb(${LOCK_RED} / 0.18); color: rgb(${LOCK_RED}); }
+  .al1 { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 30px; }
   .alarm .ai { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: color-mix(in oklab, var(--secondary-text-color) 14%, transparent);
     --mdc-icon-size: 17px; color: var(--secondary-text-color); }
   .alarm[data-armed] .ai { color: rgb(76 175 80); background: rgb(76 175 80 / 0.16); }
   .alarm[data-triggered] .ai { color: rgb(${LOCK_RED}); background: rgb(${LOCK_RED} / 0.2); }
   .alarm .ai ha-icon { display: flex; }
-  .alarm .ab { flex: 1; min-width: 92px; display: flex; flex-direction: column; }
+  .alarm .ab { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .alarm .an { font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: var(--secondary-text-color); }
-  .alarm .as { font-size: 14px; line-height: 18px; font-weight: 650; letter-spacing: -0.01em; }
-  .alarm .am { flex: none; display: flex; gap: 6px; flex-wrap: wrap; }
-  .alarm .am .btn { height: 30px; padding: 0 10px; }
+  .alarm .as { font-size: 14px; line-height: 18px; font-weight: 650; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .alarm .achev { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: color-mix(in oklab, var(--secondary-text-color) 12%, transparent);
+    color: var(--secondary-text-color); --mdc-icon-size: 20px; cursor: pointer; }
+  .alarm .achev ha-icon { display: flex; transform: rotate(calc(var(--r, 0) * 180deg)); }
+  .alarm[data-view="full"] .achev { display: none; }
+  /* the arm modes slide sideways when there are more than fit: never clipped at the card's edge */
+  .alarm .am { display: flex; flex-wrap: nowrap; gap: 6px; margin: 0 -8px 0 -10px; padding: 0 8px 0 10px; overflow-x: auto; overscroll-behavior-x: contain; touch-action: pan-x pan-y;
+    scrollbar-width: none; scroll-snap-type: x proximity; }
+  .alarm .am::-webkit-scrollbar { display: none; }
+  .alarm .am[data-overflow] { -webkit-mask-image: linear-gradient(to left, transparent 0, #000 26px); mask-image: linear-gradient(to left, transparent 0, #000 26px); }
+  .alarm .am .btn { flex: none; scroll-snap-align: start; height: 30px; padding: 0 10px; }
   .alarm .am .btn[data-on] { color: rgb(76 175 80); background: rgb(76 175 80 / 0.16); }
   .alarm[data-triggered] .am .btn { background: rgb(${LOCK_RED} / 0.14); color: inherit; }
   .cam { position: relative; display: block; width: 100%; padding: 0; border: 0; border-radius: 14px; overflow: hidden; cursor: pointer; background: var(--well); aspect-ratio: 21 / 9; }
@@ -11279,6 +11559,12 @@ const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_TRACK_CSS}
   .cam .cl { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 6px; padding: 18px 12px 9px; color: #fff; --mdc-icon-size: 16px;
     font-size: 12.5px; font-weight: 650; background: linear-gradient(transparent, rgb(0 0 0 / 0.55)); text-align: start; }
   .cam .cl ha-icon { display: flex; }
+  .camrow { display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 6px; border-radius: 14px; background: var(--well); min-width: 0; }
+  .camrow .cth { flex: none; width: 52px; height: 36px; border-radius: 9px; object-fit: cover; background: color-mix(in oklab, var(--secondary-text-color) 18%, transparent); cursor: pointer; }
+  .camrow .ctx { flex: 1; min-width: 0; display: flex; flex-direction: column; text-align: start; cursor: pointer; }
+  .camrow .cn { font-size: 13px; line-height: 17px; font-weight: 650; letter-spacing: -0.005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .camrow .cs { font-size: 11px; line-height: 14px; font-weight: 600; color: var(--secondary-text-color); display: flex; align-items: center; gap: 5px; }
+  .camrow .cs i { width: 6px; height: 6px; border-radius: 50%; background: rgb(${LOCK_RED}); display: inline-block; }
   .empty { padding: 4px 2px; font-size: 12.5px; font-weight: 500; color: var(--secondary-text-color); }
   .sep { display: none; }
   .cam-sheet savvy-camera-card { --ha-card-border-width: 0px; --ha-card-background: transparent; --ha-card-box-shadow: none; margin: -14px -14px 0; }
@@ -11307,6 +11593,11 @@ class SavvyLockCard extends SavvyCard {
     this._config = { ...config, areas, pinned, include: asItems(config.include).map((i) => i.entity),
       exclude: asItems(config.exclude).map((i) => i.entity), chips: [].concat(config.chips || []) };
     this._compact = config.layout === "compact";
+    const view = (v, off) => (["full", "compact", "hidden"].includes(v) ? v : off ? "hidden" : "compact");
+    this._alarmView = view(config.alarm_view, config.alarm === false || config.hide_alarm);
+    // a compact card is one row: its camera stays away unless asked for
+    this._camView = view(config.camera_view ?? (this._compact ? "hidden" : undefined), config.camera === false || config.hide_camera);
+    if (this._compact && this._alarmView === "full") this._alarmView = "compact";
     if (this._el) { this._build(); if (this._hass) this._update(); }
   }
 
@@ -11331,7 +11622,7 @@ class SavvyLockCard extends SavvyCard {
     this._camTimer = 0;
     this._camSheet?.close(true);
   }
-  getCardSize() { return this._compact ? 2 : 4 + (this._camId ? 3 : 0); }
+  getCardSize() { return this._compact ? 2 : 3 + (this._camId && this._camView === "full" ? 3 : this._camId && this._camView === "compact" ? 1 : 0); }
   getGridOptions() { return { columns: 12, min_columns: 4, rows: "auto" }; }
 
   _observe() {
@@ -11353,21 +11644,27 @@ class SavvyLockCard extends SavvyCard {
         <div class="head" id="head" hidden><span class="t" id="title"></span><span class="sum" id="sum"></span><button class="btn" id="all"><ha-icon icon="mdi:lock"></ha-icon><span>Lock all</span></button></div>
         <div class="locks" id="locks"></div>
         <div class="nudge" id="nudge" hidden><ha-icon icon="mdi:lock-clock"></ha-icon><span class="tx" id="nudgeTx"></span><button class="btn" id="nudgeBtn"><ha-icon icon="mdi:lock"></ha-icon><span>Lock now</span></button></div>
-        <div class="alarm" id="alarm" hidden><span class="ai"><ha-icon id="alarmIc"></ha-icon></span><span class="ab"><span class="an">Alarm</span><span class="as" id="alarmSt"></span></span><span class="am" id="alarmModes"></span></div>
+        <div class="alarm" id="alarm" hidden><div class="al1"><span class="ai"><ha-icon id="alarmIc"></ha-icon></span><span class="ab"><span class="an">Alarm</span><span class="as" id="alarmSt"></span></span><button class="achev" id="alarmChev" aria-expanded="false" aria-label="Arm modes"><ha-icon icon="mdi:chevron-down"></ha-icon></button></div><div class="am" id="alarmModes"></div></div>
         <button class="cam" id="cam" hidden aria-label="Open camera"><img id="camImg" alt=""><span class="cl"><ha-icon icon="mdi:cctv"></ha-icon><span id="camName"></span></span></button>
+        <div class="camrow" id="camRow" hidden><img class="cth" id="camThumb" alt=""><span class="ctx" id="camTx" role="button" tabindex="0"><span class="cn" id="camRowName"></span><span class="cs"><i></i>Live</span></span><button class="btn" id="camBtn"><ha-icon icon="mdi:cctv"></ha-icon><span>Open camera</span></button></div>
         <div class="empty" id="empty" hidden></div>
         <div class="chips" id="chips" hidden></div>
       </ha-card>`;
     const $ = (id) => root.getElementById(id);
     this._el = { card: root.querySelector("ha-card"), head: $("head"), title: $("title"), sum: $("sum"), all: $("all"), locks: $("locks"),
-      nudge: $("nudge"), nudgeTx: $("nudgeTx"), nudgeBtn: $("nudgeBtn"), alarm: $("alarm"), alarmIc: $("alarmIc"), alarmSt: $("alarmSt"), alarmModes: $("alarmModes"),
-      cam: $("cam"), camImg: $("camImg"), camName: $("camName"), empty: $("empty"), chips: $("chips") };
+      nudge: $("nudge"), nudgeTx: $("nudgeTx"), nudgeBtn: $("nudgeBtn"), alarm: $("alarm"), alarmIc: $("alarmIc"), alarmSt: $("alarmSt"), alarmModes: $("alarmModes"), alarmChev: $("alarmChev"),
+      cam: $("cam"), camImg: $("camImg"), camName: $("camName"), camRow: $("camRow"), camThumb: $("camThumb"), camTx: $("camTx"), camBtn: $("camBtn"), camRowName: $("camRowName"), empty: $("empty"), chips: $("chips") };
     this._pressable(this._el.all, { onTap: () => this._lockAll() }, 0.05);
     this._pressable(this._el.nudgeBtn, { onTap: () => this._nudged && this._call(this._nudged, "lock") }, 0.05);
     this._pressable(this._el.cam, { onTap: () => this._camId && this._openCamera() }, 0.025);
+    this._pressable(this._el.camBtn, { onTap: () => this._camId && this._openCamera() }, 0.05);
+    this._pressable(this._el.camTx, { onTap: () => this._camId && this._openCamera() }, 0.03);
+    this._pressable(this._el.alarmChev, { onTap: () => this._toggleAlarm() }, 0.1);
+    this._alarmOpen = false;
     this._ro?.disconnect();
-    this._ro = new ResizeObserver(() => this._fitRow(this._el.chips));
+    this._ro = new ResizeObserver(() => { this._fitRow(this._el.chips); this._fitRow(this._el.alarmModes); });
     this._ro.observe(this._el.chips);
+    this._ro.observe(this._el.alarmModes);
     this._first = true;
     this._observe();
   }
@@ -11437,14 +11734,14 @@ class SavvyLockCard extends SavvyCard {
 
   _alarmId() {
     const h = this._hass, c = this._config;
-    if (c.alarm === false || c.hide_alarm) return null;
+    if (c.alarm === false || c.hide_alarm || this._alarmView === "hidden") return null;
     if (typeof c.alarm === "string" && c.alarm) return h.states[c.alarm] ? c.alarm : null;
     return houseEntities(h).find((id) => domainOf(id) === "alarm_control_panel") || null;
   }
 
   _cameraOf(items) {
     const h = this._hass, c = this._config;
-    if (c.camera === false || c.hide_camera) return null;
+    if (c.camera === false || c.hide_camera || this._camView === "hidden") return null;
     if (typeof c.camera === "string" && c.camera) return h.states[c.camera] ? c.camera : null;
     const own = items.map((i) => i.camera).find((x) => typeof x === "string" && h.states[x]);
     if (own) return own;
@@ -11540,18 +11837,17 @@ class SavvyLockCard extends SavvyCard {
     node.className = "lk";
     node.__canOpen = canOpen;
     node.innerHTML = `<div class="top">
-        <button class="who" aria-label="Open details"><span class="disc"></span><span class="col"><span class="nm"></span><span class="st"></span><span class="sub"></span></span></button>
-        <span class="meta"><span class="door" hidden><ha-icon></ha-icon><span></span></span><span class="batt" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle class="bg" cx="12" cy="12" r="9"></circle><circle class="fg" cx="12" cy="12" r="9"></circle></svg><span></span></span></span>
-      </div>
-      <div class="track"></div>`;
+        <span class="disc"><span class="dicon"></span></span>
+        <button class="who" aria-label="Open details"><span class="col"><span class="nm"></span><span class="st"></span><span class="sub"></span></span></button>
+        <span class="meta"><span class="door" hidden><ha-icon></ha-icon><span></span></span><span class="batt" hidden><ha-icon></ha-icon><span></span></span></span>
+      </div>`;
     const q = (s) => node.querySelector(s);
-    node.__el = { disc: q(".disc"), nm: q(".nm"), st: q(".st"), door: q(".door"), doorIc: q(".door ha-icon"), doorTx: q(".door span:last-child"),
-      batt: q(".batt"), battFg: q(".batt .fg"), battTx: q(".batt > span:last-child"), sub: q(".sub"), track: q(".track") };
+    node.__el = { disc: q(".disc"), dicon: q(".dicon"), nm: q(".nm"), st: q(".st"), door: q(".door"), doorIc: q(".door ha-icon"), doorTx: q(".door span:last-child"),
+      batt: q(".batt"), battIc: q(".batt ha-icon"), battTx: q(".batt > span:last-child"), sub: q(".sub") };
     const call = (svc) => this._call(id, svc);
-    node.__track = new LockTrack(this._kit, { label: "Lock", canOpen, size: solo && !this._compact ? "lg" : "sm",
-      onLock: () => call("lock"), onUnlock: () => call("unlock"), onOpen: () => call("open") });
+    node.__track = new LockSlide(this._kit, { host: q(".top"), handle: q(".disc"), label: "Lock", canOpen, hintHost: q(".who"),
+      fade: [q(".who"), q(".meta")], onLock: () => call("lock"), onUnlock: () => call("unlock"), onOpen: () => call("open") });
     node.__track.onWords = () => this._update();
-    node.__el.track.appendChild(node.__track.el);
     this._pressable(q(".who"), { onTap: () => moreInfo(this, id) }, 0.03);
     node.__first = true;
     return node;
@@ -11570,9 +11866,9 @@ class SavvyLockCard extends SavvyCard {
     const wantState = !(item.icon || (solo && this._config.icon)) && !!st;
     if (node.__iconKind !== (wantState ? "state" : "plain")) {
       node.__iconKind = wantState ? "state" : "plain";
-      el.disc.innerHTML = wantState ? "<savvy-state-icon></savvy-state-icon>" : "<ha-icon></ha-icon>";
+      el.dicon.innerHTML = wantState ? "<savvy-state-icon></savvy-state-icon>" : "<ha-icon></ha-icon>";
     }
-    const ic = el.disc.firstElementChild;
+    const ic = el.dicon.firstElementChild;
     if (wantState) { if (ic.stateObj !== st) { ic.hass = h; ic.stateObj = st; } }
     else attr(ic, "icon", item.icon || this._config.icon || "mdi:lock");
     // the door
@@ -11593,8 +11889,7 @@ class SavvyLockCard extends SavvyCard {
       const warn = Number(this._config.battery_warn ?? 40);
       attr(el.batt, "data-level", pct <= 15 ? "bad" : pct < warn ? "warn" : "ok");
       text(el.battTx, `${Math.round(pct)}%`);
-      put(el.battFg, "stroke-dasharray", "56.55");
-      put(el.battFg, "stroke-dashoffset", (56.55 * (1 - clamp(pct / 100))).toFixed(2));
+      attr(el.battIc, "icon", pct <= 15 ? "mdi:battery-alert-variant-outline" : batteryLevelIcon(pct));
     }
     // the line under the name
     const parts = [];
@@ -11642,6 +11937,15 @@ class SavvyLockCard extends SavvyCard {
     const triggered = st.state === "triggered";
     attr(el.alarm, "data-armed", !!armed);
     attr(el.alarm, "data-triggered", triggered);
+    attr(el.alarm, "data-view", this._alarmView);
+    // a triggered alarm opens its modes by itself; otherwise the chevron decides (full: always open)
+    if (triggered && !this._wasTriggered) this._alarmOpen = true;
+    this._wasTriggered = triggered;
+    const open = this._alarmView === "full" || this._alarmOpen;
+    Motion.reveal(el.alarmModes, open);
+    attr(el.alarmChev, "aria-expanded", String(open));
+    Motion.tweenVar(el.alarmChev, "--r", open ? 1 : 0);
+    requestAnimationFrame(() => this._fitRow(el.alarmModes));
     attr(el.alarmIc, "icon", triggered ? "mdi:shield-alert" : armed ? "mdi:shield-lock" : "mdi:shield-off-outline");
     text(el.alarmSt, triggered ? "Triggered" : stateText(h, st));
     const key = `${id}|${modes.map((m) => m[0]).join()}`;
@@ -11672,6 +11976,12 @@ class SavvyLockCard extends SavvyCard {
     return { triggered };
   }
 
+  _toggleAlarm() {
+    this._alarmOpen = !this._alarmOpen;
+    haptic("selection");
+    if (this._hass) this._update();
+  }
+
   _arm(id, mode) {
     const h = this._hass, cur = h.states[id];
     if (!cur || cur.state === `armed_${mode}`) return;
@@ -11684,10 +11994,15 @@ class SavvyLockCard extends SavvyCard {
 
   // ---------- the camera ----------
   _renderCamera(items) {
-    const el = this._el, id = this._camId, st = id ? this._hass.states[id] : null;
-    Motion.reveal(el.cam, !!st && !this._compact);
-    if (!st || this._compact) { clearInterval(this._camTimer); this._camTimer = 0; return; }
-    text(el.camName, `${st.attributes.friendly_name || shortName(this._hass, id, null)} · Live`);
+    const el = this._el, id = this._camId, st = id ? this._hass.states[id] : null, view = this._camView;
+    const full = !!st && view === "full", row = !!st && view === "compact";
+    Motion.reveal(el.cam, full);
+    Motion.reveal(el.camRow, row);
+    this._camVisible = full || row;
+    if (!this._camVisible) { clearInterval(this._camTimer); this._camTimer = 0; return; }
+    const name = st.attributes.friendly_name || shortName(this._hass, id, null);
+    text(el.camName, `${name} · Live`);
+    text(el.camRowName, name);
     this._camRefresh(true);
     if (!this._camTimer) this._camTimer = setInterval(() => this._camRefresh(), LOCK_CAM_MS);
   }
@@ -11695,16 +12010,17 @@ class SavvyLockCard extends SavvyCard {
   // a fresh still while the card is on screen
   _camRefresh(force = false) {
     const el = this._el, id = this._camId;
-    if (!el || !id || el.cam.hidden) return;
+    if (!el || !id || !this._camVisible) return;
     if (!force && (this._onscreen === false || document.hidden)) return;
+    const img = this._camView === "full" ? el.camImg : el.camThumb;
     const st = this._hass.states[id];
     const pic = st?.attributes.entity_picture || `/api/camera_proxy/${id}`;
     const url = typeof this._hass.hassUrl === "function" ? this._hass.hassUrl(pic) : pic;
     const next = /^(data|blob):/.test(url) ? url : `${url}${url.includes("?") ? "&" : "?"}_t=${Math.floor(Date.now() / 1000)}`;
-    if (force && el.camImg.__base === url && el.camImg.__at && Date.now() - el.camImg.__at < LOCK_CAM_MS - 500) return;
-    el.camImg.__base = url;
-    el.camImg.__at = Date.now();
-    el.camImg.src = next;
+    if (force && img.__base === url && img.__at && Date.now() - img.__at < LOCK_CAM_MS - 500) return;
+    img.__base = url;
+    img.__at = Date.now();
+    img.src = next;
   }
 
   _openCamera() {
@@ -11717,11 +12033,11 @@ class SavvyLockCard extends SavvyCard {
     const st = h.states[id];
     this._camSheet.setTitle(st?.attributes.friendly_name || "Camera");
     const card = document.createElement("savvy-camera-card");
-    card.setConfig({ cameras: [{ entity: id }], recordings: false, columns: 1 });
+    card.setConfig({ cameras: [{ entity: id }], recordings: "inline", columns: 1 });
     this._camSheet.body.replaceChildren(card);
     card.hass = h;
     this._camCard = card;
-    this._camSheet.open(this._el.cam);
+    this._camSheet.open(this._camView === "full" ? this._el.cam : this._el.camBtn);
   }
 
   _paint(dirty, all, red) {
@@ -11733,7 +12049,9 @@ class SavvyLockCard extends SavvyCard {
 }
 
 // ---------- editor ----------
+const VIEWS = [{ value: "compact", label: "Compact" }, { value: "full", label: "Full" }, { value: "hidden", label: "Hidden" }];
 const EDITOR = defineEditor("savvy-lock-card", (hass, c) => [
+  S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (one row)" }]),
   S.entity("entity", "Lock", "lock", { helper: "One lock. Or pick an area, or list several below." }),
   { name: "area", label: "Area", helper: "Every lock in these areas. Locks with no area: add them under Include.", selector: { area: { multiple: true } } },
   { name: "entities", label: "Locks", helper: "Several locks, each with its own door, battery and camera.", type: "list",
@@ -11747,8 +12065,7 @@ const EDITOR = defineEditor("savvy-lock-card", (hass, c) => [
     add: { selector: { entity: { domain: "lock" } }, label: "Add a lock" } },
   { name: "include", label: "Include", helper: "Locks to show with this area, such as one that has no area.", selector: { entity: { domain: "lock", multiple: true } } },
   { name: "exclude", label: "Never show", selector: { entity: { domain: "lock", multiple: true } } },
-  S.grid(S.text("name", "Name"), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (one row)" }])),
-  S.icon(),
+  S.grid(S.text("name", "Name"), S.icon()),
   { type: "expandable", name: "", title: "Door and battery", schema: [
     { name: "door", label: "Door sensor", helper: "Empty: the door contact of the lock's device or area.", selector: { entity: { domain: "binary_sensor" } } },
     S.bool("hide_door", "Hide door"),
@@ -11759,9 +12076,9 @@ const EDITOR = defineEditor("savvy-lock-card", (hass, c) => [
   ] },
   { type: "expandable", name: "", title: "Alarm and camera", schema: [
     { name: "alarm", label: "Alarm", helper: "Empty: the house's alarm panel, when there is one.", selector: { entity: { domain: "alarm_control_panel" } } },
-    S.bool("hide_alarm", "Hide alarm"),
+    S.select("alarm_view", "Alarm view", VIEWS),
     { name: "camera", label: "Camera", helper: "Empty: a camera in the lock's area.", selector: { entity: { domain: "camera" } } },
-    S.bool("hide_camera", "Hide camera"),
+    S.select("camera_view", "Camera view", VIEWS),
   ] },
   S.chips(),
 ]);
@@ -15152,12 +15469,19 @@ class SettingsEditor extends SavvyEditor {
         S.select("group_by", "Grouping", [{ value: "hub", label: "Device, and the hub behind it" }, { value: "device", label: "Device" }, { value: "none", label: "Nothing: one row per entity" }]),
         S.number("group_min", "Hub threshold", 2, 50),
         S.entity("watchman_last_run", "Watchman last run", "sensor"),
+        { type: "expandable", name: "ignore", title: "Known problems", schema: [
+          { name: "devices", label: "Devices", helper: "Dead and waiting for a replacement? Listed here they leave the count and wait under Known.", selector: { device: { multiple: true } } },
+          { name: "entities", label: "Entities", selector: { entity: { multiple: true } } },
+        ] },
       ] },
       { type: "expandable", name: "ignore", title: "Ignore", schema: [
         { name: "entities", label: "Ignored entities", helper: "Left out of the home header's counts and popups.", selector: { entity: { multiple: true } } },
         { name: "areas", label: "Ignored rooms", selector: { area: { multiple: true } } },
       ] },
-      { name: "room_order", label: "Room order", type: "list", empty: "No order yet: rooms follow by name.",
+      { name: "aggregate", label: "Aggregate sensors", helper: "Show a room's sensors of these kinds once: occupied if any one is. Sensors on your ignore list are left out. In YAML, true means presence.",
+    selector: { select: { multiple: true, options: [{ value: "presence", label: "Presence and motion" }, { value: "door", label: "Doors" }, { value: "window", label: "Windows" },
+      { value: "leak", label: "Leaks" }, { value: "smoke", label: "Smoke" }, { value: "gas", label: "Gas" }] } } },
+  { name: "room_order", label: "Room order", type: "list", empty: "No order yet: rooms follow by name.",
         helper: "The order of the rooms in the popups and the room header's row: listed first, in this order; the rest follow by name.",
         // while unset it starts as the Rooms entries' order, so reordering works from the first touch
         initial: (h, cfg) => Object.keys(cfg?.rooms || {}),
@@ -15222,7 +15546,6 @@ const GROUP_TITLE = { watchman: "Watchman", unavailable: "Offline devices", batt
 const ALL_FINE = { watchman: "Nothing missing", unavailable: "All devices online", battery: "All batteries fine" };
 const REPORT_TIMEOUT = 60000;
 const COL_MIN = 240, COL_GAP = 14;
-const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const joinAnd = (parts) => (parts.length < 2 ? parts.join("") : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`);
 
 const STYLE = `${BASE_CSS}
@@ -15451,16 +15774,23 @@ class SavvySystemHealthCard extends HTMLElement {
     return out.join(", ");
   }
 
+  // Watchman's own words; what the offline devices already explain is said once, not counted twice
   _watchmanLine(sum) {
-    const { entities, actions } = sum.counts.watchmanKinds;
-    const parts = [];
-    if (entities) parts.push(`${entities} missing ${entities === 1 ? "entity" : "entities"}`);
-    if (actions) parts.push(`${actions} missing ${actions === 1 ? "action" : "actions"}`);
-    return parts.join(", ") || plural(sum.counts.watchman, "missing item", "missing items");
+    const left = sum.counts.watchman, ex = sum.counts.watchmanExplained;
+    const say = ({ entities, actions }) => {
+      const parts = [];
+      if (entities) parts.push(`${entities} missing ${entities === 1 ? "entity" : "entities"}`);
+      if (actions) parts.push(`${actions} missing ${actions === 1 ? "action" : "actions"}`);
+      return parts.join(", ");
+    };
+    if (!left && ex) return `${say(sum.counts.watchmanAllKinds)}, all from offline devices`;
+    const line = say(sum.counts.watchmanKinds) || plural(left, "missing item", "missing items");
+    return ex ? `${line}, ${ex} from offline devices` : line;
   }
 
   _line(key, sum) {
     const n = sum.counts[key];
+    if (key === "watchman" && !n && sum.counts.watchmanExplained) return this._watchmanLine(sum);
     if (!n) return "";
     if (key === "unavailable") return this._offlineLine(sum);
     if (key === "battery") return `${plural(n, "battery", "batteries")} low`;
@@ -15477,8 +15807,8 @@ class SavvySystemHealthCard extends HTMLElement {
       const { count, lowest } = sum.stats.batteries;
       return count ? `${plural(count, "battery", "batteries")}, lowest ${Math.round(lowest)}%` : "No batteries found";
     }
-    const t = this._lastRunTime(), n = sum.counts.watchman;
-    return [Number.isFinite(t) ? `Checked ${since(t, false)}` : "", n ? `${n} missing` : "nothing missing"].filter(Boolean).join(", ").replace(/^./, (c) => c.toUpperCase());
+    const t = this._lastRunTime(), n = sum.counts.watchman, ex = sum.counts.watchmanExplained;
+    return [Number.isFinite(t) ? `Checked ${since(t, false)}` : "", n ? `${n} missing` : ex ? "nothing else missing" : "nothing missing"].filter(Boolean).join(", ").replace(/^./, (c) => c.toUpperCase());
   }
 
   // one issue (an integration, a hub, a device, an entity) as a row
@@ -15487,29 +15817,30 @@ class SavvySystemHealthCard extends HTMLElement {
     const age = Number.isFinite(is.since) ? duration(Date.now() - is.since) : "";
     const meta = det ? [is.area, is.integration].filter(Boolean).join(" · ") : "";
     const join = (...p) => p.filter(Boolean).join(" · ");
+    const refs = is.refs ? `${plural(is.refs, "dashboard reference", "dashboard references")} broken` : "";
     const nav = () => navigate(`/config/devices/device/${is.id}`);
     if (is.kind === "integration") {
       const failed = is.state === "failed";
       const page = () => navigate(`/config/integrations/integration/${is.domain}`);
       return { type: "row", key: is.key, icon: "mdi:puzzle-remove-outline", alert: true, depth, expandable: is.total > 0, open, hold: page, go: page,
         name: is.name,
-        secondary: join(failed ? is.label : "", is.total ? `${plural(is.total, "device", "devices")}${failed ? "" : " offline"}` : "", !failed && age && `offline for ${age}`) };
+        secondary: join(failed ? is.label : "", is.total ? `${plural(is.total, "device", "devices")}${failed ? "" : " offline"}` : "", !failed && age && `offline for ${age}`, refs) };
     }
     if (is.kind === "hub") {
       const offline = is.state === "offline";
       return { type: "row", key: is.key, icon: "mdi:access-point-network-off", alert: true, depth, expandable: true, open, hold: nav,
         name: offline ? `${is.name} offline` : `All ${is.total} devices on ${is.name} are offline`,
-        secondary: join(meta, offline ? plural(is.total, "device", "devices") : "", age && `offline for ${age}`) };
+        secondary: join(meta, offline ? plural(is.total, "device", "devices") : "", age && `offline for ${age}`, refs) };
     }
     if (is.kind === "device") {
       const down = is.state === "down";
       return { type: "row", key: is.key, icon: down ? "mdi:power-plug-off-outline" : "mdi:alert-circle-outline", alert: down, soft: !down, depth, expandable: true, open, hold: nav,
         name: is.name,
-        secondary: down ? join(meta, age && `offline for ${age}`, is.down < is.total ? `${is.down} of ${is.total} entities` : is.total > 1 && plural(is.total, "entity", "entities"))
-          : join(meta, `${is.down} of ${is.total} entities unavailable`) };
+        secondary: down ? join(meta, age && `offline for ${age}`, is.down < is.total ? `${is.down} of ${is.total} entities` : is.total > 1 && plural(is.total, "entity", "entities"), refs)
+          : join(meta, `${is.down} of ${is.total} entities unavailable`, refs) };
     }
     return { type: "row", key: is.key, icon: "mdi:alert-circle-outline", alert: true, depth, entity: is.entity, name: is.name,
-      secondary: depth ? is.entity : join(age && `offline for ${age}`, is.entity) };
+      secondary: depth ? join(is.entity, refs) : join(age && `offline for ${age}`, is.entity, refs) };
   }
 
   _offlineRows(issues) {
@@ -15523,6 +15854,23 @@ class SavvySystemHealthCard extends HTMLElement {
       else if (is.kind === "device") is.entities.forEach((e) => walk(e, depth + 1));
     };
     issues.forEach((i) => walk(i, 0));
+    return out;
+  }
+
+  // what the user has snoozed: one collapsed line under the offline issues, the items dim inside it
+  _knownRows(known) {
+    const items = [...known.devices, ...known.entities];
+    if (!items.length) return [];
+    const open = this._open.has("k:known");
+    const out = [{ type: "row", key: "k:known", icon: "mdi:bell-sleep-outline", soft: true, depth: 0, expandable: true, open, name: `Known · ${items.length}`,
+      secondary: known.refs ? `Snoozed in your settings · ${plural(known.refs, "dashboard reference", "dashboard references")} broken` : "Snoozed in your settings" }];
+    if (open) for (const k of items) {
+      const age = Number.isFinite(k.since) ? duration(Date.now() - k.since) : "";
+      out.push(k.entity
+        ? { type: "row", key: k.key, icon: "mdi:bell-sleep-outline", soft: true, depth: 1, entity: k.entity, name: k.name, secondary: [age && `offline for ${age}`, k.entity].filter(Boolean).join(" · ") }
+        : { type: "row", key: k.key, icon: "mdi:bell-sleep-outline", soft: true, depth: 1, name: k.name, hold: () => navigate(`/config/devices/device/${k.id}`),
+            secondary: [k.area, age && `offline for ${age}`, k.total > 1 && plural(k.total, "entity", "entities")].filter(Boolean).join(" · ") });
+    }
     return out;
   }
 
@@ -15542,17 +15890,17 @@ class SavvySystemHealthCard extends HTMLElement {
       const out = [];
       if (group) out.push({ type: "group", key: `g:${key}`, title: GROUP_TITLE[key], line: this._line(key, sum) });
       if (det) out.push({ type: "facts", key: `f:${key}`, text: this._facts(key, sum) });
-      if (!sum.counts[key]) out.push({ type: "ok", key: `ok:${key}`, text: ALL_FINE[key] });
+      if (!sum.counts[key]) out.push({ type: "ok", key: `ok:${key}`, text: key === "watchman" && sum.counts.watchmanExplained ? "Nothing else missing" : ALL_FINE[key] });
       out.push(...rows);
       return out;
     };
     if (src === "watchman") return { total: sum.counts.watchman, sections: [{ key: "watchman", rows: section("watchman", watchRows(), false) }] };
-    if (src === "unavailable") return { total: sum.counts.unavailable, sections: [{ key: "unavailable", rows: section("unavailable", this._offlineRows(sum.offline), false) }] };
+    if (src === "unavailable") return { total: sum.counts.unavailable, sections: [{ key: "unavailable", rows: section("unavailable", [...this._offlineRows(sum.offline), ...this._knownRows(sum.known)], false) }] };
     if (src === "battery") return { total: sum.counts.battery, sections: [{ key: "battery", rows: section("battery", this._batteryRows(sum, c.show_all_batteries !== false), false) }] };
     // every category shows, with its issue line or a tick and what's fine
     const sections = [];
     if (sum.opts.watchman.length) sections.push({ key: "watchman", rows: section("watchman", watchRows(), true) });
-    sections.push({ key: "unavailable", rows: section("unavailable", this._offlineRows(sum.offline), true) });
+    sections.push({ key: "unavailable", rows: section("unavailable", [...this._offlineRows(sum.offline), ...this._knownRows(sum.known)], true) });
     sections.push({ key: "battery", rows: section("battery", this._batteryRows(sum, false), true) });
     return { total: sum.total, sections };
   }
@@ -15805,6 +16153,10 @@ const EDITOR = defineEditor("savvy-system-health-card", (hass, c) => [
     { value: "hub", label: "Device, and the hub behind it" }, { value: "device", label: "Device" }, { value: "none", label: "Nothing: one row per entity" },
   ]),
   S.number("group_min", "Hub threshold", 2, 50),
+  { type: "expandable", name: "ignore", title: "Known problems", schema: [
+    { name: "devices", label: "Devices", helper: "Dead and waiting for a replacement? Listed here they leave the count and wait under Known.", selector: { device: { multiple: true } } },
+    { name: "entities", label: "Entities", selector: { entity: { multiple: true } } },
+  ] },
   { name: "exclude_platforms", label: "Ignored integrations", helper: "By integration, e.g. mobile_app for phones.",
     selector: { select: { multiple: true, custom_value: true, options: ["mobile_app"] } } },
   { name: "watchman", label: "Watchman sensors", helper: "Watchman's missing-entities and missing-actions sensors.",

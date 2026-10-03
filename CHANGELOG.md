@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.9.1
+
+The lock, the health card and the rooms, tidied together.
+
+- **The lock's icon is the handle.** In a popup the lock is one line: its own icon slides across the
+  row, which becomes the track while you drag (a fill, the stops named "Unlock" and "Open", the icon
+  turning into what the slide would do). Past the first stop it does the opposite of what the lock is
+  now; the end, held until a ring fills, opens the latch. The handle always comes back to the start; a
+  tap only nudges it. On the lock card the big icon at the top is the handle and the separate track
+  row is gone.
+- **Lock card.** The alarm's arm modes slide sideways instead of running off the card. `layout`
+  (Full or Compact) is in the editor. `alarm_view` and `camera_view` (`compact`, the default, `full`,
+  `hidden`): a compact alarm is one line whose chevron slides the modes open, a compact camera is a
+  slim row with an **Open camera** button; the popup it opens is the camera card with its recordings.
+  The battery is an icon by level and the percent, amber below 40, red at 15. `hide_alarm`,
+  `hide_camera` and `false` still hide them.
+- **System health counts by cause.** A Watchman item whose entity belongs to a device that is already
+  an issue is folded into that device's row ("2 dashboard references broken") and counts once; Watchman's
+  line says what is its own ("1 missing entity, 3 from offline devices", "all from offline devices"),
+  and only what nothing explains is listed and counted. The pill and the home header's cog agree.
+- **Known problems.** `ignore: { devices, entities }` on the health card, the cog, or once in the Savvy
+  settings (`health.ignore`, which adds to the card's own): they leave every count, list and low-battery
+  line, and wait in one collapsed "Known · N" line under Offline devices.
+- **Aggregate.** `aggregate: true` (or a list of kinds: presence, door, window, leak, smoke, gas), in the
+  Savvy settings or on a card, shows each room's sensors of those kinds once: occupied if any one is, since
+  the first of those that are on came on. In the security popup its chevron lists the sensors behind it.
+  The ignore lists, pinned `entities` and sensors you name are never merged. Off by default.
+- **Home header, one row.** With no control chip the header is a single row: the home button, the four
+  chips, then the weather and the health cog at the end; it slides sideways, with a fade, when it is
+  wider than the card. With a control chip it stays two rows.
+- **Tests and tools.** A new spec per piece; `test/icons.js` has the icons they draw.
+
 ## 0.9.0
 
 Everything that changes now moves, with the same tactile spring feel as a press.

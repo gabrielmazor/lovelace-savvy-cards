@@ -37,6 +37,9 @@ const HEALTH_KEYS = [
   ["exclude_platforms", "Ignored integrations"], ["group_by", "Grouping"], ["group_min", "Hub threshold"], ["watchman_last_run", "Watchman last run"],
 ];
 const healthRules = (prefix = "") => HEALTH_KEYS.map(([k, label]) => ({ path: `${prefix}${k}`, label, get: glob("health", k), src: "health" }));
+// known problems: the settings' list adds to the card's own (devices by id, entities by id)
+const knownRules = (prefix = "") => ["entities", "devices"].map((k) => ({ path: `${prefix}ignore.${k}`, label: "Known problems", kind: "union", src: "health",
+  get: (s) => (Array.isArray(s.health?.ignore) ? s.health.ignore.filter((x) => (k === "entities") === String(x).includes(".")) : s.health?.ignore?.[k]) }));
 
 const HOME_CHIPS = ["lights", "climate", "media", "security"];
 
@@ -45,6 +48,7 @@ const HOME_CHIPS = ["lights", "climate", "media", "security"];
 //   kind "pin":   the room's light helper is pinned first in the badge row
 const SETTINGS_RULES = {
   "savvy-home-header-card": [
+    { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
     { path: "control", label: "Control", get: glob("house", "control"), src: "house" },
     { path: "weather", label: "Weather", get: glob("house", "weather"), src: "house" },
     { path: "home_path", label: "Home button", get: glob("pages", "home"), src: "pages" },
@@ -63,9 +67,11 @@ const SETTINGS_RULES = {
     { path: "health.tap_action", label: "Health tap", src: "house",
       get: (s, c) => (s.house?.tap === "navigate" && c.health?.hold_action === undefined ? navTo(c.health?.navigation_path ?? s.pages?.health) : undefined) },
     ...healthRules("health."),
+    ...knownRules("health."),
   ],
-  "savvy-system-health-card": healthRules(),
+  "savvy-system-health-card": [...healthRules(), ...knownRules()],
   "savvy-room-header-card": [
+    { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
     { path: "control", label: "Control", get: room("control") },
     { path: "temperature", label: "Temperature", get: room("temperature") },
     { path: "include", label: "Include", kind: "union", get: room("include") },
@@ -76,6 +82,7 @@ const SETTINGS_RULES = {
     { path: "room_order", label: "Room order", get: (s, c) => (c.order !== undefined ? undefined : s.room_order), src: "room_order" },
   ],
   "savvy-section-title-card": [
+    { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
     { path: "name", label: "Name", get: room("name") },
     { path: "icon", label: "Icon", get: room("icon") },
     { path: "control", label: "Control", get: room("control") },
@@ -85,6 +92,7 @@ const SETTINGS_RULES = {
     { path: "navigation_path", label: "Target page", get: roomPage },
   ],
   "savvy-room-tile": [
+    { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
     { path: "name", label: "Name", get: room("name") },
     { path: "icon", label: "Icon", get: room("icon") },
     { path: "control", label: "Control", get: room("control") },
@@ -106,6 +114,7 @@ const SETTINGS_RULES = {
     { path: "humidity", label: "Humidity", get: room("humidity") },
   ],
   "savvy-room-activity-card": [
+    { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
     { path: "include", label: "Include", kind: "union", get: room("include") },
     { path: "exclude", label: "Exclude", kind: "union", get: room("exclude") },
   ],
@@ -229,6 +238,9 @@ function normalizeSettings(config) {
     const order = config.room_order.filter((a) => typeof a === "string" && a);
     if (order.length) out.room_order = order;
   }
+  // which kinds of sensor each room shows once (true: presence)
+  const agg = aggKinds(config.aggregate);
+  if (agg.length) out.aggregate = agg;
   return Object.keys(out).length ? out : null;
 }
 
@@ -374,6 +386,15 @@ const SettingsStore = {
 // Every card with rules goes through here (registerCard): its setConfig receives the card's
 // config with the settings filled in, and a change in the settings re-runs it, only when
 // what the card would see really changed.
+// A card with `aggregate` sees each room's sensors of those kinds once. What it leaves out
+// (`exclude`, a chip's `exclude`, ignored rooms) is never merged.
+function aggregateFor(config, hass) {
+  if (!config?.aggregate) return hass;
+  const chips = ["lights", "climate", "media", "security"].map((k) => config[k]).filter((c) => c && typeof c === "object");
+  const list = (key) => [config[key], ...chips.map((c) => c[key])].flatMap((x) => asItems(x).map((i) => i.entity || i)).filter((x) => typeof x === "string");
+  return aggregateHass(hass, { kinds: config.aggregate, exclude: list("exclude"), excludeAreas: list("exclude_areas") });
+}
+
 function wireSettings(type, cls) {
   if (!SETTINGS_RULES[type] || cls.prototype.__settingsWired) return;
   const proto = cls.prototype, original = proto.setConfig;
@@ -396,10 +417,14 @@ function wireSettings(type, cls) {
     if (key === this._appliedKey) return;
     this._appliedKey = key;
     original.call(this, r.config);
-    if (this._hass) this.hass = this._hass;
+    if (this.__rawHass) this.hass = this.__rawHass;
   };
   const d = Object.getOwnPropertyDescriptor(proto, "hass");
   if (d?.set) {
-    Object.defineProperty(proto, "hass", { ...d, set(v) { SettingsStore.load(v); d.set.call(this, v); } });
+    Object.defineProperty(proto, "hass", { ...d, set(v) {
+      SettingsStore.load(v);
+      this.__rawHass = v;
+      d.set.call(this, aggregateFor(this._config, v));
+    } });
   }
 }

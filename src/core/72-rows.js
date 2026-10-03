@@ -25,11 +25,39 @@ const ROW_KINDS = {};
 // leak / smoke / gas / CO sensor is red.
 ROW_KINDS.binary_sensor = {
   build(ctx) {
+    // a room's merged sensors: the row's chevron lists the sensors behind it, read only
+    const merged = !!ctx.hass().states[ctx.id]?.attributes.savvy_members;
+    const extra = merged ? div("sv-xline sv-agg") : null;
+    const lines = new Map();
     return {
+      extra,
       update(st, hass) {
         const dc = st.attributes.device_class;
         const unavailable = st.state === "unavailable" || st.state === "unknown";
-        return { val: stateText(hass, st), timed: !unavailable && PRESENCE_CLASSES.includes(dc),
+        if (extra) {
+          const ids = st.attributes.savvy_members || [];
+          ids.forEach((id, i) => {
+            let l = lines.get(id);
+            if (!l) {
+              l = div("sv-agg-l");
+              l.setAttribute("role", "button");
+              l.tabIndex = 0;
+              l.innerHTML = '<span class="n"></span><span class="s"></span>';
+              l.onclick = () => moreInfo(ctx.host, id);
+              l.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); moreInfo(ctx.host, id); } };
+              lines.set(id, l);
+            }
+            const m = hass.states[id];
+            text(l.querySelector(".n"), shortName(hass, id, null));
+            const t = Date.parse(m?.last_changed);
+            text(l.querySelector(".s"), [m ? stateText(hass, m) : "", Number.isFinite(t) ? since(t, false) : ""].filter(Boolean).join(" · "));
+            attr(l, "data-on", m?.state === "on");
+            place(extra, l, i);
+          });
+          for (const [id, l] of lines) if (!ids.includes(id)) { l.remove(); lines.delete(id); }
+        }
+        return { val: stateText(hass, st), timed: !unavailable && (merged || PRESENCE_CLASSES.includes(dc)), extra: merged,
+          sub: merged ? plural(st.attributes.savvy_members.length, "sensor", "sensors") : undefined,
           alert: !unavailable && SAFETY_CLASSES.includes(dc) && st.state === "on" };
       },
     };
@@ -293,24 +321,22 @@ ROW_KINDS.fan = {
   },
 };
 
-// ---- locks: the track, on a line of its own that is always there (a safe drag needs the width)
+// ---- locks: the row's own icon is the handle you slide across the row
 ROW_KINDS.lock = {
   build(ctx) {
     const { kit } = ctx;
-    const el = div("sv-ctl-lock");
-    const track = new LockTrack(kit, {
-      label: "Lock", canOpen: feature(ctx.hass().states[ctx.id], 1),
+    const slide = new LockSlide(kit, {
+      host: ctx.line, handle: ctx.handle, label: "Lock", canOpen: feature(ctx.hass().states[ctx.id], 1), fade: [ctx.text],
       onLock: () => call(ctx, "lock", "lock"), onUnlock: () => call(ctx, "lock", "unlock"), onOpen: () => call(ctx, "lock", "open"),
     });
-    track.onWords = () => ctx.refresh?.();
-    el.appendChild(track.el);
+    slide.onWords = () => ctx.refresh?.();
     let first = true;
     return {
-      extra: el, fixed: true, track,
+      track: slide, slide,
       update(st) {
-        track.setState(st.state, first);
+        slide.setState(st.state, first);
         first = false;
-        return { extra: true, sub: track.words, timed: true };
+        return { sub: slide.words, timed: true };
       },
     };
   },
@@ -393,9 +419,13 @@ const ROWS_CSS = `
   .sv-xline { display: flex; align-items: center; gap: 6px; min-width: 0; }
   .sv-xline .sv-btn { width: 32px; height: 32px; border-radius: 10px; --mdc-icon-size: 18px; }
   .sv-xline .sv-seg { flex: 1; }
+  .sv-xline.sv-agg { flex-direction: column; align-items: stretch; gap: 2px; padding: 0 6px 6px 48px; }
+  .sv-agg-l { display: flex; justify-content: space-between; gap: 10px; padding: 6px 8px; border-radius: 10px; font-size: 12.5px; line-height: 16px; color: var(--secondary-text-color); cursor: pointer; outline: none; }
+  .sv-agg-l .n { min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sv-agg-l[data-on] .n { color: var(--primary-text-color); }
+  @media (hover: hover) { .sv-agg-l:hover { background: var(--well); } }
   .sv-volg { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
   @container (max-width: 330px) { .sv-volg .sv-btn, .sv-volg .sv-pct { display: none; } }
-  .sv-ctl-lock { padding: 0 6px 8px 6px; }
   .sv-spacer { flex: 1; }
   .sv-cap { flex: 1; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--secondary-text-color); }
   .sv-pct { flex: none; min-width: 34px; text-align: end; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--secondary-text-color); }
@@ -407,7 +437,7 @@ const ROWS_CSS = `
   .sv-btn[data-solid] { width: 34px; border-radius: 50%; background: var(--row-c, rgb(var(--accent))); color: #fff; --mdc-icon-size: 20px; }
   .sv-xline .sv-btn[data-solid] { width: 32px; border-radius: 50%; }
   .sv-btn[disabled] { opacity: 0.35; cursor: default; }
-  :host([kbd]) .sv-btn:focus-visible, :host([kbd]) .sv-seg-b:focus-visible, :host([kbd]) .sv-bar:focus-visible, :host([kbd]) .sv-lk:focus-visible, :host([kbd]) .sv-pillbtn:focus-visible, :host([kbd]) .sv-main:focus-visible,
+  :host([kbd]) .sv-btn:focus-visible, :host([kbd]) .sv-seg-b:focus-visible, :host([kbd]) .sv-bar:focus-visible, :host([kbd]) .sv-sl-handle:focus-visible, :host([kbd]) .sv-pillbtn:focus-visible, :host([kbd]) .sv-main:focus-visible,
     :host([kbd]) .sv-chev:focus-visible, :host([kbd]) .sv-bulk:focus-visible, :host([kbd]) .sv-tog:focus-visible
     { outline: 2px solid var(--row-c, rgb(var(--accent))); outline-offset: 2px; }
   /* the bar: a pill that only moves on a sideways drag */
@@ -447,6 +477,8 @@ const ROWS_CSS = `
   .sv-bulk ha-icon { display: flex; }
   .sv-bulk[disabled] { opacity: 0.4; cursor: default; }
   .sv-tools[data-solo] .sv-bulk { margin-inline-start: auto; }
-  ${LOCK_TRACK_CSS}
+  ${LOCK_SLIDE_CSS}
+  .sv-row[data-kind="lock"] .sv-line1 { padding: 3px 4px; border-radius: 22px; min-height: 46px; }
+  .sv-row[data-kind="lock"] .sv-main:hover { background: none; }
   @media (prefers-contrast: more) { .sv-seg { box-shadow: inset 0 0 0 1px currentColor; } }
 `;

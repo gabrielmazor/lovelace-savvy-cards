@@ -31,7 +31,6 @@ const GROUP_TITLE = { watchman: "Watchman", unavailable: "Offline devices", batt
 const ALL_FINE = { watchman: "Nothing missing", unavailable: "All devices online", battery: "All batteries fine" };
 const REPORT_TIMEOUT = 60000;
 const COL_MIN = 240, COL_GAP = 14;
-const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const joinAnd = (parts) => (parts.length < 2 ? parts.join("") : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`);
 
 const STYLE = `${BASE_CSS}
@@ -260,16 +259,23 @@ class SavvySystemHealthCard extends HTMLElement {
     return out.join(", ");
   }
 
+  // Watchman's own words; what the offline devices already explain is said once, not counted twice
   _watchmanLine(sum) {
-    const { entities, actions } = sum.counts.watchmanKinds;
-    const parts = [];
-    if (entities) parts.push(`${entities} missing ${entities === 1 ? "entity" : "entities"}`);
-    if (actions) parts.push(`${actions} missing ${actions === 1 ? "action" : "actions"}`);
-    return parts.join(", ") || plural(sum.counts.watchman, "missing item", "missing items");
+    const left = sum.counts.watchman, ex = sum.counts.watchmanExplained;
+    const say = ({ entities, actions }) => {
+      const parts = [];
+      if (entities) parts.push(`${entities} missing ${entities === 1 ? "entity" : "entities"}`);
+      if (actions) parts.push(`${actions} missing ${actions === 1 ? "action" : "actions"}`);
+      return parts.join(", ");
+    };
+    if (!left && ex) return `${say(sum.counts.watchmanAllKinds)}, all from offline devices`;
+    const line = say(sum.counts.watchmanKinds) || plural(left, "missing item", "missing items");
+    return ex ? `${line}, ${ex} from offline devices` : line;
   }
 
   _line(key, sum) {
     const n = sum.counts[key];
+    if (key === "watchman" && !n && sum.counts.watchmanExplained) return this._watchmanLine(sum);
     if (!n) return "";
     if (key === "unavailable") return this._offlineLine(sum);
     if (key === "battery") return `${plural(n, "battery", "batteries")} low`;
@@ -286,8 +292,8 @@ class SavvySystemHealthCard extends HTMLElement {
       const { count, lowest } = sum.stats.batteries;
       return count ? `${plural(count, "battery", "batteries")}, lowest ${Math.round(lowest)}%` : "No batteries found";
     }
-    const t = this._lastRunTime(), n = sum.counts.watchman;
-    return [Number.isFinite(t) ? `Checked ${since(t, false)}` : "", n ? `${n} missing` : "nothing missing"].filter(Boolean).join(", ").replace(/^./, (c) => c.toUpperCase());
+    const t = this._lastRunTime(), n = sum.counts.watchman, ex = sum.counts.watchmanExplained;
+    return [Number.isFinite(t) ? `Checked ${since(t, false)}` : "", n ? `${n} missing` : ex ? "nothing else missing" : "nothing missing"].filter(Boolean).join(", ").replace(/^./, (c) => c.toUpperCase());
   }
 
   // one issue (an integration, a hub, a device, an entity) as a row
@@ -296,29 +302,30 @@ class SavvySystemHealthCard extends HTMLElement {
     const age = Number.isFinite(is.since) ? duration(Date.now() - is.since) : "";
     const meta = det ? [is.area, is.integration].filter(Boolean).join(" · ") : "";
     const join = (...p) => p.filter(Boolean).join(" · ");
+    const refs = is.refs ? `${plural(is.refs, "dashboard reference", "dashboard references")} broken` : "";
     const nav = () => navigate(`/config/devices/device/${is.id}`);
     if (is.kind === "integration") {
       const failed = is.state === "failed";
       const page = () => navigate(`/config/integrations/integration/${is.domain}`);
       return { type: "row", key: is.key, icon: "mdi:puzzle-remove-outline", alert: true, depth, expandable: is.total > 0, open, hold: page, go: page,
         name: is.name,
-        secondary: join(failed ? is.label : "", is.total ? `${plural(is.total, "device", "devices")}${failed ? "" : " offline"}` : "", !failed && age && `offline for ${age}`) };
+        secondary: join(failed ? is.label : "", is.total ? `${plural(is.total, "device", "devices")}${failed ? "" : " offline"}` : "", !failed && age && `offline for ${age}`, refs) };
     }
     if (is.kind === "hub") {
       const offline = is.state === "offline";
       return { type: "row", key: is.key, icon: "mdi:access-point-network-off", alert: true, depth, expandable: true, open, hold: nav,
         name: offline ? `${is.name} offline` : `All ${is.total} devices on ${is.name} are offline`,
-        secondary: join(meta, offline ? plural(is.total, "device", "devices") : "", age && `offline for ${age}`) };
+        secondary: join(meta, offline ? plural(is.total, "device", "devices") : "", age && `offline for ${age}`, refs) };
     }
     if (is.kind === "device") {
       const down = is.state === "down";
       return { type: "row", key: is.key, icon: down ? "mdi:power-plug-off-outline" : "mdi:alert-circle-outline", alert: down, soft: !down, depth, expandable: true, open, hold: nav,
         name: is.name,
-        secondary: down ? join(meta, age && `offline for ${age}`, is.down < is.total ? `${is.down} of ${is.total} entities` : is.total > 1 && plural(is.total, "entity", "entities"))
-          : join(meta, `${is.down} of ${is.total} entities unavailable`) };
+        secondary: down ? join(meta, age && `offline for ${age}`, is.down < is.total ? `${is.down} of ${is.total} entities` : is.total > 1 && plural(is.total, "entity", "entities"), refs)
+          : join(meta, `${is.down} of ${is.total} entities unavailable`, refs) };
     }
     return { type: "row", key: is.key, icon: "mdi:alert-circle-outline", alert: true, depth, entity: is.entity, name: is.name,
-      secondary: depth ? is.entity : join(age && `offline for ${age}`, is.entity) };
+      secondary: depth ? join(is.entity, refs) : join(age && `offline for ${age}`, is.entity, refs) };
   }
 
   _offlineRows(issues) {
@@ -332,6 +339,23 @@ class SavvySystemHealthCard extends HTMLElement {
       else if (is.kind === "device") is.entities.forEach((e) => walk(e, depth + 1));
     };
     issues.forEach((i) => walk(i, 0));
+    return out;
+  }
+
+  // what the user has snoozed: one collapsed line under the offline issues, the items dim inside it
+  _knownRows(known) {
+    const items = [...known.devices, ...known.entities];
+    if (!items.length) return [];
+    const open = this._open.has("k:known");
+    const out = [{ type: "row", key: "k:known", icon: "mdi:bell-sleep-outline", soft: true, depth: 0, expandable: true, open, name: `Known · ${items.length}`,
+      secondary: known.refs ? `Snoozed in your settings · ${plural(known.refs, "dashboard reference", "dashboard references")} broken` : "Snoozed in your settings" }];
+    if (open) for (const k of items) {
+      const age = Number.isFinite(k.since) ? duration(Date.now() - k.since) : "";
+      out.push(k.entity
+        ? { type: "row", key: k.key, icon: "mdi:bell-sleep-outline", soft: true, depth: 1, entity: k.entity, name: k.name, secondary: [age && `offline for ${age}`, k.entity].filter(Boolean).join(" · ") }
+        : { type: "row", key: k.key, icon: "mdi:bell-sleep-outline", soft: true, depth: 1, name: k.name, hold: () => navigate(`/config/devices/device/${k.id}`),
+            secondary: [k.area, age && `offline for ${age}`, k.total > 1 && plural(k.total, "entity", "entities")].filter(Boolean).join(" · ") });
+    }
     return out;
   }
 
@@ -351,17 +375,17 @@ class SavvySystemHealthCard extends HTMLElement {
       const out = [];
       if (group) out.push({ type: "group", key: `g:${key}`, title: GROUP_TITLE[key], line: this._line(key, sum) });
       if (det) out.push({ type: "facts", key: `f:${key}`, text: this._facts(key, sum) });
-      if (!sum.counts[key]) out.push({ type: "ok", key: `ok:${key}`, text: ALL_FINE[key] });
+      if (!sum.counts[key]) out.push({ type: "ok", key: `ok:${key}`, text: key === "watchman" && sum.counts.watchmanExplained ? "Nothing else missing" : ALL_FINE[key] });
       out.push(...rows);
       return out;
     };
     if (src === "watchman") return { total: sum.counts.watchman, sections: [{ key: "watchman", rows: section("watchman", watchRows(), false) }] };
-    if (src === "unavailable") return { total: sum.counts.unavailable, sections: [{ key: "unavailable", rows: section("unavailable", this._offlineRows(sum.offline), false) }] };
+    if (src === "unavailable") return { total: sum.counts.unavailable, sections: [{ key: "unavailable", rows: section("unavailable", [...this._offlineRows(sum.offline), ...this._knownRows(sum.known)], false) }] };
     if (src === "battery") return { total: sum.counts.battery, sections: [{ key: "battery", rows: section("battery", this._batteryRows(sum, c.show_all_batteries !== false), false) }] };
     // every category shows, with its issue line or a tick and what's fine
     const sections = [];
     if (sum.opts.watchman.length) sections.push({ key: "watchman", rows: section("watchman", watchRows(), true) });
-    sections.push({ key: "unavailable", rows: section("unavailable", this._offlineRows(sum.offline), true) });
+    sections.push({ key: "unavailable", rows: section("unavailable", [...this._offlineRows(sum.offline), ...this._knownRows(sum.known)], true) });
     sections.push({ key: "battery", rows: section("battery", this._batteryRows(sum, false), true) });
     return { total: sum.total, sections };
   }
@@ -614,6 +638,10 @@ const EDITOR = defineEditor("savvy-system-health-card", (hass, c) => [
     { value: "hub", label: "Device, and the hub behind it" }, { value: "device", label: "Device" }, { value: "none", label: "Nothing: one row per entity" },
   ]),
   S.number("group_min", "Hub threshold", 2, 50),
+  { type: "expandable", name: "ignore", title: "Known problems", schema: [
+    { name: "devices", label: "Devices", helper: "Dead and waiting for a replacement? Listed here they leave the count and wait under Known.", selector: { device: { multiple: true } } },
+    { name: "entities", label: "Entities", selector: { entity: { multiple: true } } },
+  ] },
   { name: "exclude_platforms", label: "Ignored integrations", helper: "By integration, e.g. mobile_app for phones.",
     selector: { select: { multiple: true, custom_value: true, options: ["mobile_app"] } } },
   { name: "watchman", label: "Watchman sensors", helper: "Watchman's missing-entities and missing-actions sensors.",

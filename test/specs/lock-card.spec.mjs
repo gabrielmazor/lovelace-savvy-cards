@@ -1,4 +1,4 @@
-// savvy-lock-card: the door at a glance. Every state, the track's gestures with the exact
+// savvy-lock-card: the door at a glance. Every state, the slide's gestures with the exact
 // service calls, the door and battery, the unlocked-too-long nudge, the alarm row, the camera
 // popup, several locks, compact, and the settings' default lock.
 import { openPage } from "./_util.mjs";
@@ -16,38 +16,38 @@ const mount = (page, cfg, width) => page.evaluate(({ cfg, width }) => { const el
 const read = (page, i = 0) => page.evaluate((i) => {
   const R = window.cards[i].shadowRoot, q = (s, r = R) => r.querySelector(s);
   const locks = [...R.querySelectorAll(".lk")].map((n) => {
-    const lk = n.querySelector(".sv-lk"), tx = /translateX\(([-\d.]+)px\)/.exec(lk.querySelector(".sv-lk-knob").style.transform);
-    const K = lk.dataset.size === "lg" ? 48 : 28, P = lk.dataset.size === "lg" ? 8 : 4, T = lk.clientWidth - K - 2 * P;
+    const sl = n.__track, tx = /translateX\(([-\d.]+)px\)/.exec(sl.handle.style.transform);
     const door = q(".door", n), batt = q(".batt", n);
     return { name: q(".nm", n).textContent, state: q(".st", n).textContent, sub: q(".sub", n).textContent, tone: n.style.getPropertyValue("--tone"),
       door: door.hidden ? null : door.textContent.trim(), doorWarn: door.hasAttribute("data-warn"), doorIcon: q(".door ha-icon", n).getAttribute("icon"),
-      batt: batt.hidden ? null : batt.textContent.trim(), battLevel: batt.getAttribute("data-level"),
-      size: lk.dataset.size, stops: lk.dataset.stops, x: tx ? Number(tx[1]) / T : null, text: lk.getAttribute("aria-valuetext"), armed: lk.hasAttribute("data-armed"), busy: lk.hasAttribute("data-busy"),
-      hintDisplay: getComputedStyle(lk.querySelector(".sv-lk-hint")).display };
+      batt: batt.hidden ? null : batt.textContent.trim(), battLevel: batt.getAttribute("data-level"), battIcon: q(".batt ha-icon", n).getAttribute("icon"),
+      stops: sl.host.dataset.stops, x: tx ? Number(tx[1]) / sl.T : 0, text: sl.handle.getAttribute("aria-valuetext"), armed: sl.host.hasAttribute("data-armed"), busy: sl.host.hasAttribute("data-busy"),
+      rowH: Math.round(sl.host.getBoundingClientRect().height), separateTrack: !!n.querySelector(".track") };
   });
   const alarmModes = [...R.querySelectorAll("#alarmModes .btn")].filter((b) => !b.hidden).map((b) => `${b.textContent.trim()}${b.hasAttribute("data-on") ? "*" : ""}`);
   return { locks, wash: R.querySelector("ha-card").style.getPropertyValue("--lk"), solo: window.cards[i].hasAttribute("data-solo"), compact: window.cards[i].hasAttribute("data-compact"),
     head: R.getElementById("head").hidden ? null : { title: R.getElementById("title").textContent, sum: R.getElementById("sum").textContent, all: !R.getElementById("all").hidden },
     nudge: R.getElementById("nudge").hidden ? null : R.getElementById("nudgeTx").textContent,
-    alarm: R.getElementById("alarm").hidden ? null : { st: R.getElementById("alarmSt").textContent, modes: alarmModes, triggered: R.getElementById("alarm").hasAttribute("data-triggered") },
-    cam: R.getElementById("cam").hidden ? null : R.getElementById("camName").textContent, empty: R.getElementById("empty").hidden ? null : R.getElementById("empty").textContent };
+    alarm: R.getElementById("alarm").hidden ? null : { st: R.getElementById("alarmSt").textContent, modes: alarmModes, triggered: R.getElementById("alarm").hasAttribute("data-triggered"),
+      view: R.getElementById("alarm").dataset.view, open: !R.getElementById("alarmModes").hidden, chev: getComputedStyle(R.getElementById("alarmChev")).display !== "none" },
+    cam: R.getElementById("cam").hidden ? (R.getElementById("camRow").hidden ? null : `${R.getElementById("camRowName").textContent} · Live`) : R.getElementById("camName").textContent,
+    camView: R.getElementById("cam").hidden ? (R.getElementById("camRow").hidden ? null : "compact") : "full", empty: R.getElementById("empty").hidden ? null : R.getElementById("empty").textContent };
 }, i);
 
 const geom = (page, i = 0, j = 0) => page.evaluate(({ i, j }) => {
   const card = window.cards[i];
   card.scrollIntoView({ block: "center" });
-  const lk = card.shadowRoot.querySelectorAll(".lk")[j].querySelector(".sv-lk");
-  const K = lk.dataset.size === "lg" ? 48 : 28, P = lk.dataset.size === "lg" ? 8 : 4;
-  const k = lk.querySelector(".sv-lk-knob").getBoundingClientRect(), r = lk.getBoundingClientRect();
-  return { knobX: k.x + k.width / 2, y: k.y + k.height / 2, left: r.x, W: r.width, T: r.width - K - 2 * P, off: P + K / 2 };
+  const sl = card.shadowRoot.querySelectorAll(".lk")[j].__track;
+  sl.measure();
+  const hr = sl.handle.getBoundingClientRect(), r = sl.host.getBoundingClientRect();
+  return { x: hr.x + hr.width / 2, y: hr.y + hr.height / 2, left: r.x, W: r.width, T: sl.T };
 }, { i, j });
-const frac = (g) => (g.knobX - g.left - g.off) / g.T;
 
 async function drag(page, i, j, toFrac, { hold = 0, release = true, steps = 14 } = {}) {
-  const g = await geom(page, i, j), f0 = frac(g);
-  await page.mouse.move(g.knobX, g.y);
+  const g = await geom(page, i, j);
+  await page.mouse.move(g.x, g.y);
   await page.mouse.down();
-  for (let s = 1; s <= steps; s++) await page.mouse.move(g.knobX + ((toFrac - f0) * g.T * s) / steps, g.y);
+  for (let s = 1; s <= steps; s++) await page.mouse.move(g.x + (toFrac * g.T * s) / steps, g.y);
   if (hold) await page.waitForTimeout(hold);
   if (release) await page.mouse.up();
 }
@@ -84,7 +84,7 @@ export default async function ({ browser, base, check }) {
     await settle(page, 900);
     const r0 = await read(page, a);
     const L = r0.locks[0];
-    check(`${tag} one lock is a hero: the name, the state word, a large three-stop track`, r0.solo && !r0.head && L.name === "Entrance Door" && L.state === "Locked" && L.size === "lg" && L.stops === "3" && L.text === "Locked", JSON.stringify(r0));
+    check(`${tag} one lock is a hero: the name, the state word, and the lock's icon as the handle (no separate track line)`, r0.solo && !r0.head && L.name === "Entrance Door" && L.state === "Locked" && L.stops === "3" && L.text === "Locked" && !L.separateTrack, JSON.stringify(r0));
     check(`${tag} the door contact and the battery are found on the lock's device`, L.door === "Door closed" && L.batt === "84%" && L.battLevel === "ok" && !L.doorWarn, JSON.stringify(L));
     check(`${tag} the line under it says who, and when`, L.sub === "by Gabriel · 3 h ago", L.sub);
     check(`${tag} a locked lock glows green`, r0.wash === "76 175 80", r0.wash);
@@ -116,28 +116,29 @@ export default async function ({ browser, base, check }) {
     await settle(page);
     const b12 = await read(page, a);
     check(`${tag} the battery is amber below 40 and red at 15`, b30.locks[0].battLevel === "warn" && b12.locks[0].battLevel === "bad" && b12.locks[0].batt === "12%", JSON.stringify([b30.locks[0], b12.locks[0]]));
+    check(`${tag} the battery is an icon by level: 84% mdi:battery-80, 30% mdi:battery-30, 12% the alert one`, r0.locks[0].battIcon === "mdi:battery-80" && b30.locks[0].battIcon === "mdi:battery-30" && b12.locks[0].battIcon === "mdi:battery-alert-variant-outline", JSON.stringify([r0.locks[0].battIcon, b30.locks[0].battIcon, b12.locks[0].battIcon]));
     await fixture(page);
     await settle(page);
 
     // ---- the gestures: exact service calls
     await clear(page);
     const g0 = await geom(page, a);
-    await tap(page, { x: g0.left + g0.W * 0.6, y: g0.y });
-    await settle(page, 300);
-    check(`${tag} a tap on the track does nothing`, (await log(page)).length === 0, JSON.stringify(await log(page)));
+    await tap(page, { x: g0.x, y: g0.y });
+    await settle(page, 500);
+    check(`${tag} a tap on the handle only nudges: nothing is sent`, (await log(page)).length === 0 && Math.abs((await read(page, a)).locks[0].x) < 0.02, JSON.stringify(await log(page)));
     await drag(page, a, 0, 0.12);
     await settle(page);
     check(`${tag} letting go early springs back and sends nothing`, (await log(page)).length === 0 && Math.abs((await read(page, a)).locks[0].x) < 0.02);
     await drag(page, a, 0, 0.52);
     await settle(page, 800);
     const mid = await read(page, a);
-    check(`${tag} sliding to the middle unlocks, once, and says Unlocking…`, JSON.stringify(await log(page)) === JSON.stringify(["lock.unlock {} lock.entrance_door"]) && /Unlocking…/.test(mid.locks[0].state) && Math.abs(mid.locks[0].x - 0.5) < 0.02, JSON.stringify([await log(page), mid.locks[0]]));
+    check(`${tag} sliding past the first stop unlocks, once, says Unlocking… and the handle is back`, JSON.stringify(await log(page)) === JSON.stringify(["lock.unlock {} lock.entrance_door"]) && /Unlocking…/.test(mid.locks[0].state) && Math.abs(mid.locks[0].x) < 0.02, JSON.stringify([await log(page), mid.locks[0]]));
     await push(page, { "lock.entrance_door": { entity_id: "lock.entrance_door", state: "unlocked", attributes: { friendly_name: "Entrance Door", supported_features: 1, changed_by: "Gabriel" } } });
     await settle(page, 600);
     await clear(page);
-    await drag(page, a, 0, 0.0);
+    await drag(page, a, 0, 0.52);
     await settle(page);
-    check(`${tag} sliding back locks`, JSON.stringify(await log(page)) === JSON.stringify(["lock.lock {} lock.entrance_door"]), JSON.stringify(await log(page)));
+    check(`${tag} the same slide locks`, JSON.stringify(await log(page)) === JSON.stringify(["lock.lock {} lock.entrance_door"]), JSON.stringify(await log(page)));
     // HA agrees (locked), then someone unlocks it: each state arrives in order, as it would
     await push(page, { "lock.entrance_door": { entity_id: "lock.entrance_door", state: "locked", attributes: { friendly_name: "Entrance Door", supported_features: 1, changed_by: "Gabriel" } } });
     await settle(page, 400);
@@ -148,14 +149,14 @@ export default async function ({ browser, base, check }) {
     const early = await read(page, a);
     await page.mouse.up();
     await settle(page);
-    check(`${tag} the end held too briefly arms nothing and springs back`, !early.locks[0].armed && (await log(page)).length === 0 && Math.abs((await read(page, a)).locks[0].x - 0.5) < 0.02, JSON.stringify([early.locks[0], await log(page)]));
+    check(`${tag} the end held too briefly arms nothing and springs back`, !early.locks[0].armed && (await log(page)).length === 0 && Math.abs((await read(page, a)).locks[0].x) < 0.02, JSON.stringify([early.locks[0], await log(page)]));
     await drag(page, a, 0, 1.0, { hold: HOLD, release: false });
     const held = await read(page, a);
     await page.mouse.up();
     await settle(page, 120);
     check(`${tag} held for half a second it arms; releasing opens the latch, once`, held.locks[0].armed && JSON.stringify(await log(page)) === JSON.stringify(["lock.open {} lock.entrance_door"]), JSON.stringify([held.locks[0], await log(page)]));
     await settle(page, 1100);
-    check(`${tag} then the knob settles back on Unlocked`, Math.abs((await read(page, a)).locks[0].x - 0.5) < 0.02);
+    check(`${tag} then the handle is back at the start`, Math.abs((await read(page, a)).locks[0].x) < 0.02);
     await fixture(page);
     await settle(page);
 
@@ -166,7 +167,7 @@ export default async function ({ browser, base, check }) {
     await clear(page);
     await drag(page, two, 0, 1.0, { hold: HOLD });
     await settle(page);
-    check(`${tag} a lock without the open feature has two stops and unlocks at the end`, t0.locks[0].stops === "2" && JSON.stringify(await log(page)) === JSON.stringify(["lock.unlock {} lock.shed"]), JSON.stringify([t0.locks[0].stops, await log(page)]));
+    check(`${tag} a lock without the open feature has one stop and unlocks at the end`, t0.locks[0].stops === "2" && JSON.stringify(await log(page)) === JSON.stringify(["lock.unlock {} lock.shed"]), JSON.stringify([t0.locks[0].stops, await log(page)]));
 
     // ---- the name opens the lock's details
     await clear(page);
@@ -194,7 +195,7 @@ export default async function ({ browser, base, check }) {
     await settle(page, 500);
 
     // ---- the alarm row
-    const al = await mount(page, { entity: "lock.entrance_door", camera: false }, width);
+    const al = await mount(page, { entity: "lock.entrance_door", camera: false, alarm_view: "full" }, width);
     await settle(page, 700);
     const alarm0 = await read(page, al);
     check(`${tag} the house alarm is found: its state and the arm modes, the armed one marked`, !!alarm0.alarm && /armed/i.test(alarm0.alarm.st) && alarm0.alarm.modes.some((m) => /^Home\*$/.test(m)) && alarm0.alarm.modes.some((m) => /^Away$/.test(m)) && alarm0.alarm.modes.includes("Disarm"), JSON.stringify(alarm0.alarm));
@@ -218,12 +219,45 @@ export default async function ({ browser, base, check }) {
     check(`${tag} a triggered alarm is a red banner and a red glow`, trig.alarm?.triggered && trig.wash === "224 102 102", JSON.stringify([trig.alarm, trig.wash]));
     const noAl = await mount(page, { entity: "lock.entrance_door", alarm: false, camera: false }, width);
     const hideAl = await mount(page, { entity: "lock.entrance_door", hide_alarm: true, camera: false }, width);
+    const hiddenAl = await mount(page, { entity: "lock.entrance_door", alarm_view: "hidden", camera: false }, width);
     await settle(page, 500);
-    check(`${tag} alarm: false and hide_alarm hide the row`, (await read(page, noAl)).alarm === null && (await read(page, hideAl)).alarm === null);
+    check(`${tag} alarm: false, hide_alarm and alarm_view: hidden hide the row`, (await read(page, noAl)).alarm === null && (await read(page, hideAl)).alarm === null && (await read(page, hiddenAl)).alarm === null);
     await fixture(page, { alarm: "armed_home" });
+    await settle(page, 500);
+
+    // ---- the alarm in three sizes: compact (the default) is one line, the chevron slides the modes open
+    const cAl = await mount(page, { entity: "lock.entrance_door", camera: false }, width);
+    const fAl = await mount(page, { entity: "lock.entrance_door", camera: false, alarm_view: "full" }, width);
+    await settle(page, 700);
+    const ca0 = await read(page, cAl), fa0 = await read(page, fAl);
+    const lineH = await page.evaluate((i) => Math.round(window.cards[i].shadowRoot.querySelector(".al1").getBoundingClientRect().height), cAl);
+    check(`${tag} the alarm is compact by default: one line with a chevron, the modes closed`, ca0.alarm?.view === "compact" && !ca0.alarm.open && ca0.alarm.chev && lineH <= 36, JSON.stringify([ca0.alarm, lineH]));
+    check(`${tag} the full alarm has its modes always open and no chevron`, fa0.alarm?.view === "full" && fa0.alarm.open && !fa0.alarm.chev, JSON.stringify(fa0.alarm));
+    await tap(page, await center(page, cAl, "#alarmChev"));
+    await settle(page, 700);
+    const ca1 = await read(page, cAl);
+    check(`${tag} the chevron slides the arm modes open, and again closes them`, ca1.alarm.open && ca1.alarm.modes.includes("Disarm"), JSON.stringify(ca1.alarm));
+    await clear(page);
+    await tap(page, await center(page, cAl, '#alarmModes .btn[data-mode="away"]'));
+    await settle(page, 250);
+    check(`${tag} a mode from the compact alarm calls the service`, JSON.stringify(await log(page)) === JSON.stringify(["alarm_control_panel.alarm_arm_away {} alarm_control_panel.home_alarm"]), JSON.stringify(await log(page)));
+    await tap(page, await center(page, cAl, "#alarmChev"));
+    await settle(page, 700);
+    check(`${tag} closed again`, !(await read(page, cAl)).alarm.open);
+    // the modes never run off the card: they slide, and the last one can be reached
+    const slid = await page.evaluate(async (i) => {
+      const R = window.cards[i].shadowRoot, am = R.getElementById("alarmModes"), card = R.querySelector("ha-card");
+      const btns = [...am.querySelectorAll(".btn")].filter((b) => !b.hidden);
+      const overflow = am.scrollWidth > am.clientWidth + 1;
+      am.scrollTo({ left: am.scrollWidth, behavior: "instant" });
+      await new Promise((r) => setTimeout(r, 150));
+      const last = btns[btns.length - 1].getBoundingClientRect(), box = am.getBoundingClientRect(), cb = card.getBoundingClientRect();
+      return { overflow, mask: am.hasAttribute("data-overflow"), inside: last.right <= box.right + 1 && last.right <= cb.right, scrolls: am.scrollLeft > 0 || !overflow };
+    }, fAl);
+    check(`${tag} the full alarm's modes slide sideways when too wide, with a fade, and the last is reachable`, slid.inside && slid.scrolls && slid.mask === slid.overflow && (width > 400 || slid.overflow), JSON.stringify(slid));
 
     // ---- the camera: a live peek and a popup above the page
-    const cam = await mount(page, { entity: "lock.front_door", alarm: false }, width);
+    const cam = await mount(page, { entity: "lock.front_door", alarm: false, camera_view: "full" }, width);
     await settle(page, 700);
     const camRead = await read(page, cam);
     check(`${tag} a camera in the lock's area is found`, /Hallway Cam · Live/.test(camRead.cam || ""), JSON.stringify(camRead.cam));
@@ -232,6 +266,7 @@ export default async function ({ browser, base, check }) {
     const camPick = await mount(page, { entity: "lock.entrance_door", alarm: false, camera: "camera.kitchen" }, width);
     await settle(page, 500);
     check(`${tag} no camera when the lock's area has none, camera: false hides it, a named one shows`, (await read(page, noCam)).cam === null && (await read(page, camOff)).cam === null && /Kitchen · Live/.test((await read(page, camPick)).cam || ""));
+    check(`${tag} the camera is a slim row by default and a live still when full`, (await read(page, await mount(page, { entity: "lock.front_door", alarm: false }, width))).camView === "compact" && camRead.camView === "full");
     await tap(page, await center(page, cam, "#cam"));
     await settle(page, 700);
     const pop = await page.evaluate(() => {
@@ -245,12 +280,30 @@ export default async function ({ browser, base, check }) {
     await settle(page, 600);
     check(`${tag} a tap outside closes it`, (await page.evaluate(() => !window.__savvy.portalRoot().querySelector(".sv-sheet"))));
 
+    // ---- the compact camera: a thumbnail, the name, an Open camera button that opens the camera card with its recordings
+    const cc = await mount(page, { entity: "lock.front_door", alarm: false }, width);
+    const ch2 = await mount(page, { entity: "lock.front_door", alarm: false, camera_view: "hidden" }, width);
+    await settle(page, 700);
+    const crow = await page.evaluate((i) => { const R = window.cards[i].shadowRoot, row = R.getElementById("camRow"), r = row.getBoundingClientRect(); return { h: Math.round(r.height), btn: R.getElementById("camBtn").textContent.trim(), th: !!R.getElementById("camThumb").getAttribute("src"), full: R.getElementById("cam").hidden }; }, cc);
+    check(`${tag} the compact camera is a slim row with a thumbnail and an "Open camera" button`, crow.h <= 56 && crow.btn === "Open camera" && crow.th && crow.full, JSON.stringify(crow));
+    check(`${tag} camera_view: hidden hides it`, (await read(page, ch2)).cam === null);
+    await tap(page, await center(page, cc, "#camBtn"));
+    await settle(page, 700);
+    const popc = await page.evaluate(() => {
+      const sheet = window.__savvy.portalRoot().querySelector(".sv-sheet");
+      const card = sheet?.querySelector("savvy-camera-card");
+      return { inside: !!card, rec: card?._config?.recordings, cams: card?._config?.cameras?.map((c) => c.entity) };
+    });
+    check(`${tag} Open camera opens the camera card with its recordings inline`, popc.inside && popc.rec === "inline" && popc.cams?.[0] === "camera.hallway", JSON.stringify(popc));
+    await page.mouse.click(4, 4);
+    await settle(page, 600);
+
     // ---- several locks: a row each, a summary, Lock all
     await fixture(page);
     const many = await mount(page, { entities: ["lock.entrance_door", "lock.shed", "lock.front_door"], alarm: false, camera: false, name: "Doors" }, width);
     await settle(page, 800);
     const m0 = await read(page, many);
-    check(`${tag} several locks: a row each with its own track, small, and "All locked"`, m0.locks.length === 3 && !m0.solo && m0.locks.every((l) => l.size === "sm") && m0.head?.title === "Doors" && m0.head.sum === "All locked" && !m0.head.all, JSON.stringify([m0.head, m0.locks.map((l) => l.name)]));
+    check(`${tag} several locks: a row each with its own handle, and "All locked"`, m0.locks.length === 3 && !m0.solo && m0.head?.title === "Doors" && m0.head.sum === "All locked" && !m0.head.all, JSON.stringify([m0.head, m0.locks.map((l) => l.name)]));
     await push(page, { "lock.shed": { entity_id: "lock.shed", state: "unlocked", attributes: { friendly_name: "Shed" } }, "lock.front_door": { entity_id: "lock.front_door", state: "unlocked", attributes: { friendly_name: "Front Door" } } });
     await settle(page, 600);
     const m1 = await read(page, many);
@@ -273,11 +326,11 @@ export default async function ({ browser, base, check }) {
     await settle(page, 700);
     const c0 = await read(page, cp);
     const rowH = await page.evaluate((i) => window.cards[i].shadowRoot.querySelector(".lk").getBoundingClientRect().height, cp);
-    check(`${tag} compact: a one-row lock with a small track and no hint text`, c0.compact && !c0.solo && c0.locks[0].size === "sm" && c0.locks[0].hintDisplay === "none" && rowH < 64, JSON.stringify([c0.locks[0], rowH]));
+    check(`${tag} compact: a one-row lock, the icon the handle`, c0.compact && !c0.solo && !c0.locks[0].separateTrack && rowH < 64, JSON.stringify([c0.locks[0], rowH]));
     await clear(page);
     await drag(page, cp, 0, 0.55, { steps: 10 });
     await settle(page, 800);
-    check(`${tag} compact: the small track still unlocks`, JSON.stringify(await log(page)) === JSON.stringify(["lock.unlock {} lock.entrance_door"]), JSON.stringify(await log(page)));
+    check(`${tag} compact: the handle still unlocks`, JSON.stringify(await log(page)) === JSON.stringify(["lock.unlock {} lock.entrance_door"]), JSON.stringify(await log(page)));
     await fixture(page);
 
     // ---- chips
@@ -289,7 +342,7 @@ export default async function ({ browser, base, check }) {
     // ---- keyboard
     const kb = await mount(page, { entity: "lock.entrance_door", alarm: false, camera: false }, width);
     await settle(page, 500);
-    await page.evaluate((i) => window.cards[i].shadowRoot.querySelector(".sv-lk").focus(), kb);
+    await page.evaluate((i) => window.cards[i].shadowRoot.querySelector(".sv-sl-handle").focus(), kb);
     await clear(page);
     await page.keyboard.press("ArrowRight");
     await settle(page, 300);

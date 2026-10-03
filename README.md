@@ -131,7 +131,9 @@ to leave the settings' list out.
 | | `security` | An entity for the security chip instead of the alarm. |
 | | `tap` | `list` (default): a tap opens the popup. `navigate`: a tap goes to the chip's page, hold opens the popup. A chip with a `hold_action` of its own keeps its tap on the list. |
 | `health` | `watchman` `battery_threshold` `warn_above` `exclude_platforms` `group_by` `group_min` `watchman_last_run` | The same options as [System health](#system-health), for the card and the home header's cog alike. |
+| | `ignore` | Known problems: `{ devices: [...], entities: [...] }`. They leave every count and wait under "Known" (see [System health](#system-health)). Adds to a card's own `ignore`. |
 | `ignore` | `entities`, `areas` | Left out of the home header chips' counts and popups, on top of a chip's own `exclude` and `exclude_areas`. |
+| `aggregate` | `true`, or a list of kinds | Show each room's sensors of these kinds once, in the security popup, the room and section badges and the room activity card. `true` is `presence`; the kinds are `presence`, `door`, `window`, `leak`, `smoke` and `gas`. See below. |
 | `room_order` | a list of area ids | The order of the rooms in the home header's popups and in the room header's row of other rooms: the rooms you list come first, in this order; the rest follow by name; "No room" is always last. Ids that aren't rooms are ignored. The editor lists it above Rooms (starting as the Rooms' order), and a button adds every room. |
 | `rooms.<area>` | `name`, `icon`, `page` | The room's title and tile name and icon, and where they lead (else the `room` pattern). |
 | | `control` | The room's control chip. |
@@ -139,18 +141,26 @@ to leave the settings' list out.
 | | `temperature`, `humidity` | The room's readings for the headers, the tile and the climate card. |
 | | `include`, `exclude` | Entities to treat as in this room, or to leave out of it. |
 
+**Aggregating sensors.** With `aggregate: true`, all the presence, motion and occupancy sensors in a room
+are shown as one, "Den presence": occupied if any one of them is, and occupied *since* the first of
+those that are on came on (when all are clear, since the last one cleared). In the security popup
+its chevron lists the sensors behind it. Sensors on your ignore list (`ignore.entities`, a chip's
+`exclude`, an ignored room) are never merged, and neither is one you pin yourself under `entities`
+or name on a card. Only a room with two or more is merged. Off by default; a card's own
+`aggregate: false` turns it off there.
+
 **What each card takes**
 
 | Card | From the settings |
 |---|---|
-| Home header | `control`, `weather`, home button, each chip's page and `tap`, the security entity, `ignore`, `room_order`, the cog's page and health options |
-| System health | the health options |
-| Room header | the room's `control`, `temperature`, `include`, `exclude` and Light badge; home button, room pages and `room_order` |
-| Section title | the room's `name`, `icon`, `control`, `temperature`, `include`, `exclude`, Light badge and page |
-| Room tile | the room's `name`, `icon`, `control`, `temperature`, light helper (`toggle`, and its Light badge) and page |
+| Home header | `control`, `weather`, home button, each chip's page and `tap`, the security entity, `ignore`, `room_order`, `aggregate`, the cog's page and health options |
+| System health | the health options, including known problems |
+| Room header | the room's `control`, `temperature`, `include`, `exclude`; home button, room pages, `room_order` and `aggregate` |
+| Section title | the room's `name`, `icon`, `control`, `temperature`, `include`, `exclude` and page, and `aggregate` |
+| Room tile | the room's `name`, `icon`, `control`, `temperature`, light helper (`toggle`) and page, and `aggregate` |
 | Lights | the room's light helper as the pill's toggle |
 | Climate | the room's `temperature` and `humidity` |
-| Room activity | the room's `include` and `exclude` |
+| Room activity | the room's `include` and `exclude`, and `aggregate` |
 | Lock | the security entity (as the lock, when none is named), the room's `include` and `exclude` |
 
 A card works on its own area when it has exactly one. Every card's editor lists what it
@@ -212,8 +222,10 @@ clock that goes to sleep when nothing is moving.
 </picture>
 
 The header for the top of any page that isn't a room: the home page, a lights page, an
-admin page. On top, a control (the house mode, say: tap to change it), the
-weather, and the health cog: its number is exactly what the [System health](#system-health) card
+admin page. With a control chip (the house mode, say: tap to change it) the control, the
+weather and the health cog sit on top and the chips below. **Without one it is a single row**: the
+home button, the four chips, then the weather and the health cog at the end; the row slides
+sideways, with a soft fade, when it is wider than the card. The cog: its number is exactly what the [System health](#system-health) card
 lists (a device or a hub counts once, however many entities it has), and holding it
 shows that list. Below, four chips that count by themselves, with
 no helper sensors: lights on ("3 on", or "All off"; every light in the house, groups left out so nothing counts
@@ -229,6 +241,11 @@ health:
 lights:
   navigation_path: /lovelace/lights
 ```
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/home-header-row-light.png">
+  <img src="docs/images/home-header-row-dark.png" width="460" alt="The home header as one row, with no control chip">
+</picture>
 
 Tap and hold on a chip both open the list of what it counts. The popup has a button pinned
 under the list that opens a page: the chip's `navigation_path`, or else the page its tap or
@@ -250,8 +267,9 @@ works the same way, except that its button is off unless you set `popup_button: 
 | `control_tap_action` / `control_hold_action` / `control_double_tap_action` | by domain | Override what the control does. |
 | `home_path` | none | A home button that opens this page. |
 | `weather` | the first weather entity | A weather entity, or `false`. |
-| `health` | on | The cog: `navigation_path` (where the popup's button leads), `popup_button` (off by default for the cog), `popup_label`, `tap_action` / `hold_action` (default: the list of what needs attention), and the System health card's `watchman`, `watchman_button`, `watchman_report`, `battery_threshold`, `exclude_platforms`, `warn_above`, `group_by`, `group_min`. `false` hides it. |
+| `health` | on | The cog: `navigation_path` (where the popup's button leads), `popup_button` (off by default for the cog), `popup_label`, `tap_action` / `hold_action` (default: the list of what needs attention), and the System health card's `watchman`, `watchman_button`, `watchman_report`, `battery_threshold`, `exclude_platforms`, `warn_above`, `group_by`, `group_min`, `ignore`. `false` hides it. |
 | `lights` / `climate` / `media` / `security` | on | Each chip: `false` hides it; or `{ entity, name, icon, color, navigation_path, popup_button, popup_label, exclude, exclude_areas, sort, room_order, sort_toggle, bulk_action, tap_action, hold_action }`, where `entity` shows that entity's state instead of the count. Tap and hold list what's counted unless `tap_action` / `hold_action` say otherwise; `navigation_path` only feeds the popup's page button. `exclude` and `exclude_areas` leave entities and whole rooms out of the count and the popup alike. `sort` (`room`, the default, or `recent`) is how the popup lists them, and `room_order` the order of its rooms (also on the card, for all four). |
+| `aggregate` | off | Show each room's presence sensors (or more kinds) once in the popups and badges. `true` is presence; a list names kinds. See [Savvy settings](#savvy-settings). |
 | `chips` | none | Your own chips after the four. |
 
 ---
@@ -271,7 +289,7 @@ more-info.
 
 | Kind | On the line | Under the chevron |
 |---|---|---|
-| **Lock** | The state and when it last changed; the lock track sits on a line of its own, always there (below). | |
+| **Lock** | The lock's own icon is the handle you slide across the row (below). The state and when it last changed are the subtitle. | |
 | **Media player** | Play / pause; power when it is off. What's playing is the subtitle. | Power, previous, next, mute, and a volume bar with − and + (on a narrow popup only the bar). The bar moves on a sideways drag only. What a player can't do isn't shown. |
 | **Climate** | A − target + stepper (it respects the unit's step, minimum and maximum, and one write goes out once you stop tapping); a power button when the unit is off. The mode and the reading are the subtitle, and the fan icon turns while it runs. | Off, Cool and Heat, then whatever else the unit has: Auto, Dry, Fan, Heat/Cool, up to four. |
 | **Light** | The switch; the brightness is the subtitle. | A slim brightness bar for a dimmable light that is on. |
@@ -296,26 +314,29 @@ players that are playing, locks that aren't locked), leaves out what the chip ig
 greyed out when there is nothing to do. `bulk_action: false` on a chip hides it. Popups on the
 room header, section title and room tile get it when everything they list is of one kind.
 
-### The lock track
+### The lock handle
 
-A lock is a slim track on its own line, with a knob and three stops: **Locked, Unlocked,
-Open**. A tap does nothing; the knob is dragged.
+A lock's own icon is the handle, and its row is the track. The icon rests at the start of the
+row, with a faint ›› hint at the other end. **A tap on it only nudges it**, to show that it
+slides; tapping the name opens the lock's details.
 
-- Slide it to the middle and it snaps in place and unlocks. Slide it back and it locks.
-  Let go early and it springs back, and nothing is sent.
-- **Open** (the door's latch, `lock.open`) is past Unlocked. That stretch is heavy. Drag to the
-  end and hold it until a ring has filled, about half a second, then let go. Let go sooner,
-  or slide out of the end, and nothing happens. Then the knob settles back on Unlocked.
-- A lock that can't open has two stops. The row says what the lock is doing ("Unlocking…",
-  "Opening…", "Jammed") and when it last changed, and the knob breathes while Home
-  Assistant confirms.
-- From the keyboard: the arrow keys lock and unlock, and Open needs Enter or Space held for
-  the same half second. The track is a slider with "Locked", "Unlocked" and "Open" as its
-  values.
+- Drag it across the row. The row turns into the track: it fills with colour, the two stops
+  ahead are named ("Unlock", "Open"), and the icon turns into the one of what the slide would
+  do. Past the first stop it does **the opposite of what the lock is now**: unlock when it is
+  locked, lock when it isn't. Let go before that, and it springs back and nothing is sent.
+- **Open** (the door's latch, `lock.open`) is the end of the row. That stretch is heavy. Drag
+  to the end and hold it until a ring has filled, about half a second, then let go. Let go
+  sooner, or slide out of the end, and nothing happens.
+- After a slide the handle goes back to the start and the row says what the lock is doing
+  ("Unlocking…", "Opening…", "Jammed") while Home Assistant confirms. A lock that can't open
+  has one stop, near the end of the row.
+- From the keyboard: focus the icon, the arrow keys lock and unlock, and Open needs Enter or
+  Space held for the same half second. The handle is a slider with "Locked", "Unlocked" and
+  "Open" as its values.
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/images/popup-lock-light.png">
-  <img src="docs/images/popup-lock-dark.png" width="460" alt="The lock track, locked and unlocked">
+  <img src="docs/images/popup-lock-dark.png" width="460" alt="The lock handle in a popup row, resting and mid-slide">
 </picture>
 
 ### The security popup
@@ -326,6 +347,10 @@ and CO** sensors. Presence and motion never change the chip, which says "Secure"
 alarm's state. A tripped leak, smoke, gas or CO sensor does: the chip reads "Leak", "Smoke" or
 "2 alerts" in red, and that sensor is pinned right after the locks, red, until it clears. An
 `entity` you chose for the chip still decides its word, but the chip turns red too.
+
+With `aggregate` on (see [Savvy settings](#savvy-settings)), a room's presence sensors are one row,
+"Den presence": occupied if any one is, and since the first of those that are on came on. Its
+chevron lists the sensors behind it, read-only; tap one to open it.
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/images/popup-security-light.png">
@@ -794,6 +819,18 @@ Offline devices are grouped the way you think about them:
 - Tap a row to open it, tap an entity for its more-info, hold a device for its page in Home
   Assistant (an integration, for its page).
 
+**Counted by cause.** Watchman reports what your dashboards use that isn't there, and a dead
+device is usually why. A Watchman item whose entity belongs to a device that is already an issue is
+not a second problem: it is folded into that device's row, "2 dashboard references broken", and
+counts once. Watchman's line then says what is its own and what isn't ("1 missing entity, 3 from
+offline devices", or "3 missing entities, all from offline devices"), and only what nothing explains
+is listed and counted under Watchman: a typo, a deleted entity, an action.
+
+**Known problems.** Dead and waiting for a replacement? Put the device (or an entity) under `ignore`.
+It leaves every count and list, takes its Watchman items and its low battery with it, and waits in one
+collapsed line, "Known · 1", at the bottom of Offline devices. Open it to see what is snoozed. Set it on
+the card, or once in the [Savvy settings](#savvy-settings) (`health.ignore`), where the two lists add up.
+
 Wide enough, the three sections become **columns**, each with its own title, line and list
 (and its own scrolling, so one long list never pushes the others down); a narrow card, and the
 home header's cog popup, stack them. A card without Watchman sensors has two columns.
@@ -820,6 +857,7 @@ type: custom:savvy-system-health-card
 | `battery_threshold` | `20` | A battery below this % is low. |
 | `exclude_platforms` | `[mobile_app]` | Integrations to ignore (phones, by default). |
 | `watchman` | none | Watchman's summary sensors. |
+| `ignore` | none | Known problems: `{ devices: [device ids], entities: [entity ids] }` (the editor has pickers for both; a single list of ids works too). Left out of every count and list; they wait under Known. |
 | `watchman_button` | `true` | The Run report chip in the Watchman section. It only shows when the Watchman integration's `watchman.report` action exists. |
 | `watchman_report` | `{ parse_config: true }` | The data the chip sends to `watchman.report`. |
 | `watchman_last_run` | found | Watchman's "last parse" timestamp, shown as "Checked 2 h ago" (under the title with `source: watchman`, in the details line otherwise). Found from the Watchman integration; name another sensor, or `false` to hide it. |
@@ -889,16 +927,23 @@ strip: '^.*//\s*|\s*-\s*on$'      # "Office // Work - On" reads "Work"
 
 A door, handled the way you'd want to. The state is the biggest thing on the card, and a
 glow behind it follows it: green when locked, amber when not, red when open or jammed.
-The lock is a track you slide, with three stops: **Locked, Unlocked, Open**. A tap does
-nothing; the knob is dragged. Past Unlocked the track gets heavy, and the end has to be held
-until a ring fills (then let go) before the door's latch opens. A lock that can't open has
-two stops. It shows the door contact and the battery, who last changed it and when, nudges
-when it has been unlocked a while, and can carry the house alarm and a live camera.
+**The lock's own icon is the handle**: drag it across the row. Past the first stop it does the
+opposite of what the lock is now (unlock when locked, lock when not); a lock that can open has a
+second stop at the end that has to be held until a ring fills (then let go) before the door's latch
+opens. A tap on the icon only nudges it; the handle always comes back to the start, and the icon and
+colour say what the lock is. It shows the door contact and the battery (an icon by level, amber below
+40%, red at 15), who last changed it and when, nudges when it has been unlocked a while, and can
+carry the house alarm and a live camera, each in three sizes.
 
 ```yaml
 type: custom:savvy-lock-card
 entity: lock.front_door
 ```
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/lock-full-light.png">
+  <img src="docs/images/lock-full-dark.png" width="460" alt="Savvy lock card, alarm and camera in full">
+</picture>
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/images/lock-unlocked-light.png">
@@ -913,15 +958,17 @@ entity: lock.front_door
 | `include` / `exclude` | none | Locks added to, or kept out of, an area's. The Savvy settings' room lists add to them. |
 | `name` / `icon` | the lock's | Title and icon (for several locks, the card's title). |
 | `door` | found | The door contact: a binary sensor on the lock's device, or the only door sensor of its area. `false` or `hide_door` hides it. A locked lock with its door open is a warning: amber, "Door open". |
-| `battery` | found | The battery sensor of the lock's device. `false` or `hide_battery` hides it. |
+| `battery` | found | The battery sensor of the lock's device, shown as a battery icon by level and the percent. `false` or `hide_battery` hides it. |
 | `battery_warn` | `40` | The battery turns amber below this, red at 15. |
 | `unlocked_warn` | `15` | Minutes unlocked before "Unlocked for 25 min" nudges, with a **Lock now** button. `0`: never. |
-| `alarm` | found | The house's alarm panel: its state and the arm modes as buttons. Disarming, and any code, is the more-info dialog's job: the card never holds a code. A triggered alarm is a red banner and a red glow. `false` or `hide_alarm` hides it. |
-| `camera` | found | A camera in the lock's area: a live still that opens a popup with the camera card. An entity names one; `false` or `hide_camera` hides it. |
-| `layout` | `full` | `compact`: one row per lock, a small track beside the name. |
+| `alarm` | found | The house's alarm panel: its state and the arm modes as buttons. Disarming, and any code, is the more-info dialog's job: the card never holds a code. A triggered alarm is a red banner and a red glow, and opens its modes. `false` or `hide_alarm` hides it. |
+| `alarm_view` | `compact` | `compact`: one line, a chevron slides the arm modes open. `full`: the modes always there. Either way the modes slide sideways when they are too many for the width, never clipped. `hidden`: none. |
+| `camera` | found | A camera in the lock's area. An entity names one; `false` or `hide_camera` hides it. |
+| `camera_view` | `compact` | `compact`: a slim row, a thumbnail and an **Open camera** button. `full`: a live still. Either opens a popup above the page with the Savvy camera card, recordings included. `hidden`: none. |
+| `layout` | `full` | `compact`: one row per lock. A compact card keeps its camera away unless `camera_view` asks for one. |
 | `chips` | none | The standard chips, under it. |
 
-Tap a lock's name for its details. The track works from the keyboard too: the arrow keys
+Tap a lock's name for its details. The handle works from the keyboard too: focus the icon, the arrow keys
 lock and unlock, and Enter or Space held opens.
 
 <picture>

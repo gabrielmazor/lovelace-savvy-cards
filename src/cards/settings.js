@@ -185,12 +185,19 @@ class SettingsEditor extends SavvyEditor {
         S.select("group_by", "Grouping", [{ value: "hub", label: "Device, and the hub behind it" }, { value: "device", label: "Device" }, { value: "none", label: "Nothing: one row per entity" }]),
         S.number("group_min", "Hub threshold", 2, 50),
         S.entity("watchman_last_run", "Watchman last run", "sensor"),
+        { type: "expandable", name: "ignore", title: "Known problems", schema: [
+          { name: "devices", label: "Devices", helper: "Dead and waiting for a replacement? Listed here they leave the count and wait under Known.", selector: { device: { multiple: true } } },
+          { name: "entities", label: "Entities", selector: { entity: { multiple: true } } },
+        ] },
       ] },
       { type: "expandable", name: "ignore", title: "Ignore", schema: [
         { name: "entities", label: "Ignored entities", helper: "Left out of the home header's counts and popups.", selector: { entity: { multiple: true } } },
         { name: "areas", label: "Ignored rooms", selector: { area: { multiple: true } } },
       ] },
-      { name: "room_order", label: "Room order", type: "list", empty: "No order yet: rooms follow by name.",
+      { name: "aggregate", label: "Aggregate sensors", helper: "Show a room's sensors of these kinds once: occupied if any one is. Sensors on your ignore list are left out. In YAML, true means presence.",
+    selector: { select: { multiple: true, options: [{ value: "presence", label: "Presence and motion" }, { value: "door", label: "Doors" }, { value: "window", label: "Windows" },
+      { value: "leak", label: "Leaks" }, { value: "smoke", label: "Smoke" }, { value: "gas", label: "Gas" }] } } },
+  { name: "room_order", label: "Room order", type: "list", empty: "No order yet: rooms follow by name.",
         helper: "The order of the rooms in the popups and the room header's row: listed first, in this order; the rest follow by name.",
         // while unset it starts as the Rooms entries' order, so reordering works from the first touch
         initial: (h, cfg) => Object.keys(cfg?.rooms || {}),

@@ -6,6 +6,13 @@ import { openPage, idle, centerOf } from "./_util.mjs";
 const hold = async (page, p, ms = 650) => { await page.mouse.move(p.x, p.y); await page.mouse.down(); await page.waitForTimeout(ms); await page.mouse.up(); };
 const GO = `(() => { const g = window.__savvy.portalRoot().querySelector(".sv-sheet .sv-go"); return g ? { text: g.querySelector("span").textContent, parent: g.parentElement.className, sheetParent: g.closest(".sv-sheet") !== null } : null; })()`;
 
+// with no control chip the header is one sliding row and the cog sits at its end: slide there first
+const cogAt = async (page, i) => {
+  await page.evaluate((i) => { const r = window.cards[i].shadowRoot.getElementById("row"); r.scrollTo({ left: r.scrollWidth, behavior: "instant" }); }, i);
+  await page.waitForTimeout(120);
+  return centerOf(page, i, "#health");
+};
+
 export default async function ({ browser, base, check }) {
   for (const [theme, width] of [["dark", 560], ["light", 360]]) {
     const tag = `[${theme} ${width}]`;
@@ -87,7 +94,7 @@ export default async function ({ browser, base, check }) {
 
     // the cog: a tap opens the health popup too, whatever its navigation_path
     await page.evaluate(() => { window.nav.length = 0; });
-    await page.mouse.click(...Object.values(await centerOf(page, 0, "#health")));
+    await page.mouse.click(...Object.values(await cogAt(page, 0)));
     await page.waitForTimeout(600);
     const cogTap = await page.evaluate((GO) => ({ nav: [...window.nav], go: eval(GO)?.text ?? null, title: window.__savvy.portalRoot().querySelector(".sv-sheet .sv-title")?.textContent }), GO);
     check(`${tag} a tap on the cog opens the health popup; navigation_path does not navigate`, cogTap.nav.length === 0 && cogTap.go === null && cogTap.title === "System health", JSON.stringify(cogTap));
@@ -107,10 +114,10 @@ export default async function ({ browser, base, check }) {
     await page.waitForTimeout(500);
     check(`${tag} ...and that button goes to navigation_path`, (await page.evaluate(() => [...window.nav])).at(-1) === "/lovelace/lights");
     await page.evaluate(() => { window.nav.length = 0; });
-    await page.mouse.click(...Object.values(await centerOf(page, 2, "#health")));
+    await page.mouse.click(...Object.values(await cogAt(page, 2)));
     await page.waitForTimeout(300);
     check(`${tag} the cog's explicit tap_action navigates on tap`, (await page.evaluate(() => [...window.nav]))[0] === "/lovelace/admin-tap");
-    await hold(page, await centerOf(page, 2, "#health"));
+    await hold(page, await cogAt(page, 2));
     await page.waitForTimeout(600);
     check(`${tag} ...and its hold opens the health popup, button to navigation_path`, (await page.evaluate(GO))?.text === "Open system health");
     await page.evaluate(() => { window.nav.length = 0; });
@@ -119,11 +126,11 @@ export default async function ({ browser, base, check }) {
     check(`${tag} ...which goes to /lovelace/admin`, (await page.evaluate(() => [...window.nav])).at(-1) === "/lovelace/admin");
 
     // the cog's popup: no page button by default, one when popup_button is on
-    await hold(page, await centerOf(page, 0, "#health"));
+    await hold(page, await cogAt(page, 0));
     await page.waitForTimeout(600);
     check(`${tag} the cog's popup has no page button by default, target page or not`, (await page.evaluate(GO)) === null);
     await close();
-    await hold(page, await centerOf(page, 3, "#health"));
+    await hold(page, await cogAt(page, 3));
     await page.waitForTimeout(600);
     const cog = await page.evaluate(GO);
     check(`${tag} popup_button: true gives the cog's popup its button`, cog?.text === "Open system health", JSON.stringify(cog));
