@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: dist matches the sources
         run: node build.mjs --check
       - name: attach savvy-cards.js to the release

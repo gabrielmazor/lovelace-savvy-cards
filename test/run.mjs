@@ -25,6 +25,7 @@ const filter = process.argv[2] || "";
 const specs = fs.readdirSync(path.join(ROOT, "test/specs")).filter((f) => f.endsWith(".spec.mjs") && f.includes(filter)).sort();
 const browser = await (process.env.BROWSER === "webkit" ? webkit : chromium).launch();
 let pass = 0, fail = 0;
+const failed = [];
 for (const f of specs) {
   const results = [];
   const check = (name, ok, detail = "") => { results.push({ name, ok: !!ok, detail }); ok ? pass++ : fail++; };
@@ -32,9 +33,24 @@ for (const f of specs) {
   try { await mod.default({ browser, base, check }); }
   catch (err) { check(`${f} crashed`, false, err.stack || String(err)); }
   console.log(`\n${f}`);
-  for (const r of results) console.log(`  ${r.ok ? "PASS" : "FAIL"} ${r.name}${!r.ok && r.detail ? ` — ${typeof r.detail === "string" ? r.detail : JSON.stringify(r.detail)}` : ""}`);
+  for (const r of results) {
+    const line = `${r.ok ? "PASS" : "FAIL"} ${r.name}${!r.ok && r.detail ? ` — ${typeof r.detail === "string" ? r.detail : JSON.stringify(r.detail)}` : ""}`;
+    console.log(`  ${line}`);
+    if (!r.ok) failed.push({ spec: f, line });
+  }
 }
 await browser.close();
 server.close();
+// every failure again at the very end, so a long log (or CI's summary) shows what broke without searching
+if (failed.length) {
+  console.log(`\n${failed.length} failing:`);
+  for (const x of failed) {
+    console.log(`  ${x.spec}: ${x.line.slice(0, 600)}`);
+    if (process.env.GITHUB_ACTIONS) console.log(`::error title=${x.spec}::${x.line.replace(/[\r\n]+/g, " ").slice(0, 400)}`);
+  }
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### ${failed.length} failing checks\n\n${failed.map((x) => `- \`${x.spec}\`: ${x.line.slice(0, 500).replace(/\|/g, "\\|")}`).join("\n")}\n`);
+  }
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exitCode = fail ? 1 : 0;

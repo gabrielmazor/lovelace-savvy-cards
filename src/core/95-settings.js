@@ -31,6 +31,14 @@ const roomPage = (s, c, x) => {
   return v ? { v, src: "pages.room" } : undefined;
 };
 const glob = (section, key) => (s) => s[section]?.[key];
+// what a room card leaves out: the room's own `exclude` and the global ignore list, one list
+const roomExclude = (s, c, x) => {
+  if (!x.area) return undefined;                       // a plain title has nothing to discover
+  const own = x.room?.exclude, ign = s.ignore?.entities;
+  const v = [...asList(own), ...asList(ign)].filter((e) => e != null && e !== "");
+  if (!v.length) return undefined;
+  return { v, src: asList(ign).length ? "ignore" : `rooms.${x.area}` };
+};
 
 const HEALTH_KEYS = [
   ["watchman", "Watchman sensors"], ["battery_threshold", "Battery alert"], ["warn_above", "Red threshold"],
@@ -75,7 +83,7 @@ const SETTINGS_RULES = {
     { path: "control", label: "Control", get: room("control") },
     { path: "temperature", label: "Temperature", get: room("temperature") },
     { path: "include", label: "Include", kind: "union", get: room("include") },
-    { path: "exclude", label: "Exclude", kind: "union", get: room("exclude") },
+    { path: "exclude", label: "Exclude", kind: "union", get: roomExclude },
     { path: "home_path", label: "Home button", get: glob("pages", "home"), src: "pages" },
     { path: "room_path", label: "Room pages", get: glob("pages", "room"), src: "pages" },
     // the card's own `order` (the pre-Savvy name) counts as its own
@@ -88,7 +96,7 @@ const SETTINGS_RULES = {
     { path: "control", label: "Control", get: room("control") },
     { path: "temperature", label: "Temperature", get: room("temperature") },
     { path: "include", label: "Include", kind: "union", get: room("include") },
-    { path: "exclude", label: "Exclude", kind: "union", get: room("exclude") },
+    { path: "exclude", label: "Exclude", kind: "union", get: roomExclude },
     { path: "navigation_path", label: "Target page", get: roomPage },
   ],
   "savvy-room-tile": [
@@ -99,15 +107,23 @@ const SETTINGS_RULES = {
     { path: "temperature", label: "Temperature", get: room("temperature") },
     { path: "toggle", label: "Light helper", get: (s, c, x) => (c.light_state !== undefined ? undefined : room("light_state")(s, c, x)) },
     { path: "entities", label: "Light badge", kind: "pin", get: room("light_state") },
+    { path: "exclude", label: "Exclude", kind: "union", get: roomExclude },
     { path: "navigation_path", label: "Target page", get: roomPage },
   ],
   "savvy-lights-card": [
+    { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
     { path: "toggle", label: "Light helper",
       get: (s, c, x) => {
         if (c.toggle !== undefined || c.master !== undefined) return undefined;
         const r = room("light_state")(s, c, x);
         return r ? { v: { entity: r.v }, src: r.src } : undefined;
       } },
+  ],
+  "savvy-scene-card": [
+    { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
+  ],
+  "savvy-vacuum-card": [
+    { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
   ],
   "savvy-climate-card": [
     { path: "temperature", label: "Temperature", get: room("temperature") },
@@ -116,14 +132,14 @@ const SETTINGS_RULES = {
   "savvy-room-activity-card": [
     { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
     { path: "include", label: "Include", kind: "union", get: room("include") },
-    { path: "exclude", label: "Exclude", kind: "union", get: room("exclude") },
+    { path: "exclude", label: "Exclude", kind: "union", get: roomExclude },
   ],
   "savvy-lock-card": [
     // with no lock named, the settings' security entity is the lock to show
     { path: "entity", label: "Lock", src: "house",
       get: (s, c) => (c.entity !== undefined || c.entities !== undefined || c.area !== undefined || c.areas !== undefined || domainOf(s.house?.security) !== "lock" ? undefined : s.house.security) },
     { path: "include", label: "Include", kind: "union", get: room("include") },
-    { path: "exclude", label: "Exclude", kind: "union", get: room("exclude") },
+    { path: "exclude", label: "Exclude", kind: "union", get: roomExclude },
   ],
 };
 

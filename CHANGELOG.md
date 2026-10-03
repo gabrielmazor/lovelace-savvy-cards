@@ -6,6 +6,14 @@
 - **Home button and control can be switched off in the editor** ("Show home button", "Show control"),
   even when the Savvy settings supply a home page and a control. No more `control: ""` in YAML.
 - **No home button on the home page itself.**
+- **The lock card is calmer.** The name is the title and the state a coloured status line under it, the
+  card washes only when something is off, a closed door is just an icon, and the alarm is a quieter row.
+- **The settings' ignore list reaches every card.** `ignore.entities` used to apply only to the home header chips;
+  room headers, section titles, tiles, room activity, locks, lights, scenes and vacuums now leave those entities out
+  of their own discovery too (badges, presence, door and temperature slots, merged sensors). Named and pinned
+  entities still show, and a card's own `exclude: false` opts out.
+- **A README rewritten around setup**: install, how cards find things, which pages they expect, and the same layout for every card (a picture, every option in a table, the smallest config, a full example).
+- **The test runner ends with the list of failing checks**, and in CI it annotates them and writes them to the job summary. The CI actions moved to checkout@v5 and setup-node@v5.
 
 ## 0.9.1
 

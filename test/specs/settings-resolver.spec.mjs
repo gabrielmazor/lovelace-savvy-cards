@@ -33,7 +33,7 @@ export default async function ({ browser, base, check }) {
   r = await R("savvy-section-title-card", { area: "kitchen" });
   check("section title: the room's name, icon, control, temperature, include and exclude",
     r.config.name === "Cook" && r.config.icon === "mdi:pot" && r.config.control === "input_select.kitchen_mode" && r.config.temperature === "sensor.kitchen_t"
-    && JSON.stringify(r.config.include) === '["lock.k"]' && JSON.stringify(r.config.exclude) === '["light.k2"]', JSON.stringify(r.config));
+    && JSON.stringify(r.config.include) === '["lock.k"]' && JSON.stringify(r.config.exclude) === '["light.porch","light.k2"]', JSON.stringify(r.config));
   check("section title: the room's light helper is not pinned as a badge", r.config.entities === undefined && !by(r, "entities"), JSON.stringify(r.config.entities));
   check("section title: the room's page, else the pattern", r.config.navigation_path === "/lovelace/kitchen-x");
   r = await R("savvy-section-title-card", { area: "living_room" });
@@ -48,10 +48,10 @@ export default async function ({ browser, base, check }) {
 
   // lists add to the card's own; false switches that off
   r = await R("savvy-section-title-card", { area: "kitchen", exclude: ["light.own"] });
-  check("lists: the settings' exclude is added to the card's own", JSON.stringify(r.config.exclude.sort()) === '["light.k2","light.own"]', JSON.stringify(r.config.exclude));
+  check("lists: the settings' exclude is added to the card's own", JSON.stringify(r.config.exclude.sort()) === '["light.k2","light.own","light.porch"]', JSON.stringify(r.config.exclude));
   r = await R("savvy-section-title-card", { area: "kitchen", exclude: false, include: false });
   check("lists: false turns inheritance off", r.config.exclude === false && r.config.include === false);
-  r = await R("savvy-section-title-card", { area: "kitchen", exclude: ["light.k2"] });
+  r = await R("savvy-section-title-card", { area: "kitchen", exclude: ["light.k2", "light.porch"] });
   check("lists: nothing new, nothing changes", by(r, "exclude") === undefined);
 
   // the light helper is not a badge: a card's own pins are its own
@@ -64,11 +64,11 @@ export default async function ({ browser, base, check }) {
 
   // which room: exactly one
   r = await R("savvy-lights-card", { area: ["kitchen", "living_room"] });
-  check("lights: several areas, no room settings", !r.inherited.length);
+  check("lights: several areas, no room settings (only the global ignore list)", r.inherited.every((i) => i.path === "exclude"));
   r = await R("savvy-lights-card", { area: ["kitchen"] });
   check("lights: one area in a list still counts", r.config.toggle?.entity === "input_boolean.kitchen_light");
   r = await R("savvy-lights-card", { area: "kitchen", toggle: "input_boolean.mine" });
-  check("lights: the card's own toggle wins", r.config.toggle === "input_boolean.mine" && !r.inherited.length);
+  check("lights: the card's own toggle wins", r.config.toggle === "input_boolean.mine" && r.inherited.every((i) => i.path === "exclude"));
   r = await R("savvy-lights-card", { area: "kitchen", master: "input_boolean.old" });
   check("lights: the pre-Savvy master wins too", r.config.toggle === undefined);
   r = await R("savvy-lights-card", { area: "kitchen", toggle: { entity: "input_boolean.mine", name: "x" } });
@@ -78,7 +78,7 @@ export default async function ({ browser, base, check }) {
   r = await R("savvy-room-header-card", { area: "kitchen" });
   check("room header: control, temperature, include, exclude, pin, home button, room pages",
     r.config.control === "input_select.kitchen_mode" && r.config.temperature === "sensor.kitchen_t" && r.config.entities === undefined
-    && r.config.home_path === "/lovelace/home" && r.config.room_path === "/lovelace/{slug}" && r.config.include[0] === "lock.k" && r.config.exclude[0] === "light.k2", JSON.stringify(r.config));
+    && r.config.home_path === "/lovelace/home" && r.config.room_path === "/lovelace/{slug}" && r.config.include[0] === "lock.k" && r.config.exclude.includes("light.k2"), JSON.stringify(r.config));
   check("room header: no name or icon of its own to fill", r.config.name === undefined && r.config.icon === undefined);
 
   // room tile

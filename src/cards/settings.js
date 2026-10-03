@@ -8,7 +8,7 @@
 //   pages:  { home, lights, climate, media, security, health, room: /lovelace/{slug} }
 //   house:  { control, weather, security, tap: list | navigate }
 //   health: { watchman, battery_threshold, warn_above, exclude_platforms, group_by, group_min, watchman_last_run }
-//   ignore: { entities: [], areas: [] }
+//   ignore: { entities: [], areas: [] }   entities leave every card's auto-discovery; areas leave the home header chips
 //   room_order: [area ids]   the rooms' order in the popups and the room header's row; the rest follow by name
 //   rooms:  { living_room: { name, icon, page, control, light_state, temperature, humidity, include, exclude } }
 //   layout: full | compact
@@ -191,7 +191,7 @@ class SettingsEditor extends SavvyEditor {
         ] },
       ] },
       { type: "expandable", name: "ignore", title: "Ignore", schema: [
-        { name: "entities", label: "Ignored entities", helper: "Left out of the home header's counts and popups.", selector: { entity: { multiple: true } } },
+        { name: "entities", label: "Ignored entities", helper: "Left out of the home header's counts and popups, and out of what room headers, section titles, room tiles, room activity, locks, lights, scenes and vacuums find by themselves. A card that names an entity still shows it.", selector: { entity: { multiple: true } } },
         { name: "areas", label: "Ignored rooms", selector: { area: { multiple: true } } },
       ] },
       { name: "aggregate", label: "Aggregate sensors", helper: "Show a room's sensors of these kinds once: occupied if any one is. Sensors on your ignore list are left out. In YAML, true means presence.",

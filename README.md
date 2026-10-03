@@ -1,108 +1,106 @@
 # Savvy Cards
 
-Smart, beautiful cards for Home Assistant. Point a card at a room and it finds what's
-there. Every option is in the visual editor, and every card moves and responds the
-same way: springs, not transitions; feedback the moment you touch; nothing that jumps.
+A collection of Home Assistant dashboard cards that find their own entities. Point a card at a
+room and it shows the lights, climate, media, locks and sensors in that room. Every option is in
+the visual editor.
+
+The cards share one look and one feel: tactile animations, light and dark themes, and a
+reduced-motion mode that turns the animation off.
 
 <p>
   <img src="docs/images/lights-dark.png" width="420" alt="Savvy lights card">
   <img src="docs/images/climate-dark.png" width="370" alt="Savvy climate card">
 </p>
 
-- [Install](#install)
-- [How every Savvy card behaves](#how-every-savvy-card-behaves)
-- [Savvy settings](#savvy-settings): set your pages and helpers once for every card
-- Cards: [Home header](#home-header) · [Room header](#room-header) · [Section title](#section-title) ·
-  [Room tile](#room-tile) · [Room activity](#room-activity) · [System health](#system-health) ·
-  [Lights](#lights) · [Climate](#climate) · [Media](#media) · [Camera](#camera) ·
-  [Vacuum](#vacuum) · [Lock](#lock) · [Entity](#entity) · [Graph](#graph) · [Scenes](#scenes)
+It is a lot of cards, so here is the short version: **headers** for the top of a page, **room cards**
+that follow an area, **device cards** (lights, climate, media and so on), and one optional **settings
+card** that holds your page addresses and helpers so you don't repeat them on every card. Use one card
+or all of them.
+
+- [Install](#install) · [Quick start](#quick-start) · [How the cards find things](#how-the-cards-find-things)
+- [What the cards expect from your dashboard](#what-the-cards-expect-from-your-dashboard)
+- [Cards](#cards) · [Shared options](#shared-options) · [Troubleshooting](#troubleshooting) · [Development](#development)
 
 ## Install
 
-**HACS:** HACS → ⋮ → Custom repositories → add this repository as a **Dashboard**, then
-install **Savvy Cards**. HACS adds the resource for you.
+**With HACS.** Open HACS, use the three-dot menu, choose *Custom repositories*, paste
+`https://github.com/gabrielmazor/lovelace-savvy-cards` and pick the type **Dashboard**. Then install
+**Savvy Cards**. HACS adds the resource for you. Reload the browser once.
 
-**Manual:** copy `dist/savvy-cards.js` to `/config/www/`, then add `/local/savvy-cards.js`
-as a JavaScript module under Settings → Dashboards → ⋮ → Resources. After an update,
-bump a `?v=` number on the resource URL; Home Assistant caches these files hard.
+**By hand.** Copy `dist/savvy-cards.js` to `/config/www/`, then add `/local/savvy-cards.js` as a
+JavaScript module under Settings, Dashboards, three-dot menu, Resources. After an update, change the
+`?v=` number on the URL, because Home Assistant caches these files hard.
 
-Then edit a dashboard, add a card, and search for **Savvy**.
+Needs Home Assistant 2024.8 or newer.
 
-## How every Savvy card behaves
+## Quick start
 
-- **Area first.** Give a card an `area` and it finds what's there through Home
-  Assistant's area, device and entity registries: no entity-id naming conventions
-  needed. Any part can be pointed at a specific entity instead.
-- **Every option is in the editor.** YAML works too; the editor leaves options at their
-  defaults out of it.
-- **`false` turns any automatic part off.**
-- **Tap** does the obvious thing, **hold** opens more-info (or the list of what a group
-  chip stands for), and **double tap** is only there where it's configured, so single
-  taps never wait for it.
-- **Chips** use one spec everywhere: `entity`, `name`, `icon`, `color` (an HA colour name
-  like `blue` or a hex), `show_state`, and `tap_action` / `hold_action` /
-  `double_tap_action` in Home Assistant's standard action format.
-- **Sliders only move when you drag sideways.** A tap, or a finger on its way to
-  scrolling the page, never changes a value.
-- **`layout: compact`** gives the smaller version of a card.
-- **Power is always last.** Wherever a power button shares a line with other controls (the media
-  transport, a popup row's extra line, a unit's modes, a light's buttons), it is the last one, at the
-  end of the line (the left in right-to-left languages), so it is always in the same place. On a list of
-  modes, Off comes last too, unless you list `hvac_modes` yourself.
-- **Icons never fall back to a bookmark.** An entity's own icon wins, then the one in its registry
-  entry, then a built-in table by domain, device class and state; Home Assistant's own state icon
-  is never asked, so nothing shows its bookmark placeholder.
-- **Control.** `control:` puts one entity of your choosing on the header cards as a chip,
-  and what a tap does follows what it is. A `select` or `input_select` (a house mode, a
-  room's scenes) opens a picker of every option; a `button`, `script` or `scene` runs; a
-  `switch` or `input_boolean` toggles; anything else opens its more-info. Hold always
-  opens more-info. Each option of a select gets an icon and a colour from a built-in
-  dictionary of a few hundred words ("Movie Night" is a movie, "Guests" a group of people,
-  "Sleep" a moon); set your own with `mode_icons` / `mode_colors`, or per option in the
-  editor. `control_tap_action`, `control_hold_action` and `control_double_tap_action`
-  (or the same keys inside `control: { entity, name, icon, color, tap_action, … }`)
-  replace any of it, in Home Assistant's standard action format.
-- **Badges: pinned, then discovered.** The home header, room header, section title and room tile show what a
-  room has. `entities:` pins yours first, always shown, in your order (a lights helper,
-  a presence sensor). Then, with `auto_discover` on (the default), what the area has: one
-  badge per kind, presence and doors always, media, locks, climate, fans, covers,
-  windows, leaks and smoke while they're active. `exclude_kinds`, `exclude` and
-  `include` fine-tune it. Hold a kind with several members for a list of them.
-- **Set it once.** The pages, helpers and sensors you'd otherwise repeat on every card
-  can live in one [Savvy settings](#savvy-settings) card; any card can still override.
-- **Keyboard:** everything is reachable with Tab and the arrow keys; focus rings only
-  appear when you use the keyboard.
-- **Everything that changes, moves.** See [Motion](#motion).
+Edit a dashboard, add a card and search for **Savvy**. Or paste this:
 
----
+```yaml
+type: custom:savvy-lights-card
+area: living_room
+```
 
-## Savvy settings
+That is the whole card: every light in the living room, each with the controls it supports. Most cards
+work this way. Give them an `area` (or an `entity`) and leave the rest at its defaults.
 
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/settings-light.png">
-  <img src="docs/images/settings-dark.png" width="460" alt="Savvy settings card">
-</picture>
+## How the cards find things
 
-Your pages, your house mode, your health options and each room's helpers are the same on
-every card. Put them in one **Savvy settings** card, placed once on any page of the
-dashboard, and every Savvy card on every page picks them up. A card's own options always
-win, so nothing is ever locked in.
+- **Area first.** A card with an `area` asks Home Assistant's area, device and entity registries what
+  is in that room. It never guesses from entity names, so call your entities anything you like. If
+  something has no area (a lock is a common one), name it on the card.
+- **Your config wins.** Anything you set on a card beats what the card would find.
+- **`false` turns a part off.** `camera: false` on a lock card, `weather: false` on a header.
+- **Pinned, then discovered.** Where a card shows a row of things, `entities:` lists the ones you want
+  first, always shown. Then, unless `auto_discover: false`, the card adds what the area has.
+- **Order of authority**, when the same option is set in several places: the card, then the room's
+  entry in the settings card, then the settings card's global value, then auto-discovery.
+- **Counting needs no helpers.** Lights on, players playing, average temperature and open doors all come
+  straight from your states.
+
+## What the cards expect from your dashboard
+
+Savvy never creates pages. It links to pages you already have, so a few cards need to know where those
+are. Without an address a card still works; it just has nothing to link to.
+
+| What | Used by | Example |
+|---|---|---|
+| A home page | the home button on the headers | `/lovelace/home` |
+| One page per room | room tiles, the row of rooms on the room header, the section title | `/lovelace/{slug}` |
+| A page per domain: lights, climate, media, security | the four chips on the home header (an "open page" button in each popup) | `/lovelace/lights` |
+| A health page | the health cog on the home header | `/lovelace/admin` |
+
+For the room pattern, `{slug}` is the area id with dashes (`living_room` becomes `living-room`) and
+`{area}` is the id as it is. If your rooms live at `/lovelace/living-room`, use `/lovelace/{slug}`.
+
+Three cards mark where you are:
+
+- **Home header** at the top of any page that is not a room: home page, lights page, admin page.
+- **Room header** at the top of a room's page.
+- **Section title** over a section. With an `area` it is a small room header; without one it is a plain title.
+
+### Set them once with the settings card
+
+Put one [Savvy settings](#savvy-settings) card on any page. Every Savvy card on that dashboard reads it.
 
 ```yaml
 type: custom:savvy-settings-card
 pages:
   home: /lovelace/home
   lights: /lovelace/lights
+  climate: /lovelace/climate
+  media: /lovelace/media
+  security: /lovelace/security
   health: /lovelace/admin
   room: /lovelace/{slug}
 house:
-  control: input_select.house_mode
-  tap: navigate
+  control: input_select.house_mode      # the header's mode chip, if you have one
+  weather: weather.home
+  tap: navigate                         # a chip tap goes to its page; hold opens the list
 health:
   watchman: [sensor.watchman_missing_entities]
   battery_threshold: 20
-ignore:
-  entities: [light.garden_string]
 room_order: [living_room, kitchen, bedroom]
 rooms:
   kitchen:
@@ -111,872 +109,1127 @@ rooms:
     temperature: sensor.kitchen_temperature
 ```
 
-With that on the dashboard, `type: custom:savvy-home-header-card` and
-`type: custom:savvy-section-title-card` with `area: kitchen` need nothing else: the
-header has its control, weather, pages and health options, and the kitchen's title has
-its mode, temperature, pinned light helper and page.
+With that in place a bare `type: custom:savvy-home-header-card` already has its pages, mode chip and
+weather, and a section title for `area: kitchen` has the kitchen's mode and temperature. Each card's
+editor lists what it is taking from the settings under **From Savvy settings**.
 
-**Which value wins, from first to last:** the card's own option, the room's setting
-(`rooms.<area>`), the global setting, then auto-discovery. Even `false` counts as the
-card's own option, so `control: false` on one card turns it off there. Lists are the one
-exception: a card's `exclude` or `include` adds to the settings' list; set it to `false`
-to leave the settings' list out.
+## Cards
 
-| Section | Option | What it gives |
+| Card | What it shows | Type |
 |---|---|---|
-| `pages` | `home` `lights` `climate` `media` `security` `health` | The page each home header chip, its health cog and its home button lead to (as the popup's page button, or, with `house.tap: navigate`, as what a tap does). |
-| | `room` | A pattern for room pages: `{slug}` is the room's id with dashes, `{area}` the id. |
-| `house` | `control` | The home header's control chip. |
-| | `weather` | Its weather entity. |
-| | `security` | An entity for the security chip instead of the alarm. |
-| | `tap` | `list` (default): a tap opens the popup. `navigate`: a tap goes to the chip's page, hold opens the popup. A chip with a `hold_action` of its own keeps its tap on the list. |
-| `health` | `watchman` `battery_threshold` `warn_above` `exclude_platforms` `group_by` `group_min` `watchman_last_run` | The same options as [System health](#system-health), for the card and the home header's cog alike. |
-| | `ignore` | Known problems: `{ devices: [...], entities: [...] }`. They leave every count and wait under "Known" (see [System health](#system-health)). Adds to a card's own `ignore`. |
-| `ignore` | `entities`, `areas` | Left out of the home header chips' counts and popups, on top of a chip's own `exclude` and `exclude_areas`. |
-| `aggregate` | `true`, or a list of kinds | Show each room's sensors of these kinds once, in the security popup, the room and section badges and the room activity card. `true` is `presence`; the kinds are `presence`, `door`, `window`, `leak`, `smoke` and `gas`. See below. |
-| `room_order` | a list of area ids | The order of the rooms in the home header's popups and in the room header's row of other rooms: the rooms you list come first, in this order; the rest follow by name; "No room" is always last. Ids that aren't rooms are ignored. The editor lists it above Rooms (starting as the Rooms' order), and a button adds every room. |
-| `rooms.<area>` | `name`, `icon`, `page` | The room's title and tile name and icon, and where they lead (else the `room` pattern). |
-| | `control` | The room's control chip. |
-| | `light_state` | The helper behind the lights card's pill and the room tile's toggle. It is not shown as a badge: pin it under `entities` on a card if you want one. |
-| | `temperature`, `humidity` | The room's readings for the headers, the tile and the climate card. |
-| | `include`, `exclude` | Entities to treat as in this room, or to leave out of it. |
+| [Home header](#home-header) | Mode, weather, health cog and four counting chips | `custom:savvy-home-header-card` |
+| [Room header](#room-header) | A room's mode, temperature, badges and a row to other rooms | `custom:savvy-room-header-card` |
+| [Section title](#section-title) | A title, or a room's name with its badges | `custom:savvy-section-title-card` |
+| [Room tile](#room-tile) | A room at a glance, with its lights | `custom:savvy-room-tile` |
+| [Room activity](#room-activity) | Presence, doors, locks and readings with "since when" | `custom:savvy-room-activity-card` |
+| [Lights](#lights) | Every light of a room: toggle, brightness, colour | `custom:savvy-lights-card` |
+| [Climate](#climate) | An A/C or thermostat, with history | `custom:savvy-climate-card` |
+| [Media](#media) | Sources, speakers, volume, presets | `custom:savvy-media-card` |
+| [Camera](#camera) | Live cameras, Frigate events and recordings | `custom:savvy-camera-card` |
+| [Lock](#lock) | A door lock with door, battery, alarm and camera | `custom:savvy-lock-card` |
+| [Vacuum](#vacuum) | A robot vacuum: rooms, map, dock | `custom:savvy-vacuum-card` |
+| [Scenes](#scenes) | Every scene of a room as a tile | `custom:savvy-scene-card` |
+| [System health](#system-health) | Offline devices, low batteries, Watchman | `custom:savvy-system-health-card` |
+| [Entity](#entity) | One entity and the ones that go with it | `custom:savvy-entity-card` |
+| [Graph](#graph) | Number and state tiles with history | `custom:savvy-graph-card` |
+| [Savvy settings](#savvy-settings) | The defaults every card shares | `custom:savvy-settings-card` |
 
-**Aggregating sensors.** With `aggregate: true`, all the presence, motion and occupancy sensors in a room
-are shown as one, "Den presence": occupied if any one of them is, and occupied *since* the first of
-those that are on came on (when all are clear, since the last one cleared). In the security popup
-its chevron lists the sensors behind it. Sensors on your ignore list (`ignore.entities`, a chip's
-`exclude`, an ignored room) are never merged, and neither is one you pin yourself under `entities`
-or name on a card. Only a room with two or more is merged. Off by default; a card's own
-`aggregate: false` turns it off there.
-
-**What each card takes**
-
-| Card | From the settings |
-|---|---|
-| Home header | `control`, `weather`, home button, each chip's page and `tap`, the security entity, `ignore`, `room_order`, `aggregate`, the cog's page and health options |
-| System health | the health options, including known problems |
-| Room header | the room's `control`, `temperature`, `include`, `exclude`; home button, room pages, `room_order` and `aggregate` |
-| Section title | the room's `name`, `icon`, `control`, `temperature`, `include`, `exclude` and page, and `aggregate` |
-| Room tile | the room's `name`, `icon`, `control`, `temperature`, light helper (`toggle`) and page, and `aggregate` |
-| Lights | the room's light helper as the pill's toggle |
-| Climate | the room's `temperature` and `humidity` |
-| Room activity | the room's `include` and `exclude`, and `aggregate` |
-| Lock | the security entity (as the lock, when none is named), the room's `include` and `exclude` |
-
-A card works on its own area when it has exactly one. Every card's editor lists what it
-is taking from the settings at the top, under **From Savvy settings**, so nothing is
-hidden.
-
-**How it works.** The cards read the dashboard's own config to find the settings card,
-once per page load, so it can sit on any page and the others still see it. The last
-answer is kept in the browser, so later loads need no wait; it refreshes when the page
-comes back after five minutes. While you edit the settings card, every card on the page
-follows. With more than one settings card on a dashboard, the first is used and the card
-says so. Each dashboard has its own.
-
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/settings-compact-light.png">
-  <img src="docs/images/settings-compact-dark.png" width="460" alt="Savvy settings card, compact">
-</picture>
-
-| Option | Default | What it does |
-|---|---|---|
-| `layout` | `full` | `compact`: a single row. |
+Each card below follows the same layout: what it is, a picture, every option in a table, the smallest
+config that works, and a full example. Types in the tables: *entity* is an entity id, *action* is a
+Home Assistant action (`tap_action: { action: navigate, navigation_path: /lovelace/x }`), *chips* is the
+[chip format](#chips). Options shared by several cards are described once in [Shared options](#shared-options).
 
 ---
 
-## Motion
+### Home header
 
-The rule: anything that changes state in front of you moves there with a spring, and any
-input is felt at once and then settles. Every move can be interrupted (turn a light on and
-straight off again and the colour reverses from where it is, with no jump), and a gesture
-keeps its speed. It is built from four pieces, shared by every card and popup:
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/home-header-light.png"><img src="docs/images/home-header-dark.png" width="600" alt="Savvy home header"></picture>
 
-- **Tint.** A colour that changes (a light's orb going on, a chip's disc, a level turning
-  amber or red, a pill, a switch's track) slides from the old colour to the new one instead
-  of switching. The card has already changed; only how it looks gets there smoothly.
-- **Roll.** A word that changes slides out as the new one slides in ("Lights on" to
-  "Lights off", "Playing" to "Paused"), and a count ticks through its numbers ("3 of 6 on"
-  to "2 of 6 on"). The text itself is final the moment it changes, so anything reading it
-  never sees a half-way value. A value that changes every frame, like a number under your
-  finger while you drag, never rolls.
-- **Appear.** Rows, badges, chips and tiles that come, go or move inside a list slide to
-  their places; a newcomer grows and fades in, and one that leaves fades out where it was
-  while the others close the gap. Controls that come and go (a power button, a banner) pop
-  in and fade out, and an icon that swaps pops.
-- **Cascade.** Changes that land together ripple with a small beat between them, a few
-  hundredths of a second each and never more than about a third of a second in all: turn
-  a room's lights on and its tiles light up one after another.
+The top of any page that is not a room: a mode chip, the weather, a health cog with a count, and four
+chips that count by themselves (lights on, average indoor temperature, what is playing, security). Hold a
+chip for the entities behind it. Without a mode chip the header is a single row that slides sideways when
+it is too wide.
 
-Nothing moves on a card's first paint, in a card that isn't on screen, or when reduced
-motion is on (then everything lands at once). All of it runs on one shared animation
-clock that goes to sleep when nothing is moving.
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/home-header-row-light.png"><img src="docs/images/home-header-row-dark.png" width="460" alt="The home header as one row"></picture>
 
----
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `control` | entity | none | One entity as a chip. A select opens a picker, a button, script or scene runs, a switch toggles, anything else opens more-info. Never guessed. |
+| `show_control` | boolean | `true` | `false` hides the control even when the settings card supplies one. |
+| `mode_label` | string | `Home mode` | Caption under a select's value. |
+| `mode_icons`, `mode_colors` | object | built-in dictionary | Icon or colour per option of the select: `Movie Night: mdi:popcorn`. |
+| `control_tap_action`, `control_hold_action`, `control_double_tap_action` | action | by domain | What the control does. |
+| `home_path` | string | none | Page the home button opens. |
+| `show_home` | boolean | `true` | `false` hides the home button even when the settings card supplies a page. The button is also hidden on the home page itself. |
+| `weather` | entity or `false` | first weather entity | The weather shown. |
+| `health` | object or `false` | on | The health cog, see below. |
+| `lights`, `climate`, `media`, `security` | object or `false` | on | The four counting chips, see below. |
+| `room_order` | list of areas | by name | Order of rooms in the popups. A chip's own `room_order` wins. |
+| `aggregate` | `true` or list of kinds | off | Show each room's presence sensors once. See [Aggregate sensors](#aggregate-sensors). |
+| `chips` | chips | none | Your own chips after the four. |
 
-## Home header
+**`health` options.** `navigation_path` (string, none) where the popup's page button leads; `popup_button`
+(boolean, `true`) that button, shown whenever there is a target page; `popup_label` (string, "Open system
+health"); `tap_action`, `hold_action` (action, open the list); and the [System health](#system-health)
+options `watchman`, `watchman_button`, `watchman_report`, `battery_threshold`, `warn_above`,
+`exclude_platforms`, `group_by`, `group_min`, `ignore`.
 
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/home-header-light.png">
-  <img src="docs/images/home-header-dark.png" width="600" alt="Savvy home header">
-</picture>
+**Chip options** for `lights`, `climate`, `media`, `security`:
 
-The header for the top of any page that isn't a room: the home page, a lights page, an
-admin page. With a control chip (the house mode, say: tap to change it) the control, the
-weather and the health cog sit on top and the chips below. **Without one it is a single row**: the
-home button, the four chips, then the weather and the health cog at the end; the row slides
-sideways, with a soft fade, when it is wider than the card. The cog: its number is exactly what the [System health](#system-health) card
-lists (a device or a hub counts once, however many entities it has), and holding it
-shows that list. Below, four chips that count by themselves, with
-no helper sensors: lights on ("3 on", or "All off"; every light in the house, groups left out so nothing counts
-twice), the average indoor temperature (the fan spins while an A/C
-runs), what's playing, and security (the alarm panel; with none, what's open or
-unlocked). Hold any of them for the entities behind it, each with its switch.
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `entity` | entity | none | Show this entity's state instead of the count. |
+| `name`, `icon`, `color` | string | per chip | Look. |
+| `navigation_path` | string | none | Target of the popup's page button. It does not change what a tap does. |
+| `popup_button` | boolean | `true` | The page button in the popup. |
+| `popup_label` | string | "Open lights" etc. | Its text. |
+| `exclude` | list of entities | none | Left out of the count and the popup. |
+| `exclude_areas` | list of areas | none | Everything in these rooms is left out. |
+| `sort` | `room` or `recent` | `room` | How the popup lists. |
+| `sort_toggle` | boolean | `true` | The Room / Recent switch at the top of the popup. |
+| `room_order` | list of areas | card's, then settings' | Room order for this chip. |
+| `bulk_action` | boolean | `true` | The All off / Pause all / Lock all button. |
+| `tap_action`, `hold_action` | action | open the list | Replace the gesture. To make a tap go to a page, use `action: navigate`. |
+
+Minimum:
+
+```yaml
+type: custom:savvy-home-header-card
+```
+
+Full:
 
 ```yaml
 type: custom:savvy-home-header-card
 control: input_select.house_mode
+mode_label: House mode
+mode_icons: { Movie Night: mdi:popcorn }
+home_path: /lovelace/home
+weather: weather.home
+room_order: [living_room, kitchen]
+aggregate: true
 health:
   navigation_path: /lovelace/admin
+  watchman: [sensor.watchman_missing_entities]
+  battery_threshold: 20
 lights:
   navigation_path: /lovelace/lights
+  exclude_areas: [garden]        # not counted, not listed
+  sort: recent
+climate: { navigation_path: /lovelace/climate }
+media: { navigation_path: /lovelace/media }
+security: { navigation_path: /lovelace/security }
+chips:
+  - entity: switch.coffee_machine
+    name: Coffee
 ```
-
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/home-header-row-light.png">
-  <img src="docs/images/home-header-row-dark.png" width="460" alt="The home header as one row, with no control chip">
-</picture>
-
-Tap and hold on a chip both open the list of what it counts. The popup has a button pinned
-under the list that opens a page: the chip's `navigation_path`, or else the page its tap or
-hold action navigates to; `popup_button: false` hides it and `popup_label` words it.
-`navigation_path` only feeds that button: to make a tap go to a page, give it a
-`tap_action` (`action: navigate`), which replaces the tap's default. The health cog's popup
-works the same way, except that its button is off unless you set `popup_button: true`.
-
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/home-header-popup-light.png">
-  <img src="docs/images/home-header-popup-dark.png" width="460" alt="The lights popup with its page button">
-</picture>
-
-| Option | Default | What it does |
-|---|---|---|
-| `control` | none | One entity as a chip: a select opens a picker, a button, script or scene runs, a switch toggles, the rest open more-info (see [Control](#how-every-savvy-card-behaves)). Never guessed; hidden when unset. |
-| `mode_label` | `Home mode` | A select's caption under its value. |
-| `mode_icons` / `mode_colors` | the dictionary | Per option, one line each under the key: `Movie Night: mdi:popcorn`. |
-| `control_tap_action` / `control_hold_action` / `control_double_tap_action` | by domain | Override what the control does. |
-| `home_path` | none | A home button that opens this page. |
-| `weather` | the first weather entity | A weather entity, or `false`. |
-| `health` | on | The cog: `navigation_path` (where the popup's button leads), `popup_button` (off by default for the cog), `popup_label`, `tap_action` / `hold_action` (default: the list of what needs attention), and the System health card's `watchman`, `watchman_button`, `watchman_report`, `battery_threshold`, `exclude_platforms`, `warn_above`, `group_by`, `group_min`, `ignore`. `false` hides it. |
-| `lights` / `climate` / `media` / `security` | on | Each chip: `false` hides it; or `{ entity, name, icon, color, navigation_path, popup_button, popup_label, exclude, exclude_areas, sort, room_order, sort_toggle, bulk_action, tap_action, hold_action }`, where `entity` shows that entity's state instead of the count. Tap and hold list what's counted unless `tap_action` / `hold_action` say otherwise; `navigation_path` only feeds the popup's page button. `exclude` and `exclude_areas` leave entities and whole rooms out of the count and the popup alike. `sort` (`room`, the default, or `recent`) is how the popup lists them, and `room_order` the order of its rooms (also on the card, for all four). |
-| `aggregate` | off | Show each room's presence sensors (or more kinds) once in the popups and badges. `true` is presence; a list names kinds. See [Savvy settings](#savvy-settings). |
-| `chips` | none | Your own chips after the four. |
 
 ---
 
-## Popups
+### Room header
 
-Hold a chip on the [home header](#home-header), a room's light chip or a room tile and the entities
-behind it open in a popup. Every row is **one line**: the entity, its main control on the right
-(a switch, play / pause, a target stepper), and, when it has more, a chevron that opens **one extra
-line** of controls under it. One extra line is open at a time. Tapping a row's name opens its
-more-info.
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/room-header-light.png"><img src="docs/images/room-header-dark.png" width="600" alt="Savvy room header"></picture>
 
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/popup-media-light.png">
-  <img src="docs/images/popup-media-dark.png" width="460" alt="The media popup: one line per player, the open one with its transport and volume">
-</picture>
+The top of a room's page: its mode, its temperature, a row of everything the room has (idle things
+dimmed), your own chips, and a row to jump to the other rooms.
 
-| Kind | On the line | Under the chevron |
-|---|---|---|
-| **Lock** | The lock's own icon is the handle you slide across the row (below). The state and when it last changed are the subtitle. | |
-| **Media player** | Play / pause; power when it is off. What's playing is the subtitle. | Power, previous, next, mute, and a volume bar with − and + (on a narrow popup only the bar). The bar moves on a sideways drag only. What a player can't do isn't shown. |
-| **Climate** | A − target + stepper (it respects the unit's step, minimum and maximum, and one write goes out once you stop tapping); a power button when the unit is off. The mode and the reading are the subtitle, and the fan icon turns while it runs. | Off, Cool and Heat, then whatever else the unit has: Auto, Dry, Fan, Heat/Cool, up to four. |
-| **Light** | The switch; the brightness is the subtitle. | A slim brightness bar for a dimmable light that is on. |
-| **Cover** | Open or close (stop while it moves). | Stop, and a position bar when the cover has one. |
-| **Alarm panel** | Its state. | The arm modes it has (Home, Away, Night, Vacation), the current one marked, and Disarm. Disarming, and arming when the panel wants a code, open its more-info, which is where the code goes. |
-| **Fan** | The switch. | A speed bar. |
-| **Presence, motion** | Detected or Clear, and when it last changed. Read-only. | |
-| **Leak, smoke, gas, CO** | Their state; red while tripped. Read-only. | |
-| **Switch, sensor, door, window** | A switch, or just the state. | |
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `area` | area | **required** | The room. |
+| `control`, `mode_label`, `mode_icons`, `mode_colors`, `control_tap_action`, `control_hold_action`, `control_double_tap_action` | | none, `Room mode` | The room's mode or scenes, or any entity. Same as on the [home header](#home-header). |
+| `temperature` | entity or `false` | found | The area's temperature sensor, else its climate unit's reading. |
+| `home_path` | string | from settings | Home button page. Empty hides it. |
+| `entities`, `auto_discover`, `exclude_kinds`, `include`, `exclude` | | discovered | The badge row, see [Badges](#badges). Here every kind the room has shows, active or not. |
+| `aggregate` | `true` or list | off | See [Aggregate sensors](#aggregate-sensors). |
+| `icons_only` | boolean | `false` | Just the coloured icons. |
+| `chips` | chips | none | Your own chips, in a row of their own. |
+| `room_path` | string | from settings | Turns on the row of rooms; where each one goes (`/lovelace/{slug}`). |
+| `room_order` | list of areas | by name | Rooms listed first, in this order. |
+| `exclude_rooms` | list of areas | none | Rooms left out of the row. |
+| `rooms` | list | none | Per room: `{ area, name, icon, navigation_path }`. |
 
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/popup-climate-light.png">
-  <img src="docs/images/popup-climate-dark.png" width="460" alt="The climate popup: target on the line, modes under the chevron">
-</picture>
-
-### Bulk actions
-
-Next to the Room | Recent switch, each of the home header's four popups has one button that acts
-on exactly what the popup lists: **All off** for lights and for climate, **Pause all** for
-media and **Lock all** for security. It touches only what still needs it (lights that are on,
-players that are playing, locks that aren't locked), leaves out what the chip ignores, and is
-greyed out when there is nothing to do. `bulk_action: false` on a chip hides it. Popups on the
-room header, section title and room tile get it when everything they list is of one kind.
-
-### The lock handle
-
-A lock's own icon is the handle, and its row is the track. The icon rests at the start of the
-row, with a faint ›› hint at the other end. **A tap on it only nudges it**, to show that it
-slides; tapping the name opens the lock's details.
-
-- Drag it across the row. The row turns into the track: it fills with colour, the two stops
-  ahead are named ("Unlock", "Open"), and the icon turns into the one of what the slide would
-  do. Past the first stop it does **the opposite of what the lock is now**: unlock when it is
-  locked, lock when it isn't. Let go before that, and it springs back and nothing is sent.
-- **Open** (the door's latch, `lock.open`) is the end of the row. That stretch is heavy. Drag
-  to the end and hold it until a ring has filled, about half a second, then let go. Let go
-  sooner, or slide out of the end, and nothing happens.
-- After a slide the handle goes back to the start and the row says what the lock is doing
-  ("Unlocking…", "Opening…", "Jammed") while Home Assistant confirms. A lock that can't open
-  has one stop, near the end of the row.
-- From the keyboard: focus the icon, the arrow keys lock and unlock, and Open needs Enter or
-  Space held for the same half second. The handle is a slider with "Locked", "Unlocked" and
-  "Open" as its values.
-
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/popup-lock-light.png">
-  <img src="docs/images/popup-lock-dark.png" width="460" alt="The lock handle in a popup row, resting and mid-slide">
-</picture>
-
-### The security popup
-
-Besides the alarm, the locks and what is open, the security popup lists the **presence and
-motion** sensors (read-only: who is about, and when it last changed) and the **leak, smoke, gas
-and CO** sensors. Presence and motion never change the chip, which says "Secure", "2 open" or the
-alarm's state. A tripped leak, smoke, gas or CO sensor does: the chip reads "Leak", "Smoke" or
-"2 alerts" in red, and that sensor is pinned right after the locks, red, until it clears. An
-`entity` you chose for the chip still decides its word, but the chip turns red too.
-
-With `aggregate` on (see [Savvy settings](#savvy-settings)), a room's presence sensors are one row,
-"Den presence": occupied if any one is, and since the first of those that are on came on. Its
-chevron lists the sensors behind it, read-only; tap one to open it.
-
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/popup-security-light.png">
-  <img src="docs/images/popup-security-dark.png" width="460" alt="The security popup: the alarm, the locks, a tripped leak sensor, then presence and motion">
-</picture>
-
-### Ignoring and sorting
-
-The home header's four chips take `exclude` (entities) and `exclude_areas` (rooms): what
-they name is left out of the count **and** the popup, so the number is always what the
-popup lists. The popup lists **by room**, under the room's name (entities with no room
-under "No room"), the active ones first. A **Room | Recent** switch at its top lists them
-flat, newest change first, with when each changed. The alarm and the locks stay on top of the
-security popup either way. The switch remembers your choice per chip; `sort: recent` makes
-Recent the default, and `sort_toggle: false` takes the switch away.
-
-By room, the rooms follow **your order**: `room_order` lists area ids first, in that order, and
-the rest follow by name. Set it once in the [settings](#savvy-settings), or on the card
-(`room_order: [kitchen, office]`, for all four chips) or on one chip; the chip's wins over the
-card's, and the card's over the settings'. The room header's row of other rooms follows the same
-order.
+Minimum:
 
 ```yaml
-type: custom:savvy-home-header-card
-lights:
-  exclude_areas: [garden]
-  exclude: [light.porch_string]
-  sort: recent
+type: custom:savvy-room-header-card
+area: living_room
 ```
 
----
-
-## Room header
-
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/room-header-light.png">
-  <img src="docs/images/room-header-dark.png" width="600" alt="Savvy room header">
-</picture>
-
-The header at the top of a room's page: its control (a mode select, say) and temperature, a row of everything
-the room has (pinned first, then everything the area has, on or off, idle ones dimmed),
-your chips, and a row to jump to every other room.
+Full:
 
 ```yaml
 type: custom:savvy-room-header-card
 area: living_room
 control: input_select.living_room_scene
+mode_label: Scene
+home_path: /lovelace/home
+temperature: sensor.living_room_temperature
+entities: [input_boolean.living_room_light]   # pinned first
+auto_discover: true
+exclude_kinds: [fan]
+include: [lock.front_door]                    # a lock that has no area
+exclude: [binary_sensor.old_motion]
+aggregate: true
+icons_only: false
+chips:
+  - entity: script.movie_night
+    name: Movie
 room_path: /lovelace/{slug}
+room_order: [living_room, kitchen]
+exclude_rooms: [garage]
 ```
-
-| Option | Default | What it does |
-|---|---|---|
-| `area` | **required** | The room. |
-| `control`, `mode_label`, `mode_icons`, `mode_colors`, `control_*_action` | none, `Room mode` | The room's mode or scenes, or any entity (see [Control](#how-every-savvy-card-behaves)). |
-| `temperature` | found | The area's temperature sensor, else its climate unit's reading. An entity, or `false`. |
-| `home_path` | none | A home button that opens this page. |
-| `entities`, `auto_discover`, `exclude_kinds`, `include`, `exclude` | discovered | The row (see [Badges](#how-every-savvy-card-behaves)). Here every kind the room has shows, active or not. |
-| `icons_only` | `false` | Just the coloured icons. |
-| `chips` | none | Your own chips, in a row of their own. |
-| `room_path` | none | Turns on the rooms row: where each room goes. `{area}` is the area id, `{slug}` the same with dashes: `/lovelace/{slug}`. |
-| `room_order` | by name | Rooms listed first, in this order. The editor starts it as the discovered order. |
-| `exclude_rooms` | none | Rooms to leave out. |
-| `rooms` | none | Per room: `{ area, name, icon, navigation_path }`. |
 
 ---
 
-## Section title
+### Section title
 
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/section-title-light.png">
-  <img src="docs/images/section-title-dark.png" width="520" alt="Savvy section title">
-</picture>
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/section-title-light.png"><img src="docs/images/section-title-dark.png" width="520" alt="Savvy section title"></picture>
 
-A title for a section of a dashboard. Give it a `name` and it's plain text ("Appliances",
-"Devices"); give it an `area` and it's a room's section: the first card in it, with the
-room's name and icon, its control, its temperature (warming in colour when it's hot,
-cooling when it's cold) and its badges. A heading, not a panel: no background unless
-`filled: true`.
+A title for a section. With a `name` it is plain text. With an `area` it shows the room's name and icon,
+its mode, temperature and badges. No background unless `filled: true`.
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `area` | area | none | Makes it a room title. Without `area` it is a plain title and needs `name`. |
+| `name`, `icon` | string | the area's | Title and icon. |
+| `navigation_path` | string | none | Where tapping the name goes. |
+| `tap_action`, `hold_action` | action | none | Replace the gesture on the name. |
+| `control`, `mode_label`, `mode_icons`, `mode_colors`, `control_*_action` | | none | The room's mode, as on the [room header](#room-header). |
+| `temperature` | entity or `false` | found | Room temperature. |
+| `entities`, `auto_discover`, `exclude_kinds`, `include`, `exclude` | | discovered | The badges, see [Badges](#badges). |
+| `aggregate` | `true` or list | off | See [Aggregate sensors](#aggregate-sensors). |
+| `heading_style` | `title` or `subtitle` | `title` | `subtitle` for a smaller heading. |
+| `filled` | boolean | `false` | Sit on a card background. |
+
+Minimum:
+
+```yaml
+type: custom:savvy-section-title-card
+name: Appliances
+```
+
+Full:
 
 ```yaml
 type: custom:savvy-section-title-card
 area: living_room
+name: Lounge
+icon: mdi:sofa
 navigation_path: /lovelace/living-room
 control: input_select.living_room_scene
+temperature: sensor.living_room_temperature
+entities: [input_boolean.living_room_light]
+auto_discover: true
+exclude_kinds: [window]
+include: [lock.front_door]
+exclude: [binary_sensor.old_motion]
+aggregate: [presence, door]
+heading_style: title
+filled: false
 ```
-
-| Option | Default | What it does |
-|---|---|---|
-| `area` | **required** (or `name`) | The room. Without one, a plain title. |
-| `name` / `icon` | the area's | Title and icon. |
-| `navigation_path` | none | Tapping the name opens it (or set `tap_action` / `hold_action`). |
-| `control`, `mode_label`, `mode_icons`, `mode_colors`, `control_*_action` | none | The room's mode, or any entity (see [Control](#how-every-savvy-card-behaves)). |
-| `temperature` | found | As on the Room header. |
-| `entities`, `auto_discover`, `exclude_kinds`, `include`, `exclude` | discovered | The badges: see below. |
-| `heading_style` | `title` | `subtitle` for a smaller one. |
-| `filled` | `false` | Sit on a card background. |
-
-**The badges** sit at the end of the row. From the right edge going left: the **temperature**,
-**presence**, the **door** and the **window**: always there when the room has them, dimmed while
-idle. Whatever else is active (media playing, a lock open, a climate unit running, a leak) joins
-on their left, so those never move. Entities you pin under `entities` lead, on the far left.
-`auto_discover: false` turns the discovery off and leaves the pinned ones and the temperature. A
-room's `light_state` from the [Savvy settings](#savvy-settings) is not a badge: pin it yourself
-if you want it.
 
 ---
 
-## Room tile
+### Room tile
 
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/tiles-light.png">
-  <img src="docs/images/tiles-dark.png" width="780" alt="Savvy room tiles">
-</picture>
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/tiles-light.png"><img src="docs/images/tiles-dark.png" width="780" alt="Savvy room tiles"></picture>
 
-A room at a glance. Its icon sits in a small drop that fills with the room's light:
-brighter as its lights are brighter, tinted by the first coloured bulb, and wobbling like
-water when a light switches. Tap to go to the room (or list its lights), double tap to
-turn its lights off or on, hold for its lights, each with its switch.
+A room at a glance. Its icon sits in a small drop that fills with the room's light. Tap goes to the room
+(or lists its lights), double tap switches the lights, hold lists them.
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `area` | area | **required** | The room. |
+| `name`, `icon` | string | the area's | Title and icon. |
+| `navigation_path` | string | from settings | Where a tap goes. Without it a tap lists the room's lights. |
+| `control`, `mode_icons`, `mode_colors` | | none | Shown under the name, read only: a select's option or any entity's state. |
+| `temperature` | entity or `false` | found | Room temperature. |
+| `toggle` | entity | the lights | An entity (a helper your automations use) that the double tap switches instead. |
+| `lights` | list of lights | the area's | Only these lights make up the drop. |
+| `count` | entity | counted | A sensor with the number of lights on. |
+| `color_lights` | list of lights | `lights` | Lights whose colour tints the drop. |
+| `tint` | colour | `#F5B83D` | The drop's colour for white light. |
+| `entities`, `auto_discover`, `exclude_kinds`, `include`, `exclude` | | discovered | The badges, see [Badges](#badges). |
+| `aggregate` | `true` or list | off | See [Aggregate sensors](#aggregate-sensors). |
+| `tap_action`, `double_tap_action`, `hold_action` | action | as above | Replace any gesture. |
+
+Minimum:
 
 ```yaml
 type: custom:savvy-room-tile
 area: kitchen
+```
+
+Full:
+
+```yaml
+type: custom:savvy-room-tile
+area: kitchen
+name: Kitchen
+icon: mdi:silverware-fork-knife
 navigation_path: /lovelace/kitchen
+control: input_select.kitchen_mode
+temperature: sensor.kitchen_temperature
+toggle: input_boolean.kitchen_light
+lights: [light.kitchen_ceiling, light.kitchen_counter]
+count: sensor.kitchen_lights_on
+color_lights: [light.kitchen_counter]
+tint: "#F5B83D"
+entities: [binary_sensor.kitchen_presence]
+auto_discover: true
+exclude_kinds: [window]
+aggregate: true
 ```
-
-| Option | Default | What it does |
-|---|---|---|
-| `area` | **required** | The room: its name, icon, lights, temperature, badges. |
-| `name` / `icon` | the area's | Title and icon. |
-| `navigation_path` | none | Where a tap goes. Without it a tap lists the room's lights. |
-| `control`, `mode_icons`, `mode_colors` | none | Shown under the name, with its colour, read only: a select's option, or any other entity's state (a button or scene shows its name). Hold it for more-info. |
-| `temperature` | found | As on the Room header. |
-| `toggle` | none | An entity (a helper wired to your automations) that the double tap switches instead of the lights. With one, lights on while it's off show as a dimmer drop. |
-| `lights` | the area's | Only these lights. |
-| `count` | counted | A sensor with the number of lights on. |
-| `color_lights` | `lights` | Lights whose colour tints the drop. |
-| `tint` | `#F5B83D` | The drop's colour for white light. |
-| `entities`, `auto_discover`, `exclude_kinds`, `include`, `exclude` | discovered | The badges. A pinned `toggle` entity glows in the drop's colour. |
-| `tap_action` / `double_tap_action` / `hold_action` | as above | Override any gesture. |
 
 ---
 
-## Lights
+### Room activity
 
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/lights-light.png">
-  <img src="docs/images/lights-dark.png" width="520" alt="Savvy lights card">
-</picture>
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/room-activity-light.png"><img src="docs/images/room-activity-dark.png" width="460" alt="Savvy room activity card"></picture>
 
-Every light in a room, each with only the controls it supports: a toggle; a brightness
-bar; a swatch that opens warmth, colour and saturation. The pill turns the room's lights
-on and off, or holds an entity of your own. Hold the pill for a live list of the card's
-lights.
+What is happening in a room and when it last changed: presence ("for 12 min"), doors, windows, locks,
+readings, and smoke, gas and leak sensors that stay quiet until one trips. While the alarm is armed an
+open door or an unlocked lock turns amber. Swipe left for the room's history.
 
-```yaml
-type: custom:savvy-lights-card
-area: living_room
-```
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/room-activity-compact-light.png"><img src="docs/images/room-activity-compact-dark.png" width="400" alt="Room activity, compact"></picture>
 
-| Option | Default | What it does |
-|---|---|---|
-| `area` | **required** (or `lights`) | The area, or a list of areas for one card across rooms. |
-| `lights` | discovered | Only these lights, in this order. An item can be `{entity, power}`, where `power` is a smart plug the light sits behind. |
-| `title` | the area's name | Card title. |
-| `order` | by name | Lights listed here come first, in this order. The editor starts it as the discovered order: reorder with the arrows. |
-| `featured` | none | Lights that get a wide tile. |
-| `exclude` | none | Lights to leave out. |
-| `show_header` | `true` | The title row. |
-| `show_toggle` | `true` | The on/off pill. |
-| `toggle` | built in | Put an entity in the pill: `{entity, name, icon, tap_action, double_tap_action, hold_action}`. With an entity, a tap toggles it and a double tap turns every light off. |
-| `columns` | automatic | Force a column count. |
-| `power_button` | `false` | A power button on every tile. |
-| `state_detail` | `true` | Brightness under the name; `false` shows plain On/Off. |
-| `color_background` | `false` | Tint lit tiles with their bulb's colour. |
-| `chips` | none | Extra chips under the lights. |
-| `layout` | `full` | `compact`: toggles only, no sliders or swatches. |
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `area` | area | **required** (or `chips`) | The room. |
+| `name`, `icon` | string | the area's | Title and icon. |
+| `layout` | `full` or `compact` | `full` | `compact`: one row of icons and the temperature. |
+| `navigation_path` | string | none | Where tapping the name goes. |
+| `presence`, `door`, `window`, `lock`, `temperature`, `humidity`, `illuminance`, `smoke`, `gas`, `co`, `leak` | entity, list, or `false` | found | Name the sensor(s) of a kind yourself, or `false` for none. |
+| `include` | list of entities | none | Entities with no area, shown with this room (a lock, a door contact). |
+| `exclude_kinds` | list of kinds | none | Kinds to hide (any of the keys above). |
+| `exclude` | list of entities | none | Entities never shown. |
+| `alarm` | entity or `false` | the house's panel | The alarm panel. |
+| `aggregate` | `true` or list | off | See [Aggregate sensors](#aggregate-sensors). |
+| `history` | object or `false` | `{ hours: 24, ranges: [6, 24, 72], show_state: true }` | The history page. |
+| `lux_labels` | object or `false` | `{ dark: 10, dim: 150 }` | Light reads as Dark, Dim or Bright; `false` shows the number. |
+| `chips` | chips | none | Your own. With no `area`, a hand-picked overview. |
 
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/lights-compact-light.png">
-  <img src="docs/images/lights-compact-dark.png" width="520" alt="Savvy lights card, compact">
-</picture>
-
----
-
-## Climate
-
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/climate-light.png">
-  <img src="docs/images/climate-dark.png" width="460" alt="Savvy climate card">
-</picture>
-
-An A/C or thermostat. Drag the bar sideways for the target (or use − and +), tap a mode,
-cycle the fan. Swipe left for its history, with the unit's on/off band under the chart.
-
-```yaml
-type: custom:savvy-climate-card
-area: living_room
-```
-
-| Option | Default | What it does |
-|---|---|---|
-| `area` | **required** (or `entity`) | Finds the area's climate entity. With several, the editor lets you choose. |
-| `entity` | from `area` | A specific climate entity. |
-| `name` | the entity's name | Card title. |
-| `hvac_modes` | the unit's modes | Which modes to show, in order. Quote `"off"` in YAML. |
-| `default_hvac_mode` | the last used | What the power button turns on. |
-| `fan_control` | `true` | The fan button (tap cycles the speed). |
-| `temperature` / `humidity` | the unit's own reading | Sensors to read (and chart) instead. |
-| `weather` | none | An outdoor weather readout. |
-| `temperature_name` / `humidity_name` / `state_name` | Temperature / Humidity / A/C | Labels. |
-| `timer` | none | `{entity, select}`: a timer, and an `input_select` of durations a tap steps through. |
-| `history` | `{hours: 24, show_state: true}` | The history page: the range it opens on, and the on/off band. |
-| `temperature_scale` | blue to red | Colour stops for temperatures: `[{value, color}]`. |
-| `humidity_color` | teal | Humidity colour. |
-| `chips` | none | Extra chips (a button presses, a switch toggles). |
-| `layout` | `full` | `compact`: the target and modes in two rows. |
-
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/climate-compact-light.png">
-  <img src="docs/images/climate-compact-dark.png" width="460" alt="Savvy climate card, compact">
-</picture>
-
----
-
-## Media
-
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/media-light.png">
-  <img src="docs/images/media-dark.png" width="460" alt="Savvy media card">
-</picture>
-
-A room's media, the way the hardware works: sources feed an output. Artwork of what's
-playing (it takes the poster's own shape), the video boxes as a picker with the picked
-one's transport, the speaker the room listens through with its volume, then presets, text
-to speech and the room's alarm clock. The volume only moves on a sideways drag, or with
-− and +.
-
-```yaml
-type: custom:savvy-media-card
-area: living_room
-```
-
-| Option | Default | What it does |
-|---|---|---|
-| `area` | **required** (or `video` / `audio`) | The room's players: speakers and receivers are the output, TVs and the rest the sources. |
-| `video` / `audio` | found | The players instead: `{ entity, name, icon, power, output, volume, artwork }`. `power`: a switch that powers it; `output` (**Sound output**): where this source's sound comes out (empty: it plays through itself; it overrides `video_output`); `volume`: a helper that's its real volume, for a player whose own isn't (an amplifier on infrared); `artwork`: a binary sensor that says its artwork is worth showing. |
-| `video_output` | none | **Sound output for all sources**: the speaker, receiver or soundbar every video source plays through (your living room's Apple TV, PS5 and TV through the soundbar). Its volume then sits under the picked source. A source's own `output` overrides it; an empty `output` means that source plays through itself. |
-| `name` | the area's | Title. |
-| `presets` | none | Chips for stations and playlists. |
-| `tts` | none | `{ action, data, placeholder }`: a text box; `$MSG` in `data` is where the text goes. |
-| `alarm` | none | `{ entity, time, name }`: an alarm clock that rings here, with its time. |
-| `chips` | none | The room's other controls. |
-| `labels` | none | `{ video, audio }`: small captions over each band. |
-| `artwork` / `artwork_max_height` | on / none | The artwork stage. |
-| `volume_step` / `volume_buttons` | `5` / on | The − and + buttons. |
-| `layout` | `full` | `compact`: one row, what's playing, its transport and the volume. |
-
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/media-compact-light.png">
-  <img src="docs/images/media-compact-dark.png" width="460" alt="Savvy media card, compact">
-</picture>
-
----
-
-## Camera
-
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/camera-light.png">
-  <img src="docs/images/camera-dark.png" width="600" alt="Savvy camera card">
-</picture>
-
-Live cameras, side by side when there's room and a swipe apart when there isn't. With
-[Frigate](https://github.com/blakeblackshear/frigate-hass-integration), found by itself
-from the cameras: the day's alerts and detections, a motion timeline, and recordings that
-play in sync across every camera; swiping between cameras keeps the moment.
-
-```yaml
-type: custom:savvy-camera-card
-area: [living_room, kitchen]
-```
-
-| Option | Default | What it does |
-|---|---|---|
-| `area` | **required** (or `cameras`) | One or more areas: their cameras. |
-| `cameras` | found | Instead: `{ entity, name, area, frigate_camera }`, in this order. |
-| `frigate` | found | On when the cameras come from Frigate. `false` turns it off; `{ instance }` names another instance. |
-| `recordings` | `popup` | `inline` puts the timeline and reviews in the card; `false` hides them. |
-| `columns` | by width | Cameras side by side (`1`: always one at a time). |
-| `days` | `7` | Days of recordings to offer. |
-| `aspect_ratio` | `16/9` | The tiles' shape. |
-
----
-
-## Room activity
-
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/room-activity-light.png">
-  <img src="docs/images/room-activity-dark.png" width="460" alt="Savvy room activity card">
-</picture>
-
-What is happening in a room, and when did it last happen?
-Presence, doors and windows with "for 12 min" or "4 min ago", the room's locks ("Locked", "Unlocked"), the room's readings, smoke,
-gas and leak sensors that stay quiet until one trips (then a banner and a red wash). While
-the alarm is armed, an open door or an unlocked lock turns amber. Swipe left for the room's history: a lane
-per sensor over its temperature, and scrubbing snaps to each change.
+Minimum:
 
 ```yaml
 type: custom:savvy-room-activity-card
 area: living_room
 ```
 
-| Option | Default | What it does |
-|---|---|---|
-| `area` | **required** (or `chips`) | The room: its sensors, by what they are. |
-| `presence` / `door` / `window` / `lock` / `temperature` / `humidity` / `illuminance` / `smoke` / `gas` / `co` / `leak` | found | Name one (or several) instead, or `false` for none. |
-| `include` | none | Entities that have no area, shown with this room (a lock, a door contact). The Savvy settings' room `include` adds to it. |
-| `exclude_kinds` / `exclude` | none | Kinds (`lock` too), or entities, to leave out. |
-| `alarm` | found | The alarm panel (`false`: none). |
-| `chips` | none | Your own: a toggle becomes a chip, a door or a number takes its place with the rest. With no `area`, a hand-picked overview. |
-| `name` / `icon` | the area's | Title and icon. |
-| `navigation_path` | none | Tapping the name goes there. |
-| `history` | `{ hours: 24, ranges: [6, 24, 72] }` | The history page; `false` turns it off. |
-| `lux_labels` | `{ dark: 10, dim: 150 }` | Light reads as Dark, Dim or Bright; `false` for the number. |
-| `layout` | `full` | `compact`: one row of icons and the temperature. |
-
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/room-activity-compact-light.png">
-  <img src="docs/images/room-activity-compact-dark.png" width="400" alt="Savvy room activity card, compact">
-</picture>
-
----
-
-## Vacuum
-
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/vacuum-light.png">
-  <img src="docs/images/vacuum-dark.png" width="520" alt="Savvy vacuum card">
-</picture>
-
-Any robot vacuum, deepest for Roborock. Everything is found from the vacuum's device:
-the live job, map, rooms (cleaned in the order you tap them), your app routines, modes,
-dock and consumables. Rooms, modes, dock and care open as popups. Hold Stop to stop, and
-hold "Clean N rooms" to start, so neither happens by accident.
+Full:
 
 ```yaml
-type: custom:savvy-vacuum-card
-entity: vacuum.robot
-```
-
-| Option | Default | What it does |
-|---|---|---|
-| `entity` | **required** | The vacuum. |
-| `name` | the entity's name | Title. |
-| `start` | the vacuum's own start | What Start runs: a button, script or scene (an app routine, say). Resume after a pause is always a real resume. |
-| `start_name` | `Start` | Start's label. |
-| `navigation_path` | none | Tapping the name opens this page. |
-| `map` | `popup` | `popup` (a Map button), `inline`, `off`, or an image/camera entity. |
-| `map_max_height` | none | Cap the map's height (px). |
-| `rooms` | `auto` | Your areas when mapped, else the robot's own rooms. `off`, or a list to limit, order or rename. |
-| `routines` | `auto` | Your app routines. `off`, or `[{entity, name, icon}]`. |
-| `modes` / `dock` / `maintenance` / `stats` | `auto` | `off` hides a part. |
-| `hide_modes` | none | Mode selects to leave out. |
-| `exclude` | none | Discovered entities to leave out. |
-| `battery_warn` / `battery_critical` | `20` / `10` | The battery ring turns amber / red below these. |
-| `layout` | `full` | `compact`: one row with a start / pause button; hold it to send the vacuum home. |
-
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/vacuum-compact-light.png">
-  <img src="docs/images/vacuum-compact-dark.png" width="460" alt="Savvy vacuum card, compact">
-</picture>
-
----
-
-## Entity
-
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/entity-light.png">
-  <img src="docs/images/entity-dark.png" width="340" alt="Savvy entity card">
-</picture>
-
-One entity and the ones that belong with it. A person gets their picture (or initials),
-their zone and "Home · for 3 h"; anything else its icon, state and how long. Chips
-underneath: a toggle flips the moment it's tapped, a button presses, anything else shows
-its value.
-
-```yaml
-type: custom:savvy-entity-card
-entity: person.alex
+type: custom:savvy-room-activity-card
+area: living_room
+name: Living room
+icon: mdi:sofa
+layout: full
+navigation_path: /lovelace/living-room
+temperature: sensor.living_room_temperature
+door: binary_sensor.patio_door
+include: [lock.front_door]                 # a lock with no area
+exclude_kinds: [humidity]
+exclude: [binary_sensor.old_motion]
+alarm: alarm_control_panel.home
+aggregate: true
+history: { hours: 24, ranges: [6, 24, 72] }
+lux_labels: { dark: 10, dim: 150 }
 chips:
-  - entity: switch.scooter_plug
-    name: Scooter
+  - entity: switch.fan
 ```
-
-| Option | Default | What it does |
-|---|---|---|
-| `entity` | **required** | The main entity. |
-| `name` / `icon` / `color` / `picture` | the entity's | Its look. |
-| `show_state` / `show_since` | on | The state, and how long. |
-| `navigation_path`, `tap_action` / `hold_action` / `double_tap_action` | more-info | The main entity's actions. |
-| `chips` | none | The entities that belong with it. |
 
 ---
 
-## Graph
+### Lights
 
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/graph-light.png">
-  <img src="docs/images/graph-dark.png" width="560" alt="Savvy graph card">
-</picture>
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/lights-light.png"><img src="docs/images/lights-dark.png" width="520" alt="Savvy lights card"></picture>
 
-Tiles that know what they are: a number gets a graph (with its minimum, maximum and
-average, and a scrub bubble), anything else a small tile with its state. Past a week, a
-graph reads Home Assistant's long-term statistics, so a month of costs just works.
+Every light in a room, each with only the controls it supports: a toggle, a brightness bar, and a swatch
+for warmth and colour. The pill at the top switches the room, or an entity of your own. Hold it for a live list.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/lights-compact-light.png"><img src="docs/images/lights-compact-dark.png" width="520" alt="Lights, compact"></picture>
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `area` | area or list | **required** (or `lights`) | The room, or several for one card across rooms. |
+| `lights` | list | discovered | Only these lights, in this order. An item is an entity id or `{ entity, power }`, where `power` is a smart plug the light sits behind. |
+| `title` | string | the area's name | Card title. |
+| `order` | list of lights | by name | Listed lights come first, in this order. |
+| `featured` | list of lights | none | Lights that get a wide tile. |
+| `exclude` | list of lights | none | Lights left out. |
+| `show_header` | boolean | `true` | The title row. |
+| `show_toggle` | boolean | `true` | The on/off pill. |
+| `toggle` | entity or object | built in | An entity for the pill: `{ entity, name, icon, tap_action, double_tap_action, hold_action }`. With an entity a tap toggles it and a double tap turns every light off. |
+| `columns` | number 1-6 | automatic | Force a column count. |
+| `power_button` | boolean | `false` | A power button on every tile. |
+| `state_detail` | boolean | `true` | Brightness under the name; `false` shows On/Off. |
+| `color_background` | boolean | `false` | Tint lit tiles with their bulb's colour. |
+| `chips` | chips | none | Extra chips under the lights. |
+| `layout` | `full` or `compact` | `full` | `compact`: toggles only, no sliders or swatches. |
+
+Minimum:
 
 ```yaml
-type: custom:savvy-graph-card
-title: System
-entities:
-  - entity: sensor.processor_use
-    thresholds:
-      - value: 0
-        level: good
-      - value: 60
-        level: warn
-      - value: 85
-        level: bad
+type: custom:savvy-lights-card
+area: living_room
 ```
 
-| Option | Default | What it does |
-|---|---|---|
-| `entities` | **required** | The tiles: `{ entity, attribute, name, icon, unit, hours_to_show, thresholds, state_color, tap_action, hold_action }`. `attribute` charts one of the entity's attributes instead of its state (a weather entity's `humidity`). `thresholds` colour a graph good / warn / bad; `state_color` makes an on/off tile green or red. |
-| `title` | none | Title. |
-| `hours_to_show` | `24` | Every graph's range, unless a tile sets its own. |
-| `ranges` | none | An hours selector in the header, e.g. `[24, 168, 720]`. |
-| `columns` | automatic | Small tiles per row. |
-
----
-
-## System health
-
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/system-health-light.png">
-  <img src="docs/images/system-health-dark.png" width="420" alt="Savvy system health card">
-</picture>
-
-What in the house needs attention, in three sections: which **offline devices** there are,
-which **batteries** are low, and (if you use [Watchman](https://github.com/dummylabs/thewatchman))
-what Watchman found: the missing entities and actions your automations, scripts or
-dashboards use. One count, and every section always shows: what's wrong in a line ("3
-devices offline", "3 missing entities, 1 missing action"), or a tick and what's fine ("All
-devices online", "Nothing missing").
-
-Offline devices are grouped the way you think about them:
-
-- All the unavailable entities of one device are one issue, the device. A device counts as
-  offline when half or more of its entities are unavailable (devices rarely lose all of
-  them: when Zigbee2MQTT stops, each keeps an entity or two); fewer reads "2 of 9 entities
-  unavailable", in a softer colour.
-- A hub, a bridge or coordinator, anything other devices are attached to, takes the devices
-  behind it along when it is offline, or when its connectivity sensor reads off: one issue,
-  "Zigbee2MQTT Bridge offline, 34 devices". Home Assistant itself records which device sits
-  behind which hub, so nothing is guessed from names.
-- An integration is one issue when Home Assistant says its setup failed or is retrying
-  ("Tuya, retrying setup"), or when most of its devices are offline and no hub explains
-  them ("Tuya, 12 devices offline"). A hub is blamed before its integration.
-- Tap a row to open it, tap an entity for its more-info, hold a device for its page in Home
-  Assistant (an integration, for its page).
-
-**Counted by cause.** Watchman reports what your dashboards use that isn't there, and a dead
-device is usually why. A Watchman item whose entity belongs to a device that is already an issue is
-not a second problem: it is folded into that device's row, "2 dashboard references broken", and
-counts once. Watchman's line then says what is its own and what isn't ("1 missing entity, 3 from
-offline devices", or "3 missing entities, all from offline devices"), and only what nothing explains
-is listed and counted under Watchman: a typo, a deleted entity, an action.
-
-**Known problems.** Dead and waiting for a replacement? Put the device (or an entity) under `ignore`.
-It leaves every count and list, takes its Watchman items and its low battery with it, and waits in one
-collapsed line, "Known · 1", at the bottom of Offline devices. Open it to see what is snoozed. Set it on
-the card, or once in the [Savvy settings](#savvy-settings) (`health.ignore`), where the two lists add up.
-
-Wide enough, the three sections become **columns**, each with its own title, line and list
-(and its own scrolling, so one long list never pushes the others down); a narrow card, and the
-home header's cog popup, stack them. A card without Watchman sensors has two columns.
-
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/system-health-columns-light.png">
-  <img src="docs/images/system-health-columns-dark.png" width="760" alt="Savvy system health card in columns">
-</picture>
-
-The Watchman section has a small chip, **Run report**, that asks Watchman for a new
-report: it spins while it runs and says Done when Watchman's last-parse time changes.
+Full:
 
 ```yaml
-type: custom:savvy-system-health-card
+type: custom:savvy-lights-card
+area: [living_room, hallway]
+title: Downstairs
+layout: full
+show_header: true
+show_toggle: true
+toggle:
+  entity: input_boolean.downstairs_lights
+  name: All
+order: [light.ceiling, light.floor_lamp]
+featured: [light.ceiling]
+exclude: [light.garden_string]
+lights:
+  - light.ceiling
+  - entity: light.desk_lamp
+    power: switch.desk_plug
+columns: 3
+power_button: false
+state_detail: true
+color_background: true
+chips:
+  - entity: scene.movie
 ```
-
-| Option | Default | What it does |
-|---|---|---|
-| `source` | `all` | `all`, or one list: `battery`, `unavailable` (titled Offline devices; `offline` works too), `watchman`. |
-| `title` | per source | Title. |
-| `details` | `false` | A line of facts under each section ("42 devices, all online", "18 batteries, lowest 34%", "Checked 2 h ago, nothing missing"), and area and integration on the rows. |
-| `group_by` | `hub` | How offline entities become issues: `hub` (devices, the hub behind them, and integrations), `device`, or `none` (one row per entity). |
-| `group_min` | `3` | How many devices a hub or an integration needs before they roll up into it. |
-| `battery_threshold` | `20` | A battery below this % is low. |
-| `exclude_platforms` | `[mobile_app]` | Integrations to ignore (phones, by default). |
-| `watchman` | none | Watchman's summary sensors. |
-| `ignore` | none | Known problems: `{ devices: [device ids], entities: [entity ids] }` (the editor has pickers for both; a single list of ids works too). Left out of every count and list; they wait under Known. |
-| `watchman_button` | `true` | The Run report chip in the Watchman section. It only shows when the Watchman integration's `watchman.report` action exists. |
-| `watchman_report` | `{ parse_config: true }` | The data the chip sends to `watchman.report`. |
-| `watchman_last_run` | found | Watchman's "last parse" timestamp, shown as "Checked 2 h ago" (under the title with `source: watchman`, in the details line otherwise). Found from the Watchman integration; name another sensor, or `false` to hide it. |
-| `warn_above` | `6` | The count turns red at this many issues (an integration, a hub or a device counts as one). |
-| `columns` | automatic | With `source: all`, how many categories sit side by side when the card is wide: one per category at most, each at least about 240 px; `1` keeps them stacked. |
-| `max_rows` | `7` | Rows before a column's list scrolls. |
-| `show_all_batteries` | `true` | With `source: battery`: every battery, low ones first. |
-| `action` | none | A footer button: `{label, tap_action}`. It only appears when there is an action to run: a `tap_action` that is not `none` (an empty `action`, or a label alone, makes no button). |
-
-A hub opened, and one of its devices opened inside it, and the same with `details: true`:
-
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/system-health-expanded-light.png">
-  <img src="docs/images/system-health-expanded-dark.png" width="420" alt="Savvy system health card, a hub and a device opened">
-</picture>
-
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/system-health-details-light.png">
-  <img src="docs/images/system-health-details-dark.png" width="420" alt="Savvy system health card, with details">
-</picture>
-
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/system-health-batteries-light.png">
-  <img src="docs/images/system-health-batteries-dark.png" width="420" alt="Savvy system health card, batteries">
-</picture>
 
 ---
 
-## Scenes
+### Climate
 
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/scene-light.png">
-  <img src="docs/images/scene-dark.png" width="460" alt="Savvy scene card">
-</picture>
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/climate-light.png"><img src="docs/images/climate-dark.png" width="460" alt="Savvy climate card"></picture>
 
-Every scene of a room as a tile: tap runs it, hold opens its details. Give it an area
-(or several) and it finds the scenes there, named without the room's name in front. A
-scene lights for a few seconds after it runs, from this card or from anywhere else.
+An A/C or thermostat. Drag the bar sideways for the target (or use minus and plus), tap a mode, cycle
+the fan. Swipe left for history with the unit's on/off band under the chart.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/climate-compact-light.png"><img src="docs/images/climate-compact-dark.png" width="460" alt="Climate, compact"></picture>
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `area` | area | **required** (or `entity`) | Finds the area's climate entity. With several, the editor lets you choose. |
+| `entity` | entity | from `area` | A specific climate entity. |
+| `name` | string | the entity's | Card title. |
+| `layout` | `full` or `compact` | `full` | `compact`: target and modes in two rows. |
+| `hvac_modes` | list | the unit's modes | Which modes show, in order. Quote `"off"` in YAML. |
+| `default_hvac_mode` | string | last used | What the power button turns on. |
+| `fan_control` | boolean | `true` | The fan button (tap cycles the speed). |
+| `temperature`, `humidity` | entity | the unit's reading | Sensors to read (and chart) instead. |
+| `weather` | entity | none | An outdoor weather readout. |
+| `temperature_name`, `humidity_name`, `state_name` | string | Temperature, Humidity, A/C | Labels. |
+| `timer` | object | none | `{ entity, select }`: a timer, and an `input_select` of durations a tap steps through. |
+| `history` | object | `{ hours: 24, show_state: true }` | History range and the on/off band. |
+| `temperature_scale` | list | blue to red | Colour stops: `[{ value, color }]`. |
+| `humidity_color` | colour | teal | Humidity colour. |
+| `chips` | chips | none | Extra chips (a button presses, a switch toggles). |
+
+Minimum:
 
 ```yaml
-type: custom:savvy-scene-card
-area: office
-strip: '^.*//\s*|\s*-\s*on$'      # "Office // Work - On" reads "Work"
+type: custom:savvy-climate-card
+area: living_room
 ```
 
-| Option | Default | What it does |
-|---|---|---|
-| `area` | none | An area, or a list of them. Scenes that are hidden or disabled are left out. |
-| `title` | none | A heading over the tiles. |
-| `layout` | `full` | `compact` is one scrolling row of pills. |
-| `columns` | 2 to 4 by width | Tiles per row (1 to 6). |
-| `entities` | none | Pinned scenes, first and in order, even from outside the area. A string, or `{ entity, name, icon, color }`. |
-| `auto_discover` | on | Also the area's scenes, after the pinned ones. |
-| `exclude` | none | Scenes never shown. |
-| `strip` | the area's name | A regular expression taken out of every name (any case, every match); then the area's name is taken off the front. `false`: names stay whole. A pinned scene's own `name` is used as written. |
-| `color` / `show_icon` | `blue` / on | The tint (an HA colour name or hex), and the icons. |
-| `navigation_path` | none | Tapping the title goes there (the heading reads "Scenes" if you gave no `title`). |
+Full:
+
+```yaml
+type: custom:savvy-climate-card
+entity: climate.living_room_ac
+name: Living room A/C
+layout: full
+hvac_modes: [cool, heat, fan_only, "off"]
+default_hvac_mode: cool
+fan_control: true
+temperature: sensor.living_room_temperature
+humidity: sensor.living_room_humidity
+weather: weather.home
+temperature_name: Inside
+humidity_name: Humidity
+state_name: A/C
+timer:
+  entity: timer.ac_off
+  select: input_select.ac_timer_minutes
+history: { hours: 48, show_state: true }
+temperature_scale:
+  - { value: 16, color: "#4f9de8" }
+  - { value: 30, color: "#e8584f" }
+humidity_color: teal
+chips:
+  - entity: button.ac_assume_on
+    name: Assume on
+```
 
 ---
 
-## Lock
+### Media
 
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/lock-light.png">
-  <img src="docs/images/lock-dark.png" width="460" alt="Savvy lock card">
-</picture>
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/media-light.png"><img src="docs/images/media-dark.png" width="460" alt="Savvy media card"></picture>
 
-A door, handled the way you'd want to. The state is the biggest thing on the card, and a
-glow behind it follows it: green when locked, amber when not, red when open or jammed.
-**The lock's own icon is the handle**: drag it across the row. Past the first stop it does the
-opposite of what the lock is now (unlock when locked, lock when not); a lock that can open has a
-second stop at the end that has to be held until a ring fills (then let go) before the door's latch
-opens. A tap on the icon only nudges it; the handle always comes back to the start, and the icon and
-colour say what the lock is. It shows the door contact and the battery (an icon by level, amber below
-40%, red at 15), who last changed it and when, nudges when it has been unlocked a while, and can
-carry the house alarm and a live camera, each in three sizes.
+A room's media the way the hardware works: sources (TVs, boxes) play through an output (a speaker or
+receiver). Artwork of what is playing, a picker for the video sources, the speaker's volume, presets,
+text to speech and an alarm clock. Volume moves only on a sideways drag, or with minus and plus.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/media-compact-light.png"><img src="docs/images/media-compact-dark.png" width="460" alt="Media, compact"></picture>
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `area` | area | **required** (or `video` / `audio`) | Speakers and receivers become outputs; TVs and the rest become sources. |
+| `name` | string | the area's | Title. |
+| `layout` | `full` or `compact` | `full` | `compact`: one row with what is playing, its transport and the volume. |
+| `video` | list | found | Video sources: `{ entity, name, icon, power, output, volume, artwork }`. `power`: a switch that powers it. `output`: where its sound comes out (empty: it plays through itself; overrides `video_output`). `volume`: a helper that is its real volume. `artwork`: a binary sensor that says its artwork is worth showing. |
+| `audio` | list | found | Speakers, same item format. |
+| `video_output` | entity | none | The speaker every video source plays through. Its volume sits under the picked source. |
+| `presets` | chips | none | Stations and playlists. |
+| `tts` | object | none | `{ action, data, placeholder }`: a text box. `$MSG` in `data` is where the text goes. |
+| `alarm` | object | none | `{ entity, time, name }`: an alarm clock that rings here. |
+| `chips` | chips | none | The room's other controls. |
+| `labels` | object | none | `{ video, audio }`: small captions over each band. |
+| `artwork` | boolean | `true` | The artwork stage. |
+| `artwork_max_height` | number (px) | none | Cap the artwork's height. |
+| `volume_buttons` | boolean | `true` | The minus and plus buttons. |
+| `volume_step` | number (%) | `5` | Their step. |
+
+Minimum:
+
+```yaml
+type: custom:savvy-media-card
+area: living_room
+```
+
+Full:
+
+```yaml
+type: custom:savvy-media-card
+area: living_room
+name: Living room
+layout: full
+video:
+  - entity: media_player.tv
+    name: TV
+    power: switch.tv_plug
+  - entity: media_player.console
+    artwork: binary_sensor.console_artwork
+audio:
+  - entity: media_player.soundbar
+video_output: media_player.soundbar
+presets:
+  - entity: script.radio_jazz
+    name: Jazz
+tts:
+  action: tts.speak
+  data: { media_player_entity_id: media_player.soundbar, message: $MSG }
+  placeholder: Say something
+alarm:
+  entity: input_boolean.wake_alarm
+  time: input_datetime.wake_time
+  name: Wake up
+chips:
+  - entity: input_boolean.dynamic_lighting
+labels: { video: Watch, audio: Listen }
+artwork: true
+artwork_max_height: 320
+volume_buttons: true
+volume_step: 5
+```
+
+---
+
+### Camera
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/camera-light.png"><img src="docs/images/camera-dark.png" width="600" alt="Savvy camera card"></picture>
+
+Live cameras, side by side when there is room and a swipe apart when there is not. With
+[Frigate](https://github.com/blakeblackshear/frigate-hass-integration), which is found by itself: the
+day's alerts and detections, a motion timeline, and recordings that play in sync across cameras.
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `area` | area or list | **required** (or `cameras`) | The areas whose cameras to show. |
+| `cameras` | list | found | Instead of the area's: `{ entity, name, area, frigate_camera }`, in this order. |
+| `frigate` | `false` or object | found | `false` turns Frigate off; `{ instance }` names another instance. |
+| `recordings` | `popup`, `inline` or `false` | `popup` | Where the timeline and reviews live. |
+| `columns` | number or `auto` | by width | Cameras side by side (`1`: one at a time). |
+| `days` | number | `7` | Days of recordings offered. |
+| `aspect_ratio` | string | `16/9` | The tiles' shape. |
+
+Minimum:
+
+```yaml
+type: custom:savvy-camera-card
+area: living_room
+```
+
+Full:
+
+```yaml
+type: custom:savvy-camera-card
+area: [living_room, kitchen]
+cameras:
+  - entity: camera.porch
+    name: Porch
+    area: hallway
+    frigate_camera: porch_cam
+frigate: { instance: frigate }
+recordings: inline
+columns: 2
+days: 14
+aspect_ratio: 4/3
+```
+
+---
+
+### Lock
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/lock-light.png"><img src="docs/images/lock-dark.png" width="460" alt="Savvy lock card"></picture>
+
+A door lock. The lock's own icon is the handle: drag it across the row to do the opposite of what the lock
+is now; a lock that can open has a second stop that has to be held until a ring fills. A tap only nudges
+it, so nothing happens by accident. It shows the door contact, the battery, who changed it and when, and
+can carry the house alarm and a camera.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/lock-full-light.png"><img src="docs/images/lock-full-dark.png" width="460" alt="Lock, alarm and camera in full"></picture>
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `entity` | entity | the settings' security entity, else the first lock | One lock. |
+| `entities` | list | none | Several locks, each `{ entity, name, icon, door, battery, camera }`. Several get a row each, a summary and **Lock all**. |
+| `area` | area or list | none | Every lock of these areas. |
+| `include` | list of locks | none | Locks added to an area's (one with no area). |
+| `exclude` | list of locks | none | Locks kept out of an area's. A lock you name is always shown. |
+| `name`, `icon` | string | the lock's | Title and icon (for several locks, the card's title). |
+| `layout` | `full` or `compact` | `full` | `compact`: one row per lock. A compact card keeps its camera away unless `camera_view` asks for one. |
+| `door` | entity or `false` | found | The door contact: a binary sensor on the lock's device, or the only door sensor of its area. A locked lock with its door open is a warning. |
+| `hide_door` | boolean | `false` | Same as `door: false`. |
+| `battery` | entity or `false` | found | The battery sensor of the lock's device, as an icon by level and the percent. |
+| `hide_battery` | boolean | `false` | Same as `battery: false`. |
+| `battery_warn` | number (%) | `40` | Amber below this, red at 15. |
+| `unlocked_warn` | number (min) | `15` | Minutes unlocked before "Unlocked for 25 min" nudges, with a **Lock now** button. `0`: never. |
+| `alarm` | entity or `false` | the house's panel | The alarm: its state and the arm modes as buttons. Disarming, and any code, is Home Assistant's own dialog. |
+| `hide_alarm` | boolean | `false` | Same as `alarm: false`. |
+| `alarm_view` | `compact`, `full`, `hidden` | `compact` | `compact`: one line, a chevron slides the arm modes open. `full`: always there. |
+| `camera` | entity or `false` | a camera in the lock's area | The camera. |
+| `hide_camera` | boolean | `false` | Same as `camera: false`. |
+| `camera_view` | `compact`, `full`, `hidden` | `compact` | `compact`: a slim row and an **Open camera** button. `full`: a live still. Both open the camera card in a popup. |
+| `chips` | chips | none | Your own chips, under the lock. |
+
+Tap a lock's name for its details. From the keyboard, focus the icon and use the arrow keys; hold Enter
+to open.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/lock-several-light.png"><img src="docs/images/lock-several-dark.png" width="460" alt="Lock, several doors"></picture>
+
+Minimum:
 
 ```yaml
 type: custom:savvy-lock-card
 entity: lock.front_door
 ```
 
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/lock-full-light.png">
-  <img src="docs/images/lock-full-dark.png" width="460" alt="Savvy lock card, alarm and camera in full">
-</picture>
+Full:
 
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/lock-unlocked-light.png">
-  <img src="docs/images/lock-unlocked-dark.png" width="460" alt="Savvy lock card, unlocked for a while">
-</picture>
+```yaml
+type: custom:savvy-lock-card
+entities:
+  - entity: lock.front_door
+    name: Front door
+    door: binary_sensor.front_door
+    battery: sensor.front_door_battery
+    camera: camera.porch
+  - lock.back_door
+name: Doors
+layout: full
+battery_warn: 40
+unlocked_warn: 15
+alarm: alarm_control_panel.home
+alarm_view: compact
+camera_view: compact
+chips:
+  - entity: script.lock_everything
+```
 
-| Option | Default | What it does |
-|---|---|---|
-| `entity` | the Savvy settings' security entity, else the first lock | One lock. |
-| `entities` | none | Several locks, each `{ entity, name, icon, door, battery, camera }`. Several get a row each, a summary ("All locked" / "2 unlocked") and **Lock all**. |
-| `area` | none | Every lock of these areas. A lock that has no area: `include`. |
-| `include` / `exclude` | none | Locks added to, or kept out of, an area's. The Savvy settings' room lists add to them. |
-| `name` / `icon` | the lock's | Title and icon (for several locks, the card's title). |
-| `door` | found | The door contact: a binary sensor on the lock's device, or the only door sensor of its area. `false` or `hide_door` hides it. A locked lock with its door open is a warning: amber, "Door open". |
-| `battery` | found | The battery sensor of the lock's device, shown as a battery icon by level and the percent. `false` or `hide_battery` hides it. |
-| `battery_warn` | `40` | The battery turns amber below this, red at 15. |
-| `unlocked_warn` | `15` | Minutes unlocked before "Unlocked for 25 min" nudges, with a **Lock now** button. `0`: never. |
-| `alarm` | found | The house's alarm panel: its state and the arm modes as buttons. Disarming, and any code, is the more-info dialog's job: the card never holds a code. A triggered alarm is a red banner and a red glow, and opens its modes. `false` or `hide_alarm` hides it. |
-| `alarm_view` | `compact` | `compact`: one line, a chevron slides the arm modes open. `full`: the modes always there. Either way the modes slide sideways when they are too many for the width, never clipped. `hidden`: none. |
-| `camera` | found | A camera in the lock's area. An entity names one; `false` or `hide_camera` hides it. |
-| `camera_view` | `compact` | `compact`: a slim row, a thumbnail and an **Open camera** button. `full`: a live still. Either opens a popup above the page with the Savvy camera card, recordings included. `hidden`: none. |
-| `layout` | `full` | `compact`: one row per lock. A compact card keeps its camera away unless `camera_view` asks for one. |
-| `chips` | none | The standard chips, under it. |
+---
 
-Tap a lock's name for its details. The handle works from the keyboard too: focus the icon, the arrow keys
-lock and unlock, and Enter or Space held opens.
+### Vacuum
 
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/lock-several-light.png">
-  <img src="docs/images/lock-several-dark.png" width="460" alt="Savvy lock card, several doors">
-</picture>
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/vacuum-light.png"><img src="docs/images/vacuum-dark.png" width="520" alt="Savvy vacuum card"></picture>
 
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/lock-compact-light.png">
-  <img src="docs/images/lock-compact-dark.png" width="460" alt="Savvy lock card, compact">
-</picture>
+Any robot vacuum, deepest for Roborock. Everything is found from the vacuum's device: the live job, map,
+rooms (cleaned in the order you tap them), routines, modes, dock and consumables. Hold Stop to stop and
+hold "Clean N rooms" to start, so neither happens by accident.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/vacuum-compact-light.png"><img src="docs/images/vacuum-compact-dark.png" width="460" alt="Vacuum, compact"></picture>
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `entity` | entity | **required** | The vacuum. |
+| `name` | string | the entity's | Title. |
+| `layout` | `full` or `compact` | `full` | `compact`: one row with a start / pause button; hold it to send the vacuum home. |
+| `start` | entity | the vacuum's own start | What Start runs: a button, script or scene. Resume after a pause is always a real resume. |
+| `start_name` | string | `Start` | Start's label. |
+| `navigation_path` | string | none | Tapping the name opens this page. |
+| `map` | `popup`, `inline`, `off`, or an image/camera entity | `popup` | Where the map shows. |
+| `map_max_height` | number (px) | none | Cap the map's height. |
+| `rooms` | `auto`, `off`, or list | `auto` | Your areas when mapped, else the robot's rooms. A list limits, orders or renames. |
+| `routines` | `auto`, `off`, or list | `auto` | Your app routines. A list is `[{ entity, name, icon }]`. |
+| `modes`, `dock`, `maintenance`, `stats` | `auto` or `off` | `auto` | `off` hides a part. |
+| `hide_modes` | list | none | Mode selects to leave out. |
+| `exclude` | list of entities | none | Discovered entities to leave out. |
+| `battery_warn`, `battery_critical` | number (%) | `20`, `10` | The battery ring turns amber or red below these. |
+
+Minimum:
+
+```yaml
+type: custom:savvy-vacuum-card
+entity: vacuum.robot
+```
+
+Full:
+
+```yaml
+type: custom:savvy-vacuum-card
+entity: vacuum.robot
+name: Robot
+layout: full
+start: script.vacuum_quick_clean
+start_name: Quick clean
+navigation_path: /lovelace/vacuum
+map: popup
+map_max_height: 420
+rooms: [kitchen, living_room]
+routines:
+  - entity: button.vacuum_routine_evening
+    name: Evening
+    icon: mdi:weather-night
+modes: auto
+dock: auto
+maintenance: auto
+stats: off
+hide_modes: [select.vacuum_water_level]
+exclude: [sensor.vacuum_error_history]
+battery_warn: 20
+battery_critical: 10
+```
+
+---
+
+### Scenes
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/scene-light.png"><img src="docs/images/scene-dark.png" width="460" alt="Savvy scene card"></picture>
+
+Every scene of a room as a tile. Tap runs it, hold opens its details. A scene lights up for a few seconds
+after it runs, from here or from anywhere else.
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `area` | area or list | none | The areas whose scenes to show. Hidden or disabled scenes are left out. |
+| `title` | string | none | A heading over the tiles. |
+| `layout` | `full` or `compact` | `full` | `compact`: one scrolling row of pills. |
+| `columns` | number 1-6 | 2 to 4 by width | Tiles per row. |
+| `entities` | list | none | Pinned scenes, first and in order, even from outside the area. A string, or `{ entity, name, icon, color }`. |
+| `auto_discover` | boolean | `true` | Also the area's scenes, after the pinned ones. |
+| `exclude` | list of scenes | none | Scenes never shown. |
+| `strip` | regular expression or `false` | the area's name | Taken out of every name (any case, every match); then the area's name is taken off the front. `false`: names stay whole. A pinned scene's own `name` is used as written. |
+| `color` | colour | `blue` | The tint. |
+| `show_icon` | boolean | `true` | The icons. |
+| `navigation_path` | string | none | Tapping the title goes there. |
+
+Minimum:
+
+```yaml
+type: custom:savvy-scene-card
+area: office
+```
+
+Full:
+
+```yaml
+type: custom:savvy-scene-card
+area: [office, hallway]
+title: Scenes
+layout: full
+columns: 3
+entities:
+  - scene.office_focus
+  - entity: scene.office_relax
+    name: Relax
+    icon: mdi:sofa
+    color: amber
+auto_discover: true
+exclude: [scene.office_test]
+strip: '^.*//\s*|\s*-\s*on$'      # "Office // Work - On" reads "Work"
+color: blue
+show_icon: true
+navigation_path: /lovelace/scenes
+```
+
+---
+
+### System health
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/system-health-light.png"><img src="docs/images/system-health-dark.png" width="420" alt="Savvy system health card"></picture>
+
+What needs attention, in three sections: **offline devices**, **low batteries**, and, if you use
+[Watchman](https://github.com/dummylabs/thewatchman), the missing entities and actions it found.
+
+How it counts:
+
+- A device is one issue, however many entities it has. It counts as offline when half or more of its
+  entities are unavailable.
+- A hub or bridge takes the devices behind it along when it is offline ("Zigbee2MQTT Bridge offline, 34
+  devices"). Home Assistant records which device sits behind which hub, so nothing is guessed from names.
+- An integration is one issue when its setup failed or is retrying, or when most of its devices are offline.
+- A Watchman item whose entity belongs to a device that is already an issue is folded into that device
+  ("2 dashboard references broken") and counts once.
+- Known problems under `ignore` leave every count and wait in a collapsed "Known" line.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/system-health-columns-light.png"><img src="docs/images/system-health-columns-dark.png" width="760" alt="System health in columns"></picture>
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `source` | `all`, `battery`, `unavailable` (or `offline`), `watchman` | `all` | Everything, or one list. |
+| `title` | string | per source | Title. |
+| `details` | boolean | `false` | A line of facts under each section, and area and integration on the rows. |
+| `group_by` | `hub`, `device`, `none` | `hub` | How offline entities become issues. |
+| `group_min` | number | `3` | How many devices a hub or integration needs before they roll up into it. |
+| `battery_threshold` | number (%) | `20` | A battery below this is low. |
+| `exclude_platforms` | list | `[mobile_app]` | Integrations to ignore. |
+| `watchman` | list of entities | none | Watchman's summary sensors. |
+| `watchman_button` | boolean | `true` | The **Run report** chip. Shows only when `watchman.report` exists. |
+| `watchman_report` | object | `{ parse_config: true }` | The data the chip sends to `watchman.report`. |
+| `watchman_last_run` | entity or `false` | found | Watchman's last-parse timestamp ("Checked 2 h ago"). |
+| `ignore` | object | none | Known problems: `{ devices: [device ids], entities: [entity ids] }`. |
+| `warn_above` | number | `6` | The count turns red at this many issues. |
+| `columns` | number | automatic | With `source: all`, how many sections sit side by side when the card is wide. `1` stacks them. |
+| `max_rows` | number | `7` | Rows before a list scrolls. |
+| `show_all_batteries` | boolean | `true` | With `source: battery`: every battery, low ones first. |
+| `action` | object | none | A footer button `{ label, tap_action }`. Shown only when `tap_action` is a real action. |
+
+Minimum:
+
+```yaml
+type: custom:savvy-system-health-card
+```
+
+Full:
+
+```yaml
+type: custom:savvy-system-health-card
+source: all
+title: System health
+details: true
+group_by: hub
+group_min: 3
+battery_threshold: 20
+warn_above: 6
+exclude_platforms: [mobile_app]
+watchman: [sensor.watchman_missing_entities, sensor.watchman_missing_actions]
+watchman_button: true
+watchman_report: { parse_config: true }
+ignore:
+  devices: [3f9c2a7e1d4b4a0e9c1d]
+  entities: [sensor.old_thermostat_battery]
+columns: 3
+max_rows: 7
+action:
+  label: Open admin
+  tap_action: { action: navigate, navigation_path: /lovelace/admin }
+```
+
+---
+
+### Entity
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/entity-light.png"><img src="docs/images/entity-dark.png" width="340" alt="Savvy entity card"></picture>
+
+One entity and the ones that belong with it. A person gets their picture and zone ("Home, for 3 h");
+anything else its icon, state and how long. Chips underneath toggle, press or show a value.
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `entity` | entity | **required** | The main entity. |
+| `name`, `icon`, `color` | string | the entity's | Its look. |
+| `picture` | string | the person's | A picture URL, instead of the person's own. |
+| `show_state` | boolean | `true` | The state. |
+| `show_since` | boolean | `true` | How long it has been so. |
+| `navigation_path` | string | more-info | Where a tap goes. |
+| `tap_action`, `hold_action`, `double_tap_action` | action | more-info | The main entity's gestures. |
+| `chips` | chips | none | The entities that belong with it. |
+
+Minimum:
+
+```yaml
+type: custom:savvy-entity-card
+entity: person.alex
+```
+
+Full:
+
+```yaml
+type: custom:savvy-entity-card
+entity: person.alex
+name: Alex
+icon: mdi:account
+color: blue
+picture: /local/alex.jpg
+show_state: true
+show_since: true
+navigation_path: /lovelace/people
+chips:
+  - entity: switch.scooter_plug
+    name: Scooter
+  - entity: sensor.alex_phone_battery
+    name: Phone
+```
+
+---
+
+### Graph
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/graph-light.png"><img src="docs/images/graph-dark.png" width="560" alt="Savvy graph card"></picture>
+
+Tiles that know what they are. A number gets a graph with minimum, maximum, average and a scrub bubble;
+anything else a small tile with its state. Past a week it reads long-term statistics.
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `entities` | list | **required** | The tiles, see below. |
+| `title` | string | none | Title. |
+| `hours_to_show` | number | `24` | Every graph's range, unless a tile sets its own. |
+| `ranges` | list of hours | none | An hours selector in the header, e.g. `[24, 168, 720]`. |
+| `columns` | number | automatic | Small tiles per row. |
+
+Each tile in `entities`: `entity` (entity, required); `attribute` (chart this attribute instead of the
+state); `name`, `icon`, `unit` (strings); `hours_to_show` (number, this tile's own range); `thresholds`
+(`[{ value, level: good | warn | bad }]`, colours the graph); `state_color` (boolean, colours an on/off tile
+green or red); `tap_action`, `hold_action` (action).
+
+Minimum:
+
+```yaml
+type: custom:savvy-graph-card
+entities:
+  - sensor.processor_use
+```
+
+Full:
+
+```yaml
+type: custom:savvy-graph-card
+title: System
+hours_to_show: 24
+ranges: [24, 168, 720]
+columns: 2
+entities:
+  - entity: sensor.processor_use
+    name: CPU
+    unit: "%"
+    hours_to_show: 48
+    thresholds:
+      - { value: 0, level: good }
+      - { value: 60, level: warn }
+      - { value: 85, level: bad }
+  - entity: weather.home
+    attribute: humidity
+    name: Humidity
+    icon: mdi:water-percent
+  - entity: binary_sensor.internet
+    state_color: true
+```
+
+---
+
+### Savvy settings
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/settings-light.png"><img src="docs/images/settings-dark.png" width="460" alt="Savvy settings card"></picture>
+
+The defaults every other card shares: your pages, house mode, health options and each room's helpers.
+Place it once on any page. In view mode it is a small status card (how many defaults, how many cards on
+this page use them). The cards read the dashboard's own config to find it, keep the last answer in the
+browser, and follow it live while you edit. With two settings cards the first is used.
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `pages` | object | none | `home`, `lights`, `climate`, `media`, `security`, `health`: the page each home header chip, the cog and the home button lead to. `room`: a pattern for room pages (`/lovelace/{slug}`). |
+| `house` | object | none | `control` (the home header's control chip), `weather`, `security` (an entity for the security chip instead of the alarm), `tap` (`list`: a tap opens the popup; `navigate`: a tap goes to the chip's page and hold opens the popup). |
+| `health` | object | none | `watchman`, `battery_threshold`, `warn_above`, `exclude_platforms`, `group_by`, `group_min`, `watchman_last_run`, and `ignore` (`{ devices, entities }`). Used by the card and the home header's cog. |
+| `ignore` | object | none | `entities`: left out of everything the cards discover (room headers, section titles, tiles, room activity, locks, lights, scenes, vacuums) and the home header counts; `areas`: left out of the home header counts. A card that names an entity still shows it. |
+| `aggregate` | `true` or list of kinds | off | See [Aggregate sensors](#aggregate-sensors). |
+| `room_order` | list of areas | by name | Order of rooms in the popups and on the room header. |
+| `rooms` | object | none | Per area: `name`, `icon`, `page`, `control`, `light_state` (the helper behind the lights card's pill and the room tile's toggle), `temperature`, `humidity`, `include`, `exclude`. |
+| `layout` | `full` or `compact` | `full` | `compact`: a single row. |
+
+What each card takes from it:
+
+| Card | From the settings |
+|---|---|
+| Home header | `control`, `weather`, home button, each chip's page and `tap`, the security entity, `ignore`, `room_order`, `aggregate`, the cog's page and health options |
+| System health | the health options, including known problems |
+| Room header | the room's `control`, `temperature`, `include`, `exclude`; home button, room pages, `room_order`, `ignore.entities`, `aggregate` |
+| Section title | the room's `name`, `icon`, `control`, `temperature`, `include`, `exclude`, page; `ignore.entities`, `aggregate` |
+| Room tile | the room's `name`, `icon`, `control`, `temperature`, light helper (`toggle`), page; `ignore.entities`, `aggregate` |
+| Room activity | the room's `include`, `exclude`; `ignore.entities`, `aggregate` |
+| Lights | the room's light helper (the pill's toggle); `ignore.entities` |
+| Climate | the room's `temperature` and `humidity` |
+| Lock | the security entity (as the lock, when none is named); the room's `include`, `exclude`; `ignore.entities` |
+| Scenes, Vacuum | `ignore.entities` |
+
+Minimum:
+
+```yaml
+type: custom:savvy-settings-card
+pages:
+  home: /lovelace/home
+```
+
+Full:
+
+```yaml
+type: custom:savvy-settings-card
+layout: full
+pages:
+  home: /lovelace/home
+  lights: /lovelace/lights
+  climate: /lovelace/climate
+  media: /lovelace/media
+  security: /lovelace/security
+  health: /lovelace/admin
+  room: /lovelace/{slug}
+house:
+  control: input_select.house_mode
+  weather: weather.home
+  security: alarm_control_panel.home
+  tap: navigate
+health:
+  watchman: [sensor.watchman_missing_entities]
+  battery_threshold: 20
+  warn_above: 6
+  exclude_platforms: [mobile_app]
+  group_by: hub
+  group_min: 3
+  ignore:
+    devices: [3f9c2a7e1d4b4a0e9c1d]
+    entities: [sensor.old_thermostat_battery]
+ignore:
+  entities: [light.garden_string]
+  areas: [garage]
+aggregate: true
+room_order: [living_room, kitchen, bedroom]
+rooms:
+  kitchen:
+    name: Kitchen
+    icon: mdi:silverware-fork-knife
+    page: /lovelace/kitchen
+    control: input_select.kitchen_mode
+    light_state: input_boolean.kitchen_light
+    temperature: sensor.kitchen_temperature
+    humidity: sensor.kitchen_humidity
+    include: [lock.back_door]
+    exclude: [binary_sensor.old_motion]
+```
+
+---
+
+## Shared options
+
+### Chips
+
+One chip format everywhere: `entity`, `name`, `icon`, `color` (a Home Assistant colour name or hex),
+`show_state`, and `tap_action`, `hold_action`, `double_tap_action` in Home Assistant's action format. A
+chip's defaults follow its domain: a switch toggles, a button presses, a select opens a picker.
+`tap_action: { action: list }` is Savvy's own action and opens the list popup.
+
+### Badges
+
+The home header, room header, section title and room tile show what a room has. `entities` pins yours
+first. With `auto_discover` on (the default) the area's own follow: presence and doors always, and media,
+locks, climate, fans, covers, windows, leaks and smoke while they are active.
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `entities` | chips | none | Pinned badges, first and always shown. Never merged or ignored. |
+| `auto_discover` | boolean | `true` | Add what the area has. `false` leaves the pinned ones and the temperature. |
+| `exclude_kinds` | list of kinds | none | Kinds never discovered. |
+| `include` | list of entities | none | Entities to treat as in this area (a lock with no area). |
+| `exclude` | list of entities | none | Entities never discovered. The settings' `ignore.entities` and the room's `exclude` are added to it; `exclude: false` opts out. |
+
+On the section title the order is fixed: temperature at the right edge, then presence, then door and
+window, then whatever else is active.
+
+### Popups
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/popup-media-light.png"><img src="docs/images/popup-media-dark.png" width="460" alt="The media popup"></picture>
+
+Hold a chip on the home header, a room's light chip or a room tile and the entities behind it open. Every
+row is one line: the entity, its main control, and a chevron that opens one extra line (media transport and
+volume, a climate unit's modes, a light's brightness bar). Tapping a row's name opens its more-info. Lock
+rows use the same slide handle as the [lock card](#lock).
+
+- **Bulk action.** One button for what the popup lists: All off, Pause all, Lock all. It touches only what
+  still needs it. `bulk_action: false` hides it.
+- **Sort.** Rooms in your `room_order`, then by name. A Room | Recent switch lists by last change.
+- **Ignore.** `exclude` and `exclude_areas` on a home header chip leave things out of both the count and the popup.
+- **Security popup.** The alarm and locks stay on top, then what is open, leaks and smoke, and read-only
+  presence and motion.
+
+### Aggregate sensors
+
+Some rooms have several presence sensors (cameras, motion, mmWave) and the lists get long. With
+`aggregate: true`, in the settings card or on one card, each room's presence, motion and occupancy sensors
+show as one "Presence" item: occupied if any one is, and since the first of those that are on came on. A
+list of kinds (`[presence, door, window, leak, smoke, gas]`) merges those too. Sensors on your ignore lists
+and entities you pinned yourself are never merged. In the security popup the merged row's chevron lists the
+sensors behind it.
+
+### Ignoring entities
+
+`ignore.entities` in the settings card keeps entities out of everything the cards discover. A chip's
+`exclude` does the same for one home header chip, and a card's `exclude` for that card. An entity you name
+on a card (`entity`, `entities`, `video`, `lights`) is always shown.
+
+### Icons
+
+An entity's own icon wins, then the one in its registry entry, then a built-in table by domain, device
+class and state. Savvy never shows Home Assistant's bookmark placeholder.
+
+## Troubleshooting
+
+- **"Custom element doesn't exist: savvy-..."** The resource is not loaded. Check Settings, Dashboards,
+  Resources for `savvy-cards.js` as a JavaScript module, then reload the browser. After an update a stale
+  cache is the usual cause: change the `?v=` number, or clear the browser cache.
+- **A card shows nothing for an area.** Check the area in Home Assistant: the entity or its device must be
+  assigned to it. For things that have no area, name them on the card (`entity`, `include`).
+- **The settings are not picked up.** There must be a settings card on the same dashboard, and only the
+  first one counts. Open any card's editor: **From Savvy settings** lists what it inherits. To switch off
+  an inherited home button or control, use `show_home: false` or `show_control: false`.
+- **The page address does nothing.** Use the path as the browser shows it, starting with a slash
+  (`/lovelace/lights`). Your dashboard's URL may not start with `/lovelace`.
+- **No Run report chip.** It needs the Watchman integration's `watchman.report` action.
+- **A lock won't open.** The slide's second stop only exists for locks that support `lock.open`.
+- **Something looks wrong.** Open the browser console; the bundle prints its version when it loads.
+  Please include it in an issue.
+
+## Development
+
+No dependencies, no bundler. `src/core/` is the shared engine and `src/cards/` has one file per card.
+`node build.mjs` joins them into `dist/savvy-cards.js`, and `node build.mjs --check` fails when the
+committed dist is stale. The design rules are in [docs/DESIGN.md](docs/DESIGN.md).
+
+Tests need Playwright:
+
+```
+node test/run.mjs [filter]        # all specs, or those matching a name
+node test/screenshots.mjs [name]  # redraw the README images
+```
+
+The tests run every card against a made-up house in `test/house.js`, in both themes and at phone and
+desktop widths. See [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

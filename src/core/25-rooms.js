@@ -110,7 +110,8 @@ function roomTemperature(hass, area, cfg = {}) {
   };
   if (typeof given === "string") return read(given);
   if (!area) return null;
-  const ids = areaEntities(hass, area);
+  const skip = asItems(cfg.exclude).map((i) => i.entity);
+  const ids = areaEntities(hass, area).filter((id) => !skip.includes(id));
   const sensor = pick(hass, ids, { domains: "sensor", deviceClasses: "temperature" }).find((id) => read(id));
   if (sensor) return read(sensor);
   for (const id of pick(hass, ids, { domains: "climate" })) {

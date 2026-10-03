@@ -621,7 +621,8 @@ function roomTemperature(hass, area, cfg = {}) {
   };
   if (typeof given === "string") return read(given);
   if (!area) return null;
-  const ids = areaEntities(hass, area);
+  const skip = asItems(cfg.exclude).map((i) => i.entity);
+  const ids = areaEntities(hass, area).filter((id) => !skip.includes(id));
   const sensor = pick(hass, ids, { domains: "sensor", deviceClasses: "temperature" }).find((id) => read(id));
   if (sensor) return read(sensor);
   for (const id of pick(hass, ids, { domains: "climate" })) {
@@ -4813,6 +4814,14 @@ const roomPage = (s, c, x) => {
   return v ? { v, src: "pages.room" } : undefined;
 };
 const glob = (section, key) => (s) => s[section]?.[key];
+// what a room card leaves out: the room's own `exclude` and the global ignore list, one list
+const roomExclude = (s, c, x) => {
+  if (!x.area) return undefined;                       // a plain title has nothing to discover
+  const own = x.room?.exclude, ign = s.ignore?.entities;
+  const v = [...asList(own), ...asList(ign)].filter((e) => e != null && e !== "");
+  if (!v.length) return undefined;
+  return { v, src: asList(ign).length ? "ignore" : `rooms.${x.area}` };
+};
 
 const HEALTH_KEYS = [
   ["watchman", "Watchman sensors"], ["battery_threshold", "Battery alert"], ["warn_above", "Red threshold"],
@@ -4857,7 +4866,7 @@ const SETTINGS_RULES = {
     { path: "control", label: "Control", get: room("control") },
     { path: "temperature", label: "Temperature", get: room("temperature") },
     { path: "include", label: "Include", kind: "union", get: room("include") },
-    { path: "exclude", label: "Exclude", kind: "union", get: room("exclude") },
+    { path: "exclude", label: "Exclude", kind: "union", get: roomExclude },
     { path: "home_path", label: "Home button", get: glob("pages", "home"), src: "pages" },
     { path: "room_path", label: "Room pages", get: glob("pages", "room"), src: "pages" },
     // the card's own `order` (the pre-Savvy name) counts as its own
@@ -4870,7 +4879,7 @@ const SETTINGS_RULES = {
     { path: "control", label: "Control", get: room("control") },
     { path: "temperature", label: "Temperature", get: room("temperature") },
     { path: "include", label: "Include", kind: "union", get: room("include") },
-    { path: "exclude", label: "Exclude", kind: "union", get: room("exclude") },
+    { path: "exclude", label: "Exclude", kind: "union", get: roomExclude },
     { path: "navigation_path", label: "Target page", get: roomPage },
   ],
   "savvy-room-tile": [
@@ -4881,15 +4890,23 @@ const SETTINGS_RULES = {
     { path: "temperature", label: "Temperature", get: room("temperature") },
     { path: "toggle", label: "Light helper", get: (s, c, x) => (c.light_state !== undefined ? undefined : room("light_state")(s, c, x)) },
     { path: "entities", label: "Light badge", kind: "pin", get: room("light_state") },
+    { path: "exclude", label: "Exclude", kind: "union", get: roomExclude },
     { path: "navigation_path", label: "Target page", get: roomPage },
   ],
   "savvy-lights-card": [
+    { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
     { path: "toggle", label: "Light helper",
       get: (s, c, x) => {
         if (c.toggle !== undefined || c.master !== undefined) return undefined;
         const r = room("light_state")(s, c, x);
         return r ? { v: { entity: r.v }, src: r.src } : undefined;
       } },
+  ],
+  "savvy-scene-card": [
+    { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
+  ],
+  "savvy-vacuum-card": [
+    { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
   ],
   "savvy-climate-card": [
     { path: "temperature", label: "Temperature", get: room("temperature") },
@@ -4898,14 +4915,14 @@ const SETTINGS_RULES = {
   "savvy-room-activity-card": [
     { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
     { path: "include", label: "Include", kind: "union", get: room("include") },
-    { path: "exclude", label: "Exclude", kind: "union", get: room("exclude") },
+    { path: "exclude", label: "Exclude", kind: "union", get: roomExclude },
   ],
   "savvy-lock-card": [
     // with no lock named, the settings' security entity is the lock to show
     { path: "entity", label: "Lock", src: "house",
       get: (s, c) => (c.entity !== undefined || c.entities !== undefined || c.area !== undefined || c.areas !== undefined || domainOf(s.house?.security) !== "lock" ? undefined : s.house.security) },
     { path: "include", label: "Include", kind: "union", get: room("include") },
-    { path: "exclude", label: "Exclude", kind: "union", get: room("exclude") },
+    { path: "exclude", label: "Exclude", kind: "union", get: roomExclude },
   ],
 };
 
@@ -11454,9 +11471,9 @@ registerCard("savvy-lights-card", LightsCard, "Lights",
 
 // ===== cards/lock.js =====
 (() => {
-// savvy-lock-card: a door, the way you'd want to handle it. The state is the biggest thing on
-// the card, a glow behind it follows (green when locked, amber when not, red when open or
-// jammed), and the lock's own icon is the handle you slide across its row: past the first stop it
+// savvy-lock-card: a door, the way you'd want to handle it. The name is the title and the state a
+// coloured status line under it (green when locked, amber when not, red when open or jammed;
+// the card only washes when something is off), and the lock's own icon is the handle you slide across its row: past the first stop it
 // does the opposite of what the lock is now, and Open (the latch) needs the end held until a ring fills.
 // A tap on the icon only nudges it.
 //
@@ -11485,47 +11502,51 @@ const LOCK_TONE_WORD = ["rgb(76 175 80)", "rgb(232 163 61)", "rgb(224 102 102)"]
 const LOCK_AMBER = "232 163 61", LOCK_RED = "224 102 102";
 
 const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_SLIDE_CSS}
-  ha-card { --pad: 14px; --lk: 76 175 80; --wash: 0.1; --pulse: 0; position: relative; display: flex; flex-direction: column; gap: 12px; padding: var(--pad); overflow: hidden; }
+  ha-card { --pad: 16px; --lk: 76 175 80; --wash: 0; --pulse: 0; position: relative; display: flex; flex-direction: column; gap: 12px; padding: var(--pad); overflow: hidden; }
+  :host([data-compact]) ha-card { --pad: 12px; gap: 8px; }
   ha-card::before { content: ""; position: absolute; inset: 0; pointer-events: none;
-    background: radial-gradient(140% 110% at 0% 0%, rgb(var(--lk) / calc(var(--wash) + var(--pulse) * 0.08)), transparent 68%); }
+    background: radial-gradient(140% 110% at 0% 0%, rgb(var(--lk) / calc(var(--wash) + var(--pulse) * 0.05)), transparent 68%); }
   ha-card > * { position: relative; }
   .head { display: flex; align-items: center; gap: 10px; min-height: 30px; }
   .head .t { flex: 1; min-width: 0; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sum { flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 12px; font-size: 12px; font-weight: 650;
-    color: rgb(var(--lk)); background: rgb(var(--lk) / 0.16); white-space: nowrap; }
+    color: rgb(var(--lk)); background: rgb(var(--lk) / 0.12); white-space: nowrap; }
   .btn { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 11px; background: var(--well);
     font-size: 12.5px; line-height: 16px; font-weight: 650; color: var(--primary-text-color); --mdc-icon-size: 16px; cursor: pointer; }
   .btn ha-icon { display: flex; }
-  .btn[data-on] { color: rgb(var(--lk)); background: rgb(var(--lk) / 0.16); }
-  .locks { display: flex; flex-direction: column; gap: 16px; }
+  .btn[data-on] { color: rgb(var(--lk)); background: rgb(var(--lk) / 0.12); }
+  .locks { display: flex; flex-direction: column; gap: 12px; }
   .lk { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
   .top { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 4px 8px 4px 4px; border-radius: 32px; }
   .who { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; text-align: start; border-radius: 12px; cursor: pointer; }
   .disc { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; color: var(--tone); background: color-mix(in oklab, var(--tone) 18%, transparent); --mdc-icon-size: 21px; }
   .disc > .dicon { display: flex; align-items: center; justify-content: center; line-height: 0; }
   .disc > .dicon > * { display: flex; }
-  .col { min-width: 0; display: flex; flex-direction: column; }
-  .nm { font-size: 12.5px; line-height: 16px; font-weight: 600; letter-spacing: -0.005em; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .st { font-size: 17px; line-height: 22px; font-weight: 700; letter-spacing: -0.02em; color: var(--tone); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  :host([data-solo]) .st { font-size: 28px; line-height: 32px; letter-spacing: -0.03em; }
-  :host([data-solo]) .disc { width: 46px; height: 46px; --mdc-icon-size: 25px; }
-  .sub { font-size: 12.5px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .col { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 5px; }
+  .nm { grid-column: 1 / -1; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .st { font-size: 13px; line-height: 17px; font-weight: 600; color: var(--tone); white-space: nowrap; }
+  :host([data-solo]) .disc { width: 42px; height: 42px; --mdc-icon-size: 23px; }
+  .sub { font-size: 13px; line-height: 17px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sub:not(:empty)::before { content: "\\00b7\\00a0"; }
   .sub:empty { display: none; }
   .meta { flex: none; display: flex; align-items: center; gap: 8px; }
-  .door, .batt { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px 0 7px; border-radius: 13px; background: var(--well);
-    font-size: 12px; font-weight: 650; color: var(--secondary-text-color); white-space: nowrap; --mdc-icon-size: 16px; }
+  .door, .batt { position: relative; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px 0 7px; border-radius: 13px; background: var(--well);
+    font-size: 12px; font-weight: 600; color: var(--secondary-text-color); white-space: nowrap; --mdc-icon-size: 16px; }
   .door ha-icon { display: flex; }
+  /* a closed door is just its icon: the words appear when the door is open */
+  .door:not([data-warn]) { padding: 0 5px; }
+  .door:not([data-warn]) > span:last-child { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .door[data-warn], .batt[data-level="warn"] { color: rgb(${LOCK_AMBER}); background: rgb(${LOCK_AMBER} / 0.16); }
   .batt[data-level="bad"] { color: rgb(${LOCK_RED}); background: rgb(${LOCK_RED} / 0.16); }
   .batt ha-icon { display: flex; }
   /* several locks: a smaller row each */
-  :host(:not([data-solo])) .st { font-size: 15px; line-height: 20px; }
   /* compact: one row, the handle at its start */
   :host([data-compact]) .locks { gap: 8px; }
   :host([data-compact]) .top { padding: 3px 8px 3px 3px; border-radius: 26px; }
   :host([data-compact]) .disc { width: 34px; height: 34px; --mdc-icon-size: 19px; }
-  :host([data-compact]) .st { font-size: 15px; line-height: 19px; }
+  :host([data-compact]) .nm { font-size: 14px; line-height: 18px; }
   :host([data-compact]) .sub { display: none; }
+  :host([data-compact]) .col { grid-template-columns: minmax(0, 1fr); }
   :host([data-compact]) .meta .door:not([data-warn]), :host([data-compact]) .meta .batt:not([data-level="warn"]):not([data-level="bad"]) { display: none; }
   :host([data-compact]) .door, :host([data-compact]) .batt { height: 22px; font-size: 11px; }
   .nudge { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border-radius: 14px; background: rgb(${LOCK_AMBER} / 0.14); color: rgb(${LOCK_AMBER});
@@ -11533,18 +11554,18 @@ const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_SLIDE_CSS}
   .nudge ha-icon { display: flex; flex: none; }
   .nudge .tx { flex: 1; min-width: 0; }
   .nudge .btn { background: rgb(${LOCK_AMBER} / 0.2); color: inherit; }
-  .alarm { display: flex; flex-direction: column; gap: 8px; padding: 8px 8px 8px 10px; border-radius: 14px; background: var(--well); min-width: 0; }
+  .alarm { display: flex; flex-direction: column; gap: 8px; padding: 6px 8px 6px 10px; border-radius: 14px; background: var(--well); min-width: 0; }
   .alarm[data-triggered] { background: rgb(${LOCK_RED} / 0.18); color: rgb(${LOCK_RED}); }
-  .al1 { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 30px; }
-  .alarm .ai { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: color-mix(in oklab, var(--secondary-text-color) 14%, transparent);
-    --mdc-icon-size: 17px; color: var(--secondary-text-color); }
-  .alarm[data-armed] .ai { color: rgb(76 175 80); background: rgb(76 175 80 / 0.16); }
-  .alarm[data-triggered] .ai { color: rgb(${LOCK_RED}); background: rgb(${LOCK_RED} / 0.2); }
+  .al1 { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 30px; }
+  .alarm .ai { flex: none; display: grid; place-items: center; width: 24px; height: 24px;
+    --mdc-icon-size: 20px; color: var(--secondary-text-color); }
+  .alarm[data-armed] .ai { color: rgb(76 175 80); }
+  .alarm[data-triggered] .ai { color: rgb(${LOCK_RED}); }
   .alarm .ai ha-icon { display: flex; }
-  .alarm .ab { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .alarm .an { font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: var(--secondary-text-color); }
-  .alarm .as { font-size: 14px; line-height: 18px; font-weight: 650; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .alarm .achev { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: color-mix(in oklab, var(--secondary-text-color) 12%, transparent);
+  .alarm .ab { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 6px; }
+  .alarm .an { flex: none; font-size: 13px; line-height: 18px; font-weight: 500; color: var(--secondary-text-color); }
+  .alarm .as { min-width: 0; font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .alarm .achev { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%;
     color: var(--secondary-text-color); --mdc-icon-size: 20px; cursor: pointer; }
   .alarm .achev ha-icon { display: flex; transform: rotate(calc(var(--r, 0) * 180deg)); }
   .alarm[data-view="full"] .achev { display: none; }
@@ -11553,13 +11574,13 @@ const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_SLIDE_CSS}
     scrollbar-width: none; scroll-snap-type: x proximity; }
   .alarm .am::-webkit-scrollbar { display: none; }
   .alarm .am[data-overflow] { -webkit-mask-image: linear-gradient(to left, transparent 0, #000 26px); mask-image: linear-gradient(to left, transparent 0, #000 26px); }
-  .alarm .am .btn { flex: none; scroll-snap-align: start; height: 30px; padding: 0 10px; }
-  .alarm .am .btn[data-on] { color: rgb(76 175 80); background: rgb(76 175 80 / 0.16); }
+  .alarm .am .btn { flex: none; scroll-snap-align: start; height: 30px; padding: 0 10px; background: color-mix(in oklab, var(--primary-text-color) 7%, transparent); }
+  .alarm .am .btn[data-on] { color: rgb(76 175 80); background: rgb(76 175 80 / 0.12); }
   .alarm[data-triggered] .am .btn { background: rgb(${LOCK_RED} / 0.14); color: inherit; }
-  .cam { position: relative; display: block; width: 100%; padding: 0; border: 0; border-radius: 14px; overflow: hidden; cursor: pointer; background: var(--well); aspect-ratio: 21 / 9; }
+  .cam { position: relative; display: block; width: 100%; padding: 0; border: 0; border-radius: 12px; overflow: hidden; cursor: pointer; background: var(--well); aspect-ratio: 21 / 9; }
   .cam img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .cam .cl { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 6px; padding: 18px 12px 9px; color: #fff; --mdc-icon-size: 16px;
-    font-size: 12.5px; font-weight: 650; background: linear-gradient(transparent, rgb(0 0 0 / 0.55)); text-align: start; }
+    font-size: 12.5px; font-weight: 600; background: linear-gradient(transparent, rgb(0 0 0 / 0.45)); text-align: start; }
   .cam .cl ha-icon { display: flex; }
   .camrow { display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 6px; border-radius: 14px; background: var(--well); min-width: 0; }
   .camrow .cth { flex: none; width: 52px; height: 36px; border-radius: 9px; object-fit: cover; background: color-mix(in oklab, var(--secondary-text-color) 18%, transparent); cursor: pointer; }
@@ -11697,7 +11718,7 @@ class SavvyLockCard extends SavvyCard {
 
   _items() {
     const h = this._hass, c = this._config, out = [], skip = new Set(c.exclude);
-    for (const p of c.pinned) if (p.entity && !skip.has(p.entity) && !out.some((o) => o.entity === p.entity)) out.push(p);
+    for (const p of c.pinned) if (p.entity && !out.some((o) => o.entity === p.entity)) out.push(p); // named locks always show
     const have = () => new Set(out.map((o) => o.entity));
     for (const a of c.areas) {
       for (const id of pick(h, areaEntities(h, a), { domains: "lock", exclude: [...skip, ...have()] })) out.push({ entity: id });
@@ -12046,7 +12067,7 @@ class SavvyLockCard extends SavvyCard {
     const t = clamp(this._tint.x, 0, 2);
     const c = lockTone(t);
     put(this._el.card, "--lk", c.join(" "));
-    put(this._el.card, "--wash", (0.1 + 0.08 * t).toFixed(3));
+    put(this._el.card, "--wash", (0.06 * t).toFixed(3)); // calm: none; amber and red only a breath
   }
 }
 
@@ -15294,7 +15315,7 @@ registerCard("savvy-section-title-card", SavvySectionTitleCard, "Section title",
 //   pages:  { home, lights, climate, media, security, health, room: /lovelace/{slug} }
 //   house:  { control, weather, security, tap: list | navigate }
 //   health: { watchman, battery_threshold, warn_above, exclude_platforms, group_by, group_min, watchman_last_run }
-//   ignore: { entities: [], areas: [] }
+//   ignore: { entities: [], areas: [] }   entities leave every card's auto-discovery; areas leave the home header chips
 //   room_order: [area ids]   the rooms' order in the popups and the room header's row; the rest follow by name
 //   rooms:  { living_room: { name, icon, page, control, light_state, temperature, humidity, include, exclude } }
 //   layout: full | compact
@@ -15477,7 +15498,7 @@ class SettingsEditor extends SavvyEditor {
         ] },
       ] },
       { type: "expandable", name: "ignore", title: "Ignore", schema: [
-        { name: "entities", label: "Ignored entities", helper: "Left out of the home header's counts and popups.", selector: { entity: { multiple: true } } },
+        { name: "entities", label: "Ignored entities", helper: "Left out of the home header's counts and popups, and out of what room headers, section titles, room tiles, room activity, locks, lights, scenes and vacuums find by themselves. A card that names an entity still shows it.", selector: { entity: { multiple: true } } },
         { name: "areas", label: "Ignored rooms", selector: { area: { multiple: true } } },
       ] },
       { name: "aggregate", label: "Aggregate sensors", helper: "Show a room's sensors of these kinds once: occupied if any one is. Sensors on your ignore list are left out. In YAML, true means presence.",

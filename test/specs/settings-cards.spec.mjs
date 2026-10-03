@@ -64,7 +64,7 @@ export default async function ({ browser, base, check }) {
     check(`${tag} room tile: name, toggle, page`, tile.c.name === "Cook" && tile.c.toggle === "input_boolean.kitchen_light" && tile.c.navigation_path === "/lovelace/kitchen-x");
     check(`${tag} lights: the pill's toggle is the room's light helper`, lights.c.toggle?.entity === "input_boolean.kitchen_light");
     check(`${tag} climate: the room's temperature and humidity`, climate.c.temperature === "sensor.kitchen_t" && climate.c.humidity === "sensor.kitchen_h");
-    check(`${tag} room activity reads its room`, activity.inherited === 0 && activity.c.area === "kitchen");
+    check(`${tag} room activity reads its room and takes the global ignore list`, activity.c.area === "kitchen" && (activity.c.exclude || []).length > 0 && activity.inherited === 1, JSON.stringify([activity.inherited, activity.c.exclude]));
     check(`${tag} the card's own name wins`, mine.c.name === "Mine" && mine.c.icon === "mdi:pot");
 
     // what shows
