@@ -99,7 +99,7 @@ export default async function ({ browser, base, check }) {
     await page.close();
 
     if (engine === "chromium") {
-      const ctx = await browser.newContext({ viewport: { width: 500, height: 700 }, hasTouch: true, isMobile: true });
+      const ctx = await browser.newContext({ viewport: { width: 500, height: 700 }, hasTouch: true });
       const t = await ctx.newPage();
       await t.goto(base + "page.html");
       await t.waitForFunction(() => window.__savvy && window.mount);
