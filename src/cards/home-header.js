@@ -57,9 +57,9 @@ class SavvyHomeHeaderCard extends SavvyCard {
   setConfig(config) {
     const c = { mode_label: "Home mode", ...config };
     // the pre-Savvy names: home_mode, weather as { entity }, admin, tiles
-    c.control = config.control ?? config.home_mode;
+    c.control = config.show_control === false ? "" : config.control ?? config.home_mode;
     if (config.weather && typeof config.weather === "object") c.weather = config.weather.entity;
-    if (config.show_home === false) c.home_path = null;
+    if (config.show_home === false) c.home_path = "";
     if (config.health === undefined && config.admin) {
       const a = config.admin;
       c.health = { navigation_path: a.path, tap_action: a.path ? { action: "navigate", navigation_path: a.path } : undefined, watchman: a.watchman ?? a.entities, battery_threshold: a.battery_threshold,
@@ -156,7 +156,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
     }
     const card = document.createElement("savvy-system-health-card");
     const { navigation_path, tap_action, hold_action, popup_button, popup_label, ...opts } = this._healthCfg() || {};
-    this._healthSheet.setFooter(pageButton(this._healthCfg() || {}, "system health", { byDefault: false }));
+    this._healthSheet.setFooter(pageButton(this._healthCfg() || {}, "system health"));
     card.setConfig({ ...opts, source: "all", max_rows: 30, title: " ", columns: 1 });
     this._healthSheet.body.replaceChildren(card);
     card.hass = this._hass;
@@ -168,7 +168,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
     const h = this._hass, c = this._config, el = this._el;
     if (!h || !el) return;
     this.toggleAttribute("dark", !!h.themes?.darkMode);
-    el.home.hidden = !c.home_path;
+    el.home.hidden = !c.home_path || samePage(c.home_path); // no button to the page you are on
     const info = this._modeInfo();
     this._renderPill(info, c.mode_label);
     el.spacer.hidden = !!info;
@@ -300,11 +300,13 @@ const autoSection = (key, what) => ({ type: "expandable", name: key, title: `${A
 
 const EDITOR = defineEditor("savvy-home-header-card", (hass, c) => [
   ...modeSchema(hass, c),
-  S.nav("home_path", "Home button", "The page it opens. Empty hides the button."),
+  S.nav("home_path", "Home button", "The page it opens. Empty: the one from the Savvy settings."),
+  S.bool("show_home", "Show home button", "Off hides it, even when the Savvy settings have a home page.", true),
+  S.bool("show_control", "Show control", "Off hides the control chip, even when the Savvy settings have one.", true),
   { name: "weather", label: "Weather", helper: "Empty: the first weather entity.", selector: { entity: { domain: "weather" } } },
   { type: "expandable", name: "health", title: "Health cog", schema: [
     S.nav("navigation_path", "Target page", "Where the popup's page button leads."),
-    S.bool("popup_button", "Page button", "Off by default: turn it on for a button under the popup that opens the target page.", false),
+    S.bool("popup_button", "Page button", "A button under the popup that opens the target page. On whenever there is one.", true),
     S.text("popup_label", "Button text", "Default: Open system health"),
     S.action("tap_action", "Tap action", "Default: open the list of what needs attention."),
     S.action("hold_action", "Hold action", "Default: open the list of what needs attention."),

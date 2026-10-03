@@ -33,7 +33,7 @@ export default async function ({ browser, base, check }) {
         health: { navigation_path: "/lovelace/admin", popup_button: true, tap_action: { action: "navigate", navigation_path: "/lovelace/admin-tap" } },
         lights: { navigation_path: "/lovelace/lights", tap_action: { action: "navigate", navigation_path: "/lovelace/lights-tap" } },
       }, width);
-      // the cog's page button is off unless asked for
+      // the cog's page button follows its target page
       window.mount("savvy-home-header-card", { health: { navigation_path: "/lovelace/admin", popup_button: true }, lights: false, climate: false, media: false, security: false }, width);
     }, width);
     await page.waitForTimeout(500);
@@ -97,7 +97,7 @@ export default async function ({ browser, base, check }) {
     await page.mouse.click(...Object.values(await cogAt(page, 0)));
     await page.waitForTimeout(600);
     const cogTap = await page.evaluate((GO) => ({ nav: [...window.nav], go: eval(GO)?.text ?? null, title: window.__savvy.portalRoot().querySelector(".sv-sheet .sv-title")?.textContent }), GO);
-    check(`${tag} a tap on the cog opens the health popup; navigation_path does not navigate`, cogTap.nav.length === 0 && cogTap.go === null && cogTap.title === "System health", JSON.stringify(cogTap));
+    check(`${tag} a tap on the cog opens the health popup; navigation_path does not navigate`, cogTap.nav.length === 0 && cogTap.go === "Open system health" && cogTap.title === "System health", JSON.stringify(cogTap));
     await close();
 
     // explicit tap_action: the tap navigates, hold still lists, and the button follows navigation_path
@@ -125,10 +125,10 @@ export default async function ({ browser, base, check }) {
     await page.waitForTimeout(500);
     check(`${tag} ...which goes to /lovelace/admin`, (await page.evaluate(() => [...window.nav])).at(-1) === "/lovelace/admin");
 
-    // the cog's popup: no page button by default, one when popup_button is on
+    // the cog's popup: a page button whenever there is a target page
     await hold(page, await cogAt(page, 0));
     await page.waitForTimeout(600);
-    check(`${tag} the cog's popup has no page button by default, target page or not`, (await page.evaluate(GO)) === null);
+    check(`${tag} the cog's popup has a page button whenever there is a target page`, (await page.evaluate(GO))?.text === "Open system health");
     await close();
     await hold(page, await cogAt(page, 3));
     await page.waitForTimeout(600);

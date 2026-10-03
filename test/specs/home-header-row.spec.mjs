@@ -38,6 +38,21 @@ export default async function ({ browser, base, check }) {
       });
       check(`${tag} the cog is reachable at the end of the row`, moved.left > 0 && moved.cogRight <= moved.rowRight + 2, JSON.stringify(moved));
     }
+    if (width === 900) {
+      // the Savvy settings hold a home page and a control; the card can switch each off in the editor, without YAML tricks
+      const o = await page.evaluate(async (width) => {
+        window.mount("savvy-settings-card", { pages: { home: "/lovelace/home" }, house: { control: "input_select.house_mode" } }, width);
+        const base = window.cards.length;
+        window.mount("savvy-home-header-card", {}, width);
+        window.mount("savvy-home-header-card", { show_home: false, show_control: false }, width);
+        window.mount("savvy-home-header-card", { home_path: location.pathname }, width);
+        await new Promise((res) => setTimeout(res, 800));
+        return [base, base + 1, base + 2].map((i) => { const R = window.cards[i].shadowRoot; return { home: !R.getElementById("home").hidden, pill: !R.getElementById("pill").hidden }; });
+      }, width);
+      check(`${tag} the settings give the header a home button and a control`, o[0].home && o[0].pill, JSON.stringify(o));
+      check(`${tag} Show home button / Show control off: neither, even with the settings`, !o[1].home && !o[1].pill, JSON.stringify(o));
+      check(`${tag} no home button on the home page itself`, !o[2].home, JSON.stringify(o));
+    }
     check(`${tag} springs idle`, await idle(page));
     check(`${tag} no errors`, errors.length === 0, errors.join(" | "));
     await page.close();

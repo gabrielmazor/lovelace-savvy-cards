@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **The health cog's popup has its page button whenever it has a target page**, like the four chips.
+- **Home button and control can be switched off in the editor** ("Show home button", "Show control"),
+  even when the Savvy settings supply a home page and a control. No more `control: ""` in YAML.
+- **No home button on the home page itself.**
+
 ## 0.9.1
 
 The lock, the health card and the rooms, tidied together.
