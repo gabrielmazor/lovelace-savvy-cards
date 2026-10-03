@@ -50,8 +50,8 @@ const SHEET_CSS = `
   /* the switch: a 38 x 22 track and an 18 knob, 2 px of track all round, whatever the pixel ratio */
   .sv-tog { flex: none; display: block; position: relative; width: 38px; height: 22px; border-radius: 11px; background: var(--well); }
   .sv-tog-k { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; box-sizing: border-box;
-    background: var(--card-background-color, #fff); box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); transform: translateX(var(--tx, 0px)); }
-  .sv-tog[data-on] { background: var(--row-c, rgb(var(--accent))); --tx: 16px; }
+    background: var(--card-background-color, #fff); box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); translate: calc(var(--p, 0) * 16px) 0; }
+  .sv-tog[data-on] { background: var(--row-c, rgb(var(--accent))); }
   .sv-empty { padding: 18px 8px; text-align: center; font-size: 13px; color: var(--secondary-text-color); }
   .sv-group { margin: 8px 6px 2px; font-size: 11.5px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em;
     text-transform: uppercase; color: var(--secondary-text-color); }
@@ -82,7 +82,7 @@ function portalRoot() {
     portalEl.className = "savvy-portal";
     const root = portalEl.attachShadow({ mode: "open" });
     const style = document.createElement("style");
-    style.textContent = SHEET_CSS + ROWS_CSS + PICKER_CSS;
+    style.textContent = ROLL_CSS + SHEET_CSS + ROWS_CSS + PICKER_CSS;
     root.appendChild(style);
     watchKeyboard(portalEl);
     document.body.appendChild(portalEl);
@@ -430,6 +430,10 @@ class EntityListSheet {
   // cards call this from their hass setter while it's open, so rows stay live
   render(hass) {
     if (!this.open) return;
+    Motion.flip(this.rows, () => this.renderNow(hass));
+  }
+
+  renderNow(hass) {
     this.hass = hass;
     const ids = (typeof this.ids === "function" ? this.ids(hass) : this.ids) || [];
     this.curIds = ids;
@@ -492,6 +496,7 @@ class EntityListSheet {
       const switchable = TOGGLE_DOMAINS.has(d);
       row.__tog.hidden = !switchable || !st || isOff(st);
       attr(row.__tog, "data-on", on);
+      Motion.tweenVar(row.__tog, "--p", on ? 1 : 0);
       attr(row.__tog, "aria-label", on ? "Turn off" : "Turn on");
       text(row.querySelector(".sv-val"), res.val || (switchable || ROW_KINDS[d] ? "" : stateText(hass, st)));
       place(box, row, at++);   // keeps DOM order equal to the order

@@ -2,7 +2,7 @@
 // (a switch, play / pause, a target stepper, open / close, the alarm's state); a chevron opens one
 // extra line (transport and volume, the modes, brightness, stop and position, the arm modes, speed),
 // one at a time. Exact service payloads, and what each hides when the entity can't do it.
-import { openPage } from "./_util.mjs";
+import { openPage, uncalm, calm } from "./_util.mjs";
 
 const SETUP = () => {
   const add = (id, state, attributes, area, minutesAgo = 30) => {
@@ -172,12 +172,14 @@ export default async function ({ browser, base, check }) {
     check(`${tag} a unit: the target stepper on the line, the mode and reading under the name`, (await q(page, "climate.pr_ac", ".sv-act .sv-step-v", (e) => e[0].textContent)) === "22.0°"
       && /Cooling · 23\.4° now/.test(await q(page, "climate.pr_ac", ".sv-sub", (e) => e[0].textContent)) && (await visible(page, "climate.pr_ac", ".sv-seg")) === 0);
     await clear(page);
+    uncalm(page);   // the debounce window is the point here
     await click(page, "climate.pr_ac", ".sv-act .sv-step .sv-btn", 1);
     await click(page, "climate.pr_ac", ".sv-act .sv-step .sv-btn", 1);
     await click(page, "climate.pr_ac", ".sv-act .sv-step .sv-btn", 1);
     const shown = await q(page, "climate.pr_ac", ".sv-step-v", (e) => e[0].textContent);
     await page.waitForTimeout(650);
     check(`${tag} + three times is one write of 23.5 once the stepping stops`, shown === "23.5°" && JSON.stringify(await log(page)) === JSON.stringify(['climate.set_temperature {"temperature":23.5} climate.pr_ac']), JSON.stringify([shown, await log(page)]));
+    calm(page);
     await page.evaluate(() => window.push("climate.pr_ac", "cool", { temperature: 23.5 }));
     await clear(page);
     await click(page, "climate.pr_ac", ".sv-act .sv-step .sv-btn", 0);

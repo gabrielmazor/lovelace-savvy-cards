@@ -276,6 +276,10 @@ class SavvyEntityCard extends SavvyCard {
   }
 
   _renderPills() {
+    Motion.flip(this._el.pills, () => this._renderPillsNow());
+  }
+
+  _renderPillsNow() {
     const h = this._hass, list = this._config.chips, box = this._el.pills, seen = new Set();
     list.forEach((item, i) => {
       const key = `${i}|${item.entity || item.navigation_path}`;

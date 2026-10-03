@@ -1095,7 +1095,7 @@ class ClimateCard extends HTMLElement {
       }
     }
     const keys = new Set(want.map((s) => s.key));
-    for (const [key, node] of el.__rows || []) node.hidden = !keys.has(key);
+    for (const [key, node] of el.__rows || []) Motion.show(node, keys.has(key));
     el.hidden = !want.length;
   }
 
@@ -1236,14 +1236,14 @@ class ClimateCard extends HTMLElement {
         this._pressable(act, new Spring(0, MOTION.press, "x"), () => act.__tap(), () => act.__hold());
       }
       act.__tap = it.tap; act.__hold = it.hold;
-      put(act, "--ac", it.color);
+      Motion.tintVar(act, "--ac", it.color);
       attr(act, "data-on", it.on ? "" : null);
       text(act.querySelector("span"), it.label);
       const icon = act.querySelector("savvy-state-icon");
       if (icon && icon.stateObj !== it.state) { icon.hass = h; icon.stateObj = it.state; }
     }
     const keys = new Set(items.map((i) => i.key));
-    for (const [key, node] of el.__rows || []) node.hidden = !keys.has(key);
+    for (const [key, node] of el.__rows || []) Motion.show(node, keys.has(key));
     el.hidden = !items.length;
   }
 
@@ -1430,7 +1430,7 @@ class ClimateCard extends HTMLElement {
     }
     const keys = new Set(this._series.map((s) => s.id));
     if (band) keys.add(band.id);
-    for (const [key, node] of el.__rows || []) node.hidden = !keys.has(key);
+    for (const [key, node] of el.__rows || []) Motion.show(node, keys.has(key));
   }
 
   _legendValue(key, s, at) {

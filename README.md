@@ -72,6 +72,7 @@ Then edit a dashboard, add a card, and search for **Savvy**.
   can live in one [Savvy settings](#savvy-settings) card; any card can still override.
 - **Keyboard:** everything is reachable with Tab and the arrow keys; focus rings only
   appear when you use the keyboard.
+- **Everything that changes, moves.** See [Motion](#motion).
 
 ---
 
@@ -171,6 +172,35 @@ says so. Each dashboard has its own.
 | Option | Default | What it does |
 |---|---|---|
 | `layout` | `full` | `compact`: a single row. |
+
+---
+
+## Motion
+
+The rule: anything that changes state in front of you moves there with a spring, and any
+input is felt at once and then settles. Every move can be interrupted (turn a light on and
+straight off again and the colour reverses from where it is, with no jump), and a gesture
+keeps its speed. It is built from four pieces, shared by every card and popup:
+
+- **Tint.** A colour that changes (a light's orb going on, a chip's disc, a level turning
+  amber or red, a pill, a switch's track) slides from the old colour to the new one instead
+  of switching. The card has already changed; only how it looks gets there smoothly.
+- **Roll.** A word that changes slides out as the new one slides in ("Lights on" to
+  "Lights off", "Playing" to "Paused"), and a count ticks through its numbers ("3 of 6 on"
+  to "2 of 6 on"). The text itself is final the moment it changes, so anything reading it
+  never sees a half-way value. A value that changes every frame, like a number under your
+  finger while you drag, never rolls.
+- **Appear.** Rows, badges, chips and tiles that come, go or move inside a list slide to
+  their places; a newcomer grows and fades in, and one that leaves fades out where it was
+  while the others close the gap. Controls that come and go (a power button, a banner) pop
+  in and fade out, and an icon that swaps pops.
+- **Cascade.** Changes that land together ripple with a small beat between them, a few
+  hundredths of a second each and never more than about a third of a second in all: turn
+  a room's lights on and its tiles light up one after another.
+
+Nothing moves on a card's first paint, in a card that isn't on screen, or when reduced
+motion is on (then everything lands at once). All of it runs on one shared animation
+clock that goes to sleep when nothing is moving.
 
 ---
 

@@ -377,7 +377,7 @@ class SavvySystemHealthCard extends HTMLElement {
     const { total, sections } = this._compute();
     const label = SOURCES[c.source];
     const lvl = total === 0 ? "var(--lvl-good)" : total < c.warn_above ? "var(--lvl-warn)" : "var(--lvl-bad)";
-    put(this._el.card, "--lvl", lvl);
+    Motion.tintVar(this._el.card, "--lvl", lvl);
     text(this._el.pill, total === 0 ? "All good" : `${total} ${total === 1 ? label.noun : label.nouns}`);
     attr(this._el.card, "aria-label", `${c.title || label.title}, ${total === 0 ? "all good" : `${total} ${label.nouns}`}`);
     this._renderRows(sections);
@@ -462,6 +462,10 @@ class SavvySystemHealthCard extends HTMLElement {
   }
 
   _renderRows(sections) {
+    Motion.flip([this._el.cols, ...this._boxes.values()], () => this._renderRowsNow(sections));
+  }
+
+  _renderRowsNow(sections) {
     const seen = new Set(), liveBoxes = new Set();
     this._layoutCols(sections.length);
     sections.forEach((sec, bi) => {

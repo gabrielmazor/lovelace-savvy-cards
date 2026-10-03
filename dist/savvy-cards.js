@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.8.0 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.9.0 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.8.0";
+const SAVVY_VERSION = "0.9.0";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -136,18 +136,34 @@ const put = (el, prop, val) => {
   if (prop.startsWith("--")) el.style.setProperty(prop, val);
   else el.style[prop] = val;
 };
+// A state attribute that changes colours (data-on, data-level, ...) goes through Motion, which
+// slides the colours it changed; the first write to an element is its initial state, not a change.
 const attr = (el, name, val) => {
   if (!el) return;
   const cache = el.__attr || (el.__attr = {});
   if (cache[name] === val) return;
+  const first = cache[name] === undefined;
   cache[name] = val;
-  if (val === null || val === undefined || val === false) el.removeAttribute(name);
-  else el.setAttribute(name, val === true ? "" : val);
+  if (first) Motion.seen(el);
+  const apply = () => {
+    if (val === null || val === undefined || val === false) el.removeAttribute(name);
+    else el.setAttribute(name, val === true ? "" : val);
+  };
+  if (!first && TINT_ATTRS.has(name) && Motion.can(el)) Motion.change(el, apply);
+  else {
+    apply();
+    if (!first && name === "icon" && Motion.can(el)) Motion.pop(el);
+  }
 };
+// Text is final the moment it is written; when it replaces an earlier value the element rolls
+// (Motion.roll), and a count ticks. The first value an element gets never animates.
 const text = (el, val) => {
   if (!el || el.__text === val) return;
+  const old = el.__text;
   el.__text = val;
   el.textContent = val;
+  if (old === undefined) Motion.seen(el);
+  else if (Motion.can(el) && Motion.rollable(el)) Motion.roll(el, String(old), String(val));
 };
 
 // The companion apps turn this into a real haptic; elsewhere it's a no-op.
@@ -190,8 +206,20 @@ const watchKeyboard = (host) => {
   host.addEventListener("pointerdown", sync);
 };
 
+// The roll: while a value changes, the real text hides and its two pseudo-elements draw the
+// old words leaving and the new ones arriving (Motion.roll drives --rl from 0 to 1).
+const ROLL_CSS = `
+  [data-rolling] { position: relative; color: transparent !important; -webkit-text-fill-color: transparent !important; }
+  [data-rolling]::before, [data-rolling]::after { position: absolute; inset: 0; display: block; overflow: inherit; text-overflow: inherit;
+    text-align: inherit; white-space: pre; pointer-events: none; color: var(--rl-c); -webkit-text-fill-color: var(--rl-c); }
+  [data-rolling]::before { content: attr(data-out); opacity: calc(1 - var(--rl, 1)); translate: 0 calc(var(--rl, 1) * -0.42em); }
+  [data-rolling]::after { content: attr(data-in); opacity: var(--rl, 1); translate: 0 calc((1 - var(--rl, 1)) * 0.42em); }
+  [data-rolling="tick"]::before { content: none; }
+  [data-rolling="tick"]::after { opacity: 1; translate: none; }
+`;
+
 // The CSS every card shares: host basics, the card surface, focus rings.
-const BASE_CSS = `
+const BASE_CSS = `${ROLL_CSS}
   :host { display: block; -webkit-tap-highlight-color: transparent; }
   [hidden] { display: none !important; }
   button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0;
@@ -1465,10 +1493,366 @@ class SavvyStateIcon extends HTMLElement {
     if (!st) return;
     if (!this._ic) { this._ic = document.createElement("ha-icon"); this.appendChild(this._ic); }
     const icon = entityIcon(this._h, st.entity_id, st);
-    if (this._ic.getAttribute("icon") !== icon) this._ic.setAttribute("icon", icon);
+    if (this._ic.getAttribute("icon") !== icon) {
+      const had = this._ic.hasAttribute("icon");
+      this._ic.setAttribute("icon", icon);
+      if (had && Motion.can(this._ic)) Motion.pop(this._ic);     // an icon that swaps pops
+    }
   }
 }
 if (!customElements.get("savvy-state-icon")) customElements.define("savvy-state-icon", SavvyStateIcon);
+
+// ===== core/56-motion.js =====
+// ---------------------------------------------------------------------------------------
+// core/motion: the rule is that anything that changes state in front of you moves there
+// with a spring, and every one of those moves can be interrupted. Four pieces, built once:
+//
+//   Tint     a colour that changes (on / off, idle / alert) slides from the old one to the
+//            new one. Hooked into attr(): when a state attribute flips, every colour under
+//            that element is measured before and after, and the difference is animated.
+//   Roll     text that changes slides and fades; a count ticks through its numbers. Hooked
+//            into text(). The real text is always final at once (so reading it never sees
+//            a half-way value); the motion is drawn by the element's pseudo-elements.
+//   Appear   Motion.flip(box, fn): rows, badges, chips and tiles that come, go or move
+//            inside a container slide to their places; the ones that leave fade out where
+//            they were.
+//   Cascade  changes that land together ripple with a small stagger instead of all at once.
+//
+// Nothing here animates a card's first paint, an element's first value, a hidden card or
+// anything while reduced motion is on; the shared clock sleeps when nothing is moving.
+// ---------------------------------------------------------------------------------------
+
+// state attributes whose flip changes colours (layout flags such as data-open stay out)
+const TINT_ATTRS = new Set(["data-on", "data-off", "data-sel", "data-level", "data-live", "data-alert", "data-warn",
+  "data-critical", "data-armed", "data-playing", "data-running", "data-unavailable", "data-missing", "data-triggered",
+  "data-active", "data-lit", "data-dim", "data-bad", "data-kind", "data-mode", "data-c", "data-k", "data-soft", "data-solo",
+  "data-pick", "data-busy", "data-flash", "data-filled", "data-nostate"]);
+const TINT_PROPS = ["color", "background-color", "border-top-color", "fill", "stroke"];
+const COLOR_FN = /^(rgb|rgba|color|oklab|oklch|lab|lch|hsl|hwb)\(/i;
+const STAGGER_GAP = 0.04;      // s between neighbours of a cascade
+const STAGGER_CAP = 0.35;      // s: no cascade runs longer than this
+const ROLL_MIN_GAP = 250;      // ms: a value that changes every frame (a drag) never rolls
+const NUM_RE = /-?\d+(?:\.\d+)?/;
+const FLIP_MAX = 120;         // children: a longer list just updates (measuring it every update costs more than it gives)
+
+MOTION.blend = { response: 0.5, damping: 1 };
+MOTION.roll = { response: 0.4, damping: 1 };
+MOTION.flip = { response: 0.5, damping: 0.88 };
+MOTION.leave = { response: 0.32, damping: 1 };
+
+class MotionAnim {
+  constructor(from, to, motion, delay, paint, end) {
+    this.s = new Spring(from, motion, "motion", 2e-3).to(to);
+    this.delay = delay || 0;
+    this.paint = paint;
+    this.end = end;
+    this.dead = false;
+    paint(from);
+  }
+}
+
+function motionJob(now, dt) {
+  for (const a of Motion.anims) {
+    if (a.dead) { Motion.anims.delete(a); continue; }
+    let step = dt;
+    if (a.delay > 0) {
+      a.delay -= dt;
+      if (a.delay > 0) continue;
+      step = -a.delay;
+      a.delay = 0;
+    }
+    a.s.step(step);
+    if (a.s.idle) {
+      a.s.snap();
+      a.paint(a.s.x);
+      Motion.anims.delete(a);
+      a.end?.();
+    } else a.paint(a.s.x);
+  }
+  return Motion.anims.size > 0;
+}
+
+const Motion = {
+  anims: new Set(),
+  stag: 0,
+  stagQueued: false,
+
+  start(anim) {
+    this.anims.add(anim);
+    Clock.add(motionJob);
+    return anim;
+  },
+  // true while anything is still moving (tests wait on it)
+  busy() { return this.anims.size > 0; },
+
+  // A card is ready to animate two frames after its first write: what lands while it is being
+  // built is its first paint, not a change.
+  seen(el) {
+    const root = el.getRootNode();
+    if (root.__mReady === undefined) {
+      root.__mReady = false;
+      requestAnimationFrame(() => requestAnimationFrame(() => { root.__mReady = true; }));
+    }
+    return root;
+  },
+
+  // may this element animate at all? Not before its card has settled, not hidden, not reduced.
+  can(el) {
+    if (!el || MQ.reduced.matches || !el.isConnected || document.hidden) return false;
+    return this.seen(el).__mReady === true;
+  },
+
+  // the n-th change in the same tick starts n gaps later, up to the cap
+  stagger() {
+    const i = this.stag++;
+    if (!this.stagQueued) {
+      this.stagQueued = true;
+      queueMicrotask(() => { this.stag = 0; this.stagQueued = false; });
+    }
+    return Math.min(i * STAGGER_GAP, STAGGER_CAP);
+  },
+
+  // ---------- Tint ----------
+  // Runs `apply` (a state attribute write) and animates every colour it changed beneath el.
+  change(el, apply) {
+    const els = tintScan(el), before = tintRead(els);
+    apply();
+    tintDiff(els, before);
+  },
+
+  // ---------- Roll ----------
+  rollable(el) { return !el.hasAttribute("data-noroll"); },
+
+  roll(el, old, val) {
+    const now = performance.now();
+    if (el.__mr) this.endRoll(el);
+    const tooSoon = el.__mrT && now - el.__mrT < ROLL_MIN_GAP;
+    el.__mrT = now;
+    if (tooSoon || old === val || !el.getClientRects().length) return;
+    const tick = tickParts(old, val);
+    el.style.setProperty("--rl-c", getComputedStyle(el).color);
+    el.setAttribute("data-rolling", tick ? "tick" : "slide");
+    el.setAttribute("data-out", old);
+    el.setAttribute("data-in", tick ? old : val);
+    el.style.setProperty("--rl", "0");
+    el.__mr = this.start(new MotionAnim(0, 1, tick ? MOTION.value : MOTION.roll, 0, (x) => {
+      if (tick) el.setAttribute("data-in", tick.sa.replace("#", (tick.na + (tick.nb - tick.na) * clamp(x)).toFixed(tick.dec)));
+      else el.style.setProperty("--rl", x.toFixed(3));
+    }, () => this.endRoll(el)));
+  },
+  endRoll(el) {
+    if (el.__mr) el.__mr.dead = true;
+    el.__mr = null;
+    el.removeAttribute("data-rolling");
+    el.removeAttribute("data-out");
+    el.removeAttribute("data-in");
+    el.style.removeProperty("--rl");
+    el.style.removeProperty("--rl-c");
+  },
+
+  // ---------- Appear ----------
+  // Run `fn` (which adds, removes and reorders the children of `boxes`) and animate the
+  // outcome: movers slide from where they were, newcomers grow in, leavers fade out in place.
+  flip(boxes, fn) {
+    const list = [].concat(boxes).filter(Boolean);
+    if (!list.length || !this.can(list[0]) || list.reduce((n, b) => n + b.children.length, 0) > FLIP_MAX) return fn();
+    const snap = list.map((box) => {
+      const rects = new Map();
+      for (const k of box.children) if (!k.__ghost) rects.set(k, k.getBoundingClientRect());
+      return { box, rects, boxRect: box.getBoundingClientRect() };
+    });
+    if (!snap.some((s) => s.rects.size)) return fn();     // the first population is not an event
+    fn();
+    for (const { box, rects, boxRect } of snap) {
+      const kids = [...box.children].filter((k) => !k.__ghost);
+      for (const k of kids) { if (k.__mf) { k.__mf.dead = true; k.__mf = null; } put(k, "translate", ""); }
+      const gone = [...rects.keys()].filter((k) => !kids.includes(k) && !k.isConnected);
+      for (const k of kids) {
+        const r0 = rects.get(k);
+        if (!r0) { if (!k.__enter) this.enter(k); continue; }
+        const r1 = k.getBoundingClientRect();
+        const dx = r0.left - r1.left, dy = r0.top - r1.top;
+        if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
+        k.__mf = this.start(new MotionAnim(1, 0, MOTION.flip, 0, (t) => put(k, "translate", t < 0.002 ? "" : `${(dx * t).toFixed(2)}px ${(dy * t).toFixed(2)}px`),
+          () => { k.__mf = null; }));
+      }
+      if (gone.length) {
+        if (getComputedStyle(box).position === "static") box.style.position = "relative";
+        for (const k of gone) this.leave(box, k, rects.get(k), boxRect);
+      }
+    }
+  },
+
+  // a node that was just added grows and fades in
+  enter(k, delay = this.stagger()) {
+    if (k.__me) k.__me.dead = true;
+    k.__me = this.start(new MotionAnim(0, 1, MOTION.flip, delay, (t) => {
+      put(k, "filter", t > 0.995 ? "" : `opacity(${clamp(t).toFixed(3)})`);
+      put(k, "scale", t > 0.995 ? "" : (0.9 + 0.1 * t).toFixed(4));
+    }, () => { k.__me = null; }));
+  },
+
+  // a node that was just removed stays, absolutely placed where it was, and fades away
+  leave(box, k, r0, boxRect) {
+    if (!r0 || !r0.width || !r0.height) return;
+    k.__ghost = true;
+    k.style.cssText += `;position:absolute;margin:0;pointer-events:none;box-sizing:border-box;`
+      + `left:${(r0.left - boxRect.left + box.scrollLeft - box.clientLeft).toFixed(1)}px;`
+      + `top:${(r0.top - boxRect.top + box.scrollTop - box.clientTop).toFixed(1)}px;`
+      + `width:${r0.width.toFixed(1)}px;height:${r0.height.toFixed(1)}px`;
+    k.removeAttribute("hidden");
+    box.appendChild(k);
+    this.start(new MotionAnim(1, 0, MOTION.leave, 0, (t) => {
+      put(k, "filter", `opacity(${clamp(t).toFixed(3)})`);
+      put(k, "scale", (0.92 + 0.08 * t).toFixed(4));
+    }, () => k.remove()));
+  },
+
+  // ---------- single values ----------
+  // A colour held in a custom property (--tc, --lvl, --mode) slides to its new value.
+  tintVar(el, prop, val) {
+    const st = el.__tv || (el.__tv = {});
+    const rec = st[prop];
+    if (!rec) { st[prop] = { to: val, cur: val }; this.seen(el); put(el, prop, val); return; }
+    if (rec.to === val) return;
+    const from = rec.cur;
+    rec.to = val;
+    if (!val || !from || !this.can(el) || !el.getClientRects().length) { rec.cur = val; if (rec.anim) rec.anim.dead = true; put(el, prop, val); return; }
+    if (rec.anim) rec.anim.dead = true;
+    rec.anim = this.start(new MotionAnim(0, 1, MOTION.blend, this.stagger(), (t) => {
+      rec.cur = t >= 0.998 ? val : `color-mix(in oklab, ${val} ${(t * 100).toFixed(1)}%, ${from})`;
+      put(el, prop, rec.cur);
+    }, () => { rec.anim = null; rec.cur = val; put(el, prop, val); }));
+  },
+
+  // A number held in a style property (a dimmed row's opacity) eases to its new value. Dimming
+  // uses filter: opacity() so it never fights a press feedback that owns the opacity property.
+  fadeTo(el, target) {
+    const rec = el.__tf || (el.__tf = { to: undefined, x: target });
+    if (rec.to === target) return;
+    const first = rec.to === undefined;
+    rec.to = target;
+    if (first) this.seen(el);
+    if (first || !this.can(el)) { rec.x = target; if (rec.anim) rec.anim.dead = true; put(el, "filter", target >= 1 ? "" : `opacity(${target})`); return; }
+    const from = rec.x;
+    if (rec.anim) rec.anim.dead = true;
+    rec.anim = this.start(new MotionAnim(from, target, MOTION.ui, 0, (x) => {
+      rec.x = x;
+      put(el, "filter", x >= 0.999 ? "" : `opacity(${clamp(x).toFixed(3)})`);
+    }, () => { rec.anim = null; }));
+  },
+
+  // A 0..1 position held in a custom property (a switch knob) rolls to its new value with a
+  // springy settle. The first write is immediate.
+  tweenVar(el, prop, target, motion = MOTION.pill) {
+    const key = `__tw${prop}`;
+    const rec = el[key] || (el[key] = { to: undefined, x: target });
+    if (rec.to === target) return;
+    const first = rec.to === undefined;
+    rec.to = target;
+    if (first) this.seen(el);
+    if (first || !this.can(el)) { rec.x = target; if (rec.anim) rec.anim.dead = true; put(el, prop, String(target)); return; }
+    if (rec.anim) rec.anim.dead = true;
+    const sp = rec.anim ? rec.anim.s : null;
+    rec.anim = this.start(new MotionAnim(rec.x, target, motion, 0, (x) => { rec.x = x; put(el, prop, x.toFixed(4)); }, () => { rec.anim = null; }));
+    if (sp) rec.anim.s.v = sp.v;     // keep the velocity of the move it interrupted
+  },
+
+  // an icon that was swapped pops: a dip and a springy return
+  pop(el) {
+    if (el.__mp) el.__mp.dead = true;
+    el.__mp = this.start(new MotionAnim(0, 1, MOTION.pop, 0, (t) => put(el, "scale", Math.abs(t - 1) < 0.002 ? "" : (0.62 + 0.38 * t).toFixed(4)), () => { el.__mp = null; }));
+  },
+
+  // A control that comes and goes pops in and fades out (it keeps its place while it leaves).
+  show(el, on) {
+    if (!el) return;
+    if (!on) {
+      if (el.hidden || el.__ms === false) return;
+      if (!this.can(el) || !el.getClientRects().length) { el.hidden = true; return; }
+      el.__ms = false;
+      if (el.__msa) el.__msa.dead = true;
+      el.__msa = this.start(new MotionAnim(1, 0, MOTION.leave, 0, (t) => {
+        put(el, "filter", `opacity(${clamp(t).toFixed(3)})`);
+        put(el, "scale", (0.88 + 0.12 * t).toFixed(4));
+      }, () => { el.__msa = null; el.__ms = undefined; el.hidden = true; put(el, "filter", ""); put(el, "scale", ""); }));
+      return;
+    }
+    if (el.__msa) { el.__msa.dead = true; el.__msa = null; el.__ms = undefined; put(el, "filter", ""); put(el, "scale", ""); }
+    if (!el.hidden) return;
+    el.hidden = false;
+    if (this.can(el) && el.getClientRects().length) this.enter(el, 0);
+  },
+
+  // A block (a banner, a section) opens and closes in height; its neighbours slide with it.
+  reveal(el, on) {
+    if (!el) return;
+    const open = !el.hidden && el.__mh !== false;
+    if (on === open) return;
+    if (el.__mha) el.__mha.dead = true;
+    if (!this.can(el) || (!on && !el.getClientRects().length)) { el.__mh = undefined; el.hidden = !on; put(el, "height", ""); put(el, "overflow", ""); return; }
+    let full;
+    if (on) { el.hidden = false; el.__mh = undefined; full = el.scrollHeight; }
+    else { full = el.getBoundingClientRect().height; el.__mh = false; }
+    if (!full) { el.hidden = !on; el.__mh = undefined; return; }
+    const from = on ? 0 : (el.__mhx ?? full);
+    put(el, "overflow", "hidden");
+    el.__mha = this.start(new MotionAnim(from / full, on ? 1 : 0, MOTION.flip, 0, (t) => {
+      el.__mhx = t * full;
+      put(el, "height", t >= 0.999 && on ? "" : `${Math.max(0, t * full).toFixed(1)}px`);
+      put(el, "filter", t >= 0.999 && on ? "" : `opacity(${clamp(t).toFixed(3)})`);
+    }, () => { el.__mha = null; el.__mhx = undefined; put(el, "overflow", ""); put(el, "height", ""); put(el, "filter", ""); if (!on) { el.hidden = true; el.__mh = undefined; } }));
+  },
+};
+
+// ---------- Tint internals ----------
+function tintScan(el) {
+  const out = [el];
+  if (el.childElementCount) {
+    const d = el.querySelectorAll("*");
+    if (d.length <= 80) for (const x of d) out.push(x);
+  }
+  return out;
+}
+
+function tintRead(els) {
+  return els.map((e) => {
+    const cs = getComputedStyle(e), v = {};
+    for (const p of TINT_PROPS) v[p] = cs.getPropertyValue(p);
+    return v;
+  });
+}
+
+function tintDiff(els, before) {
+  els.forEach((e, i) => {
+    const mt = e.__mt;
+    if (mt) for (const p in mt) { mt[p].dead = true; e.style.removeProperty(p); delete mt[p]; }   // read the CSS target, not our override
+    const cs = getComputedStyle(e);
+    let delay = null;
+    for (const p of TINT_PROPS) {
+      if (e.style.getPropertyValue(p)) continue;         // a card writes this one itself
+      const a = before[i][p], b = cs.getPropertyValue(p);
+      if (a === b || !COLOR_FN.test(a) || !COLOR_FN.test(b)) continue;
+      if (delay === null) delay = Motion.stagger();
+      const anim = Motion.start(new MotionAnim(0, 1, MOTION.blend, delay, (t) => {
+        e.style.setProperty(p, t >= 0.998 ? b : `color-mix(in oklab, ${b} ${(t * 100).toFixed(1)}%, ${a})`);
+      }, () => { e.style.removeProperty(p); if (e.__mt?.[p] === anim) delete e.__mt[p]; }));
+      (e.__mt || (e.__mt = {}))[p] = anim;
+    }
+  });
+}
+
+// "3 of 6 on" -> "2 of 6 on": the same words around a different number ticks
+function tickParts(a, b) {
+  const ma = NUM_RE.exec(a), mb = NUM_RE.exec(b);
+  if (!ma || !mb) return null;
+  const sa = a.replace(NUM_RE, "#");
+  if (sa !== b.replace(NUM_RE, "#")) return null;
+  const na = Number(ma[0]), nb = Number(mb[0]);
+  if (na === nb || !Number.isFinite(na) || !Number.isFinite(nb)) return null;
+  const dec = Math.max((ma[0].split(".")[1] || "").length, (mb[0].split(".")[1] || "").length);
+  return { sa, na, nb, dec };
+}
 
 // ===== core/60-actions.js =====
 // ---------------------------------------------------------------------------------------
@@ -1686,8 +2070,8 @@ const SHEET_CSS = `
   /* the switch: a 38 x 22 track and an 18 knob, 2 px of track all round, whatever the pixel ratio */
   .sv-tog { flex: none; display: block; position: relative; width: 38px; height: 22px; border-radius: 11px; background: var(--well); }
   .sv-tog-k { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; box-sizing: border-box;
-    background: var(--card-background-color, #fff); box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); transform: translateX(var(--tx, 0px)); }
-  .sv-tog[data-on] { background: var(--row-c, rgb(var(--accent))); --tx: 16px; }
+    background: var(--card-background-color, #fff); box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); translate: calc(var(--p, 0) * 16px) 0; }
+  .sv-tog[data-on] { background: var(--row-c, rgb(var(--accent))); }
   .sv-empty { padding: 18px 8px; text-align: center; font-size: 13px; color: var(--secondary-text-color); }
   .sv-group { margin: 8px 6px 2px; font-size: 11.5px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em;
     text-transform: uppercase; color: var(--secondary-text-color); }
@@ -1718,7 +2102,7 @@ function portalRoot() {
     portalEl.className = "savvy-portal";
     const root = portalEl.attachShadow({ mode: "open" });
     const style = document.createElement("style");
-    style.textContent = SHEET_CSS + ROWS_CSS + PICKER_CSS;
+    style.textContent = ROLL_CSS + SHEET_CSS + ROWS_CSS + PICKER_CSS;
     root.appendChild(style);
     watchKeyboard(portalEl);
     document.body.appendChild(portalEl);
@@ -2066,6 +2450,10 @@ class EntityListSheet {
   // cards call this from their hass setter while it's open, so rows stay live
   render(hass) {
     if (!this.open) return;
+    Motion.flip(this.rows, () => this.renderNow(hass));
+  }
+
+  renderNow(hass) {
     this.hass = hass;
     const ids = (typeof this.ids === "function" ? this.ids(hass) : this.ids) || [];
     this.curIds = ids;
@@ -2128,6 +2516,7 @@ class EntityListSheet {
       const switchable = TOGGLE_DOMAINS.has(d);
       row.__tog.hidden = !switchable || !st || isOff(st);
       attr(row.__tog, "data-on", on);
+      Motion.tweenVar(row.__tog, "--p", on ? 1 : 0);
       attr(row.__tog, "aria-label", on ? "Turn off" : "Turn on");
       text(row.querySelector(".sv-val"), res.val || (switchable || ROW_KINDS[d] ? "" : stateText(hass, st)));
       place(box, row, at++);   // keeps DOM order equal to the order
@@ -3663,8 +4052,12 @@ const CHIP_ROW_CSS = `
 
 // A row of chips. items: [{ key, icon (null: the entity's state icon), stateObj, color, dim,
 // value, caption, aria, spin: turns/s or 0, config (actions), entity, defaults, list() }]
-SavvyCard.prototype._chipRow = function (row, items, { iconOnly = false } = {}) {
+SavvyCard.prototype._chipRow = function (row, items, opts = {}) {
   row.__nodes = row.__nodes || new Map();
+  Motion.flip(row, () => this._chipRowNow(row, items, opts));
+};
+
+SavvyCard.prototype._chipRowNow = function (row, items, { iconOnly = false } = {}) {
   attr(row, "data-icon-only", iconOnly);
   const seen = new Set();
   let at = 0;
@@ -3687,8 +4080,8 @@ SavvyCard.prototype._chipRow = function (row, items, { iconOnly = false } = {}) 
       row.__nodes.set(item.key, node);
     }
     node.__item = item;
-    put(node, "--tc", item.color || "var(--primary-text-color)");
-    put(node.querySelector(".body"), "opacity", item.dim ? (MQ.contrast.matches ? "0.7" : "0.45") : "");
+    Motion.tintVar(node, "--tc", item.color || "var(--primary-text-color)");
+    Motion.fadeTo(node.querySelector(".body"), item.dim ? (MQ.contrast.matches ? 0.7 : 0.45) : 1);
     if (wantState) {
       if (node.__icon.stateObj !== item.stateObj) { node.__icon.hass = this._hass; node.__icon.stateObj = item.stateObj; }
     } else attr(node.__icon, "icon", item.icon);
@@ -3726,7 +4119,7 @@ SavvyCard.prototype._renderPill = function (info, caption) {
   const el = this._el;
   el.pill.hidden = !info;
   if (!info) return;
-  put(el.card, "--mode", info.color || "var(--secondary-text-color)");
+  Motion.tintVar(el.card, "--mode", info.color || "var(--secondary-text-color)");
   caption = modeCaption(info, caption);
   attr(el.pill, "aria-label", [caption, info.label].filter(Boolean).join(" "));
   el.pill.disabled = info.kind === "select" && !info.options.length;
@@ -4577,7 +4970,7 @@ function wireSettings(type, cls) {
 // ---------------------------------------------------------------------------------------
 if (window.__SAVVY_TEST__) {
   window.__savvy = {
-    Spring, Clock, MOTION, norm, title, modeLook, MODE_DICTIONARY, colorOf,
+    Spring, Clock, MOTION, Motion, attr, text, put, place, norm, title, modeLook, MODE_DICTIONARY, colorOf,
     healthSummary, healthOptions, refreshConfigEntries, resetConfigEntries, areaEntities, houseEntities, pick, rankBy, entityArea, shortName, asItems,
     isActive, isOff, runAction, defaultTapAction, toggleEntity, bindPress, bindActions,
     duration, since, relativeTime, axisLabel, momentLabel, fmtNumber, withUnit, isTimestamp,
@@ -7594,7 +7987,7 @@ class ClimateCard extends HTMLElement {
       }
     }
     const keys = new Set(want.map((s) => s.key));
-    for (const [key, node] of el.__rows || []) node.hidden = !keys.has(key);
+    for (const [key, node] of el.__rows || []) Motion.show(node, keys.has(key));
     el.hidden = !want.length;
   }
 
@@ -7735,14 +8128,14 @@ class ClimateCard extends HTMLElement {
         this._pressable(act, new Spring(0, MOTION.press, "x"), () => act.__tap(), () => act.__hold());
       }
       act.__tap = it.tap; act.__hold = it.hold;
-      put(act, "--ac", it.color);
+      Motion.tintVar(act, "--ac", it.color);
       attr(act, "data-on", it.on ? "" : null);
       text(act.querySelector("span"), it.label);
       const icon = act.querySelector("savvy-state-icon");
       if (icon && icon.stateObj !== it.state) { icon.hass = h; icon.stateObj = it.state; }
     }
     const keys = new Set(items.map((i) => i.key));
-    for (const [key, node] of el.__rows || []) node.hidden = !keys.has(key);
+    for (const [key, node] of el.__rows || []) Motion.show(node, keys.has(key));
     el.hidden = !items.length;
   }
 
@@ -7929,7 +8322,7 @@ class ClimateCard extends HTMLElement {
     }
     const keys = new Set(this._series.map((s) => s.id));
     if (band) keys.add(band.id);
-    for (const [key, node] of el.__rows || []) node.hidden = !keys.has(key);
+    for (const [key, node] of el.__rows || []) Motion.show(node, keys.has(key));
   }
 
   _legendValue(key, s, at) {
@@ -8533,6 +8926,10 @@ class SavvyEntityCard extends SavvyCard {
   }
 
   _renderPills() {
+    Motion.flip(this._el.pills, () => this._renderPillsNow());
+  }
+
+  _renderPillsNow() {
     const h = this._hass, list = this._config.chips, box = this._el.pills, seen = new Set();
     list.forEach((item, i) => {
       const key = `${i}|${item.entity || item.navigation_path}`;
@@ -8964,6 +9361,10 @@ class SavvyGraphCard extends SavvyCard {
   }
 
   _renderTiles() {
+    Motion.flip([this._el.graphs, this._el.grid], () => this._renderTilesNow());
+  }
+
+  _renderTilesNow() {
     const h = this._hass, cfg = this._config, el = this._el, seen = new Set();
     let graphs = 0, small = 0, gi = 0, si = 0;
     for (const item of cfg.entities) {
@@ -9042,14 +9443,14 @@ class SavvyGraphCard extends SavvyCard {
       el.n.parentElement.hidden = true;
       el.note.hidden = false;
       text(el.note, missing ? "Not found" : "Unavailable");
-      put(node, "--tile-lvl", "");
+      Motion.tintVar(node, "--tile-lvl", "");
     } else if (numeric) {
       el.n.parentElement.hidden = false;
       const value = parseFloat(st.state);
       if (!node.__value) node.__value = this._spring(value, MOTION.text, `value:${item.entity}`);
       else node.__value.to(value, MOTION.text);
       const level = levelOf(value, item.thresholds);
-      put(node, "--tile-lvl", level ? `var(--lvl-${level})` : "");
+      Motion.tintVar(node, "--tile-lvl", level ? `var(--lvl-${level})` : "");
       const unit = item.unit ?? st.attributes.unit_of_measurement ?? "";
       text(el.u, unit);
       node.__unit = unit;
@@ -9086,7 +9487,7 @@ class SavvyGraphCard extends SavvyCard {
       el.note.hidden = true;
       node.__unit = "";
       node.__value = null;
-      put(node, "--tile-lvl", item.state_color && domainOf(item.entity) === "binary_sensor"
+      Motion.tintVar(node, "--tile-lvl", item.state_color && domainOf(item.entity) === "binary_sensor"
         ? (st.state === "on" ? "var(--lvl-good)" : st.state === "off" ? "var(--lvl-bad)" : "") : "");
       let words = null;
       if (isTimestamp(st)) { const t = Date.parse(st.state); if (Number.isFinite(t)) words = relativeTime(t, langOf(h)); }
@@ -9456,7 +9857,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
       this._sum = healthSummary(h, hc);
     }
     const total = this._sum.total, warn = hc.warn_above ?? 6;
-    put(el.health, "--ac", total === 0 ? "var(--secondary-text-color)" : total < warn ? "var(--lvl-warn)" : "var(--lvl-bad)");
+    Motion.tintVar(el.health, "--ac", total === 0 ? "var(--secondary-text-color)" : total < warn ? "var(--lvl-warn)" : "var(--lvl-bad)");
     attr(el.health, "data-alert", total > 0);
     el.count.hidden = !total;
     text(el.count, String(total));
@@ -10489,7 +10890,7 @@ class LightsCard extends HTMLElement {
     // keep the DOM in the configured order, and retire anything no longer here
     const want = new Set(ids);
     for (const [key, node] of el.grid.__rows || []) {
-      node.hidden = !want.has(node.__entity);
+      Motion.show(node, want.has(node.__entity));
       if (!want.has(node.__entity)) this._bars.delete(key);
     }
     ids.forEach((id, i) => {
@@ -10672,7 +11073,7 @@ class LightsCard extends HTMLElement {
       const cfg = typeof raw === "string" ? { entity: raw } : raw;
       return cfg.entity || cfg.navigation_path || cfg.name;
     }));
-    for (const [key, node] of cache) node.hidden = !keys.has(key);
+    for (const [key, node] of cache) Motion.show(node, keys.has(key));
     el.hidden = !list.length;
   }
 
@@ -11101,11 +11502,11 @@ class SavvyLockCard extends SavvyCard {
       text(el.title, c.name || "Locks");
       const open = items.length - locked;
       text(el.sum, open ? `${open} unlocked` : "All locked");
-      el.all.hidden = !needing.length;
+      Motion.show(el.all, !!needing.length);
     }
     // the nudge: unlocked for a while
     this._nudged = nudged;
-    el.nudge.hidden = !nudged;
+    Motion.reveal(el.nudge, !!nudged);
     if (nudged) {
       const name = items.find((i) => i.entity === nudged);
       text(el.nudgeTx, `${solo ? "Unlocked" : `${name?.name || shortName(h, nudged, null)} unlocked`} for ${duration(nudgeFor)}`);
@@ -11178,7 +11579,7 @@ class SavvyLockCard extends SavvyCard {
     const doorId = this._doorOf(item, solo), door = doorId ? h.states[doorId] : null;
     const doorOpen = !!door && door.state === "on";
     const doorWords = door ? (door.state === "on" ? "Door open" : door.state === "off" ? "Door closed" : null) : null;
-    el.door.hidden = !doorWords;
+    Motion.show(el.door, !!doorWords);
     if (doorWords) {
       text(el.doorTx, doorWords);
       attr(el.doorIc, "icon", doorOpen ? "mdi:door-open" : "mdi:door-closed");
@@ -11187,7 +11588,7 @@ class SavvyLockCard extends SavvyCard {
     // the battery
     const battId = this._batteryOf(item, solo), batt = battId ? h.states[battId] : null;
     const pct = batt ? parseFloat(batt.state) : NaN;
-    el.batt.hidden = !Number.isFinite(pct);
+    Motion.show(el.batt, Number.isFinite(pct));
     if (Number.isFinite(pct)) {
       const warn = Number(this._config.battery_warn ?? 40);
       attr(el.batt, "data-level", pct <= 15 ? "bad" : pct < warn ? "warn" : "ok");
@@ -11233,7 +11634,7 @@ class SavvyLockCard extends SavvyCard {
   _renderAlarm() {
     const h = this._hass, el = this._el, id = this._alarmId();
     const st = id ? h.states[id] : null;
-    el.alarm.hidden = !st;
+    Motion.reveal(el.alarm, !!st);
     if (!st) return { triggered: false };
     const sf = st.attributes.supported_features ?? 7;
     const modes = ARM.filter((m) => sf & m[2]);
@@ -11265,7 +11666,7 @@ class SavvyLockCard extends SavvyCard {
       el.alarmModes.appendChild(d);
     }
     for (const b of el.alarmModes.children) {
-      if (b.dataset.mode === "disarm") b.hidden = st.state === "disarmed" || st.state === "unavailable";
+      if (b.dataset.mode === "disarm") Motion.show(b, !(st.state === "disarmed" || st.state === "unavailable"));
       else attr(b, "data-on", armed && armed[1] === b.dataset.mode);
     }
     return { triggered };
@@ -11284,7 +11685,7 @@ class SavvyLockCard extends SavvyCard {
   // ---------- the camera ----------
   _renderCamera(items) {
     const el = this._el, id = this._camId, st = id ? this._hass.states[id] : null;
-    el.cam.hidden = !st || this._compact;
+    Motion.reveal(el.cam, !!st && !this._compact);
     if (!st || this._compact) { clearInterval(this._camTimer); this._camTimer = 0; return; }
     text(el.camName, `${st.attributes.friendly_name || shortName(this._hass, id, null)} · Live`);
     this._camRefresh(true);
@@ -12050,7 +12451,7 @@ class SavvyMediaCard extends SavvyCard {
     let at = 0;
     for (const key of ["prev", "play", "next", "power"]) { const node = parent.__rows?.get(key); if (node) place(parent, node, at++); }
     const keys = new Set(want.map((b) => b.key));
-    for (const [key, node] of parent.__rows || []) node.hidden = !keys.has(key);
+    for (const [key, node] of parent.__rows || []) Motion.show(node, keys.has(key));
     parent.hidden = !want.length;
   }
 
@@ -12075,7 +12476,7 @@ class SavvyMediaCard extends SavvyCard {
       this._mountVolume(row, cfg, key);
     }
     const keys = new Set(c.audio.map((cfg) => slug(cfg.entity)));
-    for (const [key, node] of el.audioBand.__rows || []) node.hidden = !keys.has(key);
+    for (const [key, node] of el.audioBand.__rows || []) Motion.show(node, keys.has(key));
   }
 
   // the alarm clock that rings on this room's speaker: when it's set, and whether it's on
@@ -12212,7 +12613,7 @@ class SavvyMediaCard extends SavvyCard {
         const iIcon = chip.querySelector("ha-icon");
         if (iIcon) attr(iIcon, "icon", cfg.icon);
       }
-      for (const [key, node] of parent.__rows || []) node.hidden = !keys.has(key);
+      for (const [key, node] of parent.__rows || []) Motion.show(node, keys.has(key));
       parent.hidden = !keys.size;
     };
     fill(el.presets, c.presets);
@@ -12774,6 +13175,12 @@ class SavvyRoomActivityCard extends SavvyCard {
 
   // ---------- update ----------
   _update() {
+    const el = this._el;
+    if (!el) return;
+    Motion.flip([el.events, el.reads, el.pills, el.glyphs], () => this._updateNow());
+  }
+
+  _updateNow() {
     const h = this._hass;
     if (!h || !this._el) return;
     this.toggleAttribute("dark", !!h.themes?.darkMode);
@@ -14122,6 +14529,10 @@ class SavvySceneCard extends SavvyCard {
   }
 
   _renderTiles(items) {
+    Motion.flip(this._el.grid, () => this._renderTilesNow(items));
+  }
+
+  _renderTilesNow(items) {
     const h = this._hass, c = this._config, el = this._el, seen = new Set();
     let nextLit = 0;
     items.forEach((item, at) => {
@@ -14407,7 +14818,7 @@ class SavvySectionTitleCard extends SavvyCard {
     const info = this._modeInfo();
     el.mode.hidden = !info;
     if (info) {
-      put(el.card, "--mode", info.color || "var(--secondary-text-color)");
+      Motion.tintVar(el.card, "--mode", info.color || "var(--secondary-text-color)");
       attr(el.mode, "data-c", !!info.color);
       attr(el.mode, "aria-label", [modeCaption(info, this._caption()), info.label].filter(Boolean).join(" "));
       attr(el.mode, "data-pick", info.options.length > 0);
@@ -15157,7 +15568,7 @@ class SavvySystemHealthCard extends HTMLElement {
     const { total, sections } = this._compute();
     const label = SOURCES[c.source];
     const lvl = total === 0 ? "var(--lvl-good)" : total < c.warn_above ? "var(--lvl-warn)" : "var(--lvl-bad)";
-    put(this._el.card, "--lvl", lvl);
+    Motion.tintVar(this._el.card, "--lvl", lvl);
     text(this._el.pill, total === 0 ? "All good" : `${total} ${total === 1 ? label.noun : label.nouns}`);
     attr(this._el.card, "aria-label", `${c.title || label.title}, ${total === 0 ? "all good" : `${total} ${label.nouns}`}`);
     this._renderRows(sections);
@@ -15242,6 +15653,10 @@ class SavvySystemHealthCard extends HTMLElement {
   }
 
   _renderRows(sections) {
+    Motion.flip([this._el.cols, ...this._boxes.values()], () => this._renderRowsNow(sections));
+  }
+
+  _renderRowsNow(sections) {
     const seen = new Set(), liveBoxes = new Set();
     this._layoutCols(sections.length);
     sections.forEach((sec, bi) => {
@@ -15674,7 +16089,7 @@ class SavvyRoomTile extends SavvyCard {
     this._swap = new Swap(this._el.swap, (v) => {
       const info = this._modeInfo();
       text(this._el.label, info?.label || v);
-      put(this._el.mode, "--mode", info?.color || "");
+      Motion.tintVar(this._el.mode, "--mode", info?.color || "");
       attr(this._el.mode, "data-c", !!info?.color);
     }, "mode");
     this._springs.push(this._swap.spring);

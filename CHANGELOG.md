@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.9.0
+
+Everything that changes now moves, with the same tactile spring feel as a press.
+
+- **Motion.** Four shared pieces, used by every card and popup (see the README's Motion section):
+  colours slide instead of switching, words roll and counts tick, rows, badges, chips and tiles
+  slide to their places as others come and go, and changes that land together ripple one after
+  another. Turn a room's lights off and the tiles' colours cascade, the pill slides, and "3 of 6
+  on" ticks down to "All off". Everything is interruptible (flip it back mid-way and it continues
+  from where it is), nothing animates a first paint or a card that isn't on screen, and reduced
+  motion lands everything at once.
+- **What moves:** light orbs, pills and power buttons; chips and badges (their discs, their dim,
+  their order); media transport and rows; climate modes and readouts; lock banners, door and
+  battery chips; room activity events, readings and banners; health pills, rows and columns;
+  graph levels and tiles; entity pills; scene tiles; the control pill's colour; popup rows, their
+  sections and the switch knob; icons that swap pop.
+- **Popup switch.** The knob now rolls between its two ends with a spring.
+- **Tests.** A motion spec samples frames after a change (in-between values, interruption,
+  settling, cascade order, reduced motion), and page.waitForTimeout in the specs also waits for
+  the motion to finish.
+
 ## 0.8.0
 
 - **Lock**: a new card for a door. The state is the biggest thing on it, a glow behind it follows

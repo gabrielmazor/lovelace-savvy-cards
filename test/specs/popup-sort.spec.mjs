@@ -1,7 +1,7 @@
 // The home header chips' popups: what a chip ignores (entities and rooms, for the count and the
 // list alike), how the list is sorted (by room under headings, or by latest change), the switch
 // at its top that remembers the choice, and the alarm and locks that stay on top.
-import { openPage } from "./_util.mjs";
+import { openPage, calm } from "./_util.mjs";
 
 const hold = async (page, p, ms = 650) => { await page.mouse.move(p.x, p.y); await page.mouse.down(); await page.waitForTimeout(ms); await page.mouse.up(); await page.waitForTimeout(450); };
 const chipAt = (page, card, i) => page.evaluate(({ card, i }) => { const el = window.cards[card].shadowRoot.querySelectorAll("#chips .chip")[i]; el.scrollIntoView({ block: "center" }); const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; }, { card, i });
@@ -119,6 +119,7 @@ export default async function ({ browser, base, check }) {
     await page.addInitScript(() => { Object.defineProperty(window, "localStorage", { get() { throw new Error("blocked"); } }); });
     await page.reload();
     await page.waitForFunction(() => window.__savvy && window.mount);
+    calm(page);
     await page.setViewportSize({ width: 640, height: 1300 });
     await page.evaluate(() => window.mount("savvy-home-header-card", { health: false }, 560));
     await page.waitForTimeout(500);

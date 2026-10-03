@@ -321,11 +321,11 @@ class SavvyLockCard extends SavvyCard {
       text(el.title, c.name || "Locks");
       const open = items.length - locked;
       text(el.sum, open ? `${open} unlocked` : "All locked");
-      el.all.hidden = !needing.length;
+      Motion.show(el.all, !!needing.length);
     }
     // the nudge: unlocked for a while
     this._nudged = nudged;
-    el.nudge.hidden = !nudged;
+    Motion.reveal(el.nudge, !!nudged);
     if (nudged) {
       const name = items.find((i) => i.entity === nudged);
       text(el.nudgeTx, `${solo ? "Unlocked" : `${name?.name || shortName(h, nudged, null)} unlocked`} for ${duration(nudgeFor)}`);
@@ -398,7 +398,7 @@ class SavvyLockCard extends SavvyCard {
     const doorId = this._doorOf(item, solo), door = doorId ? h.states[doorId] : null;
     const doorOpen = !!door && door.state === "on";
     const doorWords = door ? (door.state === "on" ? "Door open" : door.state === "off" ? "Door closed" : null) : null;
-    el.door.hidden = !doorWords;
+    Motion.show(el.door, !!doorWords);
     if (doorWords) {
       text(el.doorTx, doorWords);
       attr(el.doorIc, "icon", doorOpen ? "mdi:door-open" : "mdi:door-closed");
@@ -407,7 +407,7 @@ class SavvyLockCard extends SavvyCard {
     // the battery
     const battId = this._batteryOf(item, solo), batt = battId ? h.states[battId] : null;
     const pct = batt ? parseFloat(batt.state) : NaN;
-    el.batt.hidden = !Number.isFinite(pct);
+    Motion.show(el.batt, Number.isFinite(pct));
     if (Number.isFinite(pct)) {
       const warn = Number(this._config.battery_warn ?? 40);
       attr(el.batt, "data-level", pct <= 15 ? "bad" : pct < warn ? "warn" : "ok");
@@ -453,7 +453,7 @@ class SavvyLockCard extends SavvyCard {
   _renderAlarm() {
     const h = this._hass, el = this._el, id = this._alarmId();
     const st = id ? h.states[id] : null;
-    el.alarm.hidden = !st;
+    Motion.reveal(el.alarm, !!st);
     if (!st) return { triggered: false };
     const sf = st.attributes.supported_features ?? 7;
     const modes = ARM.filter((m) => sf & m[2]);
@@ -485,7 +485,7 @@ class SavvyLockCard extends SavvyCard {
       el.alarmModes.appendChild(d);
     }
     for (const b of el.alarmModes.children) {
-      if (b.dataset.mode === "disarm") b.hidden = st.state === "disarmed" || st.state === "unavailable";
+      if (b.dataset.mode === "disarm") Motion.show(b, !(st.state === "disarmed" || st.state === "unavailable"));
       else attr(b, "data-on", armed && armed[1] === b.dataset.mode);
     }
     return { triggered };
@@ -504,7 +504,7 @@ class SavvyLockCard extends SavvyCard {
   // ---------- the camera ----------
   _renderCamera(items) {
     const el = this._el, id = this._camId, st = id ? this._hass.states[id] : null;
-    el.cam.hidden = !st || this._compact;
+    Motion.reveal(el.cam, !!st && !this._compact);
     if (!st || this._compact) { clearInterval(this._camTimer); this._camTimer = 0; return; }
     text(el.camName, `${st.attributes.friendly_name || shortName(this._hass, id, null)} · Live`);
     this._camRefresh(true);

@@ -160,7 +160,11 @@ class SavvyStateIcon extends HTMLElement {
     if (!st) return;
     if (!this._ic) { this._ic = document.createElement("ha-icon"); this.appendChild(this._ic); }
     const icon = entityIcon(this._h, st.entity_id, st);
-    if (this._ic.getAttribute("icon") !== icon) this._ic.setAttribute("icon", icon);
+    if (this._ic.getAttribute("icon") !== icon) {
+      const had = this._ic.hasAttribute("icon");
+      this._ic.setAttribute("icon", icon);
+      if (had && Motion.can(this._ic)) Motion.pop(this._ic);     // an icon that swaps pops
+    }
   }
 }
 if (!customElements.get("savvy-state-icon")) customElements.define("savvy-state-icon", SavvyStateIcon);

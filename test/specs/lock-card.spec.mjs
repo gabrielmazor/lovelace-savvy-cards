@@ -5,7 +5,7 @@ import { openPage } from "./_util.mjs";
 
 const HOLD = 650;   // longer than the 500 ms the end has to be held
 
-const settle = (page, ms = 700) => page.waitForTimeout(ms);
+const settle = (page, ms = 700) => page.waitForTimeout(ms);   // page.waitForTimeout also waits for Motion (see _util calm)
 const log = (page) => page.evaluate(() => [...window.log]);
 const clear = (page) => page.evaluate(() => { window.log.length = 0; window.info.length = 0; });
 const push = (page, patch) => page.evaluate((patch) => window.setStates(patch), patch);

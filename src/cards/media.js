@@ -677,7 +677,7 @@ class SavvyMediaCard extends SavvyCard {
     let at = 0;
     for (const key of ["prev", "play", "next", "power"]) { const node = parent.__rows?.get(key); if (node) place(parent, node, at++); }
     const keys = new Set(want.map((b) => b.key));
-    for (const [key, node] of parent.__rows || []) node.hidden = !keys.has(key);
+    for (const [key, node] of parent.__rows || []) Motion.show(node, keys.has(key));
     parent.hidden = !want.length;
   }
 
@@ -702,7 +702,7 @@ class SavvyMediaCard extends SavvyCard {
       this._mountVolume(row, cfg, key);
     }
     const keys = new Set(c.audio.map((cfg) => slug(cfg.entity)));
-    for (const [key, node] of el.audioBand.__rows || []) node.hidden = !keys.has(key);
+    for (const [key, node] of el.audioBand.__rows || []) Motion.show(node, keys.has(key));
   }
 
   // the alarm clock that rings on this room's speaker: when it's set, and whether it's on
@@ -839,7 +839,7 @@ class SavvyMediaCard extends SavvyCard {
         const iIcon = chip.querySelector("ha-icon");
         if (iIcon) attr(iIcon, "icon", cfg.icon);
       }
-      for (const [key, node] of parent.__rows || []) node.hidden = !keys.has(key);
+      for (const [key, node] of parent.__rows || []) Motion.show(node, keys.has(key));
       parent.hidden = !keys.size;
     };
     fill(el.presets, c.presets);

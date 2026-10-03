@@ -1,7 +1,7 @@
 // 0.6.1: what counts as offline (half or more of a device's entities, a hub's connectivity sensor),
 // hubs that fold in everything behind them, integration rows (failed config entries, or most of the
 // devices offline), the Watchman run-report chip, and a lock that is always in the security popup.
-import { openPage, idle, centerOf } from "./_util.mjs";
+import { openPage, idle, centerOf, uncalm } from "./_util.mjs";
 
 const W = ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"];
 const hold = async (page, p, ms = 650) => { await page.mouse.move(p.x, p.y); await page.mouse.down(); await page.waitForTimeout(ms); await page.mouse.up(); };
@@ -201,7 +201,8 @@ export default async function ({ browser, base, check }) {
     const cog = await page.evaluate(() => window.cards[6].shadowRoot.getElementById("count").textContent);
     check(`${tag} the cog counts the same issues, failed integrations included`, cog === String(sum.total) && sum.counts.unavailable === 7, JSON.stringify([cog, sum.total, sum.counts.unavailable]));
 
-    // ----- the Watchman chip -----
+    // ----- the Watchman chip -----   (its Running... lasts as long as the fake says: read the clock plainly)
+    uncalm(page);
     const chip = (i) => page.evaluate((i) => {
       const c = window.cards[i].shadowRoot.querySelector(".report");
       if (!c || c.hidden) return null;

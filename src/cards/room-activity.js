@@ -428,6 +428,12 @@ class SavvyRoomActivityCard extends SavvyCard {
 
   // ---------- update ----------
   _update() {
+    const el = this._el;
+    if (!el) return;
+    Motion.flip([el.events, el.reads, el.pills, el.glyphs], () => this._updateNow());
+  }
+
+  _updateNow() {
     const h = this._hass;
     if (!h || !this._el) return;
     this.toggleAttribute("dark", !!h.themes?.darkMode);

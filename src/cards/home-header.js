@@ -188,7 +188,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
       this._sum = healthSummary(h, hc);
     }
     const total = this._sum.total, warn = hc.warn_above ?? 6;
-    put(el.health, "--ac", total === 0 ? "var(--secondary-text-color)" : total < warn ? "var(--lvl-warn)" : "var(--lvl-bad)");
+    Motion.tintVar(el.health, "--ac", total === 0 ? "var(--secondary-text-color)" : total < warn ? "var(--lvl-warn)" : "var(--lvl-bad)");
     attr(el.health, "data-alert", total > 0);
     el.count.hidden = !total;
     text(el.count, String(total));

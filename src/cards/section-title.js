@@ -173,7 +173,7 @@ class SavvySectionTitleCard extends SavvyCard {
     const info = this._modeInfo();
     el.mode.hidden = !info;
     if (info) {
-      put(el.card, "--mode", info.color || "var(--secondary-text-color)");
+      Motion.tintVar(el.card, "--mode", info.color || "var(--secondary-text-color)");
       attr(el.mode, "data-c", !!info.color);
       attr(el.mode, "aria-label", [modeCaption(info, this._caption()), info.label].filter(Boolean).join(" "));
       attr(el.mode, "data-pick", info.options.length > 0);

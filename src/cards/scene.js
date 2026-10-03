@@ -198,6 +198,10 @@ class SavvySceneCard extends SavvyCard {
   }
 
   _renderTiles(items) {
+    Motion.flip(this._el.grid, () => this._renderTilesNow(items));
+  }
+
+  _renderTilesNow(items) {
     const h = this._hass, c = this._config, el = this._el, seen = new Set();
     let nextLit = 0;
     items.forEach((item, at) => {

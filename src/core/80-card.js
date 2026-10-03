@@ -199,8 +199,12 @@ const CHIP_ROW_CSS = `
 
 // A row of chips. items: [{ key, icon (null: the entity's state icon), stateObj, color, dim,
 // value, caption, aria, spin: turns/s or 0, config (actions), entity, defaults, list() }]
-SavvyCard.prototype._chipRow = function (row, items, { iconOnly = false } = {}) {
+SavvyCard.prototype._chipRow = function (row, items, opts = {}) {
   row.__nodes = row.__nodes || new Map();
+  Motion.flip(row, () => this._chipRowNow(row, items, opts));
+};
+
+SavvyCard.prototype._chipRowNow = function (row, items, { iconOnly = false } = {}) {
   attr(row, "data-icon-only", iconOnly);
   const seen = new Set();
   let at = 0;
@@ -223,8 +227,8 @@ SavvyCard.prototype._chipRow = function (row, items, { iconOnly = false } = {}) 
       row.__nodes.set(item.key, node);
     }
     node.__item = item;
-    put(node, "--tc", item.color || "var(--primary-text-color)");
-    put(node.querySelector(".body"), "opacity", item.dim ? (MQ.contrast.matches ? "0.7" : "0.45") : "");
+    Motion.tintVar(node, "--tc", item.color || "var(--primary-text-color)");
+    Motion.fadeTo(node.querySelector(".body"), item.dim ? (MQ.contrast.matches ? 0.7 : 0.45) : 1);
     if (wantState) {
       if (node.__icon.stateObj !== item.stateObj) { node.__icon.hass = this._hass; node.__icon.stateObj = item.stateObj; }
     } else attr(node.__icon, "icon", item.icon);
@@ -262,7 +266,7 @@ SavvyCard.prototype._renderPill = function (info, caption) {
   const el = this._el;
   el.pill.hidden = !info;
   if (!info) return;
-  put(el.card, "--mode", info.color || "var(--secondary-text-color)");
+  Motion.tintVar(el.card, "--mode", info.color || "var(--secondary-text-color)");
   caption = modeCaption(info, caption);
   attr(el.pill, "aria-label", [caption, info.label].filter(Boolean).join(" "));
   el.pill.disabled = info.kind === "select" && !info.options.length;

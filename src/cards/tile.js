@@ -260,7 +260,7 @@ class SavvyRoomTile extends SavvyCard {
     this._swap = new Swap(this._el.swap, (v) => {
       const info = this._modeInfo();
       text(this._el.label, info?.label || v);
-      put(this._el.mode, "--mode", info?.color || "");
+      Motion.tintVar(this._el.mode, "--mode", info?.color || "");
       attr(this._el.mode, "data-c", !!info?.color);
     }, "mode");
     this._springs.push(this._swap.spring);

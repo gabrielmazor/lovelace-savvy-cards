@@ -18,7 +18,7 @@ export default async function ({ browser, base, check }) {
         const row = (id) => [...r.querySelectorAll(`#${id} .chip`)].map((c) => c.getAttribute("aria-label"));
         return { mode: $("pill").hidden ? null : $("val").textContent, pre: $("pre").textContent, home: !$("home").hidden,
           temp: $("temp").hidden ? null : $("deg").textContent, sensors: row("sensors"), chips: row("chips"), rooms: row("rooms"),
-          dim: [...r.querySelectorAll("#sensors .chip .body")].map((b) => b.style.opacity || "1"),
+          dim: [...r.querySelectorAll("#sensors .chip .body")].map((b) => (/opacity\(([\d.]+)\)/.exec(b.style.filter || "") || [0, "1"])[1]),
           iconOnly: $("sensors").hasAttribute("data-icon-only"), sep: !$("sep").hidden };
       };
       return window.cards.map(read);

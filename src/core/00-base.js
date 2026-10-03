@@ -130,18 +130,34 @@ const put = (el, prop, val) => {
   if (prop.startsWith("--")) el.style.setProperty(prop, val);
   else el.style[prop] = val;
 };
+// A state attribute that changes colours (data-on, data-level, ...) goes through Motion, which
+// slides the colours it changed; the first write to an element is its initial state, not a change.
 const attr = (el, name, val) => {
   if (!el) return;
   const cache = el.__attr || (el.__attr = {});
   if (cache[name] === val) return;
+  const first = cache[name] === undefined;
   cache[name] = val;
-  if (val === null || val === undefined || val === false) el.removeAttribute(name);
-  else el.setAttribute(name, val === true ? "" : val);
+  if (first) Motion.seen(el);
+  const apply = () => {
+    if (val === null || val === undefined || val === false) el.removeAttribute(name);
+    else el.setAttribute(name, val === true ? "" : val);
+  };
+  if (!first && TINT_ATTRS.has(name) && Motion.can(el)) Motion.change(el, apply);
+  else {
+    apply();
+    if (!first && name === "icon" && Motion.can(el)) Motion.pop(el);
+  }
 };
+// Text is final the moment it is written; when it replaces an earlier value the element rolls
+// (Motion.roll), and a count ticks. The first value an element gets never animates.
 const text = (el, val) => {
   if (!el || el.__text === val) return;
+  const old = el.__text;
   el.__text = val;
   el.textContent = val;
+  if (old === undefined) Motion.seen(el);
+  else if (Motion.can(el) && Motion.rollable(el)) Motion.roll(el, String(old), String(val));
 };
 
 // The companion apps turn this into a real haptic; elsewhere it's a no-op.
@@ -184,8 +200,20 @@ const watchKeyboard = (host) => {
   host.addEventListener("pointerdown", sync);
 };
 
+// The roll: while a value changes, the real text hides and its two pseudo-elements draw the
+// old words leaving and the new ones arriving (Motion.roll drives --rl from 0 to 1).
+const ROLL_CSS = `
+  [data-rolling] { position: relative; color: transparent !important; -webkit-text-fill-color: transparent !important; }
+  [data-rolling]::before, [data-rolling]::after { position: absolute; inset: 0; display: block; overflow: inherit; text-overflow: inherit;
+    text-align: inherit; white-space: pre; pointer-events: none; color: var(--rl-c); -webkit-text-fill-color: var(--rl-c); }
+  [data-rolling]::before { content: attr(data-out); opacity: calc(1 - var(--rl, 1)); translate: 0 calc(var(--rl, 1) * -0.42em); }
+  [data-rolling]::after { content: attr(data-in); opacity: var(--rl, 1); translate: 0 calc((1 - var(--rl, 1)) * 0.42em); }
+  [data-rolling="tick"]::before { content: none; }
+  [data-rolling="tick"]::after { opacity: 1; translate: none; }
+`;
+
 // The CSS every card shares: host basics, the card surface, focus rings.
-const BASE_CSS = `
+const BASE_CSS = `${ROLL_CSS}
   :host { display: block; -webkit-tap-highlight-color: transparent; }
   [hidden] { display: none !important; }
   button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0;

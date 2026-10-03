@@ -259,6 +259,10 @@ class SavvyGraphCard extends SavvyCard {
   }
 
   _renderTiles() {
+    Motion.flip([this._el.graphs, this._el.grid], () => this._renderTilesNow());
+  }
+
+  _renderTilesNow() {
     const h = this._hass, cfg = this._config, el = this._el, seen = new Set();
     let graphs = 0, small = 0, gi = 0, si = 0;
     for (const item of cfg.entities) {
@@ -337,14 +341,14 @@ class SavvyGraphCard extends SavvyCard {
       el.n.parentElement.hidden = true;
       el.note.hidden = false;
       text(el.note, missing ? "Not found" : "Unavailable");
-      put(node, "--tile-lvl", "");
+      Motion.tintVar(node, "--tile-lvl", "");
     } else if (numeric) {
       el.n.parentElement.hidden = false;
       const value = parseFloat(st.state);
       if (!node.__value) node.__value = this._spring(value, MOTION.text, `value:${item.entity}`);
       else node.__value.to(value, MOTION.text);
       const level = levelOf(value, item.thresholds);
-      put(node, "--tile-lvl", level ? `var(--lvl-${level})` : "");
+      Motion.tintVar(node, "--tile-lvl", level ? `var(--lvl-${level})` : "");
       const unit = item.unit ?? st.attributes.unit_of_measurement ?? "";
       text(el.u, unit);
       node.__unit = unit;
@@ -381,7 +385,7 @@ class SavvyGraphCard extends SavvyCard {
       el.note.hidden = true;
       node.__unit = "";
       node.__value = null;
-      put(node, "--tile-lvl", item.state_color && domainOf(item.entity) === "binary_sensor"
+      Motion.tintVar(node, "--tile-lvl", item.state_color && domainOf(item.entity) === "binary_sensor"
         ? (st.state === "on" ? "var(--lvl-good)" : st.state === "off" ? "var(--lvl-bad)" : "") : "");
       let words = null;
       if (isTimestamp(st)) { const t = Date.parse(st.state); if (Number.isFinite(t)) words = relativeTime(t, langOf(h)); }

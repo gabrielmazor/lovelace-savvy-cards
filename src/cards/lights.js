@@ -903,7 +903,7 @@ class LightsCard extends HTMLElement {
     // keep the DOM in the configured order, and retire anything no longer here
     const want = new Set(ids);
     for (const [key, node] of el.grid.__rows || []) {
-      node.hidden = !want.has(node.__entity);
+      Motion.show(node, want.has(node.__entity));
       if (!want.has(node.__entity)) this._bars.delete(key);
     }
     ids.forEach((id, i) => {
@@ -1086,7 +1086,7 @@ class LightsCard extends HTMLElement {
       const cfg = typeof raw === "string" ? { entity: raw } : raw;
       return cfg.entity || cfg.navigation_path || cfg.name;
     }));
-    for (const [key, node] of cache) node.hidden = !keys.has(key);
+    for (const [key, node] of cache) Motion.show(node, keys.has(key));
     el.hidden = !list.length;
   }
 
