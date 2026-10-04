@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.11.0
+
+- **New card: Last check** (`custom:savvy-last-check-card`). The last look before you leave or go to bed.
+  It finds what would be left behind (lights, players, climate, fans, unlocked locks, an open garage or
+  gate), lists it by room, and one slide turns it all off, with a tick on each row as Home Assistant
+  confirms it. Rows can be ticked off for this run. Open doors and windows stay on the list as things that
+  need you (`block: true` refuses to run while they are open). It never unlocks. `then` runs a scene, a
+  script or an alarm arming after a clean run. Routines: `leave` and `goodnight`. The ignore list in the
+  Savvy settings applies.
+
 ## 0.10.8
 
 - **System health: Dismissed is its own section**, at the bottom, listing everything you put aside with a

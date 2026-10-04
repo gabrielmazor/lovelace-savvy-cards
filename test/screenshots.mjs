@@ -117,6 +117,13 @@ const SETTINGS_USERS = `window.__after = () => {
 };`;
 const SETTINGS_CFG = { pages: { home: "/lovelace/home", lights: "/lovelace/lights", room: "/lovelace/{slug}" }, house: { control: "input_select.house_mode", tap: "navigate" },
   health: { battery_threshold: 20 }, rooms: { living_room: { control: "input_select.living_room_scene", light_state: "input_boolean.movie_mode" }, kitchen: { name: "Kitchen" } } };
+// a house with the garage left open, for the Last check card
+const LEFT_OPEN = `(() => {
+  const h = window.hass, house = window.house;
+  house.states["cover.garage_door"] = { entity_id: "cover.garage_door", state: "open", attributes: { friendly_name: "Garage Door", device_class: "garage" }, last_changed: new Date().toISOString(), last_updated: new Date().toISOString() };
+  h.entities["cover.garage_door"] = { entity_id: "cover.garage_door", area_id: "hallway", device_id: null, platform: "demo", entity_category: null, hidden: false, disabled_by: null };
+  window.hass = { ...h, states: { ...house.states } };
+})();`;
 const SHOTS = [
   ["lights", "savvy-lights-card", { area: "living_room", featured: ["light.living_room_ceiling"], chips: [{ entity: "switch.living_room_plug", name: "Plug" }] }, 520],
   ["lights-compact", "savvy-lights-card", { area: "living_room", layout: "compact" }, 520],
@@ -164,6 +171,8 @@ const SHOTS = [
   ["lock-unlocked", "savvy-lock-card", { entity: "lock.entrance_door", camera: false }, 460, DOOR({ lock: "unlocked", changed: 25 * 60000, door: "off", battery: 31 })],
   ["lock-compact", "savvy-lock-card", { entities: ["lock.entrance_door", "lock.shed"], layout: "compact", alarm: false, camera: false }, 460, DOOR({})],
   ["lock-several", "savvy-lock-card", { entities: ["lock.entrance_door", "lock.shed", "lock.back_door"], name: "Doors", alarm: false, camera: false }, 460, DOOR({})],
+  ["last-check", "savvy-last-check-card", { mode: "leave", area: ["living_room", "kitchen", "hallway", "bedroom"], max_rows: 6 }, 420, LEFT_OPEN],
+  ["last-check-compact", "savvy-last-check-card", { mode: "goodnight", layout: "compact", area: ["living_room", "kitchen", "hallway", "bedroom"] }, 420, LEFT_OPEN],
   ["settings", "savvy-settings-card", SETTINGS_CFG, 460, SETTINGS_USERS],
   ["settings-compact", "savvy-settings-card", { ...SETTINGS_CFG, layout: "compact" }, 460, SETTINGS_USERS],
   ["camera", "savvy-camera-card", { area: ["living_room", "kitchen"] }, 820, FRIGATE],

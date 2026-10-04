@@ -149,6 +149,7 @@ animations, light and dark themes, and honour reduced motion.
 | [Lock](#lock) | A door lock with door, battery, alarm and camera | `custom:savvy-lock-card` |
 | [Vacuum](#vacuum) | A robot vacuum: rooms, map, dock | `custom:savvy-vacuum-card` |
 | [Scenes](#scenes) | Every scene of a room as a tile | `custom:savvy-scene-card` |
+| [Last check](#last-check) | What would be left on when you leave or go to bed, and one slide to turn it off | `custom:savvy-last-check-card` |
 | [System health](#system-health) | Offline devices, low batteries, Watchman | `custom:savvy-system-health-card` |
 | [Entity](#entity) | One entity and the ones that go with it | `custom:savvy-entity-card` |
 | [Graph](#graph) | Number and state tiles with history | `custom:savvy-graph-card` |
@@ -930,6 +931,67 @@ strip: '^.*//\s*|\s*-\s*on$'      # "Office // Work - On" reads "Work"
 color: blue
 show_icon: true
 navigation_path: /lovelace/scenes
+```
+
+---
+
+### Last check
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/last-check-light.png"><img src="docs/images/last-check-dark.png" width="420" alt="Savvy last check card"></picture>
+
+The last look before you leave, or before bed. It finds what would be left behind (lights on, music
+playing, the A/C running, a door left unlocked, the garage open), lists it by room, and one slide turns it
+all off. Each row has a tick to leave that one out this time. Open doors and windows can't be closed by a
+service, so they stay on the list as things that need you. It never unlocks anything.
+
+When the slide runs, every row turns to a tick as Home Assistant confirms it. A thing that is still on
+after 8 seconds shows a retry. There is a `compact` layout with a one-line summary and the slide.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/last-check-compact-light.png"><img src="docs/images/last-check-compact-dark.png" width="420" alt="Last check, compact"></picture>
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `mode` | `leave` or `goodnight` | `leave` | `leave` checks lights, players, climate, fans, locks, garage and gate. `goodnight` is the same without the climate. |
+| `area` | area or list | the whole house | Only these areas are checked. |
+| `title` | string | by mode | The heading ("Leaving?", "Goodnight"). |
+| `title_path` | string | none | Title link: tapping the title opens this page. |
+| `domains` | list | by mode | What to check instead: `light`, `media_player`, `climate`, `fan`, `lock`, `cover`, `switch`, `input_boolean`. A cover is only a garage or a gate. |
+| `include` | list of entities | none | More things to turn off, any kind that can be turned off (a coffee machine's switch, say). |
+| `exclude` | list of entities | none | Never touched or listed. The ignore list in the [Savvy settings](#savvy-settings) is added to it. |
+| `blockers` | boolean | `true` | Open doors and windows are listed as things that need you. |
+| `block` | boolean | `false` | `true` refuses to run while something needs you. |
+| `then` | action or list | none | Runs after a clean run: a scene, a script, arming an alarm. |
+| `slide_label` | string | by mode | The words on the slide. |
+| `layout` | `full` or `compact` | `full` | `compact`: a summary line and the slide. |
+| `max_rows` | number | `8` | Rows of things to turn off before "+N more". What needs you always shows. |
+| `state_glow` | boolean | `true` | Amber while there is something to do, red when something needs you. |
+
+Minimum:
+
+```yaml
+type: custom:savvy-last-check-card
+```
+
+Full:
+
+```yaml
+type: custom:savvy-last-check-card
+mode: leave
+area: [hallway, living_room, kitchen, bedroom]
+title: Leaving?
+domains: [light, media_player, climate, fan, lock, cover]
+include: [switch.coffee_machine]
+exclude: [light.hall_night_light]
+blockers: true
+block: false
+slide_label: Slide to leave
+layout: full
+max_rows: 8
+then:
+  action: perform-action
+  perform_action: alarm_control_panel.alarm_arm_away
+  target:
+    entity_id: alarm_control_panel.home_alarm
 ```
 
 ---
