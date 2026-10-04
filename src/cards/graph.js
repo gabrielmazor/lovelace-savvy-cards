@@ -14,6 +14,13 @@
 //   entities:
 //     - entity: sensor.server_cpu
 //       thresholds: [{ value: 0, level: good }, { value: 60, level: warn }, { value: 85, level: bad }]
+//     - entity: sensor.living_room_temperature
+//       thresholds: temperature            a preset: blue, teal, green, amber, red (also humidity, battery)
+//       smooth: true                       blend through the colours between the thresholds
+//     - entity: sensor.power
+//       thresholds: [{ value: 0, color: blue }, { value: 500, color: orange }, { value: 2000, color: "#e53935" }]
+//     - entity: sensor.humidity
+//       color: teal                        one colour for the whole graph
 
 const CHART_H = 72;
 const SCRUB_SLOP = 6;        // press-and-dwell: move sooner and it's a scroll, hold still and it scrubs
@@ -25,6 +32,47 @@ function levelOf(value, thresholds) {
   let level = null;
   for (const t of [...thresholds].sort((a, b) => a.value - b.value)) if (value >= t.value) level = t.level;
   return level;
+}
+
+// ---- colour scales: thresholds with a level (good / warn / bad) or any colour, hard steps or smooth ----
+// Presets are written in °C; a Fahrenheit sensor gets the same scale converted. A preset below its first
+// stop keeps the first colour (the -1000 stop).
+const SCALE_PRESETS = {
+  temperature: { smooth: true, stops: [[-1000, "blue"], [12, "teal"], [18, "green"], [25, "amber"], [30, "red"]] },
+  humidity: { stops: [[-1000, "amber"], [30, "green"], [60, "amber"], [70, "red"]] },
+  battery: { stops: [[-1000, "red"], [15, "amber"], [40, "green"]] },
+};
+
+// -> { stops: [{ v, c }] sorted ascending, smooth } | null. c is a CSS colour.
+function scaleOf(item, unit) {
+  let raw = item.thresholds, smooth = item.smooth;
+  if (typeof raw === "string") {
+    const p = SCALE_PRESETS[raw.trim().toLowerCase()];
+    if (!p) return null;
+    const f = /f/i.test(String(unit || "")) && raw.trim().toLowerCase() === "temperature";
+    raw = p.stops.map(([v, c]) => ({ value: f && v > -1000 ? v * 9 / 5 + 32 : v, color: c }));
+    if (smooth === undefined) smooth = !!p.smooth;
+  }
+  if (!Array.isArray(raw) || !raw.length) return null;
+  const stops = raw.map((t) => ({ v: Number(t.value), c: t.color ? colorOf(t.color) : t.level ? `var(--lvl-${t.level})` : "" }))
+    .filter((t) => Number.isFinite(t.v)).sort((a, b) => a.v - b.v);
+  return stops.length ? { stops, smooth: !!smooth } : null;
+}
+
+// The colour a reading has on the scale: hard steps by default (below the first stop: none), a blend
+// between neighbouring stops when smooth. "" means the card's own colour.
+function scaleColor(scale, v) {
+  if (!scale || !Number.isFinite(v)) return "";
+  const st = scale.stops;
+  let i = -1;
+  for (let k = 0; k < st.length; k++) if (v >= st[k].v) i = k;
+  if (!scale.smooth) return i < 0 ? "" : st[i].c;
+  if (i < 0) return st[0].c;
+  if (i >= st.length - 1) return st[i].c;
+  const a = st[i], b = st[i + 1];
+  if (!a.c || !b.c || a.c === b.c) return a.c || b.c;
+  const t = (v - a.v) / (b.v - a.v);
+  return t <= 0.001 ? a.c : t >= 0.999 ? b.c : `color-mix(in oklab, ${b.c} ${(t * 100).toFixed(1)}%, ${a.c})`;
 }
 
 const STYLE = `${BASE_CSS}
@@ -347,9 +395,9 @@ class SavvyGraphCard extends SavvyCard {
       const value = parseFloat(st.state);
       if (!node.__value) node.__value = this._spring(value, MOTION.text, `value:${item.entity}`);
       else node.__value.to(value, MOTION.text);
-      const level = levelOf(value, item.thresholds);
-      Motion.tintVar(node, "--tile-lvl", level ? `var(--lvl-${level})` : "");
       const unit = item.unit ?? st.attributes.unit_of_measurement ?? "";
+      const own = item.color ? colorOf(item.color) : "";
+      Motion.tintVar(node, "--tile-lvl", scaleColor(scaleOf(item, unit), value) || own);
       text(el.u, unit);
       node.__unit = unit;
       el.chart.hidden = false;
@@ -439,22 +487,30 @@ class SavvyGraphCard extends SavvyCard {
     const f = (v) => v.toFixed(2);
     const id = key.replace(/[^a-zA-Z0-9]/g, "_");
     const unit = node.__unit || "";
-    // with thresholds, good / warn / bad down the value axis; otherwise the accent
-    const levelColor = (lvl) => (lvl ? `var(--lvl-${lvl})` : "rgb(var(--accent))");
-    const th = item.thresholds?.length ? [...item.thresholds].sort((a, b) => b.value - a.value) : null;
+    // with thresholds, their colours down the value axis (steps, or blended when smooth); otherwise the
+    // entity's own colour, else the accent
+    const base = item.color ? colorOf(item.color) : "rgb(var(--accent))";
+    const scale = scaleOf(item, unit);
+    const colorAt = (v) => scaleColor(scale, v) || base;
+    const th = scale;
     let stops;
-    if (th) {
-      stops = [{ o: 0, c: levelColor(levelOf(hi, th)) }];
-      for (const t of th) {
-        if (t.value <= lo || t.value >= hi) continue;
-        const o = (hi - t.value) / (hi - lo);
-        stops.push({ o: clamp(o - 0.015), c: levelColor(levelOf(t.value, th)) });
-        stops.push({ o: clamp(o + 0.015), c: levelColor(levelOf(t.value - 1e-9, th)) });
+    if (scale && scale.smooth) {
+      // the browser blends stops in sRGB; sampling the oklab blend keeps the middle of a blue-to-red from going muddy
+      stops = [];
+      const n = 16;
+      for (let k = 0; k <= n; k++) stops.push({ o: k / n, c: colorAt(hi - (hi - lo) * (k / n)) });
+    } else if (scale) {
+      stops = [{ o: 0, c: colorAt(hi) }];
+      for (const t of [...scale.stops].reverse()) {
+        if (t.v <= lo || t.v >= hi) continue;
+        const o = (hi - t.v) / (hi - lo);
+        stops.push({ o: clamp(o - 0.015), c: colorAt(t.v) });
+        stops.push({ o: clamp(o + 0.015), c: colorAt(t.v - 1e-9) });
       }
-      stops.push({ o: 1, c: levelColor(levelOf(lo, th)) });
-    } else stops = [{ o: 0, c: levelColor(null) }, { o: 1, c: levelColor(null) }];
+      stops.push({ o: 1, c: colorAt(lo) });
+    } else stops = [{ o: 0, c: base }, { o: 1, c: base }];
     const grad = stops.map((s) => `<stop offset="${f(s.o)}" style="stop-color:${s.c}"></stop>`).join("");
-    const lastColor = th ? levelColor(levelOf(series.points[series.points.length - 1].v, th)) : levelColor(null);
+    const lastColor = colorAt(series.points[series.points.length - 1].v);
     let labels = "";
     for (const ex of [{ p: series.maxAt, v: series.max, up: true }, { p: series.minAt, v: series.min, up: false }]) {
       if (!ex.p || (!ex.up && series.max - series.min < 1e-9)) continue;
@@ -499,7 +555,7 @@ class SavvyGraphCard extends SavvyCard {
     const q = pts[best], pt = series.points[best];
     attr(el.svg.__cur, "transform", `translate(${f(q[0])} 0)`);
     attr(el.svg.__dot, "transform", `translate(${f(q[0])} ${f(q[1])})`);
-    if (th) put(el.svg.__dot, "fill", levelColor(levelOf(pt.v, th)));
+    if (th) put(el.svg.__dot, "fill", colorAt(pt.v));
     const bhtml = `<span class="t">${esc(momentLabel(pt.t, t1 - t0, lang))}</span><span>${fmtNumber(pt.v)}${esc(unit)}</span>`;
     if (el.bubble.__html !== bhtml) { el.bubble.__html = bhtml; el.bubble.innerHTML = bhtml; }
     const bw = el.bubble.offsetWidth || 0;
@@ -553,7 +609,18 @@ const EDITOR = defineEditor("savvy-graph-card", (hass, c) => [
       { type: "grid", name: "", schema: [{ name: "unit", label: "Unit", selector: { text: {} } },
         { name: "hours_to_show", label: "Tile hours", selector: { number: { min: 1, max: 8760, mode: "box", unit_of_measurement: "h" } } }] },
       { name: "state_color", label: "State colours", selector: { boolean: {} } },
-      { name: "thresholds", label: "Thresholds", helper: "[{value: 0, level: good}, {value: 60, level: warn}, {value: 85, level: bad}]", selector: { object: {} } },
+      S.color("color", "Colour"),
+      { name: "smooth", label: "Smooth colours", helper: "Blend through the colours between the thresholds instead of switching at each one.", selector: { boolean: {} } },
+      { name: "thresholds", label: "Colour scale", type: "list", presets: ["temperature", "humidity", "battery"], presetLabel: "Preset",
+        helper: "The graph takes the colour of the value it is in. A preset, or your own thresholds.",
+        empty: "No thresholds: one colour.",
+        addButton: { label: "Add threshold", make: (items) => ({ value: items.length ? Number(items[items.length - 1].value || 0) + 10 : 0 }) },
+        summary: (t) => ({ title: String(t.value ?? ""), sub: t.color || t.level || "" }),
+        item: [
+          { name: "value", label: "From", helper: "The colour starts at this value.", selector: { number: { mode: "box", step: "any" } } },
+          S.color("color", "Colour"),
+          { name: "level", label: "Level", helper: "Instead of a colour: good, warn or bad.", selector: { select: { mode: "dropdown", options: ["good", "warn", "bad"] } } },
+        ] },
       { name: "tap_action", label: "Tap action", selector: { ui_action: {} } },
       { name: "hold_action", label: "Hold action", selector: { ui_action: {} } },
     ] },

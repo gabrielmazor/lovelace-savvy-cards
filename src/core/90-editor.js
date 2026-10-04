@@ -243,22 +243,27 @@ class SavvyListEditor extends HTMLElement {
   // spec.initial(hass, config): what to show while the option is unset (lights-card's order
   // starts as the discovered order, so reordering works from the first touch)
   setup(spec, items, config) {
+    // a list with presets (thresholds: temperature) may hold the preset's name instead of items
+    const preset = typeof items === "string" && spec.presets?.includes(items) ? items : "";
+    if (preset) items = [];
     const given = [].concat(items || []);
     const next = given.length || !spec.initial ? given : [].concat(spec.initial(this._hass, config || {}) || []);
     // unchanged items: keep the rows (and whatever field in them has the cursor)
-    const key = JSON.stringify([spec.name, spec.label, next]);
+    const key = JSON.stringify([spec.name, spec.label, next, preset]);
     if (this._spec && key === this._key) return;
     this._key = key;
     this._spec = spec;
     this._items = next;
+    this._preset = preset;
     this._render();
   }
   // what the list last sent: its echo back through setup() changes nothing
-  _sent() { this._key = JSON.stringify([this._spec.name, this._spec.label, this._items]); }
+  _sent() { this._key = JSON.stringify([this._spec.name, this._spec.label, this._items, this._preset || ""]); }
+  _value() { return this._preset ? this._preset : [...this._items]; }
   _emit() {
     this._sent();
     // a copy: listeners keep what they were given, later edits don't rewrite it
-    this.dispatchEvent(new CustomEvent("list-changed", { detail: { items: [...this._items] }, bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent("list-changed", { detail: { items: this._value() }, bubbles: true, composed: true }));
     this._render();
   }
   _summary(item) {
@@ -279,6 +284,21 @@ class SavvyListEditor extends HTMLElement {
     root.querySelector(".sv-label").textContent = spec.label || title(spec.name);
     if (spec.helper) root.querySelector(".sv-help").textContent = spec.helper;
     const list = root.querySelector(".sv-list");
+    if (spec.presets) {
+      const pf = document.createElement("ha-form");
+      pf.schema = [{ name: "preset", label: spec.presetLabel || "Preset", selector: { select: { mode: "dropdown", options: [{ value: "none", label: "None, my own" }, ...spec.presets.map((v) => ({ value: v, label: title(v) }))] } } }];
+      pf.data = { preset: this._preset || "none" };
+      pf.hass = this._hass;
+      pf.computeLabel = (sch) => sch.label;
+      pf.addEventListener("value-changed", (e) => {
+        e.stopPropagation();
+        const v = e.detail.value.preset;
+        this._preset = v && v !== "none" ? v : "";
+        this._emit();
+      });
+      root.querySelector(".sv-section").insertBefore(pf, list);
+      if (this._preset) { list.hidden = true; root.querySelector(".sv-add").hidden = true; return; }
+    }
     if (!this._items.length) {
       const e = document.createElement("div");
       e.className = "sv-empty";
@@ -313,23 +333,49 @@ class SavvyListEditor extends HTMLElement {
         body.className = "sv-item-body";
         const form = document.createElement("ha-form");
         const obj = typeof item === "string" ? { entity: item } : item;
-        form.schema = spec.item;
+        const scalars = spec.item.filter((e) => e.type !== "list"), nested = spec.item.filter((e) => e.type === "list");
+        form.schema = scalars;
         form.data = obj;
         form.hass = this._hass;
         form.computeLabel = (sch) => sch.label || title(sch.name);
+        const helps = new Map(scalars.filter((e) => e.name && e.helper).map((e) => [e.name, e.helper]));
+        form.computeHelper = (sch) => helps.get(sch.name) || "";
+        const send = () => this.dispatchEvent(new CustomEvent("list-changed", { detail: { items: [...this._items] }, bubbles: true, composed: true }));
         form.addEventListener("value-changed", (e) => {
           e.stopPropagation();
-          this._items[i] = cleanConfig(e.detail.value);
+          this._items[i] = cleanConfig({ ...(typeof this._items[i] === "object" ? this._items[i] : obj), ...e.detail.value });
           this._sent();
-          this.dispatchEvent(new CustomEvent("list-changed", { detail: { items: [...this._items] }, bubbles: true, composed: true }));
+          send();
         });
         body.appendChild(form);
+        for (const entry of nested) {
+          const ne = document.createElement("savvy-list-editor");
+          ne.hass = this._hass;
+          ne.setup(entry, obj[entry.name], obj);
+          ne.addEventListener("list-changed", (e) => {
+            e.stopPropagation();
+            this._items[i] = cleanConfig({ ...(typeof this._items[i] === "object" ? this._items[i] : obj), [entry.name]: e.detail.items });
+            this._sent();
+            send();
+          });
+          body.appendChild(ne);
+        }
         row.appendChild(body);
+        list.appendChild(row);
+        return;
       }
       list.appendChild(row);
     });
     // add: an entity picker (or whatever selector the spec asks for)
     const add = root.querySelector(".sv-add");
+    if (spec.addButton) {
+      const b = document.createElement("button");
+      b.className = "sv-prefill";
+      b.textContent = spec.addButton.label || "Add";
+      b.addEventListener("click", () => { this._items.push(spec.addButton.make(this._items)); this._openIdx = this._items.length - 1; this._emit(); });
+      add.appendChild(b);
+      return;
+    }
     const picker = document.createElement("ha-selector");
     picker.hass = this._hass;
     picker.selector = spec.add?.selector || { entity: {} };

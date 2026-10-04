@@ -1049,10 +1049,30 @@ anything else a small tile with its state. Past a week it reads long-term statis
 | `ranges` | list of hours | none | An hours selector in the header, e.g. `[24, 168, 720]`. |
 | `columns` | number | automatic | Small tiles per row. |
 
-Each tile in `entities`: `entity` (entity, required); `attribute` (chart this attribute instead of the
-state); `name`, `icon`, `unit` (strings); `hours_to_show` (number, this tile's own range); `thresholds`
-(`[{ value, level: good | warn | bad }]`, colours the graph); `state_color` (boolean, colours an on/off tile
-green or red); `tap_action`, `hold_action` (action).
+Each tile in `entities`:
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `entity` | entity | **required** | What to show. |
+| `attribute` | string | none | Chart this attribute instead of the state. |
+| `name`, `icon`, `unit` | string | the entity's | Override what the tile shows. |
+| `hours_to_show` | number | the card's | This tile's own range. |
+| `thresholds` | list or preset | none | Colours the graph by value, see [Colours](#graph-colours). |
+| `smooth` | boolean | `false` (`true` for the `temperature` preset) | Blend between the thresholds' colours instead of switching at each one. |
+| `color` | colour | accent | One colour for the whole graph, when there are no thresholds. |
+| `state_color` | boolean | `false` | Colours an on/off tile green or red. |
+| `tap_action`, `hold_action` | action | none | What a tap or hold does. |
+
+<a id="graph-colours"></a>
+**Colours.** `thresholds` is a list of `{ value, color }` (or `{ value, level }`), where the colour starts at
+that value. `color` is an HA colour name (`blue`, `orange`, `deep-orange`...), a hex value or `rgb(...)`.
+`level` is the old `good` / `warn` / `bad`, and still works. Below the first threshold the graph keeps
+its own colour.
+
+A preset writes the whole scale for you: `thresholds: temperature` runs blue, teal, green, amber, red
+(set in °C, converted for a °F sensor and smooth by default), `humidity` is amber when dry, green, amber and red
+when damp, and `battery` is red, amber, green. In the editor, the Colour scale list has the preset select and an
+Add threshold button.
 
 Minimum:
 
@@ -1075,10 +1095,20 @@ entities:
     name: CPU
     unit: "%"
     hours_to_show: 48
-    thresholds:
+    thresholds:                       # steps in the old good / warn / bad levels
       - { value: 0, level: good }
       - { value: 60, level: warn }
       - { value: 85, level: bad }
+  - entity: sensor.living_room_temperature
+    thresholds: temperature           # blue to red, blended
+  - entity: sensor.freezer_temperature
+    smooth: true                      # your own colours, blended between them
+    thresholds:
+      - { value: -25, color: blue }
+      - { value: -15, color: teal }
+      - { value: -5, color: "#ff7043" }
+  - entity: sensor.power
+    color: purple                     # one colour, no thresholds
   - entity: weather.home
     attribute: humidity
     name: Humidity

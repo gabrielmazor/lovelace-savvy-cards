@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.10.3
+
+The graph card has colours of its own.
+
+- **Any colour on a threshold.** `thresholds: [{ value: 0, color: blue }, { value: 25, color: orange }]` takes
+  an HA colour name, a hex value or `rgb(...)`. The old `level: good | warn | bad` is unchanged.
+- **Smooth colours.** `smooth: true` blends the line, the fill, the dot and the tile through the colours
+  between the thresholds, instead of switching at each one. A colour change slides as before and snaps with
+  reduced motion.
+- **Presets.** `thresholds: temperature` runs blue, teal, green, amber, red (written in °C, converted for a
+  °F sensor, smooth by default); `humidity` and `battery` are stepped.
+- **One colour.** `color: teal` on a tile with no thresholds replaces the accent.
+- **A colour scale editor.** The raw thresholds field is a list: a preset select, an Add threshold button, and
+  a value, colour and level for each row. The list editor now supports lists inside an item.
+
 ## 0.10.2
 
 The room activity card: no alarm unless you ask, and its states in colour.
