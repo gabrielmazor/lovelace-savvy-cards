@@ -211,12 +211,27 @@ ROW_KINDS.light = {
   },
 };
 
-// ---- covers: open / close (stop while it moves) on the line; stop and a position bar below
+// ---- covers: open / close (stop while it moves) on the line; stop and a position bar below, and a tilt bar for
+// slats. A garage door or a gate asks for a second tap to open: closing is always one tap.
+const GUARDED_COVERS = new Set(["garage", "gate"]);
 ROW_KINDS.cover = {
   build(ctx) {
     const { kit } = ctx;
+    let armed = false, armTimer = 0;
+    kit.onDispose(() => clearTimeout(armTimer));
     const main = div("sv-act-in");
     const go = iconButton(kit, { icon: "mdi:arrow-up", label: "Open", onTap: () => {
+      const st = ctx.hass().states[ctx.id];
+      if (go.__mode === "open" && GUARDED_COVERS.has(st?.attributes.device_class) && !armed) {
+        armed = true;
+        haptic("warning");
+        clearTimeout(armTimer);
+        armTimer = setTimeout(() => { armed = false; ctx.refresh?.(); }, 3000);
+        ctx.refresh?.();
+        return;
+      }
+      armed = false;
+      clearTimeout(armTimer);
       call(ctx, "cover", go.__mode === "stop" ? "stop_cover" : go.__mode === "close" ? "close_cover" : "open_cover");
     } });
     go.__mode = "open";
@@ -227,24 +242,41 @@ ROW_KINDS.cover = {
     const pct = document.createElement("span");
     pct.className = "sv-pct";
     extra.append(stop, bar.el, pct);
-    let first = true;
+    const tiltLine = div("sv-xline sv-ctl-cover sv-tilt");
+    const tcap = document.createElement("span");
+    tcap.className = "sv-cap";
+    tcap.textContent = "Tilt";
+    const tbar = new SideBar(kit, { label: "Tilt", onChange: (v) => call(ctx, "cover", "set_cover_tilt_position", { tilt_position: Math.round(v * 100) }) });
+    const tpct = document.createElement("span");
+    tpct.className = "sv-pct";
+    tiltLine.append(tcap, tbar.el, tpct);
+    const both = div("sv-ctl-stack");
+    both.append(extra, tiltLine);
+    let first = true, tfirst = true;
     return {
-      main, extra,
+      main, extra: both,
       update(st) {
         const sf = st.attributes.supported_features ?? 11;
         const moving = st.state === "opening" || st.state === "closing";
         const mode = moving && (sf & 8) ? "stop" : st.state === "closed" ? "open" : "close";
         go.__mode = mode;
         go.setIcon({ open: "mdi:arrow-up", close: "mdi:arrow-down", stop: "mdi:stop" }[mode]);
-        attr(go, "aria-label", { open: "Open", close: "Close", stop: "Stop" }[mode]);
+        const guarded = armed && mode === "open";
+        if (!guarded) armed = false;
+        attr(go, "aria-label", guarded ? "Tap again to open" : { open: "Open", close: "Close", stop: "Stop" }[mode]);
+        attr(go, "data-on", guarded);
         go.hidden = st.state === "unavailable" || (mode === "open" && !(sf & 1)) || (mode === "close" && !(sf & 2));
         stop.hidden = !(sf & 8);
         const pos = Number(st.attributes.current_position);
         const hasPos = !!(sf & 4) && Number.isFinite(pos);
         bar.el.hidden = pct.hidden = !hasPos;
         if (hasPos) { bar.setLevel(clamp(pos / 100), first); text(pct, `${Math.round((bar.pending ?? pos / 100) * 100)}%`); first = false; }
+        const tilt = Number(st.attributes.current_tilt_position);
+        const hasTilt = !!(sf & 128) && Number.isFinite(tilt);
+        tiltLine.hidden = !hasTilt;
+        if (hasTilt) { tbar.setLevel(clamp(tilt / 100), tfirst); text(tpct, `${Math.round((tbar.pending ?? tilt / 100) * 100)}%`); tfirst = false; }
         const words = title(st.state);
-        return { extra: st.state !== "unavailable" && (!stop.hidden || hasPos), sub: Number.isFinite(pos) ? `${words} · ${Math.round(pos)}%` : words };
+        return { extra: st.state !== "unavailable" && (!stop.hidden || hasPos || hasTilt), sub: guarded ? "Tap again to open" : Number.isFinite(pos) ? `${words} · ${Math.round(pos)}%` : words };
       },
     };
   },
@@ -419,6 +451,9 @@ const ROWS_CSS = `
   .sv-xline { display: flex; align-items: center; gap: 6px; min-width: 0; }
   .sv-xline .sv-btn { width: var(--c-s); height: var(--c-s); border-radius: 11px; --mdc-icon-size: 18px; }
   .sv-xline .sv-seg { flex: 1; }
+  .sv-ctl-stack { display: flex; flex-direction: column; gap: 6px; }
+  .sv-ctl-stack > [hidden] { display: none; }
+  .sv-xline .sv-cap { flex: none; width: var(--c-s); text-align: center; font-size: 11px; }
   .sv-xline.sv-agg { flex-direction: column; align-items: stretch; gap: 2px; padding: 0 6px 6px 48px; }
   .sv-agg-l { display: flex; justify-content: space-between; gap: 10px; padding: 6px 8px; border-radius: 10px; font-size: 12.5px; line-height: 16px; color: var(--secondary-text-color); cursor: pointer; outline: none; }
   .sv-agg-l .n { min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -482,3 +517,24 @@ const ROWS_CSS = `
   .sv-row[data-kind="lock"] .sv-main:hover { background: none; }
   @media (prefers-contrast: more) { .sv-seg { box-shadow: inset 0 0 0 1px currentColor; } }
 `;
+
+// The same rows a popup lists, laid inline in a card, so a card of covers or fans looks and works exactly
+// like the popup of one. The card adds LIST_CSS and ROWS_CSS to its style, puts `rows` where the list goes
+// and calls update() from its hass setter.
+class InlineRows extends EntityListSheet {
+  constructor(host, { color } = {}) {
+    super(host, { title: "", color });
+    this.open = true;
+    this.sheet.body.removeChild(this.rows);
+  }
+  update(hass, ids, opts = {}) {
+    this.ids = ids;
+    this.opts = opts;
+    this.sort = opts.sort || null;
+    this.render(hass);
+  }
+  dispose() {
+    this.open = false;
+    for (const row of this.rows.__rows?.values() || []) row.__kit.dispose();
+  }
+}

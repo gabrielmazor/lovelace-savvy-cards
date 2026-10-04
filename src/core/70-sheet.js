@@ -5,6 +5,30 @@
 // button, a tap outside or Escape, and returns focus to whatever opened it.
 // ---------------------------------------------------------------------------------------
 
+// the rows of an entity list, in a popup and inline in a card (the cards that list entities)
+const LIST_CSS = `
+  /* the entity list: one row per entity, live */
+  .sv-rows { display: flex; flex-direction: column; gap: 2px; }
+  .sv-ic { flex: none; width: var(--b-m); height: var(--b-m); border-radius: 50%; display: grid; place-items: center;
+    background: var(--well); color: var(--secondary-text-color); --mdc-icon-size: 20px; }
+  .sv-row[data-on] .sv-ic { color: var(--row-c, rgb(var(--accent))); background: color-mix(in oklab, var(--row-c, rgb(var(--accent))) var(--mix-on), transparent); }
+  .sv-row[data-alert] .sv-ic { color: rgb(var(--bad-rgb)); background: color-mix(in oklab, rgb(var(--bad-rgb)) var(--mix-alert), transparent); }
+  .sv-row[data-alert] .sv-val { color: rgb(var(--bad-rgb)); }
+  .sv-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .sv-name { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sv-sub { font-size: 12px; line-height: 15px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sv-sub:empty { display: none; }
+  .sv-val { flex: none; font-size: 13px; font-weight: 600; color: var(--secondary-text-color); }
+  .sv-val:empty { display: none; }
+  /* the switch: a 38 x 22 track and an 18 knob, 2 px of track all round, whatever the pixel ratio */
+  .sv-tog { flex: none; display: block; position: relative; width: 38px; height: 22px; border-radius: 11px; background: var(--well); }
+  .sv-tog-k { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; box-sizing: border-box;
+    background: var(--card-background-color, #fff); box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); translate: calc(var(--p, 0) * 16px) 0; }
+  .sv-tog[data-on] { background: var(--row-c, rgb(var(--accent))); }
+  .sv-empty { padding: 18px 8px; text-align: center; font-size: 13px; color: var(--secondary-text-color); }
+  .sv-group { margin: 8px 6px 2px; font-size: 11.5px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em;
+    text-transform: uppercase; color: var(--secondary-text-color); }
+`;
 const SHEET_CSS = `
   .sv-scrim { position: fixed; inset: 0; z-index: 998; background: rgb(0 0 0 / 0.45); opacity: 0; }
   .sv-sheet {
@@ -35,27 +59,7 @@ const SHEET_CSS = `
   .sv-body { overflow: auto; overscroll-behavior: contain; padding: 4px 16px 18px; display: flex; flex-direction: column;
     gap: 10px; container-type: inline-size; }
 
-  /* the entity list: one row per entity, live */
-  .sv-rows { display: flex; flex-direction: column; gap: 2px; }
-  .sv-ic { flex: none; width: var(--b-m); height: var(--b-m); border-radius: 50%; display: grid; place-items: center;
-    background: var(--well); color: var(--secondary-text-color); --mdc-icon-size: 20px; }
-  .sv-row[data-on] .sv-ic { color: var(--row-c, rgb(var(--accent))); background: color-mix(in oklab, var(--row-c, rgb(var(--accent))) var(--mix-on), transparent); }
-  .sv-row[data-alert] .sv-ic { color: rgb(var(--bad-rgb)); background: color-mix(in oklab, rgb(var(--bad-rgb)) var(--mix-alert), transparent); }
-  .sv-row[data-alert] .sv-val { color: rgb(var(--bad-rgb)); }
-  .sv-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .sv-name { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .sv-sub { font-size: 12px; line-height: 15px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .sv-sub:empty { display: none; }
-  .sv-val { flex: none; font-size: 13px; font-weight: 600; color: var(--secondary-text-color); }
-  .sv-val:empty { display: none; }
-  /* the switch: a 38 x 22 track and an 18 knob, 2 px of track all round, whatever the pixel ratio */
-  .sv-tog { flex: none; display: block; position: relative; width: 38px; height: 22px; border-radius: 11px; background: var(--well); }
-  .sv-tog-k { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; box-sizing: border-box;
-    background: var(--card-background-color, #fff); box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); translate: calc(var(--p, 0) * 16px) 0; }
-  .sv-tog[data-on] { background: var(--row-c, rgb(var(--accent))); }
-  .sv-empty { padding: 18px 8px; text-align: center; font-size: 13px; color: var(--secondary-text-color); }
-  .sv-group { margin: 8px 6px 2px; font-size: 11.5px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em;
-    text-transform: uppercase; color: var(--secondary-text-color); }
+  ${LIST_CSS}
   :host([kbd]) .sv-go:focus-visible { outline: 2px solid var(--go-c, rgb(var(--accent))); outline-offset: 2px; }
   .sv-scrim { touch-action: none; }
   /* the popup's pinned page button: below the list, always in reach */
@@ -481,7 +485,7 @@ class EntityListSheet {
       const parts = [];
       if (res.sub) parts.push(res.sub);
       if ((this.sort === "recent" || res.timed) && Number.isFinite(t)) parts.push(since(t, false));
-      if (this.sort !== "room" && area) parts.push(areaInfo(hass, area).name);
+      if (this.sort !== "room" && area && !this.opts.hideArea) parts.push(areaInfo(hass, area).name);
       text(row.querySelector(".sv-sub"), parts.join(" · "));
       // the extra line: always there for a lock's track, else behind the chevron
       row.__hasExtra = !!res.extra;

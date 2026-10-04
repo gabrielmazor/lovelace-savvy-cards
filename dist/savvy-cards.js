@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.12.0 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.13.0 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.12.0";
+const SAVVY_VERSION = "0.13.0";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -2384,6 +2384,30 @@ function bindActions(host, el, getCtx, { spring, wake, defaults = {} } = {}) {
 // button, a tap outside or Escape, and returns focus to whatever opened it.
 // ---------------------------------------------------------------------------------------
 
+// the rows of an entity list, in a popup and inline in a card (the cards that list entities)
+const LIST_CSS = `
+  /* the entity list: one row per entity, live */
+  .sv-rows { display: flex; flex-direction: column; gap: 2px; }
+  .sv-ic { flex: none; width: var(--b-m); height: var(--b-m); border-radius: 50%; display: grid; place-items: center;
+    background: var(--well); color: var(--secondary-text-color); --mdc-icon-size: 20px; }
+  .sv-row[data-on] .sv-ic { color: var(--row-c, rgb(var(--accent))); background: color-mix(in oklab, var(--row-c, rgb(var(--accent))) var(--mix-on), transparent); }
+  .sv-row[data-alert] .sv-ic { color: rgb(var(--bad-rgb)); background: color-mix(in oklab, rgb(var(--bad-rgb)) var(--mix-alert), transparent); }
+  .sv-row[data-alert] .sv-val { color: rgb(var(--bad-rgb)); }
+  .sv-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .sv-name { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sv-sub { font-size: 12px; line-height: 15px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sv-sub:empty { display: none; }
+  .sv-val { flex: none; font-size: 13px; font-weight: 600; color: var(--secondary-text-color); }
+  .sv-val:empty { display: none; }
+  /* the switch: a 38 x 22 track and an 18 knob, 2 px of track all round, whatever the pixel ratio */
+  .sv-tog { flex: none; display: block; position: relative; width: 38px; height: 22px; border-radius: 11px; background: var(--well); }
+  .sv-tog-k { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; box-sizing: border-box;
+    background: var(--card-background-color, #fff); box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); translate: calc(var(--p, 0) * 16px) 0; }
+  .sv-tog[data-on] { background: var(--row-c, rgb(var(--accent))); }
+  .sv-empty { padding: 18px 8px; text-align: center; font-size: 13px; color: var(--secondary-text-color); }
+  .sv-group { margin: 8px 6px 2px; font-size: 11.5px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em;
+    text-transform: uppercase; color: var(--secondary-text-color); }
+`;
 const SHEET_CSS = `
   .sv-scrim { position: fixed; inset: 0; z-index: 998; background: rgb(0 0 0 / 0.45); opacity: 0; }
   .sv-sheet {
@@ -2414,27 +2438,7 @@ const SHEET_CSS = `
   .sv-body { overflow: auto; overscroll-behavior: contain; padding: 4px 16px 18px; display: flex; flex-direction: column;
     gap: 10px; container-type: inline-size; }
 
-  /* the entity list: one row per entity, live */
-  .sv-rows { display: flex; flex-direction: column; gap: 2px; }
-  .sv-ic { flex: none; width: var(--b-m); height: var(--b-m); border-radius: 50%; display: grid; place-items: center;
-    background: var(--well); color: var(--secondary-text-color); --mdc-icon-size: 20px; }
-  .sv-row[data-on] .sv-ic { color: var(--row-c, rgb(var(--accent))); background: color-mix(in oklab, var(--row-c, rgb(var(--accent))) var(--mix-on), transparent); }
-  .sv-row[data-alert] .sv-ic { color: rgb(var(--bad-rgb)); background: color-mix(in oklab, rgb(var(--bad-rgb)) var(--mix-alert), transparent); }
-  .sv-row[data-alert] .sv-val { color: rgb(var(--bad-rgb)); }
-  .sv-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .sv-name { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .sv-sub { font-size: 12px; line-height: 15px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .sv-sub:empty { display: none; }
-  .sv-val { flex: none; font-size: 13px; font-weight: 600; color: var(--secondary-text-color); }
-  .sv-val:empty { display: none; }
-  /* the switch: a 38 x 22 track and an 18 knob, 2 px of track all round, whatever the pixel ratio */
-  .sv-tog { flex: none; display: block; position: relative; width: 38px; height: 22px; border-radius: 11px; background: var(--well); }
-  .sv-tog-k { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; box-sizing: border-box;
-    background: var(--card-background-color, #fff); box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); translate: calc(var(--p, 0) * 16px) 0; }
-  .sv-tog[data-on] { background: var(--row-c, rgb(var(--accent))); }
-  .sv-empty { padding: 18px 8px; text-align: center; font-size: 13px; color: var(--secondary-text-color); }
-  .sv-group { margin: 8px 6px 2px; font-size: 11.5px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em;
-    text-transform: uppercase; color: var(--secondary-text-color); }
+  ${LIST_CSS}
   :host([kbd]) .sv-go:focus-visible { outline: 2px solid var(--go-c, rgb(var(--accent))); outline-offset: 2px; }
   .sv-scrim { touch-action: none; }
   /* the popup's pinned page button: below the list, always in reach */
@@ -2860,7 +2864,7 @@ class EntityListSheet {
       const parts = [];
       if (res.sub) parts.push(res.sub);
       if ((this.sort === "recent" || res.timed) && Number.isFinite(t)) parts.push(since(t, false));
-      if (this.sort !== "room" && area) parts.push(areaInfo(hass, area).name);
+      if (this.sort !== "room" && area && !this.opts.hideArea) parts.push(areaInfo(hass, area).name);
       text(row.querySelector(".sv-sub"), parts.join(" · "));
       // the extra line: always there for a lock's track, else behind the chevron
       row.__hasExtra = !!res.extra;
@@ -3776,12 +3780,27 @@ ROW_KINDS.light = {
   },
 };
 
-// ---- covers: open / close (stop while it moves) on the line; stop and a position bar below
+// ---- covers: open / close (stop while it moves) on the line; stop and a position bar below, and a tilt bar for
+// slats. A garage door or a gate asks for a second tap to open: closing is always one tap.
+const GUARDED_COVERS = new Set(["garage", "gate"]);
 ROW_KINDS.cover = {
   build(ctx) {
     const { kit } = ctx;
+    let armed = false, armTimer = 0;
+    kit.onDispose(() => clearTimeout(armTimer));
     const main = div("sv-act-in");
     const go = iconButton(kit, { icon: "mdi:arrow-up", label: "Open", onTap: () => {
+      const st = ctx.hass().states[ctx.id];
+      if (go.__mode === "open" && GUARDED_COVERS.has(st?.attributes.device_class) && !armed) {
+        armed = true;
+        haptic("warning");
+        clearTimeout(armTimer);
+        armTimer = setTimeout(() => { armed = false; ctx.refresh?.(); }, 3000);
+        ctx.refresh?.();
+        return;
+      }
+      armed = false;
+      clearTimeout(armTimer);
       call(ctx, "cover", go.__mode === "stop" ? "stop_cover" : go.__mode === "close" ? "close_cover" : "open_cover");
     } });
     go.__mode = "open";
@@ -3792,24 +3811,41 @@ ROW_KINDS.cover = {
     const pct = document.createElement("span");
     pct.className = "sv-pct";
     extra.append(stop, bar.el, pct);
-    let first = true;
+    const tiltLine = div("sv-xline sv-ctl-cover sv-tilt");
+    const tcap = document.createElement("span");
+    tcap.className = "sv-cap";
+    tcap.textContent = "Tilt";
+    const tbar = new SideBar(kit, { label: "Tilt", onChange: (v) => call(ctx, "cover", "set_cover_tilt_position", { tilt_position: Math.round(v * 100) }) });
+    const tpct = document.createElement("span");
+    tpct.className = "sv-pct";
+    tiltLine.append(tcap, tbar.el, tpct);
+    const both = div("sv-ctl-stack");
+    both.append(extra, tiltLine);
+    let first = true, tfirst = true;
     return {
-      main, extra,
+      main, extra: both,
       update(st) {
         const sf = st.attributes.supported_features ?? 11;
         const moving = st.state === "opening" || st.state === "closing";
         const mode = moving && (sf & 8) ? "stop" : st.state === "closed" ? "open" : "close";
         go.__mode = mode;
         go.setIcon({ open: "mdi:arrow-up", close: "mdi:arrow-down", stop: "mdi:stop" }[mode]);
-        attr(go, "aria-label", { open: "Open", close: "Close", stop: "Stop" }[mode]);
+        const guarded = armed && mode === "open";
+        if (!guarded) armed = false;
+        attr(go, "aria-label", guarded ? "Tap again to open" : { open: "Open", close: "Close", stop: "Stop" }[mode]);
+        attr(go, "data-on", guarded);
         go.hidden = st.state === "unavailable" || (mode === "open" && !(sf & 1)) || (mode === "close" && !(sf & 2));
         stop.hidden = !(sf & 8);
         const pos = Number(st.attributes.current_position);
         const hasPos = !!(sf & 4) && Number.isFinite(pos);
         bar.el.hidden = pct.hidden = !hasPos;
         if (hasPos) { bar.setLevel(clamp(pos / 100), first); text(pct, `${Math.round((bar.pending ?? pos / 100) * 100)}%`); first = false; }
+        const tilt = Number(st.attributes.current_tilt_position);
+        const hasTilt = !!(sf & 128) && Number.isFinite(tilt);
+        tiltLine.hidden = !hasTilt;
+        if (hasTilt) { tbar.setLevel(clamp(tilt / 100), tfirst); text(tpct, `${Math.round((tbar.pending ?? tilt / 100) * 100)}%`); tfirst = false; }
         const words = title(st.state);
-        return { extra: st.state !== "unavailable" && (!stop.hidden || hasPos), sub: Number.isFinite(pos) ? `${words} · ${Math.round(pos)}%` : words };
+        return { extra: st.state !== "unavailable" && (!stop.hidden || hasPos || hasTilt), sub: guarded ? "Tap again to open" : Number.isFinite(pos) ? `${words} · ${Math.round(pos)}%` : words };
       },
     };
   },
@@ -3984,6 +4020,9 @@ const ROWS_CSS = `
   .sv-xline { display: flex; align-items: center; gap: 6px; min-width: 0; }
   .sv-xline .sv-btn { width: var(--c-s); height: var(--c-s); border-radius: 11px; --mdc-icon-size: 18px; }
   .sv-xline .sv-seg { flex: 1; }
+  .sv-ctl-stack { display: flex; flex-direction: column; gap: 6px; }
+  .sv-ctl-stack > [hidden] { display: none; }
+  .sv-xline .sv-cap { flex: none; width: var(--c-s); text-align: center; font-size: 11px; }
   .sv-xline.sv-agg { flex-direction: column; align-items: stretch; gap: 2px; padding: 0 6px 6px 48px; }
   .sv-agg-l { display: flex; justify-content: space-between; gap: 10px; padding: 6px 8px; border-radius: 10px; font-size: 12.5px; line-height: 16px; color: var(--secondary-text-color); cursor: pointer; outline: none; }
   .sv-agg-l .n { min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -4047,6 +4086,27 @@ const ROWS_CSS = `
   .sv-row[data-kind="lock"] .sv-main:hover { background: none; }
   @media (prefers-contrast: more) { .sv-seg { box-shadow: inset 0 0 0 1px currentColor; } }
 `;
+
+// The same rows a popup lists, laid inline in a card, so a card of covers or fans looks and works exactly
+// like the popup of one. The card adds LIST_CSS and ROWS_CSS to its style, puts `rows` where the list goes
+// and calls update() from its hass setter.
+class InlineRows extends EntityListSheet {
+  constructor(host, { color } = {}) {
+    super(host, { title: "", color });
+    this.open = true;
+    this.sheet.body.removeChild(this.rows);
+  }
+  update(hass, ids, opts = {}) {
+    this.ids = ids;
+    this.opts = opts;
+    this.sort = opts.sort || null;
+    this.render(hass);
+  }
+  dispose() {
+    this.open = false;
+    for (const row of this.rows.__rows?.values() || []) row.__kit.dispose();
+  }
+}
 
 // ===== core/75-mode.js =====
 // ---------------------------------------------------------------------------------------
@@ -5315,6 +5375,11 @@ const SETTINGS_RULES = {
   "savvy-scene-card": [
     glowRule,
     { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
+  ],
+  "savvy-cover-card": [
+    glowRule,
+    { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
+    { path: "exclude_areas", label: "Ignored rooms", kind: "union", get: (s) => s.ignore?.areas, src: "ignore" },
   ],
   "savvy-story-card": [
     { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
@@ -9596,6 +9661,181 @@ const EDITOR = defineEditor("savvy-climate-card", (hass, c) => {
 
 registerCard("savvy-climate-card", ClimateCard, "Climate",
   "An A/C or thermostat: drag the target, pick the mode, and swipe for its history. Finds the room's unit for you.");
+})();
+
+// ===== cards/cover.js =====
+(() => {
+// savvy-cover-card: the blinds, shutters, curtains, awnings, garage and gate of a room. One row each, the
+// same rows the covers popup of the home header uses: open, close or stop on the line, a position bar and a
+// tilt bar below. "Open all" and "Close all" act on exactly what is listed. A garage door or a gate asks for
+// a second tap to open, and "Open all" leaves them out; closing is always one tap.
+//
+//   type: custom:savvy-cover-card
+//   area: living_room                     (or a list; empty: every cover of the house)
+//   title: Blinds                         (default: the area's name, else Covers)    title_path: /lovelace/covers
+//   classes: [blind, shutter]             (only these device classes; default all)
+//   include: [cover.x]  exclude: [cover.y]   (the Savvy settings' ignore list is added to exclude)
+//   all: true                             (the Open all / Close all buttons; false hides them)
+//   layout: full | compact                (compact: the summary and the two buttons, no rows)
+//
+// Tap a name for the cover's details. The chevron opens its position and tilt.
+
+const CV_GUARDED = new Set(["garage", "gate"]);
+const CV_OPEN = new Set(["open", "opening", "closing"]);
+
+const STYLE = `${BASE_CSS}${LIST_CSS}${ROWS_CSS}
+  ha-card { --pad: 14px; --tone: var(--accent); position: relative; display: flex; flex-direction: column; gap: 8px; padding: var(--pad); overflow: hidden; }
+  :host([data-compact]) ha-card { --pad: 12px; }
+  ha-card > * { position: relative; }
+  .head { display: flex; align-items: center; gap: 8px; min-height: 32px; }
+  .head .t { flex: 1; min-width: 0; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pill { flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 12px; white-space: nowrap;
+    font-size: 12px; font-weight: 650; color: rgb(var(--tone)); background: color-mix(in oklab, rgb(var(--tone)) var(--mix-on), transparent); }
+  .ctl { flex: none; display: grid; place-items: center; width: var(--c-s); height: var(--c-s); border-radius: 11px; background: var(--well); --mdc-icon-size: 18px; }
+  .ctl ha-icon { display: flex; }
+  .ctl[disabled] { opacity: 0.4; cursor: default; }
+  .empty { padding: 4px 2px; font-size: 12.5px; font-weight: 500; color: var(--secondary-text-color); }
+`;
+
+class SavvyCoverCard extends SavvyCard {
+  static getStubConfig(hass) {
+    const a = allAreas(hass).find((x) => pick(hass, areaEntities(hass, x.id), { domains: "cover" }).length);
+    if (a) return { area: a.id };
+    return {};
+  }
+  static getConfigElement() { return document.createElement(EDITOR); }
+
+  setConfig(config) {
+    if (!config || typeof config !== "object") throw new Error("savvy-cover-card: invalid configuration");
+    const areas = [].concat(config.area ?? config.areas ?? []).filter(Boolean);
+    this._config = { ...config, areas, classes: [].concat(config.classes || []), include: asItems(config.include).map((i) => i.entity),
+      exclude: asItems(config.exclude).map((i) => i.entity), exclude_areas: [].concat(config.exclude_areas || []) };
+    this._compact = config.layout === "compact";
+    if (this._el) { this._build(); if (this._hass) this._update(); }
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._config) return;
+    if (!this._el) this._build();
+    this._update();
+  }
+
+  connectedCallback() { this._wake(); }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._rows?.dispose();
+    this._rows = null;
+  }
+  getCardSize() { return this._compact ? 1 : 1 + Math.max(1, this._count || 2); }
+  getGridOptions() { return { columns: 12, min_columns: 4, rows: "auto" }; }
+
+  _build() {
+    const root = this.shadowRoot || this.attachShadow({ mode: "open" });
+    this._resetMotion();
+    this._rows?.dispose();
+    root.innerHTML = `<style>${STYLE}</style>
+      <ha-card>
+        <div class="head"><span class="t" id="title"></span><span class="pill" id="pill"></span>
+          <button class="ctl" id="up" aria-label="Open all"><ha-icon icon="mdi:arrow-up"></ha-icon></button>
+          <button class="ctl" id="down" aria-label="Close all"><ha-icon icon="mdi:arrow-down"></ha-icon></button></div>
+        <div id="rows"></div>
+        <div class="empty" id="empty" hidden></div>
+      </ha-card>`;
+    const $ = (id) => root.getElementById(id);
+    this._el = { card: root.querySelector("ha-card"), title: $("title"), pill: $("pill"), up: $("up"), down: $("down"), rows: $("rows"), empty: $("empty") };
+    this._rows = new InlineRows(this);
+    this._el.rows.appendChild(this._rows.rows);
+    linkTitle(root, this._el.title, titlePathOf(this._config), (el, onTap) => this._pressable(el, { onTap }, 0.04));
+    this._pressable(this._el.up, { onTap: () => this._all("open") }, 0.08);
+    this._pressable(this._el.down, { onTap: () => this._all("close") }, 0.08);
+    this._first = true;
+  }
+
+  _ids() {
+    const h = this._hass, c = this._config;
+    const skip = new Set(c.exclude), skipArea = new Set(c.exclude_areas);
+    let ids = c.areas.length ? [...new Set(c.areas.flatMap((a) => areaEntities(h, a)))] : houseEntities(h);
+    for (const id of c.include) if (h.states[id] && !ids.includes(id)) ids = [...ids, id];
+    const inc = new Set(c.include);
+    return ids.filter((id) => {
+      if (domainOf(id) !== "cover" || skip.has(id) || !h.states[id]) return false;
+      const a = entityArea(h, id);
+      if (a && skipArea.has(a)) return false;
+      return inc.has(id) || !c.classes.length || c.classes.includes(h.states[id].attributes.device_class || "none");
+    });
+  }
+
+  // what each button acts on: everything listed that is not already there; opening leaves out garage and gate
+  _targets(kind, ids) {
+    const h = this._hass;
+    return ids.filter((id) => {
+      const st = h.states[id];
+      if (!st || st.state === "unavailable" || st.state === "unknown") return false;
+      const sf = st.attributes.supported_features ?? 11;
+      if (kind === "open") return (st.state === "closed" || st.state === "closing") && (sf & 1) && !CV_GUARDED.has(st.attributes.device_class);
+      return (st.state === "open" || st.state === "opening") && (sf & 2);
+    });
+  }
+
+  _all(kind) {
+    const targets = this._targets(kind, this._ids());
+    if (!targets.length) return;
+    haptic("medium");
+    this._hass.callService("cover", kind === "open" ? "open_cover" : "close_cover", {}, { entity_id: targets });
+  }
+
+  _update() {
+    const h = this._hass;
+    if (!h || !this._el) return;
+    this.toggleAttribute("dark", !!h.themes?.darkMode);
+    this.toggleAttribute("data-compact", this._compact);
+    const c = this._config, el = this._el;
+    const ids = this._ids();
+    this._count = ids.length;
+    const areaName = c.areas.length === 1 ? areaInfo(h, c.areas[0]).name : "";
+    text(el.title, c.title ?? (areaName ? `${areaName} covers` : "Covers"));
+    const open = ids.filter((id) => CV_OPEN.has(h.states[id].state));
+    const guarded = open.filter((id) => CV_GUARDED.has(h.states[id].attributes.device_class));
+    let tone = "accent", pill;
+    if (!ids.length) pill = "";
+    else if (!open.length) { tone = "good"; pill = "All closed"; }
+    else if (guarded.length) { tone = "warn"; pill = guarded.length === open.length && open.length === 1 ? `${shortName(h, guarded[0], null)} open` : `${open.length} open`; }
+    else pill = `${open.length} open`;
+    el.pill.hidden = !ids.length;
+    text(el.pill, pill);
+    put(el.card, "--tone", tone === "accent" ? "var(--accent)" : `var(--${tone}-rgb)`);
+    stateGlow(c, el.card, guarded.length ? [232, 163, 61] : null, 0.8);
+    const showAll = c.all !== false && ids.length > 1;
+    el.up.hidden = el.down.hidden = !showAll;
+    attr(el.up, "disabled", this._targets("open", ids).length ? null : "");
+    attr(el.down, "disabled", this._targets("close", ids).length ? null : "");
+    el.rows.hidden = this._compact || !ids.length;
+    if (!this._compact) this._rows.update(h, ids, { sort: c.areas.length > 1 ? "room" : null, hideArea: c.areas.length === 1 });
+    el.empty.hidden = ids.length > 0;
+    if (!ids.length) text(el.empty, c.areas.length ? "No covers in this area." : "No covers found.");
+    attr(el.card, "aria-label", `${c.title ?? "Covers"}${pill ? `, ${pill}` : ""}`);
+    if (this._first) { this._first = false; requestAnimationFrame(() => this._paintAll(null)); }
+    this._wake();
+  }
+}
+
+// ---------- editor ----------
+const EDITOR = defineEditor("savvy-cover-card", () => [
+  { name: "area", label: "Areas", helper: "Empty: every cover of the house.", selector: { area: { multiple: true } } },
+  S.grid(S.text("title", "Title", "Empty: the area's name."), S.titleLink("title")),
+  { name: "classes", label: "Kinds", helper: "Only these kinds of cover. Empty: all.", selector: { select: { multiple: true, mode: "list", options: [
+    { value: "blind", label: "Blinds" }, { value: "shutter", label: "Shutters" }, { value: "curtain", label: "Curtains" }, { value: "awning", label: "Awnings" },
+    { value: "shade", label: "Shades" }, { value: "garage", label: "Garage doors" }, { value: "gate", label: "Gates" }, { value: "door", label: "Doors" }, { value: "window", label: "Windows" },
+  ] } } },
+  { name: "include", label: "Also show", selector: { entity: { domain: "cover", multiple: true } } },
+  { name: "exclude", label: "Never show", selector: { entity: { domain: "cover", multiple: true } } },
+  S.grid(S.bool("all", "Open and close all", "Buttons for everything listed. A garage and a gate are not opened by them.", true), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact" }])),
+  GLOW_FIELD,
+]);
+
+registerCard("savvy-cover-card", SavvyCoverCard, "Covers",
+  "Blinds, shutters, curtains, garage and gate of a room: open, close, position and tilt, with Open all and Close all.");
 })();
 
 // ===== cards/entity.js =====

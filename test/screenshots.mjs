@@ -143,6 +143,16 @@ const STORY_DAY = `(() => {
   ];
   window.hass.callWS = async (m) => (m.type === "logbook/get_events" ? events : {});
 })();`;
+// covers around the house, for the Cover card
+const COVERS = `(() => {
+  const h = window.hass, house = window.house;
+  const add = (id, state, attributes, area) => { house.states[id] = { entity_id: id, state, attributes, last_changed: new Date().toISOString(), last_updated: new Date().toISOString() }; h.entities[id] = { entity_id: id, area_id: area, device_id: null, platform: "demo", entity_category: null, hidden: false, disabled_by: null }; };
+  add("cover.living_room_blind", "open", { friendly_name: "Living Room Blind", device_class: "blind", current_position: 60, current_tilt_position: 40, supported_features: 207 }, "living_room");
+  add("cover.living_room_curtain", "closed", { friendly_name: "Living Room Curtain", device_class: "curtain", current_position: 0, supported_features: 15 }, "living_room");
+  add("cover.living_room_awning", "open", { friendly_name: "Living Room Awning", device_class: "awning", current_position: 100, supported_features: 15 }, "living_room");
+  window.hass = { ...h, states: { ...house.states } };
+  window.__after = () => { const R = window.cards[0].shadowRoot; R.querySelector(".sv-row .sv-chev")?.click(); };
+})();`;
 const SHOTS = [
   ["lights", "savvy-lights-card", { area: "living_room", featured: ["light.living_room_ceiling"], chips: [{ entity: "switch.living_room_plug", name: "Plug" }] }, 520],
   ["lights-compact", "savvy-lights-card", { area: "living_room", layout: "compact" }, 520],
@@ -194,6 +204,8 @@ const SHOTS = [
   ["last-check-compact", "savvy-last-check-card", { mode: "goodnight", layout: "compact", area: ["living_room", "kitchen", "hallway", "bedroom"] }, 420, LEFT_OPEN],
   ["story", "savvy-story-card", { range: "24h" }, 420, STORY_DAY],
   ["story-compact", "savvy-story-card", { layout: "compact", filters: false, max_events: 5 }, 420, STORY_DAY],
+  ["cover", "savvy-cover-card", { area: "living_room" }, 420, COVERS],
+  ["cover-compact", "savvy-cover-card", { area: "living_room", layout: "compact" }, 420, COVERS],
   ["settings", "savvy-settings-card", SETTINGS_CFG, 460, SETTINGS_USERS],
   ["settings-compact", "savvy-settings-card", { ...SETTINGS_CFG, layout: "compact" }, 460, SETTINGS_USERS],
   ["camera", "savvy-camera-card", { area: ["living_room", "kitchen"] }, 820, FRIGATE],

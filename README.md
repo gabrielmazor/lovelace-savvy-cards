@@ -151,6 +151,7 @@ animations, light and dark themes, and honour reduced motion.
 | [Scenes](#scenes) | Every scene of a room as a tile | `custom:savvy-scene-card` |
 | [Last check](#last-check) | What would be left on when you leave or go to bed, and one slide to turn it off | `custom:savvy-last-check-card` |
 | [Home story](#home-story) | What happened at home, in plain sentences | `custom:savvy-story-card` |
+| [Covers](#covers) | Blinds, shutters, curtains, garage and gate of a room | `custom:savvy-cover-card` |
 | [System health](#system-health) | Offline devices, low batteries, Watchman | `custom:savvy-system-health-card` |
 | [Entity](#entity) | One entity and the ones that go with it | `custom:savvy-entity-card` |
 | [Graph](#graph) | Number and state tiles with history | `custom:savvy-graph-card` |
@@ -1044,6 +1045,53 @@ include: [switch.coffee_machine]
 exclude: [light.hall_night_light]
 max_events: 30
 merge_minutes: 20
+layout: full
+```
+
+---
+
+### Covers
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/cover-light.png"><img src="docs/images/cover-dark.png" width="420" alt="Savvy cover card"></picture>
+
+The blinds, shutters, curtains, awnings, garage and gate of a room, one row each. These are the same rows
+the covers popup of the home header uses: open, close or stop on the line, and behind the chevron a position
+bar and, for slats, a tilt bar. **Open all** and **Close all** act on exactly what is listed. A garage door
+or a gate asks for a second tap to open (the row says "Tap again to open"), and Open all leaves them out;
+closing is always one tap. The same safety applies in the popup.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/cover-compact-light.png"><img src="docs/images/cover-compact-dark.png" width="420" alt="Covers, compact"></picture>
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `area` | area or list | every cover of the house | The areas whose covers to show. With several areas the rows are grouped by room. |
+| `title` | string | the area's name + "covers" | The heading. |
+| `title_path` | string | none | Title link: tapping the title opens this page. |
+| `classes` | list | all | Only these kinds: `blind`, `shutter`, `curtain`, `awning`, `shade`, `garage`, `gate`, `door`, `window`. |
+| `include` | list of covers | none | Covers to add that the area or kinds would leave out. |
+| `exclude` | list of covers | none | Never shown. The ignore list in the [Savvy settings](#savvy-settings) is added to it. |
+| `all` | boolean | `true` | The Open all / Close all buttons (only with more than one cover). `false` hides them. |
+| `layout` | `full` or `compact` | `full` | `compact`: the summary and the two buttons, no rows. |
+| `state_glow` | boolean | `true` | A soft amber glow while a garage door or a gate is open. |
+
+Minimum:
+
+```yaml
+type: custom:savvy-cover-card
+area: living_room
+```
+
+Full:
+
+```yaml
+type: custom:savvy-cover-card
+area: [living_room, bedroom]
+title: Blinds
+title_path: /lovelace/covers
+classes: [blind, shutter, curtain]
+include: [cover.patio_awning]
+exclude: [cover.guest_blind]
+all: true
 layout: full
 ```
 

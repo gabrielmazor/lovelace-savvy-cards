@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.13.0
+
+- **New card: Covers** (`custom:savvy-cover-card`). The blinds, shutters, curtains, awnings, garage and
+  gate of a room as the same rows the covers popup uses, with Open all and Close all. Filter by kind,
+  include and exclude, a compact layout, and the ignore list from the Savvy settings.
+- **Tilt** for covers with slats: a tilt bar behind the chevron, in the card and in the popup.
+- **Garage and gate ask twice.** A garage door or a gate shows "Tap again to open" on the first tap and
+  opens on the second (in the card and in the popup). Closing is one tap. Open all leaves them out.
+
 ## 0.12.0
 
 - **New card: Home story** (`custom:savvy-story-card`). What happened at home, in plain sentences: who
