@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.10.6 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.10.7 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.10.6";
+const SAVVY_VERSION = "0.10.7";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -5820,6 +5820,15 @@ const LABEL_ICONS = {
 
 const pad2 = (n) => String(n).padStart(2, "0");
 const hhmm = (s) => { const d = new Date(s * 1000); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+const hhmmss = (s) => { const d = new Date(s * 1000); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
+// Dragging up from the timeline slows it down: each zone maps the bar's width to a shorter stretch of the
+// day. `up` is how far above the bar the finger is (px); seconds show from the third zone on.
+const SCRUB_ZONES = [
+  { up: 0, span: DAY, detent: 3600, label: "" },
+  { up: 40, span: 6 * 3600, detent: 3600, label: "Wide · 6 h across" },
+  { up: 100, span: 3600, detent: 600, label: "Close · 1 h across", secs: true },
+  { up: 170, span: 600, detent: 60, label: "Fine · 10 min across", secs: true },
+];
 const mmss = (s) => {
   s = Math.max(0, Math.round(s));
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
@@ -6036,11 +6045,14 @@ ha-card {
 .tl .now { position: absolute; top: 4px; bottom: 4px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--live); pointer-events: none; }
 .tl .bubble {
   position: absolute; bottom: calc(100% + 6px); left: 0; transform: translateX(-50%);
-  padding: 3px 8px; border-radius: 8px; white-space: nowrap; pointer-events: none; opacity: 0;
+  padding: 3px 8px; border-radius: 8px; white-space: nowrap; pointer-events: none; opacity: 0; text-align: center;
   font-size: 12px; line-height: 16px; font-weight: 650;
   background: color-mix(in oklab, var(--card-background-color, canvas) 80%, var(--primary-text-color) 20%);
   box-shadow: 0 2px 6px rgb(0 0 0 / 0.2);
 }
+.tl .bubble b { display: block; font-weight: inherit; font-variant-numeric: tabular-nums; }
+.tl .bubble i { display: block; font-style: normal; font-size: 10.5px; line-height: 13px; font-weight: 550; color: var(--secondary-text-color); }
+.tl .bubble i:empty { display: none; }
 .axis { display: flex; justify-content: space-between; margin-top: -6px; padding: 0 2px;
   font-size: 10.5px; line-height: 13px; font-weight: 550; letter-spacing: 0.006em; color: var(--secondary-text-color); }
 .axis i { font-style: normal; }
@@ -6341,7 +6353,7 @@ class SavvyCameraCard extends HTMLElement {
             <div class="marks" id="marks"></div>
             <div class="now" id="now"></div>
             <div class="ph" id="playhead"></div>
-            <div class="bubble" id="bubble"></div>
+            <div class="bubble" id="bubble"><b id="bt"></b><i id="bz"></i></div>
           </div>
           <div class="axis"><i>00</i><i>06</i><i>12</i><i>18</i><i>24</i></div>
           <div class="legend" id="legend" hidden>
@@ -6357,7 +6369,7 @@ class SavvyCameraCard extends HTMLElement {
     const $ = (id) => this._root.getElementById(id);
     const ids = ["stage", "track", "dots", "ctrl", "pp", "ppIcon", "bar", "fill", "knob", "ctime", "snd", "sync", "live",
       "pills", "ind", "prev", "next", "dayname", "daysum", "tl", "hours", "act", "actPath", "future", "marks",
-      "now", "playhead", "bubble", "legend", "filters", "reviews", "note", "rec", "recBtn", "recSum", "holder"];
+      "now", "playhead", "bubble", "bt", "bz", "legend", "filters", "reviews", "note", "rec", "recBtn", "recSum", "holder"];
     this._el = Object.fromEntries(ids.map((id) => [id, $(id)]));
     this._el.card = this._root.querySelector("ha-card");
     // a camera card shows no name of its own (each camera names itself), so a title is its own line, which can link
@@ -7139,24 +7151,44 @@ class SavvyCameraCard extends HTMLElement {
   // ---------- timeline ----------
   _wireTimeline() {
     const tl = this._el.tl;
-    let down = null;
-    const secAt = (e) => {
-      const r = tl.getBoundingClientRect();
-      return clamp((e.clientX - r.left) / (r.width || 1)) * DAY;
-    };
-    const show = (sec) => {
-      const limit = this._day === 0 ? nowS() - dayStart(0) : DAY;
-      sec = Math.min(sec, limit);
+    let down = null, zone = 0, anchorX = 0, anchorSec = 0;
+    const limitS = () => (this._day === 0 ? nowS() - dayStart(0) : DAY);
+    const show = (sec, z = 0) => {
+      sec = Math.min(sec, limitS());
       this._cursor = sec;
       this._head.to(sec, MOTION.scrub);
       this._headOn.to(1, MOTION.ui);
       this._scrub.to(1, MOTION.scrub);
       const day0 = dayStart(this._day);
-      text(this._el.bubble, hhmm(day0 + sec));
+      const fine = SCRUB_ZONES[z].secs;
+      text(this._el.bt, fine ? hhmmss(day0 + sec) : hhmm(day0 + sec));
+      text(this._el.bz, SCRUB_ZONES[z].label);
       attr(tl, "aria-valuenow", String(Math.round(sec)));
-      attr(tl, "aria-valuetext", hhmm(day0 + sec));
+      attr(tl, "aria-valuetext", hhmmss(day0 + sec));
       this._wake();
       return sec;
+    };
+    // the zone the finger is in: how far above the bar, or Alt / Shift held with a mouse
+    const zoneAt = (e) => {
+      const up = tl.getBoundingClientRect().top - e.clientY;
+      let z = 0;
+      SCRUB_ZONES.forEach((s, i) => { if (up >= s.up && i) z = i; });
+      return Math.max(z, e.shiftKey ? 3 : e.altKey ? 2 : 0);
+    };
+    const track = (e) => {
+      const z = zoneAt(e);
+      if (z !== zone) {
+        zone = z;
+        anchorX = e.clientX;
+        anchorSec = this._cursor ?? anchorSec;
+        this._lastDetent = null;
+        this._haptic("selection");
+      }
+      const w = tl.getBoundingClientRect().width || 1;
+      const sec = show(clamp(anchorSec + ((e.clientX - anchorX) / w) * SCRUB_ZONES[zone].span, 0, DAY), zone);
+      const detent = Math.floor(sec / SCRUB_ZONES[zone].detent);
+      if (this._lastDetent !== null && detent !== this._lastDetent) this._haptic("selection");
+      this._lastDetent = detent;
     };
     tl.addEventListener("pointerdown", (e) => {
       if (e.button > 0) return;
@@ -7164,18 +7196,19 @@ class SavvyCameraCard extends HTMLElement {
       down = e.pointerId;
       try { tl.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
       this._lastDetent = null;
-      show(secAt(e));
+      const r = tl.getBoundingClientRect();
+      zone = 0;
+      anchorX = e.clientX;
+      anchorSec = clamp((e.clientX - r.left) / (r.width || 1)) * DAY;
+      show(anchorSec);
+      anchorSec = this._cursor;
+      if (e.shiftKey || e.altKey) track(e);
     });
-    tl.addEventListener("pointermove", (e) => {
-      if (e.pointerId !== down) return;
-      const sec = show(secAt(e));
-      const detent = Math.floor(sec / 3600);
-      if (this._lastDetent !== null && detent !== this._lastDetent) this._haptic("selection");
-      this._lastDetent = detent;
-    });
+    tl.addEventListener("pointermove", (e) => { if (e.pointerId === down) track(e); });
     const up = (e) => {
       if (e.pointerId !== down) return;
       down = null;
+      zone = 0;
       this._scrub.to(0, MOTION.ui);
       if (e.type === "pointerup") this._playAt(this._cursor);
       else if (this._mode !== "play") this._headOn.to(0, MOTION.ui);
@@ -7185,9 +7218,11 @@ class SavvyCameraCard extends HTMLElement {
     tl.addEventListener("pointercancel", up);
     tl.addEventListener("keydown", (e) => {
       const base = this._cursor ?? (this._day === 0 ? nowS() - dayStart(0) : DAY / 2);
-      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      const step = { ArrowRight: 300, ArrowLeft: -300, PageUp: 3600, PageDown: -3600 }[e.key];
+      if (step) {
         e.preventDefault();
-        show(clamp(base + (e.key === "ArrowRight" ? 300 : -300), 0, DAY));
+        const small = e.shiftKey && e.key.startsWith("Arrow");
+        show(clamp(base + (small ? Math.sign(step) * 10 : step), 0, DAY), small ? 3 : 0);
         clearTimeout(this._kbTimer);
         this._kbTimer = setTimeout(() => { this._scrub.to(0, MOTION.ui); this._wake(); }, 900);
       }
@@ -7768,7 +7803,7 @@ registerCard("savvy-camera-card", SavvyCameraCard, "Camera",
 //   type: custom:savvy-climate-card
 //   area: living_room                (or entity: climate.x)
 //   temperature: sensor.x  humidity: sensor.y  weather: weather.home   (all optional)
-//   timer: { entity: timer.x, select: input_select.y }   chips: [...]
+//   timer: { entity: timer.x, presets: [15, 30, 60, 120] }   chips: [...]
 
 const SCRUB_SLOP = 6;
 const SCRUB_DWELL = 140;
@@ -8116,6 +8151,10 @@ const STYLE = `
   @media (prefers-reduced-motion: reduce) { ha-card { transition: none; } }
 `;
 
+// 15 -> "15 min", 60 -> "1 hour", 90 -> "1 h 30 min"; the timer service wants "HH:MM:SS"
+const minutesLabel = (m) => (m < 60 ? `${m} min` : m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : m === 60 ? "1 hour" : `${m / 60} hours`);
+const durationText = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}:00`;
+
 class ClimateCard extends HTMLElement {
   static getConfigElement() { return document.createElement(EDITOR); }
   static getStubConfig(hass) {
@@ -8200,6 +8239,7 @@ class ClimateCard extends HTMLElement {
     clearInterval(this._poll);
     clearInterval(this._tick);
     clearTimeout(this._sendTimer);
+    this._timerPicker?.close();
   }
 
   getCardSize() { return this._compact ? 2 : 6; }
@@ -8686,14 +8726,35 @@ class ClimateCard extends HTMLElement {
     this._hass.callService("climate", "set_fan_mode", { fan_mode: next }, { entity_id: this._config.entity });
   }
 
-  // tapping steps the duration selector, exactly as the old chip did
+  // The timer chip. Idle: a tap lists the durations and starts the timer helper with the one you pick.
+  // Running: a tap offers +15 min, pause / resume and cancel. (An old `select` still steps its list.)
   _bumpTimer(t) {
     this._haptic("selection");
-    if (t.select) {
+    if (t.legacy) {
       return this._hass.callService("input_select", "select_next",
         { cycle: true }, { entity_id: t.cfg.select });
     }
-    this._moreInfo(t.cfg.entity);
+    const chip = this._el.actions.__rows?.get("timer");
+    if (!chip) return this._moreInfo(t.cfg.entity);
+    this._timerPicker = this._timerPicker || new ModePicker(this, { onPick: (id, v) => this._timerPick(id, v) });
+    const opt = (value, label, icon, color) => ({ value, label, icon, color: color || TONE.warn });
+    const options = !t.running
+      ? t.presets.map((m) => opt(`start:${m}`, minutesLabel(m), "mdi:timer-outline"))
+      : [
+        opt("add", "+15 min", "mdi:timer-plus-outline"),
+        t.st.state === "paused" ? opt("resume", "Resume", "mdi:play") : opt("pause", "Pause", "mdi:pause"),
+        opt("cancel", "Cancel", "mdi:timer-off-outline", TONE.bad),
+      ];
+    this._timerPicker.open(chip, this._el.card, { entity: t.cfg.entity, value: null, options }, t.running ? t.label : "Start timer");
+  }
+
+  _timerPick(entity, v) {
+    const call = (service, data) => this._hass.callService("timer", service, data || {}, { entity_id: entity });
+    if (v.startsWith("start:")) return call("start", { duration: durationText(Number(v.slice(6))) });
+    if (v === "add") return call("change", { duration: durationText(15) });
+    if (v === "pause") return call("pause");
+    if (v === "resume") return call("start");
+    if (v === "cancel") return call("cancel");
   }
 
   _moreInfo(entityId) {
@@ -8931,6 +8992,9 @@ class ClimateCard extends HTMLElement {
     const h = this._hass, st = h.states[cfg.entity];
     if (!st) return null;
     const select = cfg.select && h.states[cfg.select];
+    // durations in minutes to start from; a `select` from before presets still works when none are set
+    const presets = [].concat(cfg.presets ?? [15, 30, 60, 120]).map(Number).filter((m) => m > 0);
+    const legacy = !!select && cfg.presets == null;
     const running = st.state === "active";
     const paused = st.state === "paused";
     let label = cfg.name || "Timer";
@@ -8944,10 +9008,10 @@ class ClimateCard extends HTMLElement {
         : `off in ${Math.ceil(left / 1000)}s`;
     } else if (paused) {
       label = "Paused";
-    } else if (select) {
+    } else if (legacy) {
       label = h.formatEntityState ? h.formatEntityState(select) : title(select.state);
     }
-    return { st, cfg, select, running: running || paused, label };
+    return { st, cfg, select, legacy, presets, running: running || paused, label };
   }
 
   // one ticking clock, and only while a timer is actually counting down on screen
@@ -9509,7 +9573,8 @@ const EDITOR = defineEditor("savvy-climate-card", (hass, c) => {
     ]),
     { type: "expandable", name: "timer", title: "Timer", schema: [
       { name: "entity", label: "Timer", selector: { entity: { domain: "timer" } } },
-      { name: "select", label: "Duration list (tap steps through it)", selector: { entity: { domain: "input_select" } } },
+      { name: "presets", label: "Durations", helper: "Minutes to choose from when you tap. Empty: 15, 30, 60 and 120.", selector: { select: { multiple: true, custom_value: true, mode: "dropdown", options: [5, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 480].map((m) => ({ value: String(m), label: minutesLabel(m) })) } } },
+      { name: "select", label: "Old duration list", helper: "Only used when no durations are set: tap steps through this input select.", selector: { entity: { domain: "input_select" } } },
     ] },
     { type: "expandable", name: "history", title: "History (swipe left)", schema: [
       { name: "hours", label: "History range", selector: { number: { min: 1, max: 720, mode: "box" } } },
@@ -10833,10 +10898,11 @@ class SavvyHomeHeaderCard extends SavvyCard {
       this._sumEntries = entryStore.map;
       this._sum = healthSummary(h, hc);
     }
+    // when the count is kept from this person the cog looks like any other: no colour, no alert
     const total = this._sum.total, warn = hc.warn_above ?? 6;
-    Motion.tintVar(el.health, "--ac", total === 0 ? "var(--secondary-text-color)" : total < warn ? "var(--lvl-warn)" : "var(--lvl-bad)");
-    attr(el.health, "data-alert", total > 0);
     const showCount = !!total && !hiddenFromUser(h, this._config, "health_badges");
+    Motion.tintVar(el.health, "--ac", !showCount ? "var(--secondary-text-color)" : total < warn ? "var(--lvl-warn)" : "var(--lvl-bad)");
+    attr(el.health, "data-alert", showCount);
     el.count.hidden = !showCount;
     text(el.count, String(total));
     attr(el.health, "aria-label", !showCount ? "System health" : `System health, ${total} need attention`);

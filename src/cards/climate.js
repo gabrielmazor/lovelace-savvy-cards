@@ -6,7 +6,7 @@
 //   type: custom:savvy-climate-card
 //   area: living_room                (or entity: climate.x)
 //   temperature: sensor.x  humidity: sensor.y  weather: weather.home   (all optional)
-//   timer: { entity: timer.x, select: input_select.y }   chips: [...]
+//   timer: { entity: timer.x, presets: [15, 30, 60, 120] }   chips: [...]
 
 const SCRUB_SLOP = 6;
 const SCRUB_DWELL = 140;
@@ -354,6 +354,10 @@ const STYLE = `
   @media (prefers-reduced-motion: reduce) { ha-card { transition: none; } }
 `;
 
+// 15 -> "15 min", 60 -> "1 hour", 90 -> "1 h 30 min"; the timer service wants "HH:MM:SS"
+const minutesLabel = (m) => (m < 60 ? `${m} min` : m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : m === 60 ? "1 hour" : `${m / 60} hours`);
+const durationText = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}:00`;
+
 class ClimateCard extends HTMLElement {
   static getConfigElement() { return document.createElement(EDITOR); }
   static getStubConfig(hass) {
@@ -438,6 +442,7 @@ class ClimateCard extends HTMLElement {
     clearInterval(this._poll);
     clearInterval(this._tick);
     clearTimeout(this._sendTimer);
+    this._timerPicker?.close();
   }
 
   getCardSize() { return this._compact ? 2 : 6; }
@@ -924,14 +929,35 @@ class ClimateCard extends HTMLElement {
     this._hass.callService("climate", "set_fan_mode", { fan_mode: next }, { entity_id: this._config.entity });
   }
 
-  // tapping steps the duration selector, exactly as the old chip did
+  // The timer chip. Idle: a tap lists the durations and starts the timer helper with the one you pick.
+  // Running: a tap offers +15 min, pause / resume and cancel. (An old `select` still steps its list.)
   _bumpTimer(t) {
     this._haptic("selection");
-    if (t.select) {
+    if (t.legacy) {
       return this._hass.callService("input_select", "select_next",
         { cycle: true }, { entity_id: t.cfg.select });
     }
-    this._moreInfo(t.cfg.entity);
+    const chip = this._el.actions.__rows?.get("timer");
+    if (!chip) return this._moreInfo(t.cfg.entity);
+    this._timerPicker = this._timerPicker || new ModePicker(this, { onPick: (id, v) => this._timerPick(id, v) });
+    const opt = (value, label, icon, color) => ({ value, label, icon, color: color || TONE.warn });
+    const options = !t.running
+      ? t.presets.map((m) => opt(`start:${m}`, minutesLabel(m), "mdi:timer-outline"))
+      : [
+        opt("add", "+15 min", "mdi:timer-plus-outline"),
+        t.st.state === "paused" ? opt("resume", "Resume", "mdi:play") : opt("pause", "Pause", "mdi:pause"),
+        opt("cancel", "Cancel", "mdi:timer-off-outline", TONE.bad),
+      ];
+    this._timerPicker.open(chip, this._el.card, { entity: t.cfg.entity, value: null, options }, t.running ? t.label : "Start timer");
+  }
+
+  _timerPick(entity, v) {
+    const call = (service, data) => this._hass.callService("timer", service, data || {}, { entity_id: entity });
+    if (v.startsWith("start:")) return call("start", { duration: durationText(Number(v.slice(6))) });
+    if (v === "add") return call("change", { duration: durationText(15) });
+    if (v === "pause") return call("pause");
+    if (v === "resume") return call("start");
+    if (v === "cancel") return call("cancel");
   }
 
   _moreInfo(entityId) {
@@ -1169,6 +1195,9 @@ class ClimateCard extends HTMLElement {
     const h = this._hass, st = h.states[cfg.entity];
     if (!st) return null;
     const select = cfg.select && h.states[cfg.select];
+    // durations in minutes to start from; a `select` from before presets still works when none are set
+    const presets = [].concat(cfg.presets ?? [15, 30, 60, 120]).map(Number).filter((m) => m > 0);
+    const legacy = !!select && cfg.presets == null;
     const running = st.state === "active";
     const paused = st.state === "paused";
     let label = cfg.name || "Timer";
@@ -1182,10 +1211,10 @@ class ClimateCard extends HTMLElement {
         : `off in ${Math.ceil(left / 1000)}s`;
     } else if (paused) {
       label = "Paused";
-    } else if (select) {
+    } else if (legacy) {
       label = h.formatEntityState ? h.formatEntityState(select) : title(select.state);
     }
-    return { st, cfg, select, running: running || paused, label };
+    return { st, cfg, select, legacy, presets, running: running || paused, label };
   }
 
   // one ticking clock, and only while a timer is actually counting down on screen
@@ -1747,7 +1776,8 @@ const EDITOR = defineEditor("savvy-climate-card", (hass, c) => {
     ]),
     { type: "expandable", name: "timer", title: "Timer", schema: [
       { name: "entity", label: "Timer", selector: { entity: { domain: "timer" } } },
-      { name: "select", label: "Duration list (tap steps through it)", selector: { entity: { domain: "input_select" } } },
+      { name: "presets", label: "Durations", helper: "Minutes to choose from when you tap. Empty: 15, 30, 60 and 120.", selector: { select: { multiple: true, custom_value: true, mode: "dropdown", options: [5, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 480].map((m) => ({ value: String(m), label: minutesLabel(m) })) } } },
+      { name: "select", label: "Old duration list", helper: "Only used when no durations are set: tap steps through this input select.", selector: { entity: { domain: "input_select" } } },
     ] },
     { type: "expandable", name: "history", title: "History (swipe left)", schema: [
       { name: "hours", label: "History range", selector: { number: { min: 1, max: 720, mode: "box" } } },

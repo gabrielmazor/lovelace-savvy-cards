@@ -561,7 +561,7 @@ the fan. Swipe left for history with the unit's on/off band under the chart.
 | `temperature`, `humidity` | entity | the unit's reading | Sensors to read (and chart) instead. |
 | `weather` | entity | none | An outdoor weather readout. |
 | `temperature_name`, `humidity_name`, `state_name` | string | Temperature, Humidity, A/C | Labels. |
-| `timer` | object | none | `{ entity, select }`: a timer, and an `input_select` of durations a tap steps through. |
+| `timer` | object | none | `{ entity, presets }`: a `timer` helper. A tap lists the durations (`presets`, minutes, default `[15, 30, 60, 120]`) and starts the timer with the one you pick; while it runs, a tap offers +15 min, pause and cancel. The helper only counts: an automation on `timer.finished` turns the unit off. |
 | `history` | object | `{ hours: 24, show_state: true }` | History range and the on/off band. |
 | `temperature_scale` | list | blue to red | Colour stops: `[{ value, color }]`. |
 | `humidity_color` | colour | teal | Humidity colour. |
@@ -594,7 +594,7 @@ humidity_name: Humidity
 state_name: A/C
 timer:
   entity: timer.ac_off
-  select: input_select.ac_timer
+  presets: [15, 30, 60, 120, 180]
 history: { hours: 48, show_state: true }
 temperature_scale:
   - { value: 16, color: "#4f9de8" }
@@ -698,7 +698,9 @@ volume_step: 5
 
 Live cameras, side by side when there is room and a swipe apart when there is not. With
 [Frigate](https://github.com/blakeblackshear/frigate-hass-integration), which is found by itself: the
-day's alerts and detections, a motion timeline, and recordings that play in sync across cameras. Cameras
+day's alerts and detections, a motion timeline, and recordings that play in sync across cameras. Drag up
+from the timeline to scrub finer: the same width then covers 6 hours, 1 hour, then 10 minutes, with seconds
+on the label. Cameras
 are muted; when a stream carries sound a speaker button appears (live and in recordings, and in the
 camera popup of the lock card). The sound only exists if your camera sends it.
 

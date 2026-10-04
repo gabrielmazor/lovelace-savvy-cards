@@ -214,10 +214,11 @@ class SavvyHomeHeaderCard extends SavvyCard {
       this._sumEntries = entryStore.map;
       this._sum = healthSummary(h, hc);
     }
+    // when the count is kept from this person the cog looks like any other: no colour, no alert
     const total = this._sum.total, warn = hc.warn_above ?? 6;
-    Motion.tintVar(el.health, "--ac", total === 0 ? "var(--secondary-text-color)" : total < warn ? "var(--lvl-warn)" : "var(--lvl-bad)");
-    attr(el.health, "data-alert", total > 0);
     const showCount = !!total && !hiddenFromUser(h, this._config, "health_badges");
+    Motion.tintVar(el.health, "--ac", !showCount ? "var(--secondary-text-color)" : total < warn ? "var(--lvl-warn)" : "var(--lvl-bad)");
+    attr(el.health, "data-alert", showCount);
     el.count.hidden = !showCount;
     text(el.count, String(total));
     attr(el.health, "aria-label", !showCount ? "System health" : `System health, ${total} need attention`);

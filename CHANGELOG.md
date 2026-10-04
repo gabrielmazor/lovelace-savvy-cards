@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.10.7
+
+- **Fine scrubbing on the recordings timeline.** Press the bar and drag as before; drag up and the same
+  width covers less of the day: the whole day, 6 hours, 1 hour, then 10 minutes. The label shows the zone
+  and, in the close zones, seconds. Movement is relative to where the zone changed, so nothing jumps; you
+  feel a tick on every zone change. On a computer Shift is fine and Alt is close; Shift+arrow moves 10
+  seconds and Page Up / Page Down an hour.
+- **Climate timer with durations.** The timer chip lists durations (`presets`, default 15, 30, 60 and 120
+  minutes) and starts your `timer` helper with the one you pick. While it runs, a tap offers +15 min,
+  pause / resume and cancel; hold still opens the helper. The old `select` keeps working when no
+  durations are set. The helper only counts down: keep the automation on `timer.finished` that turns the
+  unit off, and drop the one that started the timer from the input select.
+- **Health cog.** When the count is kept from non-admins (`admin_only`), the cog now looks like any other
+  button for them: no alert colour either.
+
 ## 0.10.6
 
 - **The glow is the colour of the icon.** On every card with a state glow, the corner wash now takes the

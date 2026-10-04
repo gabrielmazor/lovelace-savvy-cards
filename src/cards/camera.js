@@ -52,6 +52,15 @@ const LABEL_ICONS = {
 
 const pad2 = (n) => String(n).padStart(2, "0");
 const hhmm = (s) => { const d = new Date(s * 1000); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+const hhmmss = (s) => { const d = new Date(s * 1000); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
+// Dragging up from the timeline slows it down: each zone maps the bar's width to a shorter stretch of the
+// day. `up` is how far above the bar the finger is (px); seconds show from the third zone on.
+const SCRUB_ZONES = [
+  { up: 0, span: DAY, detent: 3600, label: "" },
+  { up: 40, span: 6 * 3600, detent: 3600, label: "Wide · 6 h across" },
+  { up: 100, span: 3600, detent: 600, label: "Close · 1 h across", secs: true },
+  { up: 170, span: 600, detent: 60, label: "Fine · 10 min across", secs: true },
+];
 const mmss = (s) => {
   s = Math.max(0, Math.round(s));
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
@@ -268,11 +277,14 @@ ha-card {
 .tl .now { position: absolute; top: 4px; bottom: 4px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--live); pointer-events: none; }
 .tl .bubble {
   position: absolute; bottom: calc(100% + 6px); left: 0; transform: translateX(-50%);
-  padding: 3px 8px; border-radius: 8px; white-space: nowrap; pointer-events: none; opacity: 0;
+  padding: 3px 8px; border-radius: 8px; white-space: nowrap; pointer-events: none; opacity: 0; text-align: center;
   font-size: 12px; line-height: 16px; font-weight: 650;
   background: color-mix(in oklab, var(--card-background-color, canvas) 80%, var(--primary-text-color) 20%);
   box-shadow: 0 2px 6px rgb(0 0 0 / 0.2);
 }
+.tl .bubble b { display: block; font-weight: inherit; font-variant-numeric: tabular-nums; }
+.tl .bubble i { display: block; font-style: normal; font-size: 10.5px; line-height: 13px; font-weight: 550; color: var(--secondary-text-color); }
+.tl .bubble i:empty { display: none; }
 .axis { display: flex; justify-content: space-between; margin-top: -6px; padding: 0 2px;
   font-size: 10.5px; line-height: 13px; font-weight: 550; letter-spacing: 0.006em; color: var(--secondary-text-color); }
 .axis i { font-style: normal; }
@@ -573,7 +585,7 @@ class SavvyCameraCard extends HTMLElement {
             <div class="marks" id="marks"></div>
             <div class="now" id="now"></div>
             <div class="ph" id="playhead"></div>
-            <div class="bubble" id="bubble"></div>
+            <div class="bubble" id="bubble"><b id="bt"></b><i id="bz"></i></div>
           </div>
           <div class="axis"><i>00</i><i>06</i><i>12</i><i>18</i><i>24</i></div>
           <div class="legend" id="legend" hidden>
@@ -589,7 +601,7 @@ class SavvyCameraCard extends HTMLElement {
     const $ = (id) => this._root.getElementById(id);
     const ids = ["stage", "track", "dots", "ctrl", "pp", "ppIcon", "bar", "fill", "knob", "ctime", "snd", "sync", "live",
       "pills", "ind", "prev", "next", "dayname", "daysum", "tl", "hours", "act", "actPath", "future", "marks",
-      "now", "playhead", "bubble", "legend", "filters", "reviews", "note", "rec", "recBtn", "recSum", "holder"];
+      "now", "playhead", "bubble", "bt", "bz", "legend", "filters", "reviews", "note", "rec", "recBtn", "recSum", "holder"];
     this._el = Object.fromEntries(ids.map((id) => [id, $(id)]));
     this._el.card = this._root.querySelector("ha-card");
     // a camera card shows no name of its own (each camera names itself), so a title is its own line, which can link
@@ -1371,24 +1383,44 @@ class SavvyCameraCard extends HTMLElement {
   // ---------- timeline ----------
   _wireTimeline() {
     const tl = this._el.tl;
-    let down = null;
-    const secAt = (e) => {
-      const r = tl.getBoundingClientRect();
-      return clamp((e.clientX - r.left) / (r.width || 1)) * DAY;
-    };
-    const show = (sec) => {
-      const limit = this._day === 0 ? nowS() - dayStart(0) : DAY;
-      sec = Math.min(sec, limit);
+    let down = null, zone = 0, anchorX = 0, anchorSec = 0;
+    const limitS = () => (this._day === 0 ? nowS() - dayStart(0) : DAY);
+    const show = (sec, z = 0) => {
+      sec = Math.min(sec, limitS());
       this._cursor = sec;
       this._head.to(sec, MOTION.scrub);
       this._headOn.to(1, MOTION.ui);
       this._scrub.to(1, MOTION.scrub);
       const day0 = dayStart(this._day);
-      text(this._el.bubble, hhmm(day0 + sec));
+      const fine = SCRUB_ZONES[z].secs;
+      text(this._el.bt, fine ? hhmmss(day0 + sec) : hhmm(day0 + sec));
+      text(this._el.bz, SCRUB_ZONES[z].label);
       attr(tl, "aria-valuenow", String(Math.round(sec)));
-      attr(tl, "aria-valuetext", hhmm(day0 + sec));
+      attr(tl, "aria-valuetext", hhmmss(day0 + sec));
       this._wake();
       return sec;
+    };
+    // the zone the finger is in: how far above the bar, or Alt / Shift held with a mouse
+    const zoneAt = (e) => {
+      const up = tl.getBoundingClientRect().top - e.clientY;
+      let z = 0;
+      SCRUB_ZONES.forEach((s, i) => { if (up >= s.up && i) z = i; });
+      return Math.max(z, e.shiftKey ? 3 : e.altKey ? 2 : 0);
+    };
+    const track = (e) => {
+      const z = zoneAt(e);
+      if (z !== zone) {
+        zone = z;
+        anchorX = e.clientX;
+        anchorSec = this._cursor ?? anchorSec;
+        this._lastDetent = null;
+        this._haptic("selection");
+      }
+      const w = tl.getBoundingClientRect().width || 1;
+      const sec = show(clamp(anchorSec + ((e.clientX - anchorX) / w) * SCRUB_ZONES[zone].span, 0, DAY), zone);
+      const detent = Math.floor(sec / SCRUB_ZONES[zone].detent);
+      if (this._lastDetent !== null && detent !== this._lastDetent) this._haptic("selection");
+      this._lastDetent = detent;
     };
     tl.addEventListener("pointerdown", (e) => {
       if (e.button > 0) return;
@@ -1396,18 +1428,19 @@ class SavvyCameraCard extends HTMLElement {
       down = e.pointerId;
       try { tl.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
       this._lastDetent = null;
-      show(secAt(e));
+      const r = tl.getBoundingClientRect();
+      zone = 0;
+      anchorX = e.clientX;
+      anchorSec = clamp((e.clientX - r.left) / (r.width || 1)) * DAY;
+      show(anchorSec);
+      anchorSec = this._cursor;
+      if (e.shiftKey || e.altKey) track(e);
     });
-    tl.addEventListener("pointermove", (e) => {
-      if (e.pointerId !== down) return;
-      const sec = show(secAt(e));
-      const detent = Math.floor(sec / 3600);
-      if (this._lastDetent !== null && detent !== this._lastDetent) this._haptic("selection");
-      this._lastDetent = detent;
-    });
+    tl.addEventListener("pointermove", (e) => { if (e.pointerId === down) track(e); });
     const up = (e) => {
       if (e.pointerId !== down) return;
       down = null;
+      zone = 0;
       this._scrub.to(0, MOTION.ui);
       if (e.type === "pointerup") this._playAt(this._cursor);
       else if (this._mode !== "play") this._headOn.to(0, MOTION.ui);
@@ -1417,9 +1450,11 @@ class SavvyCameraCard extends HTMLElement {
     tl.addEventListener("pointercancel", up);
     tl.addEventListener("keydown", (e) => {
       const base = this._cursor ?? (this._day === 0 ? nowS() - dayStart(0) : DAY / 2);
-      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      const step = { ArrowRight: 300, ArrowLeft: -300, PageUp: 3600, PageDown: -3600 }[e.key];
+      if (step) {
         e.preventDefault();
-        show(clamp(base + (e.key === "ArrowRight" ? 300 : -300), 0, DAY));
+        const small = e.shiftKey && e.key.startsWith("Arrow");
+        show(clamp(base + (small ? Math.sign(step) * 10 : step), 0, DAY), small ? 3 : 0);
         clearTimeout(this._kbTimer);
         this._kbTimer = setTimeout(() => { this._scrub.to(0, MOTION.ui); this._wake(); }, 900);
       }

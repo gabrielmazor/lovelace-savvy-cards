@@ -553,7 +553,7 @@ Every card handles all of these, and each one gets a test:
 - Sensible defaults; almost everything optional. `entity` or `area` is
   usually the only required key.
 - Accept a bare string wherever an object is accepted
-  (`timer: timer.x` and `timer: {entity: timer.x, select: input_select.y}`
+  (`timer: timer.x` and `timer: {entity: timer.x, presets: [15, 30]}`
   both work; a `lights:` list item can be `light.x` or
   `{entity: light.x, power: switch.y}`).
 - Never assume an entity-id convention. Everything is discovered through the

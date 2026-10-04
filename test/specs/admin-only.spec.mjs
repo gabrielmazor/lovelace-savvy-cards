@@ -12,7 +12,7 @@ export default async function ({ browser, base, check }) {
       const wait = (ms) => new Promise((res) => setTimeout(res, ms));
       const W = ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"];
       const header = (cfg) => window.mount("savvy-home-header-card", { health: { watchman: W }, lights: false, climate: false, media: false, security: false, ...cfg }, 900);
-      const read = (el) => { const R = el.shadowRoot, c = R.getElementById("health"); return { cog: !c.hidden, count: !R.getElementById("count").hidden, label: c.getAttribute("aria-label"), width: c.offsetWidth }; };
+      const read = (el) => { const R = el.shadowRoot, c = R.getElementById("health"); return { cog: !c.hidden, count: !R.getElementById("count").hidden, label: c.getAttribute("aria-label"), width: c.offsetWidth, alert: c.hasAttribute("data-alert"), ac: getComputedStyle(c).getPropertyValue("--ac").trim() }; };
       const as = (user) => { window.hass = { ...window.hass, user }; };
 
       // nothing listed: everyone sees the cog and its count
@@ -43,6 +43,7 @@ export default async function ({ browser, base, check }) {
     check(`${tag} the settings list health_cog: hidden for a non-admin, shown to an admin`, !r.cogNon.cog && r.cogAdmin.cog && r.cogAdmin.count, JSON.stringify([r.cogNon, r.cogAdmin]));
     check(`${tag} a hidden cog leaves no width behind`, r.cogNon.width === 0, JSON.stringify(r.cogNon));
     check(`${tag} the card's own admin_only: false beats the settings`, r.cardFalse.cog && r.cardFalse.count, JSON.stringify(r.cardFalse));
+    check(`${tag} a cog whose badge is kept looks idle (no alert tone), an admin's keeps it`, !r.cardList.alert && r.cardList.ac !== r.default.ac && r.default.alert, JSON.stringify([r.cardList, r.default]));
     check(`${tag} the card's own list replaces the settings': badges only keeps the cog, drops the number`, r.cardList.cog && !r.cardList.count && r.cardList.label === "System health", JSON.stringify(r.cardList));
     await page.close();
 

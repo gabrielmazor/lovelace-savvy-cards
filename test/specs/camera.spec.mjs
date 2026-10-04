@@ -1,7 +1,7 @@
 // savvy-camera-card on the made-up house, with a faked Frigate.
 import { openPage, idle, shot } from "./_util.mjs";
 
-const FRIGATE = `(() => {
+export const FRIGATE = `(() => {
   const now = Date.now() / 1000, MIN = 60, HOUR = 3600;
   const dayStart = (off) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - off); return d.getTime() / 1000; };
   const ymd = (s) => { const d = new Date(s * 1000); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
