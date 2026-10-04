@@ -11,6 +11,7 @@ const SHEET_CSS = `
     --well: color-mix(in oklab, var(--primary-text-color) 6%, transparent);
     --line: color-mix(in oklab, var(--primary-text-color) 9%, transparent);
     --accent: 88 142 233;
+    ${DESIGN_TOKENS}
     position: fixed; z-index: 999; box-sizing: border-box; display: flex; flex-direction: column;
     left: 50%; top: 50%; width: min(460px, calc(100vw - 32px)); max-height: min(640px, calc(100vh - 48px));
     border-radius: 22px; overflow: hidden; opacity: 0;
@@ -29,18 +30,18 @@ const SHEET_CSS = `
   .sv-head { display: flex; align-items: center; gap: 8px; padding: 14px 12px 8px 18px; }
   .sv-title { flex: 1; min-width: 0; font-size: 18px; line-height: 23px; font-weight: 650; letter-spacing: -0.022em;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .sv-close { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
+  .sv-close { width: var(--c-s); height: var(--c-s); border-radius: 11px; display: grid; place-items: center;
     background: var(--well); --mdc-icon-size: 18px; flex: none; }
   .sv-body { overflow: auto; overscroll-behavior: contain; padding: 4px 16px 18px; display: flex; flex-direction: column;
     gap: 10px; container-type: inline-size; }
 
   /* the entity list: one row per entity, live */
   .sv-rows { display: flex; flex-direction: column; gap: 2px; }
-  .sv-ic { flex: none; width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center;
-    background: var(--well); color: var(--secondary-text-color); --mdc-icon-size: 18px; }
-  .sv-row[data-on] .sv-ic { color: var(--row-c, rgb(var(--accent))); background: color-mix(in oklab, var(--row-c, rgb(var(--accent))) 16%, transparent); }
-  .sv-row[data-alert] .sv-ic { color: #E06666; background: color-mix(in oklab, #E06666 18%, transparent); }
-  .sv-row[data-alert] .sv-val { color: #E06666; }
+  .sv-ic { flex: none; width: var(--b-m); height: var(--b-m); border-radius: 50%; display: grid; place-items: center;
+    background: var(--well); color: var(--secondary-text-color); --mdc-icon-size: 20px; }
+  .sv-row[data-on] .sv-ic { color: var(--row-c, rgb(var(--accent))); background: color-mix(in oklab, var(--row-c, rgb(var(--accent))) var(--mix-on), transparent); }
+  .sv-row[data-alert] .sv-ic { color: rgb(var(--bad-rgb)); background: color-mix(in oklab, rgb(var(--bad-rgb)) var(--mix-alert), transparent); }
+  .sv-row[data-alert] .sv-val { color: rgb(var(--bad-rgb)); }
   .sv-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .sv-name { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sv-sub { font-size: 12px; line-height: 15px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -60,8 +61,8 @@ const SHEET_CSS = `
   /* the popup's pinned page button: below the list, always in reach */
   .sv-foot { flex: none; padding: 2px 16px 16px; }
   .sv-sheet[data-bottom] .sv-foot { padding-bottom: 12px; }
-  .sv-go { display: flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box; height: 48px; padding: 0 14px 0 16px;
-    border: 0; margin: 0; border-radius: 14px; font: inherit; font-size: 14px; line-height: 18px; font-weight: 650; letter-spacing: -0.01em;
+  .sv-go { display: flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box; height: var(--c-l); padding: 0 14px 0 16px;
+    border: 0; margin: 0; border-radius: 13px; font: inherit; font-size: 14px; line-height: 18px; font-weight: 650; letter-spacing: -0.01em;
     text-align: start; cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent;
     color: var(--go-c, rgb(var(--accent))); background: color-mix(in oklab, var(--go-c, rgb(var(--accent))) 15%, transparent); }
   .sv-go span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

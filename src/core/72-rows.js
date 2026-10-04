@@ -414,10 +414,10 @@ const ROWS_CSS = `
   .sv-ic[data-art] { overflow: hidden; padding: 0; }
   /* the extra line: one row of controls, opened with a spring */
   .sv-ctl { overflow: hidden; }
-  .sv-ctl-in { padding: 2px 6px 8px 46px; }
+  .sv-ctl-in { padding: 2px 6px 8px 50px; }
   @container (max-width: 380px) { .sv-ctl-in { padding-inline-start: 6px; } }
   .sv-xline { display: flex; align-items: center; gap: 6px; min-width: 0; }
-  .sv-xline .sv-btn { width: 32px; height: 32px; border-radius: 10px; --mdc-icon-size: 18px; }
+  .sv-xline .sv-btn { width: var(--c-s); height: var(--c-s); border-radius: 11px; --mdc-icon-size: 18px; }
   .sv-xline .sv-seg { flex: 1; }
   .sv-xline.sv-agg { flex-direction: column; align-items: stretch; gap: 2px; padding: 0 6px 6px 48px; }
   .sv-agg-l { display: flex; justify-content: space-between; gap: 10px; padding: 6px 8px; border-radius: 10px; font-size: 12.5px; line-height: 16px; color: var(--secondary-text-color); cursor: pointer; outline: none; }
@@ -430,7 +430,7 @@ const ROWS_CSS = `
   .sv-cap { flex: 1; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--secondary-text-color); }
   .sv-pct { flex: none; min-width: 34px; text-align: end; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--secondary-text-color); }
   /* round buttons */
-  .sv-btn { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: var(--well);
+  .sv-btn { flex: none; display: grid; place-items: center; width: var(--c-s); height: var(--c-s); border-radius: 11px; background: var(--well);
     color: var(--primary-text-color); --mdc-icon-size: 19px; }
   .sv-btn ha-icon { display: flex; }
   .sv-btn[data-on] { color: var(--row-c, rgb(var(--accent))); background: color-mix(in oklab, var(--row-c, rgb(var(--accent))) 16%, transparent); }
@@ -460,19 +460,19 @@ const ROWS_CSS = `
   .sv-step { flex: none; display: flex; align-items: center; gap: 6px; }
   .sv-step-v { min-width: 52px; text-align: center; font-size: 16px; line-height: 20px; font-weight: 650; letter-spacing: -0.01em; }
   .sv-step[data-compact] { gap: 2px; }
-  .sv-step[data-compact] .sv-btn { width: 28px; height: 28px; border-radius: 9px; --mdc-icon-size: 17px; }
+  .sv-step[data-compact] .sv-btn { --mdc-icon-size: 17px; }
   .sv-step[data-compact] .sv-step-v { min-width: 42px; font-size: 14px; line-height: 18px; }
-  .sv-pillbtn { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 12px; border-radius: 13px; background: var(--well);
+  .sv-pillbtn { flex: none; display: inline-flex; align-items: center; gap: 6px; height: var(--c-l); padding: 0 12px; border-radius: 13px; background: var(--well);
     font-size: 12.5px; font-weight: 600; color: var(--primary-text-color); --mdc-icon-size: 17px; }
   .sv-pillbtn ha-icon { display: flex; }
-  .sv-pillbtn.sv-state { height: 28px; padding: 0 10px; border-radius: 14px; font-size: 12px; max-width: 132px; }
+  .sv-pillbtn.sv-state { height: var(--c-s); padding: 0 10px; border-radius: 16px; font-size: 12px; max-width: 132px; }
   .sv-pillbtn.sv-state span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .sv-pillbtn.sv-state[data-armed] { color: var(--row-c, rgb(var(--accent))); background: color-mix(in oklab, var(--row-c, rgb(var(--accent))) 16%, transparent); }
+  .sv-pillbtn.sv-state[data-armed] { color: var(--row-c, rgb(var(--accent))); background: color-mix(in oklab, var(--row-c, rgb(var(--accent))) var(--mix-on), transparent); }
   /* the top of a popup's list: the sort toggle and the bulk action */
   .sv-tools { display: flex; align-items: center; gap: 8px; }
   .sv-tools .sv-seg { flex: 1; min-width: 0; }
   .sv-tools .sv-seg-b { height: 28px; }
-  .sv-bulk { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 34px; padding: 0 12px; border-radius: 12px; background: var(--well);
+  .sv-bulk { flex: none; display: inline-flex; align-items: center; gap: 5px; height: var(--c-s); padding: 0 12px; border-radius: 11px; background: var(--well);
     font-size: 12.5px; line-height: 16px; font-weight: 650; color: var(--primary-text-color); --mdc-icon-size: 16px; white-space: nowrap; }
   .sv-bulk ha-icon { display: flex; }
   .sv-bulk[disabled] { opacity: 0.4; cursor: default; }

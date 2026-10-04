@@ -26,13 +26,11 @@ const LOCK_CAM_MS = 8000;
 const LOCK_DOOR_CLASSES = ["door", "garage_door", "opening", "window"];
 const lockTone = (t) => (t <= 1 ? mixRgb(LOCK_COLORS[0], LOCK_COLORS[1], clamp(t)) : mixRgb(LOCK_COLORS[1], LOCK_COLORS[2], clamp(t - 1)));
 const LOCK_TONE_WORD = ["rgb(76 175 80)", "rgb(232 163 61)", "rgb(224 102 102)"];
-const LOCK_AMBER = "232 163 61", LOCK_RED = "224 102 102";
+const LOCK_AMBER = "var(--warn-rgb)", LOCK_RED = "var(--bad-rgb)";
 
 const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_SLIDE_CSS}
-  ha-card { --pad: 16px; --lk: 76 175 80; --wash: 0; --pulse: 0; position: relative; display: flex; flex-direction: column; gap: 12px; padding: var(--pad); overflow: hidden; }
+  ha-card { --pad: 16px; --lk: 76 175 80; --pulse: 0; position: relative; display: flex; flex-direction: column; gap: 12px; padding: var(--pad); overflow: hidden; }
   :host([data-compact]) ha-card { --pad: 12px; gap: 8px; }
-  ha-card::before { content: ""; position: absolute; inset: 0; pointer-events: none;
-    background: radial-gradient(140% 110% at 0% 0%, rgb(var(--lk) / calc(var(--wash) + var(--pulse) * 0.05)), transparent 68%); }
   ha-card > * { position: relative; }
   .head { display: flex; align-items: center; gap: 10px; min-height: 30px; }
   .head .t { flex: 1; min-width: 0; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -46,13 +44,13 @@ const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_SLIDE_CSS}
   .lk { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
   .top { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 4px 8px 4px 4px; border-radius: 32px; }
   .who { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; text-align: start; border-radius: 12px; cursor: pointer; }
-  .disc { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; color: var(--tone); background: color-mix(in oklab, var(--tone) 18%, transparent); --mdc-icon-size: 21px; }
+  .disc { flex: none; display: grid; place-items: center; width: var(--b-m); height: var(--b-m); border-radius: 50%; color: var(--tone); background: color-mix(in oklab, var(--tone) var(--mix-on), transparent); --mdc-icon-size: 20px; }
   .disc > .dicon { display: flex; align-items: center; justify-content: center; line-height: 0; }
   .disc > .dicon > * { display: flex; }
   .col { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 5px; }
   .nm { grid-column: 1 / -1; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .st { font-size: 13px; line-height: 17px; font-weight: 600; color: var(--tone); white-space: nowrap; }
-  :host([data-solo]) .disc { width: 42px; height: 42px; --mdc-icon-size: 23px; }
+  :host([data-solo]) .disc { width: var(--b-l); height: var(--b-l); --mdc-icon-size: 22px; }
   .sub { font-size: 13px; line-height: 17px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sub:not(:empty)::before { content: "\\00b7\\00a0"; }
   .sub:empty { display: none; }
@@ -70,7 +68,7 @@ const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_SLIDE_CSS}
   /* compact: one row, the handle at its start */
   :host([data-compact]) .locks { gap: 8px; }
   :host([data-compact]) .top { padding: 3px 8px 3px 3px; border-radius: 26px; }
-  :host([data-compact]) .disc { width: 34px; height: 34px; --mdc-icon-size: 19px; }
+  :host([data-compact]) .disc { width: var(--b-m); height: var(--b-m); --mdc-icon-size: 20px; }
   :host([data-compact]) .nm { font-size: 14px; line-height: 18px; }
   :host([data-compact]) .sub { display: none; }
   :host([data-compact]) .col { grid-template-columns: minmax(0, 1fr); }
@@ -594,7 +592,9 @@ class SavvyLockCard extends SavvyCard {
     const t = clamp(this._tint.x, 0, 2);
     const c = lockTone(t);
     put(this._el.card, "--lk", c.join(" "));
-    put(this._el.card, "--wash", (0.06 * t).toFixed(3)); // calm: none; amber and red only a breath
+    // the corner glow, in the lock's tone: a soft green while it is locked, fuller as it turns amber and red
+    put(this._el.card, "--glow-rgb", c.join(" "));
+    put(this._el.card, "--glow", this._config.state_glow === false ? "0" : (0.5 + 0.25 * t).toFixed(3));
   }
 }
 

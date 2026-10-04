@@ -15,7 +15,7 @@
 
 const SETTINGS_TYPE = "custom:savvy-settings-card";
 const SETTINGS_REFRESH_MS = 5 * 60 * 1000;
-const SETTINGS_SECTIONS = ["pages", "house", "health", "ignore", "rooms"];
+const SETTINGS_SECTIONS = ["pages", "house", "health", "ignore", "rooms", "design"];
 
 // ---- the table -------------------------------------------------------------------------
 
@@ -75,6 +75,9 @@ const healthRules = (prefix = "") => HEALTH_KEYS.map(([k, label]) => ({ path: `$
 const knownRules = (prefix = "") => ["entities", "devices"].map((k) => ({ path: `${prefix}ignore.${k}`, label: "Known problems", kind: "union", src: "health",
   get: (s) => (Array.isArray(s.health?.ignore) ? s.health.ignore.filter((x) => (k === "entities") === String(x).includes(".")) : s.health?.ignore?.[k]) }));
 
+// the state glow is on unless the settings turn it off for every card
+const glowRule = { path: "state_glow", label: "State glow", get: (s) => (s.design?.state_glow === false ? false : undefined), src: "design" };
+
 const HOME_CHIPS = ["lights", "climate", "media", "security"];
 
 // Each rule fills `path` of the card's config when the card hasn't set it.
@@ -103,7 +106,7 @@ const SETTINGS_RULES = {
     ...healthRules("health."),
     ...knownRules("health."),
   ],
-  "savvy-system-health-card": [...healthRules(), ...knownRules()],
+  "savvy-system-health-card": [glowRule, ...healthRules(), ...knownRules()],
   "savvy-room-header-card": [
     { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
     { path: "control", label: "Control", get: room("control") },
@@ -126,6 +129,7 @@ const SETTINGS_RULES = {
     { path: "navigation_path", label: "Target page", get: roomPage },
   ],
   "savvy-room-tile": [
+    glowRule,
     { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
     { path: "name", label: "Name", get: room("name") },
     { path: "icon", label: "Icon", get: room("icon") },
@@ -137,6 +141,7 @@ const SETTINGS_RULES = {
     { path: "navigation_path", label: "Target page", get: roomPage },
   ],
   "savvy-lights-card": [
+    glowRule,
     { path: "order", label: "Order", get: followOrder("custom:savvy-lights-card") },
     { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
     { path: "toggle", label: "Light helper",
@@ -147,21 +152,28 @@ const SETTINGS_RULES = {
       } },
   ],
   "savvy-scene-card": [
+    glowRule,
     { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
   ],
   "savvy-vacuum-card": [
+    glowRule,
     { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
   ],
   "savvy-climate-card": [
+    glowRule,
     { path: "temperature", label: "Temperature", get: room("temperature") },
     { path: "humidity", label: "Humidity", get: room("humidity") },
   ],
   "savvy-room-activity-card": [
+    glowRule,
     { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
     { path: "include", label: "Include", kind: "union", get: room("include") },
     { path: "exclude", label: "Exclude", kind: "union", get: roomExclude },
   ],
+  "savvy-entity-card": [glowRule],
+  "savvy-media-card": [glowRule],
   "savvy-lock-card": [
+    glowRule,
     // with no lock named, the settings' security entity is the lock to show
     { path: "entity", label: "Lock", src: "house",
       get: (s, c) => (c.entity !== undefined || c.entities !== undefined || c.area !== undefined || c.areas !== undefined || domainOf(s.house?.security) !== "lock" ? undefined : s.house.security) },

@@ -39,7 +39,7 @@ const MOTION = {
   sheetOut: { response: 0.24, damping: 1 },
 };
 
-const COLORS = { live: "#E06666", alert: "#E06666", detection: "#E8A33D" };
+const COLORS = { live: TONE.bad, alert: TONE.bad, detection: TONE.warn };
 
 const LABEL_ICONS = {
   person: "mdi:account", car: "mdi:car", motorcycle: "mdi:motorbike", bicycle: "mdi:bicycle",

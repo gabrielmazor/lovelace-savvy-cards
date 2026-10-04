@@ -90,11 +90,13 @@ const STYLE = `
 [hidden] { display: none !important; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0;
   cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; }
+${GLOW_CSS}
 
 ha-card {
   --radius: var(--ha-card-border-radius, 18px);
   --pad: 14px;
   --amber: 245 184 61;
+  ${DESIGN_TOKENS}
   --well: color-mix(in oklab, var(--primary-text-color) 6%, transparent);
   --line: color-mix(in oklab, var(--primary-text-color) 9%, transparent);
   position: relative;
@@ -166,11 +168,11 @@ header { display: flex; align-items: center; gap: 10px; min-width: 0; }
 }
 .head { position: relative; display: flex; align-items: center; gap: 10px; min-width: 0; }
 .orb {
-  flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 12px;
-  background: color-mix(in oklab, var(--primary-text-color) 8%, transparent);
+  flex: none; display: grid; place-items: center; width: var(--b-m); height: var(--b-m); border-radius: 50%;
+  background: var(--well);
   color: var(--secondary-text-color);
 }
-.orb[data-on] { background: rgb(var(--lc, var(--amber)) / 0.22); color: rgb(var(--lc, var(--amber))); }
+.orb[data-on] { background: color-mix(in oklab, rgb(var(--lc, var(--amber))) var(--mix-on), transparent); color: rgb(var(--lc, var(--amber))); }
 .orb ha-icon, .orb savvy-state-icon { --mdc-icon-size: 20px; display: flex; }
 .meta { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .meta .n { font-size: 13.5px; line-height: 17px; font-weight: 600; letter-spacing: -0.01em;
@@ -178,8 +180,8 @@ header { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .meta .d { font-size: 11.5px; line-height: 15px; font-weight: 500; color: var(--secondary-text-color);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .swatch {
-  flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px;
-  background: color-mix(in oklab, var(--primary-text-color) 8%, transparent);
+  flex: none; display: grid; place-items: center; width: var(--c-s); height: var(--c-s); border-radius: 11px;
+  background: var(--well);
 }
 .swatch i {
   width: 16px; height: 16px; border-radius: 50%;
@@ -188,17 +190,17 @@ header { display: flex; align-items: center; gap: 10px; min-width: 0; }
 }
 
 .power {
-  flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px;
-  background: color-mix(in oklab, var(--primary-text-color) 8%, transparent);
+  flex: none; display: grid; place-items: center; width: var(--c-s); height: var(--c-s); border-radius: 11px;
+  background: var(--well);
   color: var(--secondary-text-color);
 }
-.power[data-on] { background: rgb(var(--lc, var(--amber)) / 0.22); color: rgb(var(--lc, var(--amber))); }
+.power[data-on] { background: color-mix(in oklab, rgb(var(--lc, var(--amber))) var(--mix-on), transparent); color: rgb(var(--lc, var(--amber))); }
 .power ha-icon { --mdc-icon-size: 18px; display: flex; }
 
 /* ---- compact: the light, its name and its state, and nothing else ---- */
 ha-card[data-compact] .light { padding: 8px 10px; border-radius: 13px; }
-ha-card[data-compact] .orb { width: 32px; height: 32px; border-radius: 10px; }
-ha-card[data-compact] .orb ha-icon, ha-card[data-compact] .orb savvy-state-icon { --mdc-icon-size: 18px; }
+ha-card[data-compact] .orb { width: var(--b-s); height: var(--b-s); }
+ha-card[data-compact] .orb ha-icon, ha-card[data-compact] .orb savvy-state-icon { --mdc-icon-size: 16px; }
 ha-card[data-compact] .meta .n { font-size: 13px; line-height: 16px; }
 ha-card[data-compact] .meta .d { font-size: 11px; line-height: 14px; }
 ha-card[data-compact] .grid { gap: 6px; }
@@ -921,6 +923,10 @@ class LightsCard extends HTMLElement {
     const master = c.toggle.entity && h.states[c.toggle.entity];
     const lit = master ? master.state === "on" : on > 0;
     attr(el.master, "data-on", lit ? "" : null);
+    // the corner glow: the colour of the first light that is on, stronger the more of the room is lit
+    const litIds = ids.filter((id) => this._isOn(id));
+    const glowRgb = lit || litIds.length ? (litIds.map((id) => this._lightRgb(h.states[id])).find(Boolean) || [245, 184, 61]) : null;
+    stateGlow(c, el.card, glowRgb, ids.length ? 0.55 + 0.45 * (litIds.length / ids.length) : 0.55);
     // the pill says what the room's lights ARE doing, not what tapping it would do
     text(el.masterText, c.toggle.name || (lit ? "Lights on" : "Lights off"));
     attr(el.masterIcon, "icon", c.toggle.icon || (lit ? "mdi:toggle-switch" : "mdi:toggle-switch-off"));

@@ -21,7 +21,7 @@ const BADGE_KINDS = [
   { key: "cover", name: "Cover", domain: "cover" },
   { key: "window", name: "Window", domain: "binary_sensor", dc: ["window"] },
   { key: "leak", name: "Leak", domain: "binary_sensor", dc: ["moisture"], color: "#5FA8E0", critical: true },
-  { key: "alarm", name: "Smoke / gas", domain: "binary_sensor", dc: ["smoke", "gas", "carbon_monoxide"], color: "#E06666", critical: true },
+  { key: "alarm", name: "Smoke / gas", domain: "binary_sensor", dc: ["smoke", "gas", "carbon_monoxide"], color: TONE.bad, critical: true },
 ];
 const LIGHT_COLOR = "#F5B83D";
 // a pinned entity's colour when active, by domain (a kind's colour wins when it matches)

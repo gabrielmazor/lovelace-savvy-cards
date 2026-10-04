@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.9.2 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.10.0 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.9.2";
+const SAVVY_VERSION = "0.10.0";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -219,8 +219,24 @@ const ROLL_CSS = `
   [data-rolling="tick"]::after { opacity: 1; translate: none; }
 `;
 
+// The design language, one set of numbers for every card and popup (docs/DESIGN.md 5):
+//   badge   a circle that stands for a thing (a room, a light, a lock, a player): S 28, M 36, L 44
+//   control a rounded square you press (power, a swatch, a step, a toolbar button): S 32, L 40
+//   tones   off = the well, on = 16% of the state colour, alert = 18% of amber or red
+//   glow    a soft corner wash in the state colour, nothing when idle (ha-card::before, --glow 0..1)
+// the same three colours as hex, for the places that need a string (and the --lvl-* variables below)
+const TONE = { good: "#4CAF50", warn: "#E8A33D", bad: "#E06666" };
+const DESIGN_TOKENS = `
+    --good-rgb: 76 175 80; --warn-rgb: 232 163 61; --bad-rgb: 224 102 102;
+    --b-s: 28px; --b-m: 36px; --b-l: 44px; --c-s: 32px; --c-l: 40px;
+    --mix-on: 16%; --mix-alert: 18%;`;
+const GLOW_CSS = `
+  ha-card::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; corner-shape: inherit; pointer-events: none;
+    background: radial-gradient(140% 110% at 0% 0%, rgb(var(--glow-rgb, var(--accent)) / calc(var(--glow, 0) * 0.1 + var(--pulse, 0) * 0.05)), transparent 66%); }
+`;
+
 // The CSS every card shares: host basics, the card surface, focus rings.
-const BASE_CSS = `${ROLL_CSS}
+const BASE_CSS = `${ROLL_CSS}${GLOW_CSS}
   :host { display: block; -webkit-tap-highlight-color: transparent; }
   [hidden] { display: none !important; }
   button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0;
@@ -231,9 +247,10 @@ const BASE_CSS = `${ROLL_CSS}
     --well: color-mix(in oklab, var(--primary-text-color) 6%, transparent);
     --line: color-mix(in oklab, var(--primary-text-color) 9%, transparent);
     --accent: 88 142 233;
-    --lvl-good: #4CAF50;
-    --lvl-warn: #E8A33D;
-    --lvl-bad: #E06666;
+    --lvl-good: ${TONE.good};
+    --lvl-warn: ${TONE.warn};
+    --lvl-bad: ${TONE.bad};
+    ${DESIGN_TOKENS}
     position: relative; box-sizing: border-box;
     border-radius: var(--radius);
     border: var(--ha-card-border-width, 1px) solid var(--ha-card-border-color, var(--line));
@@ -532,7 +549,7 @@ const BADGE_KINDS = [
   { key: "cover", name: "Cover", domain: "cover" },
   { key: "window", name: "Window", domain: "binary_sensor", dc: ["window"] },
   { key: "leak", name: "Leak", domain: "binary_sensor", dc: ["moisture"], color: "#5FA8E0", critical: true },
-  { key: "alarm", name: "Smoke / gas", domain: "binary_sensor", dc: ["smoke", "gas", "carbon_monoxide"], color: "#E06666", critical: true },
+  { key: "alarm", name: "Smoke / gas", domain: "binary_sensor", dc: ["smoke", "gas", "carbon_monoxide"], color: TONE.bad, critical: true },
 ];
 const LIGHT_COLOR = "#F5B83D";
 // a pinned entity's colour when active, by domain (a kind's colour wins when it matches)
@@ -1392,6 +1409,24 @@ function modeLook(option, overrides = {}) {
   };
 }
 
+// Any CSS colour (hex, rgb(), a name) as [r, g, b]; a colour the browser cannot read is amber.
+let paint2d;
+const toRgb = (css) => {
+  const hex = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(css).trim());
+  if (hex) {
+    const h = hex[1].length === 3 ? hex[1].replace(/./g, "$&$&") : hex[1];
+    const n = parseInt(h, 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  paint2d = paint2d || document.createElement("canvas").getContext("2d");
+  paint2d.fillStyle = "#000";
+  paint2d.fillStyle = css;
+  const out = paint2d.fillStyle;
+  if (out[0] === "#") return toRgb(out);
+  const n = out.match(/[\d.]+/g);
+  return n ? n.slice(0, 3).map(Number) : [245, 184, 61];
+};
+
 // ===== core/55-icons.js =====
 // ---------------------------------------------------------------------------------------
 // core/icons: the icon of an entity, decided here, never by Home Assistant's own state-icon element.
@@ -1682,6 +1717,29 @@ const Motion = {
     tintDiff(els, before);
   },
 
+  // ---------- Glow ----------
+  // The card's state colour in its corner (ha-card::before reads --glow-rgb and --glow). Pass the
+  // colour and a level 0..1, or no colour for nothing. Colour and strength move together; a glow
+  // coming from nothing takes its colour at once and only grows. Interruptible: a new target
+  // starts from what is on screen.
+  glow(el, rgb, level = 1) {
+    if (!el) return;
+    const g = el.__gl || (el.__gl = { c: (rgb || [128, 128, 128]).slice(), a: 0, to: null, anim: null });
+    const to = { c: rgb ? rgb.map(Number) : g.to ? g.to.c : g.c, a: rgb ? clamp(level) : 0 };
+    if (g.to && g.to.a === to.a && g.to.c.every((v, i) => v === to.c[i])) return;
+    g.to = to;
+    const from = { c: g.c.slice(), a: g.a };
+    if (g.anim) g.anim.dead = true;
+    const paint = (x) => {
+      g.a = from.a + (to.a - from.a) * x;
+      g.c = from.a < 0.02 ? to.c.slice() : from.c.map((v, i) => v + (to.c[i] - v) * x);
+      el.style.setProperty("--glow", g.a.toFixed(3));
+      el.style.setProperty("--glow-rgb", g.c.map(Math.round).join(" "));
+    };
+    if (!this.can(el)) { g.anim = null; paint(1); return; }
+    g.anim = this.start(new MotionAnim(0, 1, MOTION.blend, 0, paint, () => { g.anim = null; }));
+  },
+
   // ---------- Roll ----------
   rollable(el) { return !el.hasAttribute("data-noroll"); },
 
@@ -1925,6 +1983,9 @@ function tickParts(a, b) {
   const dec = Math.max((ma[0].split(".")[1] || "").length, (mb[0].split(".")[1] || "").length);
   return { sa, na, nb, dec };
 }
+
+// the card's state glow, unless the card (or the Savvy settings) turned it off
+const stateGlow = (config, el, rgb, level = 1) => Motion.glow(el, config && config.state_glow === false ? null : rgb, level);
 
 // ===== core/57-aggregate.js =====
 // ---------------------------------------------------------------------------------------
@@ -2175,6 +2236,7 @@ const SHEET_CSS = `
     --well: color-mix(in oklab, var(--primary-text-color) 6%, transparent);
     --line: color-mix(in oklab, var(--primary-text-color) 9%, transparent);
     --accent: 88 142 233;
+    ${DESIGN_TOKENS}
     position: fixed; z-index: 999; box-sizing: border-box; display: flex; flex-direction: column;
     left: 50%; top: 50%; width: min(460px, calc(100vw - 32px)); max-height: min(640px, calc(100vh - 48px));
     border-radius: 22px; overflow: hidden; opacity: 0;
@@ -2193,18 +2255,18 @@ const SHEET_CSS = `
   .sv-head { display: flex; align-items: center; gap: 8px; padding: 14px 12px 8px 18px; }
   .sv-title { flex: 1; min-width: 0; font-size: 18px; line-height: 23px; font-weight: 650; letter-spacing: -0.022em;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .sv-close { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
+  .sv-close { width: var(--c-s); height: var(--c-s); border-radius: 11px; display: grid; place-items: center;
     background: var(--well); --mdc-icon-size: 18px; flex: none; }
   .sv-body { overflow: auto; overscroll-behavior: contain; padding: 4px 16px 18px; display: flex; flex-direction: column;
     gap: 10px; container-type: inline-size; }
 
   /* the entity list: one row per entity, live */
   .sv-rows { display: flex; flex-direction: column; gap: 2px; }
-  .sv-ic { flex: none; width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center;
-    background: var(--well); color: var(--secondary-text-color); --mdc-icon-size: 18px; }
-  .sv-row[data-on] .sv-ic { color: var(--row-c, rgb(var(--accent))); background: color-mix(in oklab, var(--row-c, rgb(var(--accent))) 16%, transparent); }
-  .sv-row[data-alert] .sv-ic { color: #E06666; background: color-mix(in oklab, #E06666 18%, transparent); }
-  .sv-row[data-alert] .sv-val { color: #E06666; }
+  .sv-ic { flex: none; width: var(--b-m); height: var(--b-m); border-radius: 50%; display: grid; place-items: center;
+    background: var(--well); color: var(--secondary-text-color); --mdc-icon-size: 20px; }
+  .sv-row[data-on] .sv-ic { color: var(--row-c, rgb(var(--accent))); background: color-mix(in oklab, var(--row-c, rgb(var(--accent))) var(--mix-on), transparent); }
+  .sv-row[data-alert] .sv-ic { color: rgb(var(--bad-rgb)); background: color-mix(in oklab, rgb(var(--bad-rgb)) var(--mix-alert), transparent); }
+  .sv-row[data-alert] .sv-val { color: rgb(var(--bad-rgb)); }
   .sv-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .sv-name { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sv-sub { font-size: 12px; line-height: 15px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2224,8 +2286,8 @@ const SHEET_CSS = `
   /* the popup's pinned page button: below the list, always in reach */
   .sv-foot { flex: none; padding: 2px 16px 16px; }
   .sv-sheet[data-bottom] .sv-foot { padding-bottom: 12px; }
-  .sv-go { display: flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box; height: 48px; padding: 0 14px 0 16px;
-    border: 0; margin: 0; border-radius: 14px; font: inherit; font-size: 14px; line-height: 18px; font-weight: 650; letter-spacing: -0.01em;
+  .sv-go { display: flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box; height: var(--c-l); padding: 0 14px 0 16px;
+    border: 0; margin: 0; border-radius: 13px; font: inherit; font-size: 14px; line-height: 18px; font-weight: 650; letter-spacing: -0.01em;
     text-align: start; cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent;
     color: var(--go-c, rgb(var(--accent))); background: color-mix(in oklab, var(--go-c, rgb(var(--accent))) 15%, transparent); }
   .sv-go span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -3763,10 +3825,10 @@ const ROWS_CSS = `
   .sv-ic[data-art] { overflow: hidden; padding: 0; }
   /* the extra line: one row of controls, opened with a spring */
   .sv-ctl { overflow: hidden; }
-  .sv-ctl-in { padding: 2px 6px 8px 46px; }
+  .sv-ctl-in { padding: 2px 6px 8px 50px; }
   @container (max-width: 380px) { .sv-ctl-in { padding-inline-start: 6px; } }
   .sv-xline { display: flex; align-items: center; gap: 6px; min-width: 0; }
-  .sv-xline .sv-btn { width: 32px; height: 32px; border-radius: 10px; --mdc-icon-size: 18px; }
+  .sv-xline .sv-btn { width: var(--c-s); height: var(--c-s); border-radius: 11px; --mdc-icon-size: 18px; }
   .sv-xline .sv-seg { flex: 1; }
   .sv-xline.sv-agg { flex-direction: column; align-items: stretch; gap: 2px; padding: 0 6px 6px 48px; }
   .sv-agg-l { display: flex; justify-content: space-between; gap: 10px; padding: 6px 8px; border-radius: 10px; font-size: 12.5px; line-height: 16px; color: var(--secondary-text-color); cursor: pointer; outline: none; }
@@ -3779,7 +3841,7 @@ const ROWS_CSS = `
   .sv-cap { flex: 1; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--secondary-text-color); }
   .sv-pct { flex: none; min-width: 34px; text-align: end; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--secondary-text-color); }
   /* round buttons */
-  .sv-btn { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: var(--well);
+  .sv-btn { flex: none; display: grid; place-items: center; width: var(--c-s); height: var(--c-s); border-radius: 11px; background: var(--well);
     color: var(--primary-text-color); --mdc-icon-size: 19px; }
   .sv-btn ha-icon { display: flex; }
   .sv-btn[data-on] { color: var(--row-c, rgb(var(--accent))); background: color-mix(in oklab, var(--row-c, rgb(var(--accent))) 16%, transparent); }
@@ -3809,19 +3871,19 @@ const ROWS_CSS = `
   .sv-step { flex: none; display: flex; align-items: center; gap: 6px; }
   .sv-step-v { min-width: 52px; text-align: center; font-size: 16px; line-height: 20px; font-weight: 650; letter-spacing: -0.01em; }
   .sv-step[data-compact] { gap: 2px; }
-  .sv-step[data-compact] .sv-btn { width: 28px; height: 28px; border-radius: 9px; --mdc-icon-size: 17px; }
+  .sv-step[data-compact] .sv-btn { --mdc-icon-size: 17px; }
   .sv-step[data-compact] .sv-step-v { min-width: 42px; font-size: 14px; line-height: 18px; }
-  .sv-pillbtn { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 12px; border-radius: 13px; background: var(--well);
+  .sv-pillbtn { flex: none; display: inline-flex; align-items: center; gap: 6px; height: var(--c-l); padding: 0 12px; border-radius: 13px; background: var(--well);
     font-size: 12.5px; font-weight: 600; color: var(--primary-text-color); --mdc-icon-size: 17px; }
   .sv-pillbtn ha-icon { display: flex; }
-  .sv-pillbtn.sv-state { height: 28px; padding: 0 10px; border-radius: 14px; font-size: 12px; max-width: 132px; }
+  .sv-pillbtn.sv-state { height: var(--c-s); padding: 0 10px; border-radius: 16px; font-size: 12px; max-width: 132px; }
   .sv-pillbtn.sv-state span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .sv-pillbtn.sv-state[data-armed] { color: var(--row-c, rgb(var(--accent))); background: color-mix(in oklab, var(--row-c, rgb(var(--accent))) 16%, transparent); }
+  .sv-pillbtn.sv-state[data-armed] { color: var(--row-c, rgb(var(--accent))); background: color-mix(in oklab, var(--row-c, rgb(var(--accent))) var(--mix-on), transparent); }
   /* the top of a popup's list: the sort toggle and the bulk action */
   .sv-tools { display: flex; align-items: center; gap: 8px; }
   .sv-tools .sv-seg { flex: 1; min-width: 0; }
   .sv-tools .sv-seg-b { height: 28px; }
-  .sv-bulk { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 34px; padding: 0 12px; border-radius: 12px; background: var(--well);
+  .sv-bulk { flex: none; display: inline-flex; align-items: center; gap: 5px; height: var(--c-s); padding: 0 12px; border-radius: 11px; background: var(--well);
     font-size: 12.5px; line-height: 16px; font-weight: 650; color: var(--primary-text-color); --mdc-icon-size: 16px; white-space: nowrap; }
   .sv-bulk ha-icon { display: flex; }
   .sv-bulk[disabled] { opacity: 0.4; cursor: default; }
@@ -4234,14 +4296,14 @@ const HEADER_CSS = `
   ha-card { --mode: var(--secondary-text-color); display: flex; flex-direction: column; gap: 12px; padding: var(--pad); overflow: hidden;
     user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
   .top { display: flex; align-items: center; gap: 8px; }
-  .glyph { flex: none; position: relative; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 13px;
+  .glyph { flex: none; position: relative; display: grid; place-items: center; width: var(--c-l); height: var(--c-l); border-radius: 13px;
     background: var(--well); color: var(--secondary-text-color); }
   .glyph ha-icon { --mdc-icon-size: 19px; display: flex; }
-  .glyph[data-alert] { background: color-mix(in oklab, var(--ac) 18%, transparent); color: var(--ac); }
+  .glyph[data-alert] { background: color-mix(in oklab, var(--ac) var(--mix-alert), transparent); color: var(--ac); }
   .count { position: absolute; top: -4px; inset-inline-end: -4px; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box;
     border-radius: 8px; background: var(--ac); color: #fff; font-size: 10.5px; line-height: 16px; font-weight: 700; text-align: center;
     box-shadow: 0 0 0 2px var(--ha-card-background, var(--card-background-color)); }
-  .pill { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: flex-start; gap: 9px; height: 44px; padding: 0 13px; border-radius: 13px;
+  .pill { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: flex-start; gap: 9px; height: var(--c-l); padding: 0 13px; border-radius: 13px;
     background: color-mix(in oklab, var(--mode) 14%, transparent); color: color-mix(in oklab, var(--mode) 72%, var(--primary-text-color));
     font-size: 13.5px; line-height: 17px; font-weight: 600; letter-spacing: -0.008em; }
   .pill ha-icon { --mdc-icon-size: 18px; flex: none; display: flex; }
@@ -4251,7 +4313,7 @@ const HEADER_CSS = `
   .pill .val { font-size: 15px; line-height: 19px; font-weight: 650; letter-spacing: -0.012em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .spacer { flex: 1; }
   /* a readout, not a panel */
-  .wx { flex: none; display: flex; align-items: center; gap: 5px; height: 44px; padding: 0 12px 0 10px; border-radius: 13px;
+  .wx { flex: none; display: flex; align-items: center; gap: 5px; height: var(--c-l); padding: 0 12px 0 10px; border-radius: 13px;
     background: var(--well); color: var(--secondary-text-color); }
   .wx ha-icon, .wx savvy-state-icon { --mdc-icon-size: 19px; display: flex; }
   .wx .deg { font-size: 13.5px; line-height: 17px; font-weight: 650; letter-spacing: -0.012em; color: var(--primary-text-color); }
@@ -4268,9 +4330,9 @@ const CHIP_ROW_CSS = `
      so a state's opacity and the press feedback's never fight over one node. */
   .chip { flex: none; scroll-snap-align: start; padding: 2px 4px; border-radius: 13px; text-align: start; }
   .chip .body { display: flex; align-items: center; gap: 9px; }
-  .chip .disc { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%;
-    background: color-mix(in oklab, var(--tc) 18%, transparent); color: var(--tc); }
-  .chip .disc ha-icon, .chip .disc savvy-state-icon { --mdc-icon-size: 17px; display: flex; }
+  .chip .disc { flex: none; display: grid; place-items: center; width: var(--b-s); height: var(--b-s); border-radius: 50%;
+    background: color-mix(in oklab, var(--tc) var(--mix-on), transparent); color: var(--tc); }
+  .chip .disc ha-icon, .chip .disc savvy-state-icon { --mdc-icon-size: 16px; display: flex; }
   .chip .col { display: flex; flex-direction: column; }
   .chip .v { font-size: 12.5px; line-height: 16px; font-weight: 650; letter-spacing: -0.01em; white-space: nowrap; }
   .chip .k { font-size: 10.5px; line-height: 13px; font-weight: 500; letter-spacing: 0.012em; color: var(--secondary-text-color); white-space: nowrap; }
@@ -4732,12 +4794,17 @@ class SavvyListEditor extends HTMLElement {
 if (!customElements.get("savvy-list-editor")) customElements.define("savvy-list-editor", SavvyListEditor);
 
 // Defines `<type>-editor` for a card from a schema function.
+// the cards with a state they can glow in (the shared option, last in their form)
+const GLOW_CARDS = new Set(["savvy-lights-card", "savvy-climate-card", "savvy-media-card", "savvy-vacuum-card", "savvy-entity-card", "savvy-lock-card",
+  "savvy-room-tile", "savvy-room-activity-card", "savvy-system-health-card"]);
+const GLOW_FIELD = { name: "state_glow", label: "State glow", helper: "A soft glow in the card's corner in what it is doing. Off keeps the card plain.", selector: { boolean: {} }, default: true };
+
 const defineEditor = (type, schemaFn, tidy) => {
   const name = `${type}-editor`;
   if (!customElements.get(name)) {
     customElements.define(name, class extends SavvyEditor {
       get cardType() { return type; }
-      schema(hass, config) { return schemaFn(hass, config); }
+      schema(hass, config) { const s = schemaFn(hass, config); return GLOW_CARDS.has(type) ? [...s, GLOW_FIELD] : s; }
       tidy(config) { return tidy ? tidy(config) : config; }
     });
   }
@@ -4822,7 +4889,7 @@ const badgeSchema = ({ pinnedLabel = "Pinned", pinnedHelp = "Always shown, first
 
 const SETTINGS_TYPE = "custom:savvy-settings-card";
 const SETTINGS_REFRESH_MS = 5 * 60 * 1000;
-const SETTINGS_SECTIONS = ["pages", "house", "health", "ignore", "rooms"];
+const SETTINGS_SECTIONS = ["pages", "house", "health", "ignore", "rooms", "design"];
 
 // ---- the table -------------------------------------------------------------------------
 
@@ -4882,6 +4949,9 @@ const healthRules = (prefix = "") => HEALTH_KEYS.map(([k, label]) => ({ path: `$
 const knownRules = (prefix = "") => ["entities", "devices"].map((k) => ({ path: `${prefix}ignore.${k}`, label: "Known problems", kind: "union", src: "health",
   get: (s) => (Array.isArray(s.health?.ignore) ? s.health.ignore.filter((x) => (k === "entities") === String(x).includes(".")) : s.health?.ignore?.[k]) }));
 
+// the state glow is on unless the settings turn it off for every card
+const glowRule = { path: "state_glow", label: "State glow", get: (s) => (s.design?.state_glow === false ? false : undefined), src: "design" };
+
 const HOME_CHIPS = ["lights", "climate", "media", "security"];
 
 // Each rule fills `path` of the card's config when the card hasn't set it.
@@ -4910,7 +4980,7 @@ const SETTINGS_RULES = {
     ...healthRules("health."),
     ...knownRules("health."),
   ],
-  "savvy-system-health-card": [...healthRules(), ...knownRules()],
+  "savvy-system-health-card": [glowRule, ...healthRules(), ...knownRules()],
   "savvy-room-header-card": [
     { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
     { path: "control", label: "Control", get: room("control") },
@@ -4933,6 +5003,7 @@ const SETTINGS_RULES = {
     { path: "navigation_path", label: "Target page", get: roomPage },
   ],
   "savvy-room-tile": [
+    glowRule,
     { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
     { path: "name", label: "Name", get: room("name") },
     { path: "icon", label: "Icon", get: room("icon") },
@@ -4944,6 +5015,7 @@ const SETTINGS_RULES = {
     { path: "navigation_path", label: "Target page", get: roomPage },
   ],
   "savvy-lights-card": [
+    glowRule,
     { path: "order", label: "Order", get: followOrder("custom:savvy-lights-card") },
     { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
     { path: "toggle", label: "Light helper",
@@ -4954,21 +5026,28 @@ const SETTINGS_RULES = {
       } },
   ],
   "savvy-scene-card": [
+    glowRule,
     { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
   ],
   "savvy-vacuum-card": [
+    glowRule,
     { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
   ],
   "savvy-climate-card": [
+    glowRule,
     { path: "temperature", label: "Temperature", get: room("temperature") },
     { path: "humidity", label: "Humidity", get: room("humidity") },
   ],
   "savvy-room-activity-card": [
+    glowRule,
     { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
     { path: "include", label: "Include", kind: "union", get: room("include") },
     { path: "exclude", label: "Exclude", kind: "union", get: roomExclude },
   ],
+  "savvy-entity-card": [glowRule],
+  "savvy-media-card": [glowRule],
   "savvy-lock-card": [
+    glowRule,
     // with no lock named, the settings' security entity is the lock to show
     { path: "entity", label: "Lock", src: "house",
       get: (s, c) => (c.entity !== undefined || c.entities !== undefined || c.area !== undefined || c.areas !== undefined || domainOf(s.house?.security) !== "lock" ? undefined : s.house.security) },
@@ -5438,7 +5517,7 @@ const MOTION = {
   sheetOut: { response: 0.24, damping: 1 },
 };
 
-const COLORS = { live: "#E06666", alert: "#E06666", detection: "#E8A33D" };
+const COLORS = { live: TONE.bad, alert: TONE.bad, detection: TONE.warn };
 
 const LABEL_ICONS = {
   person: "mdi:account", car: "mdi:car", motorcycle: "mdi:motorbike", bicycle: "mdi:bicycle",
@@ -7404,11 +7483,12 @@ const STYLE = `
   [hidden] { display: none !important; }
   button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0;
     cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; }
-
+  ${GLOW_CSS}
   ha-card {
     --radius: var(--ha-card-border-radius, 18px);
     --pad: 16px;
     --accent: 90 169 224;
+    ${DESIGN_TOKENS}
     --line: color-mix(in oklab, var(--primary-text-color) 9%, transparent);
     --well: color-mix(in oklab, var(--primary-text-color) 6%, transparent);
     position: relative;
@@ -7464,10 +7544,10 @@ const STYLE = `
 
   .power {
     flex: none; display: grid; place-items: center;
-    width: 38px; height: 38px; border-radius: 12px;
+    width: var(--c-l); height: var(--c-l); border-radius: 13px;
     background: var(--well); color: var(--secondary-text-color);
   }
-  .power[data-on] { background: rgb(var(--accent) / 0.16); color: rgb(var(--accent)); }
+  .power[data-on] { background: color-mix(in oklab, rgb(var(--accent)) var(--mix-on), transparent); color: rgb(var(--accent)); }
   .power ha-icon { --mdc-icon-size: 21px; display: flex; }
 
   /* ---- target temperature ---- */
@@ -7482,7 +7562,7 @@ const STYLE = `
     color: rgb(var(--accent) / 0.55); margin: 2px 0 0 2px;
   }
   .steppers { flex: none; display: flex; gap: 8px; padding-bottom: 3px; }
-  .step { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 13px; background: var(--well); }
+  .step { display: grid; place-items: center; width: var(--c-l); height: var(--c-l); border-radius: 13px; background: var(--well); }
   .step ha-icon { --mdc-icon-size: 22px; display: flex; }
   .step[disabled] { opacity: 0.34; cursor: default; }
 
@@ -7615,13 +7695,13 @@ const STYLE = `
   ha-card[data-compact] .status { font-size: 12px; line-height: 16px; }
   ha-card[data-compact] .hero { flex: none; margin: 0; align-items: center; gap: 6px; }
   ha-card[data-compact] .steppers { display: contents; }
-  ha-card[data-compact] .step { order: 1; width: 32px; height: 32px; border-radius: 10px; padding: 0; }
+  ha-card[data-compact] .step { order: 1; width: var(--c-s); height: var(--c-s); border-radius: 11px; padding: 0; }
   ha-card[data-compact] #minus { order: -1; }
   ha-card[data-compact] .step ha-icon { --mdc-icon-size: 19px; }
   ha-card[data-compact] .readout { flex: none; justify-content: center; min-width: 58px; }
   ha-card[data-compact] .value { font-size: 25px; line-height: 1; letter-spacing: -0.022em; }
   ha-card[data-compact] .unit { font-size: 13px; margin: 1px 0 0 1px; }
-  ha-card[data-compact] .power { width: 32px; height: 32px; border-radius: 10px; }
+  ha-card[data-compact] .power { width: var(--c-s); height: var(--c-s); border-radius: 11px; }
   ha-card[data-compact] .power ha-icon { --mdc-icon-size: 18px; }
   ha-card[data-compact] .slider { height: 22px; margin: 9px -2px 0; }
   ha-card[data-compact] .bar, ha-card[data-compact] .ticks { height: 8px; margin-top: -4px; }
@@ -8285,6 +8365,8 @@ class ClimateCard extends HTMLElement {
     this._el.card.toggleAttribute("data-dead", dead);
     const accent = on ? toRgb(HVAC[st.state]?.color || "#5AA9E0") : toRgb("#9AA0A6");
     put(el.card, "--accent", accent.map(Math.round).join(" "));
+    // the glow: the mode's colour, fuller while it is actually heating or cooling
+    stateGlow(c, el.card, on ? accent : null, ["heating", "cooling", "drying", "fan"].includes(a.hvac_action) ? 0.85 : 0.45);
 
     text(el.name, c.name || a.friendly_name || title(c.entity.split(".")[1]));
     el.power.hidden = this._compact && this._modes.some((m) => m === "off");
@@ -8516,7 +8598,7 @@ class ClimateCard extends HTMLElement {
       items.push({
         key: "timer", entity: timer.cfg.entity, state: timer.st,
         icon: timer.cfg.icon || (timer.running ? "mdi:timer" : "mdi:timer-outline"),
-        color: timer.cfg.color || "#E8A33D",
+        color: timer.cfg.color || TONE.warn,
         label: timer.label, on: timer.running,
         tap: () => this._bumpTimer(timer), hold: () => this._moreInfo(timer.cfg.entity),
       });
@@ -9094,8 +9176,7 @@ const STYLE = `${BASE_CSS}
     border-radius: 14px; margin: -4px; padding: 4px; cursor: pointer; transform-origin: 30% 50%; }
   .av { position: relative; flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--well);
     --mdc-icon-size: 22px; color: color-mix(in oklab, var(--main-c, var(--primary-text-color)) calc(var(--on) * 100%), var(--secondary-text-color)); }
-  .av[data-kind="icon"] { border-radius: 14px; background: color-mix(in oklab, var(--main-c, var(--primary-text-color)) calc(6% + var(--on) * 10%), transparent); }
-  @supports (corner-shape: squircle) { .av[data-kind="icon"] { corner-shape: squircle; border-radius: 22px; } }
+  .av[data-kind="icon"] { background: color-mix(in oklab, var(--main-c, var(--primary-text-color)) calc(6% + var(--on) * 10%), transparent); }
   .av img { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; object-fit: cover;
     filter: grayscale(calc(var(--away) * 0.85)); opacity: calc(1 - var(--away) * 0.35); }
   .av .ini { font-size: 14px; line-height: 1; font-weight: 650; letter-spacing: -0.01em; transform: translate(-2px, -2px);
@@ -9312,6 +9393,9 @@ class SavvyEntityCard extends SavvyCard {
     text(el.st, word);
     el.st.hidden = c.show_state === false && !fired;
     this._mainOn.to(active ? 1 : 0, MOTION.ui);
+    // the glow: its colour while it is on, nothing otherwise (people at home, a switch on, a sensor reading on)
+    const mainCss = c.color ? colorOf(c.color) : "";
+    stateGlow(c, el.card, active && !person ? toRgb(mainCss && !mainCss.startsWith("var(") ? mainCss : "#588EE9") : null, 0.8);
     this._mainAway.to(away, MOTION.ui);
     el.main.__st = st;
     this._mainWord = word;
@@ -10124,7 +10208,7 @@ const ROW_CSS = `
 const STYLE = `${BASE_CSS}${HEADER_CSS}${CHIP_ROW_CSS}${ROW_CSS}`;
 
 // The four chips: how each counts, and its look.
-const ALERT_COLOR = "#E06666";
+const ALERT_COLOR = TONE.bad;
 const AUTO = {
   lights: { name: "Lights", icon: "mdi:lightbulb", color: "#F5B83D", domain: "light" },
   climate: { name: "Climate", icon: "mdi:fan", color: "#7FC4E8", domain: ["climate", "sensor"] },
@@ -10519,11 +10603,13 @@ const STYLE = `
 [hidden] { display: none !important; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0;
   cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; }
+${GLOW_CSS}
 
 ha-card {
   --radius: var(--ha-card-border-radius, 18px);
   --pad: 14px;
   --amber: 245 184 61;
+  ${DESIGN_TOKENS}
   --well: color-mix(in oklab, var(--primary-text-color) 6%, transparent);
   --line: color-mix(in oklab, var(--primary-text-color) 9%, transparent);
   position: relative;
@@ -10595,11 +10681,11 @@ header { display: flex; align-items: center; gap: 10px; min-width: 0; }
 }
 .head { position: relative; display: flex; align-items: center; gap: 10px; min-width: 0; }
 .orb {
-  flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 12px;
-  background: color-mix(in oklab, var(--primary-text-color) 8%, transparent);
+  flex: none; display: grid; place-items: center; width: var(--b-m); height: var(--b-m); border-radius: 50%;
+  background: var(--well);
   color: var(--secondary-text-color);
 }
-.orb[data-on] { background: rgb(var(--lc, var(--amber)) / 0.22); color: rgb(var(--lc, var(--amber))); }
+.orb[data-on] { background: color-mix(in oklab, rgb(var(--lc, var(--amber))) var(--mix-on), transparent); color: rgb(var(--lc, var(--amber))); }
 .orb ha-icon, .orb savvy-state-icon { --mdc-icon-size: 20px; display: flex; }
 .meta { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .meta .n { font-size: 13.5px; line-height: 17px; font-weight: 600; letter-spacing: -0.01em;
@@ -10607,8 +10693,8 @@ header { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .meta .d { font-size: 11.5px; line-height: 15px; font-weight: 500; color: var(--secondary-text-color);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .swatch {
-  flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px;
-  background: color-mix(in oklab, var(--primary-text-color) 8%, transparent);
+  flex: none; display: grid; place-items: center; width: var(--c-s); height: var(--c-s); border-radius: 11px;
+  background: var(--well);
 }
 .swatch i {
   width: 16px; height: 16px; border-radius: 50%;
@@ -10617,17 +10703,17 @@ header { display: flex; align-items: center; gap: 10px; min-width: 0; }
 }
 
 .power {
-  flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px;
-  background: color-mix(in oklab, var(--primary-text-color) 8%, transparent);
+  flex: none; display: grid; place-items: center; width: var(--c-s); height: var(--c-s); border-radius: 11px;
+  background: var(--well);
   color: var(--secondary-text-color);
 }
-.power[data-on] { background: rgb(var(--lc, var(--amber)) / 0.22); color: rgb(var(--lc, var(--amber))); }
+.power[data-on] { background: color-mix(in oklab, rgb(var(--lc, var(--amber))) var(--mix-on), transparent); color: rgb(var(--lc, var(--amber))); }
 .power ha-icon { --mdc-icon-size: 18px; display: flex; }
 
 /* ---- compact: the light, its name and its state, and nothing else ---- */
 ha-card[data-compact] .light { padding: 8px 10px; border-radius: 13px; }
-ha-card[data-compact] .orb { width: 32px; height: 32px; border-radius: 10px; }
-ha-card[data-compact] .orb ha-icon, ha-card[data-compact] .orb savvy-state-icon { --mdc-icon-size: 18px; }
+ha-card[data-compact] .orb { width: var(--b-s); height: var(--b-s); }
+ha-card[data-compact] .orb ha-icon, ha-card[data-compact] .orb savvy-state-icon { --mdc-icon-size: 16px; }
 ha-card[data-compact] .meta .n { font-size: 13px; line-height: 16px; }
 ha-card[data-compact] .meta .d { font-size: 11px; line-height: 14px; }
 ha-card[data-compact] .grid { gap: 6px; }
@@ -11350,6 +11436,10 @@ class LightsCard extends HTMLElement {
     const master = c.toggle.entity && h.states[c.toggle.entity];
     const lit = master ? master.state === "on" : on > 0;
     attr(el.master, "data-on", lit ? "" : null);
+    // the corner glow: the colour of the first light that is on, stronger the more of the room is lit
+    const litIds = ids.filter((id) => this._isOn(id));
+    const glowRgb = lit || litIds.length ? (litIds.map((id) => this._lightRgb(h.states[id])).find(Boolean) || [245, 184, 61]) : null;
+    stateGlow(c, el.card, glowRgb, ids.length ? 0.55 + 0.45 * (litIds.length / ids.length) : 0.55);
     // the pill says what the room's lights ARE doing, not what tapping it would do
     text(el.masterText, c.toggle.name || (lit ? "Lights on" : "Lights off"));
     attr(el.masterIcon, "icon", c.toggle.icon || (lit ? "mdi:toggle-switch" : "mdi:toggle-switch-off"));
@@ -11680,13 +11770,11 @@ const LOCK_CAM_MS = 8000;
 const LOCK_DOOR_CLASSES = ["door", "garage_door", "opening", "window"];
 const lockTone = (t) => (t <= 1 ? mixRgb(LOCK_COLORS[0], LOCK_COLORS[1], clamp(t)) : mixRgb(LOCK_COLORS[1], LOCK_COLORS[2], clamp(t - 1)));
 const LOCK_TONE_WORD = ["rgb(76 175 80)", "rgb(232 163 61)", "rgb(224 102 102)"];
-const LOCK_AMBER = "232 163 61", LOCK_RED = "224 102 102";
+const LOCK_AMBER = "var(--warn-rgb)", LOCK_RED = "var(--bad-rgb)";
 
 const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_SLIDE_CSS}
-  ha-card { --pad: 16px; --lk: 76 175 80; --wash: 0; --pulse: 0; position: relative; display: flex; flex-direction: column; gap: 12px; padding: var(--pad); overflow: hidden; }
+  ha-card { --pad: 16px; --lk: 76 175 80; --pulse: 0; position: relative; display: flex; flex-direction: column; gap: 12px; padding: var(--pad); overflow: hidden; }
   :host([data-compact]) ha-card { --pad: 12px; gap: 8px; }
-  ha-card::before { content: ""; position: absolute; inset: 0; pointer-events: none;
-    background: radial-gradient(140% 110% at 0% 0%, rgb(var(--lk) / calc(var(--wash) + var(--pulse) * 0.05)), transparent 68%); }
   ha-card > * { position: relative; }
   .head { display: flex; align-items: center; gap: 10px; min-height: 30px; }
   .head .t { flex: 1; min-width: 0; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -11700,13 +11788,13 @@ const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_SLIDE_CSS}
   .lk { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
   .top { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 4px 8px 4px 4px; border-radius: 32px; }
   .who { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; text-align: start; border-radius: 12px; cursor: pointer; }
-  .disc { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; color: var(--tone); background: color-mix(in oklab, var(--tone) 18%, transparent); --mdc-icon-size: 21px; }
+  .disc { flex: none; display: grid; place-items: center; width: var(--b-m); height: var(--b-m); border-radius: 50%; color: var(--tone); background: color-mix(in oklab, var(--tone) var(--mix-on), transparent); --mdc-icon-size: 20px; }
   .disc > .dicon { display: flex; align-items: center; justify-content: center; line-height: 0; }
   .disc > .dicon > * { display: flex; }
   .col { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 5px; }
   .nm { grid-column: 1 / -1; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .st { font-size: 13px; line-height: 17px; font-weight: 600; color: var(--tone); white-space: nowrap; }
-  :host([data-solo]) .disc { width: 42px; height: 42px; --mdc-icon-size: 23px; }
+  :host([data-solo]) .disc { width: var(--b-l); height: var(--b-l); --mdc-icon-size: 22px; }
   .sub { font-size: 13px; line-height: 17px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sub:not(:empty)::before { content: "\\00b7\\00a0"; }
   .sub:empty { display: none; }
@@ -11724,7 +11812,7 @@ const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_SLIDE_CSS}
   /* compact: one row, the handle at its start */
   :host([data-compact]) .locks { gap: 8px; }
   :host([data-compact]) .top { padding: 3px 8px 3px 3px; border-radius: 26px; }
-  :host([data-compact]) .disc { width: 34px; height: 34px; --mdc-icon-size: 19px; }
+  :host([data-compact]) .disc { width: var(--b-m); height: var(--b-m); --mdc-icon-size: 20px; }
   :host([data-compact]) .nm { font-size: 14px; line-height: 18px; }
   :host([data-compact]) .sub { display: none; }
   :host([data-compact]) .col { grid-template-columns: minmax(0, 1fr); }
@@ -12248,7 +12336,9 @@ class SavvyLockCard extends SavvyCard {
     const t = clamp(this._tint.x, 0, 2);
     const c = lockTone(t);
     put(this._el.card, "--lk", c.join(" "));
-    put(this._el.card, "--wash", (0.06 * t).toFixed(3)); // calm: none; amber and red only a breath
+    // the corner glow, in the lock's tone: a soft green while it is locked, fuller as it turns amber and red
+    put(this._el.card, "--glow-rgb", c.join(" "));
+    put(this._el.card, "--glow", this._config.state_glow === false ? "0" : (0.5 + 0.25 * t).toFixed(3));
   }
 }
 
@@ -12367,16 +12457,16 @@ const STYLE = `${BASE_CSS}
   /* a narrow row keeps play and power; the stage still has the full transport */
   @container (max-width: 330px) { .row .tb[data-k="prev"], .row .tb[data-k="next"] { display: none; } .vol[data-steps] .pct { display: none; } }
   .row { display: flex; align-items: center; gap: 10px; min-width: 0; }
-  .row .icon { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; background: var(--well); color: var(--secondary-text-color); }
-  .row .icon[data-live] { background: rgb(var(--accent) / 0.16); color: rgb(var(--accent)); }
+  .row .icon { flex: none; display: grid; place-items: center; width: var(--b-m); height: var(--b-m); border-radius: 50%; background: var(--well); color: var(--secondary-text-color); }
+  .row .icon[data-live] { background: color-mix(in oklab, rgb(var(--accent)) var(--mix-on), transparent); color: rgb(var(--accent)); }
   .row .icon ha-icon { --mdc-icon-size: 19px; display: flex; }
   .row .meta { flex: 1; min-width: 0; }
   .row .n { display: block; font-size: 13.5px; line-height: 17px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .row .d { display: block; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .transport { flex: none; display: flex; align-items: center; gap: 4px; }
-  .tb { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; color: var(--secondary-text-color); }
+  .tb { display: grid; place-items: center; width: var(--c-s); height: var(--c-s); border-radius: 11px; color: var(--secondary-text-color); }
   .tb.solid { background: var(--well); color: var(--primary-text-color); }
-  .tb[data-on] { background: rgb(var(--accent) / 0.18); color: rgb(var(--accent)); }
+  .tb[data-on] { background: color-mix(in oklab, rgb(var(--accent)) var(--mix-on), transparent); color: rgb(var(--accent)); }
   .tb[disabled] { opacity: 0.3; cursor: default; }
   .tb ha-icon { --mdc-icon-size: 20px; display: flex; }
   .vol { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
@@ -12403,7 +12493,7 @@ const STYLE = `${BASE_CSS}
   ha-card[data-compact] .body { padding: 12px; gap: 8px; }
   ha-card[data-compact] .band + .band { padding-top: 0; border-top: 0; }
   ha-card[data-compact] .row { gap: 11px; }
-  ha-card[data-compact] .row .icon { width: 46px; height: 46px; border-radius: 12px; overflow: hidden; padding: 0; }
+  ha-card[data-compact] .row .icon { width: var(--b-l); height: var(--b-l); overflow: hidden; padding: 0; }
   ha-card[data-compact] .row .icon ha-icon { --mdc-icon-size: 22px; }
   ha-card[data-compact] .thumb { width: 100%; height: 100%; object-fit: cover; display: block; border: 0; }
   ha-card[data-compact] .row .n { font-size: 14px; line-height: 18px; }
@@ -12817,6 +12907,10 @@ class SavvyMediaCard extends SavvyCard {
     put(el.stage, "--art-max", cap ? (typeof cap === "number" ? `${cap}px` : String(cap)) : "none");
     this.toggleAttribute("dark", !!h.themes?.darkMode);
     if (c.accent) put(el.card, "--accent", this._rgb(c.accent));
+    // the glow: the accent while anything is playing, quieter while a player is only on
+    const mine = [...c.video, ...c.audio];
+    const playing = mine.some((m) => ACTIVE.has(h.states[m.entity]?.state)), awake = mine.some((m) => this._isOn(m));
+    stateGlow(c, el.card, playing || awake ? getComputedStyle(el.card).getPropertyValue("--accent").trim().split(/\s+/).map(Number) : null, playing ? 1 : 0.45);
     text(el.title, c.name || (c.area ? areaInfo(h, c.area).name : "Media"));
     this._sources();
     if (!this._compact) this._stage();      // decides what the stage owns, so rows can defer
@@ -13294,7 +13388,7 @@ const SNAP_SCRUB_SLOP = 6;
 const SNAP_SCRUB_DWELL = 140;
 const SNAP_PX = 10;          // a scrub this close to a change lands on it
 const HIST_POLL_MS = 300000;
-const SNAP_COLORS = { warn: "#E8A33D", alert: "#E06666", leak: "#5FA8E0" };
+const SNAP_COLORS = { warn: TONE.warn, alert: TONE.bad, leak: "#5FA8E0" };
 
 // Reading order. kind decides where a sensor renders; single keeps the best match only
 // (dc order is the preference), since two temperatures for one room reads as noise.
@@ -13329,14 +13423,14 @@ const STYLE = `${BASE_CSS}
   :host([compact]) ha-card { --pad: 12px; gap: 0; }
   /* the alert wash (steady) and glow (bloom), both springs, never transitions */
   .wash, .glow { position: absolute; inset: 0; pointer-events: none; z-index: -1; opacity: 0; border-radius: inherit; }
-  .wash { background: color-mix(in oklab, var(--alert-hue, var(--alert-c)) 9%, transparent); box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--alert-hue, var(--alert-c)) 55%, transparent); }
+  .wash { background: radial-gradient(140% 110% at 0% 0%, color-mix(in oklab, var(--alert-hue, var(--alert-c)) 14%, transparent), transparent 68%); }
   .glow { background: radial-gradient(120% 90% at 50% 0%, color-mix(in oklab, var(--alert-hue, var(--alert-c)) 38%, transparent), transparent 70%); }
   :host([dark]) .glow { mix-blend-mode: plus-lighter; }
 
   .head { display: flex; align-items: center; gap: 10px; min-width: 0; }
   .name { display: flex; align-items: center; gap: 9px; min-width: 0; flex: 1; border-radius: 12px; margin: -4px 0; padding: 4px 0; transform-origin: 0 50%; }
   .name[role="button"] { cursor: pointer; }
-  .roomIcon { flex: none; width: 32px; height: 32px; border-radius: 11px; display: grid; place-items: center; background: var(--well); --mdc-icon-size: 18px; color: var(--primary-text-color); }
+  .roomIcon { flex: none; width: var(--b-m); height: var(--b-m); border-radius: 50%; display: grid; place-items: center; background: var(--well); --mdc-icon-size: 18px; color: var(--primary-text-color); }
   .names { display: flex; flex-direction: column; min-width: 0; }
   .title { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; overflow-wrap: anywhere; }
   .status { font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: -0.003em; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -13355,7 +13449,7 @@ const STYLE = `${BASE_CSS}
   .ev { --on: 0; --warn: 0; --hue: color-mix(in oklab, var(--warn-c) calc(var(--warn) * 100%), var(--primary-text-color));
     position: relative; box-sizing: border-box; min-width: 0; display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 10px; align-items: center;
     padding: 10px 12px 10px 10px; border-radius: 14px; background: color-mix(in oklab, var(--hue) calc(6% + var(--warn) * 8%), transparent); cursor: pointer; transform-origin: 50% 50%; }
-  .ev .disc { grid-row: span 2; width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; --mdc-icon-size: 19px;
+  .ev .disc { grid-row: span 2; width: var(--b-m); height: var(--b-m); border-radius: 50%; display: grid; place-items: center; --mdc-icon-size: 19px;
     background: color-mix(in oklab, var(--hue) calc(var(--on) * 16%), transparent); color: color-mix(in oklab, var(--hue) calc(var(--on) * 100%), var(--secondary-text-color)); }
   .ev .l2 { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
   .ev .st { font-size: 14px; line-height: 17px; font-weight: 650; letter-spacing: -0.012em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -14632,7 +14726,7 @@ class SavvyRoomActivityCard extends SavvyCard {
     }
     if (all || dirty.has("alert")) {
       const a = clamp(this._alert.x), g = clamp(this._glow.x);
-      put(el.wash, "opacity", a < 1e-3 ? "0" : a.toFixed(3));
+      put(el.wash, "opacity", a < 1e-3 || this._config.state_glow === false ? "0" : a.toFixed(3));
       put(el.glow, "opacity", g < 1e-3 ? "0" : (g * 0.9).toFixed(3));
     }
   }
@@ -14889,8 +14983,8 @@ const STYLE = `${BASE_CSS}
     border-radius: 13px; cursor: pointer; transform-origin: 50% 50%;
     background: color-mix(in oklab, var(--tc) calc(7% + var(--on) * 17%), transparent);
     color: color-mix(in oklab, var(--primary-text-color) calc(78% + var(--on) * 22%), transparent); }
-  .tile .ic { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; --mdc-icon-size: 17px;
-    background: color-mix(in oklab, var(--tc) calc(13% + var(--on) * 22%), transparent); color: var(--tc); }
+  .tile .ic { flex: none; display: grid; place-items: center; width: var(--b-s); height: var(--b-s); border-radius: 50%; --mdc-icon-size: 16px;
+    background: color-mix(in oklab, var(--tc) calc(6% + var(--on) * 10%), transparent); color: var(--tc); }
   .tile .ic > * { display: flex; align-items: center; justify-content: center; width: var(--mdc-icon-size); height: var(--mdc-icon-size); line-height: 0; }
   .tile .nm { min-width: 0; font-size: 13px; line-height: 17px; font-weight: 600; letter-spacing: -0.008em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tile[data-off] { opacity: 0.5; }
@@ -14900,8 +14994,8 @@ const STYLE = `${BASE_CSS}
   .grid[data-compact] { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; touch-action: pan-x pan-y; padding: 3px; margin: -3px; }
   .grid[data-compact]::-webkit-scrollbar { display: none; }
   .grid[data-compact][data-overflow] { mask-image: linear-gradient(to left, transparent 0, #000 26px); -webkit-mask-image: linear-gradient(to left, transparent 0, #000 26px); }
-  .grid[data-compact] .tile { flex: none; height: 34px; padding: 0 12px 0 5px; border-radius: 11px; gap: 7px; }
-  .grid[data-compact] .tile .ic { width: 24px; height: 24px; --mdc-icon-size: 15px; }
+  .grid[data-compact] .tile { flex: none; height: 34px; padding: 0 12px 0 3px; border-radius: 11px; gap: 7px; }
+  .grid[data-compact] .tile .ic { --mdc-icon-size: 15px; }
   .grid[data-compact][data-noicon] .tile { padding-left: 12px; }
   .grid[data-compact] .tile .nm { font-size: 12.5px; }
 
@@ -15504,12 +15598,12 @@ registerCard("savvy-section-title-card", SavvySectionTitleCard, "Section title",
 const STYLE = `${BASE_CSS}
   ha-card { display: flex; align-items: center; gap: 12px; padding: var(--pad); }
   :host([compact]) ha-card { padding: 10px 14px; gap: 10px; }
-  .disc { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px;
+  .disc { flex: none; display: grid; place-items: center; width: var(--b-m); height: var(--b-m); border-radius: 50%;
     background: var(--well); color: var(--secondary-text-color); }
-  :host([compact]) .disc { width: 28px; height: 28px; border-radius: 9px; }
+  :host([compact]) .disc { width: var(--b-s); height: var(--b-s); }
   .disc ha-icon { --mdc-icon-size: 20px; display: flex; }
   :host([compact]) .disc ha-icon { --mdc-icon-size: 16px; }
-  .disc[data-warn] { background: color-mix(in oklab, var(--lvl-warn, #E0A030) 18%, transparent); color: var(--lvl-warn, #E0A030); }
+  .disc[data-warn] { background: color-mix(in oklab, var(--lvl-warn) var(--mix-alert), transparent); color: var(--lvl-warn); }
   .col { min-width: 0; display: flex; flex-direction: column; }
   .name { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sub { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); overflow-wrap: anywhere; }
@@ -15687,6 +15781,9 @@ class SettingsEditor extends SavvyEditor {
         { name: "entities", label: "Ignored entities", helper: "Left out of the home header's counts and popups, and out of what room headers, section titles, room tiles, room activity, locks, lights, scenes and vacuums find by themselves. A card that names an entity still shows it.", selector: { entity: { multiple: true } } },
         { name: "areas", label: "Ignored rooms", selector: { area: { multiple: true } } },
       ] },
+      { type: "expandable", name: "design", title: "Design", schema: [
+        S.bool("state_glow", "State glow", "A soft glow in a corner of a card in what it is doing: a lit light, a locked door, music playing. Off here turns it off on every card; a card can still set its own.", true),
+      ] },
       { name: "aggregate", label: "Aggregate sensors", helper: "Show a room's sensors of these kinds once: occupied if any one is. Sensors on your ignore list are left out. In YAML, true means presence.",
     selector: { select: { multiple: true, options: [{ value: "presence", label: "Presence and motion" }, { value: "door", label: "Doors" }, { value: "window", label: "Windows" },
       { value: "leak", label: "Leaks" }, { value: "smoke", label: "Smoke" }, { value: "gas", label: "Gas" }] } } },
@@ -15785,9 +15882,9 @@ const STYLE = `${BASE_CSS}
   .row[role="button"] { cursor: pointer; }
   .row[data-group-start] { border-top: 1px solid var(--line); margin-top: 2px; padding-top: 5px; }
   .row[data-dim] { opacity: 0.55; }
-  .row .disc { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--well); color: var(--secondary-text-color); }
+  .row .disc { flex: none; display: grid; place-items: center; width: var(--b-s); height: var(--b-s); border-radius: 50%; background: var(--well); color: var(--secondary-text-color); }
   .row .disc ha-icon { --mdc-icon-size: 15px; display: flex; }
-  .row[data-alert] .disc { background: color-mix(in oklab, var(--lvl-bad) 18%, transparent); color: var(--lvl-bad); }
+  .row[data-alert] .disc { background: color-mix(in oklab, var(--lvl-bad) var(--mix-alert), transparent); color: var(--lvl-bad); }
   .row .col { min-width: 0; flex: 1; display: flex; flex-direction: column; }
   .row .n { font-size: 12.5px; line-height: 16px; font-weight: 600; letter-spacing: -0.006em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .row .s { font-size: 10.5px; line-height: 13px; font-weight: 500; letter-spacing: 0.006em; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -15800,7 +15897,7 @@ const STYLE = `${BASE_CSS}
   .report ha-icon { --mdc-icon-size: 14px; display: flex; transform-origin: 50% 50%; }
   .report[hidden] { display: none; }
   .report[data-flash] { background: color-mix(in oklab, var(--lvl-good) 18%, transparent); color: var(--lvl-good); }
-  .row[data-soft] .disc { background: color-mix(in oklab, var(--lvl-warn) 20%, transparent); color: var(--lvl-warn); }
+  .row[data-soft] .disc { background: color-mix(in oklab, var(--lvl-warn) var(--mix-alert), transparent); color: var(--lvl-warn); }
   .row .chev { flex: none; display: flex; --mdc-icon-size: 18px; color: var(--secondary-text-color); transform-origin: 50% 50%; }
   .facts { flex: none; margin: -1px 4px 3px; font-size: 11.5px; line-height: 15px; font-weight: 500; color: var(--secondary-text-color);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -16126,6 +16223,8 @@ class SavvySystemHealthCard extends HTMLElement {
     const label = SOURCES[c.source];
     const lvl = total === 0 ? "var(--lvl-good)" : total < c.warn_above ? "var(--lvl-warn)" : "var(--lvl-bad)";
     Motion.tintVar(this._el.card, "--lvl", lvl);
+    // the corner glow: amber while a few things need a look, red when it is a lot; nothing when all is well
+    stateGlow(c, this._el.card, total === 0 ? null : total < c.warn_above ? [232, 163, 61] : [224, 102, 102], 0.8);
     text(this._el.pill, total === 0 ? "All good" : `${total} ${total === 1 ? label.noun : label.nouns}`);
     attr(this._el.card, "aria-label", `${c.title || label.title}, ${total === 0 ? "all good" : `${total} ${label.nouns}`}`);
     this._renderRows(sections);
@@ -16430,22 +16529,6 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const smooth = (v) => { v = clamp(v); return v * v * (3 - 2 * v); };
 const scaleBy = (x, depth) => (Math.abs(x) < 1e-4 ? "" : `scale(${(1 - depth * x).toFixed(4)})`);
 
-let paint2d;
-const toRgb = (css) => {
-  const hex = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(css).trim());
-  if (hex) {
-    const h = hex[1].length === 3 ? hex[1].replace(/./g, "$&$&") : hex[1];
-    const n = parseInt(h, 16);
-    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-  }
-  paint2d = paint2d || document.createElement("canvas").getContext("2d");
-  paint2d.fillStyle = "#000";
-  paint2d.fillStyle = css;
-  const out = paint2d.fillStyle;
-  if (out[0] === "#") return toRgb(out);
-  const n = out.match(/[\d.]+/g);
-  return n ? n.slice(0, 3).map(Number) : [245, 184, 61];
-};
 // Pull a bulb colour into a band that reads as light on both themes; near-white isn't a
 // colour choice, so it returns null and the card's tint wins.
 const legible = ([r, g, b]) => {
@@ -16463,7 +16546,7 @@ const legible = ([r, g, b]) => {
 };
 
 const STYLE = `${BASE_CSS}
-  ha-card { --well: 42px; --gap: 12px; --chip: 28px; --tint: 245 184 61;
+  ha-card { --well-size: var(--b-l); --gap: 12px; --chip: var(--b-s); --tint: 245 184 61;
     display: flex; flex-direction: column; gap: 4px; padding: var(--pad); overflow: hidden; cursor: pointer;
     user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation; outline: none; }
   :host([dark]) ha-card::after { z-index: 2; }
@@ -16471,12 +16554,12 @@ const STYLE = `${BASE_CSS}
   :host([kbd]) ha-card:focus-visible { outline: 2px solid rgb(var(--tint)); outline-offset: 2px; }
 
   /* light spilling from the drop into the card; only ever seen when a switch happens */
-  .spill { position: absolute; z-index: 0; inset-inline-start: calc(var(--pad) + var(--well) / 2); top: calc(var(--pad) + var(--well) / 2);
+  .spill { position: absolute; z-index: 0; inset-inline-start: calc(var(--pad) + var(--well-size) / 2); top: calc(var(--pad) + var(--well-size) / 2);
     width: 320px; height: 320px; margin: -160px 0 0 -160px; border-radius: 50%; pointer-events: none; opacity: 0;
     background: radial-gradient(closest-side, rgb(var(--tint) / 0.9), rgb(var(--tint) / 0.42) 13%, rgb(var(--tint) / 0.16) 30%, rgb(var(--tint) / 0.05) 54%, rgb(var(--tint) / 0)); }
   :host([dark]) .spill { mix-blend-mode: plus-lighter; }
   .top { position: relative; z-index: 1; display: flex; align-items: center; gap: var(--gap); min-width: 0; }
-  .well { position: relative; flex: none; width: var(--well); height: var(--well); display: grid; place-items: center; }
+  .well { position: relative; flex: none; width: var(--well-size); height: var(--well-size); display: grid; place-items: center; }
   .well > svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
   :host([dark]) .well > svg { mix-blend-mode: plus-lighter; }
   .well ha-icon { --mdc-icon-size: 22px; position: relative; display: flex; color: var(--icon, var(--secondary-text-color)); }
@@ -16496,7 +16579,7 @@ const STYLE = `${BASE_CSS}
   /* breathing room so halos aren't cut off */
   .badges { position: relative; z-index: 1; display: flex; align-items: center; height: var(--chip); padding: 8px; margin: -8px; margin-inline-start: -13px; overflow: hidden; }
   .badges[data-overflow] { -webkit-mask-image: linear-gradient(to left, transparent 8px, #000 40px); mask-image: linear-gradient(to left, transparent 8px, #000 40px); }
-  @container (min-width: 300px) { .badges { padding-inline-start: calc(8px + var(--well) + var(--gap)); } }
+  @container (min-width: 300px) { .badges { padding-inline-start: calc(8px + var(--well-size) + var(--gap)); } }
   .badge { position: relative; flex: none; width: 0; height: var(--chip); outline: none; }
   .chip { position: absolute; top: 0; inset-inline-start: 0; width: var(--chip); height: var(--chip); border-radius: 50%;
     display: grid; place-items: center; color: var(--secondary-text-color); opacity: 0; }
@@ -16947,6 +17030,9 @@ class SavvyRoomTile extends SavvyCard {
     const I = clamp(sp.intensity.x), lit = smooth(I / 0.2);
     const tint = [sp.r.x, sp.g.x, sp.b.x].map((v) => Math.round(clamp(v, 0, 255)));
     put(e.card, "--tint", tint.join(" "));
+    // the card's corner glow follows the drop: its colour, its brightness (the shared state glow, off with state_glow: false)
+    put(e.card, "--glow-rgb", tint.join(" "));
+    put(e.card, "--glow", this._config.state_glow === false ? "0" : (I * 0.85).toFixed(3));
     // material: neutral still water when dark, tinted light when lit
     const mix = tint.map((v) => Math.round(lerp(127, v, lit))).join(" ");
     attr(e.core, "stop-color", `rgb(${mix})`);
@@ -17036,7 +17122,7 @@ const MOTION = {
   sheetOut: { response: 0.24, damping: 1 },
 };
 
-const COLORS = { accent: "#5BA3D9", warn: "#E8A33D", alert: "#E06666", good: "#4CAF50" };
+const COLORS = { accent: "#5BA3D9", warn: TONE.warn, alert: TONE.bad, good: TONE.good };
 
 // ---------- what the device's entities mean (translation_key, or the id suffix) ----------
 const ONE = {
@@ -17154,6 +17240,7 @@ const STYLE = `
 }
 [hidden] { display: none !important; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; }
+${GLOW_CSS}
 
 ha-card {
   --radius: var(--ha-card-border-radius, 18px);
@@ -17164,6 +17251,7 @@ ha-card {
   --warn-c: ${COLORS.warn};
   --alert-c: ${COLORS.alert};
   --accent: 91 163 217;
+  ${DESIGN_TOKENS}
   position: relative; box-sizing: border-box;
   display: flex; flex-direction: column; gap: 12px;
   padding: var(--pad);
@@ -17328,7 +17416,7 @@ ha-icon, savvy-state-icon { display: flex; align-items: center; justify-content:
   display: flex; align-items: center; gap: 9px; padding: 9px 10px; border-radius: 13px; background: var(--well); text-align: start;
   min-width: 0; --mdc-icon-size: 18px; transform-origin: 50% 50%;
 }
-.tile > ha-icon { flex: none; width: 30px; height: 30px; border-radius: 10px; background: color-mix(in oklab, var(--primary-text-color) 7%, transparent); color: var(--secondary-text-color); }
+.tile > ha-icon { flex: none; width: var(--b-s); height: var(--b-s); border-radius: 50%; background: var(--well); color: var(--secondary-text-color); }
 .tile .tt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .tile .tc { font-size: 11px; line-height: 13px; font-weight: 550; color: var(--secondary-text-color); }
 .tile .tv { font-size: 13px; line-height: 17px; font-weight: 650; letter-spacing: -0.008em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -17996,6 +18084,9 @@ class VacuumCard extends HTMLElement {
     el.bolt.hidden = !charging;
     this._ringS.to(Number.isFinite(batt) ? clamp(batt / 100) : 0, MOTION.ring);
     this._actS.to(cleaning || act === "returning" ? 1 : 0, MOTION.ui);
+    // the glow: red for a problem, amber for a warning, the accent while it works; nothing when it rests
+    const glowLevel = worst && !this._expect ? worst.level : null;
+    stateGlow(c, el.card, glowLevel === "alert" ? [224, 102, 102] : glowLevel === "warn" ? [232, 163, 61] : cleaning || act === "returning" ? [91, 163, 217] : null, glowLevel ? 0.9 : 0.7);
     attr(el.ring, "aria-label", `${el.name.textContent}, battery ${Number.isFinite(batt) ? Math.round(batt) + "%" : "unknown"}`);
     attr(el.who, "aria-label", `${el.name.textContent}, ${s1}${s2 ? `, ${s2}` : ""}`);
 

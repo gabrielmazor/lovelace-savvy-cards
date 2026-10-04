@@ -37,8 +37,8 @@ const STYLE = `${BASE_CSS}
     border-radius: 13px; cursor: pointer; transform-origin: 50% 50%;
     background: color-mix(in oklab, var(--tc) calc(7% + var(--on) * 17%), transparent);
     color: color-mix(in oklab, var(--primary-text-color) calc(78% + var(--on) * 22%), transparent); }
-  .tile .ic { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; --mdc-icon-size: 17px;
-    background: color-mix(in oklab, var(--tc) calc(13% + var(--on) * 22%), transparent); color: var(--tc); }
+  .tile .ic { flex: none; display: grid; place-items: center; width: var(--b-s); height: var(--b-s); border-radius: 50%; --mdc-icon-size: 16px;
+    background: color-mix(in oklab, var(--tc) calc(6% + var(--on) * 10%), transparent); color: var(--tc); }
   .tile .ic > * { display: flex; align-items: center; justify-content: center; width: var(--mdc-icon-size); height: var(--mdc-icon-size); line-height: 0; }
   .tile .nm { min-width: 0; font-size: 13px; line-height: 17px; font-weight: 600; letter-spacing: -0.008em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tile[data-off] { opacity: 0.5; }
@@ -48,8 +48,8 @@ const STYLE = `${BASE_CSS}
   .grid[data-compact] { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; touch-action: pan-x pan-y; padding: 3px; margin: -3px; }
   .grid[data-compact]::-webkit-scrollbar { display: none; }
   .grid[data-compact][data-overflow] { mask-image: linear-gradient(to left, transparent 0, #000 26px); -webkit-mask-image: linear-gradient(to left, transparent 0, #000 26px); }
-  .grid[data-compact] .tile { flex: none; height: 34px; padding: 0 12px 0 5px; border-radius: 11px; gap: 7px; }
-  .grid[data-compact] .tile .ic { width: 24px; height: 24px; --mdc-icon-size: 15px; }
+  .grid[data-compact] .tile { flex: none; height: 34px; padding: 0 12px 0 3px; border-radius: 11px; gap: 7px; }
+  .grid[data-compact] .tile .ic { --mdc-icon-size: 15px; }
   .grid[data-compact][data-noicon] .tile { padding-left: 12px; }
   .grid[data-compact] .tile .nm { font-size: 12.5px; }
 

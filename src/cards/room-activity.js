@@ -26,7 +26,7 @@ const SNAP_SCRUB_SLOP = 6;
 const SNAP_SCRUB_DWELL = 140;
 const SNAP_PX = 10;          // a scrub this close to a change lands on it
 const HIST_POLL_MS = 300000;
-const SNAP_COLORS = { warn: "#E8A33D", alert: "#E06666", leak: "#5FA8E0" };
+const SNAP_COLORS = { warn: TONE.warn, alert: TONE.bad, leak: "#5FA8E0" };
 
 // Reading order. kind decides where a sensor renders; single keeps the best match only
 // (dc order is the preference), since two temperatures for one room reads as noise.
@@ -61,14 +61,14 @@ const STYLE = `${BASE_CSS}
   :host([compact]) ha-card { --pad: 12px; gap: 0; }
   /* the alert wash (steady) and glow (bloom), both springs, never transitions */
   .wash, .glow { position: absolute; inset: 0; pointer-events: none; z-index: -1; opacity: 0; border-radius: inherit; }
-  .wash { background: color-mix(in oklab, var(--alert-hue, var(--alert-c)) 9%, transparent); box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--alert-hue, var(--alert-c)) 55%, transparent); }
+  .wash { background: radial-gradient(140% 110% at 0% 0%, color-mix(in oklab, var(--alert-hue, var(--alert-c)) 14%, transparent), transparent 68%); }
   .glow { background: radial-gradient(120% 90% at 50% 0%, color-mix(in oklab, var(--alert-hue, var(--alert-c)) 38%, transparent), transparent 70%); }
   :host([dark]) .glow { mix-blend-mode: plus-lighter; }
 
   .head { display: flex; align-items: center; gap: 10px; min-width: 0; }
   .name { display: flex; align-items: center; gap: 9px; min-width: 0; flex: 1; border-radius: 12px; margin: -4px 0; padding: 4px 0; transform-origin: 0 50%; }
   .name[role="button"] { cursor: pointer; }
-  .roomIcon { flex: none; width: 32px; height: 32px; border-radius: 11px; display: grid; place-items: center; background: var(--well); --mdc-icon-size: 18px; color: var(--primary-text-color); }
+  .roomIcon { flex: none; width: var(--b-m); height: var(--b-m); border-radius: 50%; display: grid; place-items: center; background: var(--well); --mdc-icon-size: 18px; color: var(--primary-text-color); }
   .names { display: flex; flex-direction: column; min-width: 0; }
   .title { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; overflow-wrap: anywhere; }
   .status { font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: -0.003em; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -87,7 +87,7 @@ const STYLE = `${BASE_CSS}
   .ev { --on: 0; --warn: 0; --hue: color-mix(in oklab, var(--warn-c) calc(var(--warn) * 100%), var(--primary-text-color));
     position: relative; box-sizing: border-box; min-width: 0; display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 10px; align-items: center;
     padding: 10px 12px 10px 10px; border-radius: 14px; background: color-mix(in oklab, var(--hue) calc(6% + var(--warn) * 8%), transparent); cursor: pointer; transform-origin: 50% 50%; }
-  .ev .disc { grid-row: span 2; width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; --mdc-icon-size: 19px;
+  .ev .disc { grid-row: span 2; width: var(--b-m); height: var(--b-m); border-radius: 50%; display: grid; place-items: center; --mdc-icon-size: 19px;
     background: color-mix(in oklab, var(--hue) calc(var(--on) * 16%), transparent); color: color-mix(in oklab, var(--hue) calc(var(--on) * 100%), var(--secondary-text-color)); }
   .ev .l2 { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
   .ev .st { font-size: 14px; line-height: 17px; font-weight: 650; letter-spacing: -0.012em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -1364,7 +1364,7 @@ class SavvyRoomActivityCard extends SavvyCard {
     }
     if (all || dirty.has("alert")) {
       const a = clamp(this._alert.x), g = clamp(this._glow.x);
-      put(el.wash, "opacity", a < 1e-3 ? "0" : a.toFixed(3));
+      put(el.wash, "opacity", a < 1e-3 || this._config.state_glow === false ? "0" : a.toFixed(3));
       put(el.glow, "opacity", g < 1e-3 ? "0" : (g * 0.9).toFixed(3));
     }
   }

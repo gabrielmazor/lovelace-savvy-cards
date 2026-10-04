@@ -16,12 +16,12 @@
 const STYLE = `${BASE_CSS}
   ha-card { display: flex; align-items: center; gap: 12px; padding: var(--pad); }
   :host([compact]) ha-card { padding: 10px 14px; gap: 10px; }
-  .disc { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px;
+  .disc { flex: none; display: grid; place-items: center; width: var(--b-m); height: var(--b-m); border-radius: 50%;
     background: var(--well); color: var(--secondary-text-color); }
-  :host([compact]) .disc { width: 28px; height: 28px; border-radius: 9px; }
+  :host([compact]) .disc { width: var(--b-s); height: var(--b-s); }
   .disc ha-icon { --mdc-icon-size: 20px; display: flex; }
   :host([compact]) .disc ha-icon { --mdc-icon-size: 16px; }
-  .disc[data-warn] { background: color-mix(in oklab, var(--lvl-warn, #E0A030) 18%, transparent); color: var(--lvl-warn, #E0A030); }
+  .disc[data-warn] { background: color-mix(in oklab, var(--lvl-warn) var(--mix-alert), transparent); color: var(--lvl-warn); }
   .col { min-width: 0; display: flex; flex-direction: column; }
   .name { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sub { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); overflow-wrap: anywhere; }
@@ -198,6 +198,9 @@ class SettingsEditor extends SavvyEditor {
       { type: "expandable", name: "ignore", title: "Ignore", schema: [
         { name: "entities", label: "Ignored entities", helper: "Left out of the home header's counts and popups, and out of what room headers, section titles, room tiles, room activity, locks, lights, scenes and vacuums find by themselves. A card that names an entity still shows it.", selector: { entity: { multiple: true } } },
         { name: "areas", label: "Ignored rooms", selector: { area: { multiple: true } } },
+      ] },
+      { type: "expandable", name: "design", title: "Design", schema: [
+        S.bool("state_glow", "State glow", "A soft glow in a corner of a card in what it is doing: a lit light, a locked door, music playing. Off here turns it off on every card; a card can still set its own.", true),
       ] },
       { name: "aggregate", label: "Aggregate sensors", helper: "Show a room's sensors of these kinds once: occupied if any one is. Sensors on your ignore list are left out. In YAML, true means presence.",
     selector: { select: { multiple: true, options: [{ value: "presence", label: "Presence and motion" }, { value: "door", label: "Doors" }, { value: "window", label: "Windows" },

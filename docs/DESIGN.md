@@ -233,17 +233,32 @@ Hierarchy comes from weight plus size plus leading as a set, not size alone.
 
 ### 5.2 Spacing and shape
 
-4px scale. Card padding 12–16px (12 for compact). Control heights
-28 / 30 / 32 / 34 / 38 / 40px depending on density. Radii: 9–11px small chips,
-11–15px controls, `--ha-card-border-radius` for the card itself, and always
-about 1.7× that for the continuous-corner variant. Continuous corners where
-supported:
+4px scale. Card padding 12–16px (12 for compact). `--ha-card-border-radius` for
+the card itself, and always about 1.7× that for the continuous-corner variant.
+Continuous corners where supported:
 
 ```css
 @supports (corner-shape: squircle) {
   ha-card { corner-shape: squircle; border-radius: calc(var(--radius) * 1.7); }
 }
 ```
+
+**Two shapes, two jobs.** What a thing looks like tells you what you can do with it:
+
+| | Shape | Sizes | For |
+|---|---|---|---|
+| **Badge** | circle | S 28 (icon 16), M 36 (20), L 44 (22) | the icon of a thing: a room, light, lock, player, entity, a row in a popup, a chip's disc |
+| **Control** | rounded square | S 32 (radius 11, icon 18), L 40 (radius 13, icon 21) | anything you press: power, swatch, step, transport, the header's home button and health cog, a popup's close, bulk and page buttons |
+
+Chips are pills with two heights, 24 and 32. A compact layout picks the next size
+down (S or M), never a size of its own. The tokens are `--b-s/-m/-l` and `--c-s/-l`,
+defined once (`DESIGN_TOKENS` in `core/00-base.js`, repeated on the popup sheet), and the
+spec `design-language` fails a card that draws a badge or control outside them.
+The room tile's liquid drop is a badge of its own (L, 44) and keeps its look.
+
+**Tones.** A badge or control is the well (6% of the text colour) when idle, 16% of its
+state colour when on (`--mix-on`), 18% of amber or red when it is an alert
+(`--mix-alert`). No card picks its own percentages.
 
 ### 5.3 Colour
 
@@ -255,6 +270,16 @@ supported:
 - **Colour is reserved for energy and alerts.** Presence, doors, covers, and
   windows light up in the text colour. Lights, climate, media, leak, and
   alarm get a hue.
+- **Amber and red are one pair everywhere:** `--warn-rgb`, `--bad-rgb` (and `--good-rgb`),
+  with `TONE` for the places that need a hex string. No card spells its own.
+- **The state glow.** A soft radial wash in the top corner of the card, in the colour of
+  what it is doing: a lit light, a locked door (green), an unlocked one (amber), music
+  playing, heating, cleaning, an alert. Nothing when idle, at most 10% when
+  active, one spring for colour and strength (`Motion.glow`, `stateGlow()`), snapping
+  under reduced motion. It is on by default; `state_glow: false` on a card, or
+  `design.state_glow: false` in the Savvy settings, turns it off. Cards without a
+  state (graphs, headers, the camera, the settings card) have none, and a scene card
+  has none because a scene is a moment, not a state.
 - **A tinted accent drives the card.** Expose it as an RGB triplet custom
   property (`--accent: 90 169 224`) so `rgb(var(--accent) / 0.16)` works for
   fills, glows, and focus rings.

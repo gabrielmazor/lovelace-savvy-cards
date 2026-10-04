@@ -213,8 +213,24 @@ const ROLL_CSS = `
   [data-rolling="tick"]::after { opacity: 1; translate: none; }
 `;
 
+// The design language, one set of numbers for every card and popup (docs/DESIGN.md 5):
+//   badge   a circle that stands for a thing (a room, a light, a lock, a player): S 28, M 36, L 44
+//   control a rounded square you press (power, a swatch, a step, a toolbar button): S 32, L 40
+//   tones   off = the well, on = 16% of the state colour, alert = 18% of amber or red
+//   glow    a soft corner wash in the state colour, nothing when idle (ha-card::before, --glow 0..1)
+// the same three colours as hex, for the places that need a string (and the --lvl-* variables below)
+const TONE = { good: "#4CAF50", warn: "#E8A33D", bad: "#E06666" };
+const DESIGN_TOKENS = `
+    --good-rgb: 76 175 80; --warn-rgb: 232 163 61; --bad-rgb: 224 102 102;
+    --b-s: 28px; --b-m: 36px; --b-l: 44px; --c-s: 32px; --c-l: 40px;
+    --mix-on: 16%; --mix-alert: 18%;`;
+const GLOW_CSS = `
+  ha-card::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; corner-shape: inherit; pointer-events: none;
+    background: radial-gradient(140% 110% at 0% 0%, rgb(var(--glow-rgb, var(--accent)) / calc(var(--glow, 0) * 0.1 + var(--pulse, 0) * 0.05)), transparent 66%); }
+`;
+
 // The CSS every card shares: host basics, the card surface, focus rings.
-const BASE_CSS = `${ROLL_CSS}
+const BASE_CSS = `${ROLL_CSS}${GLOW_CSS}
   :host { display: block; -webkit-tap-highlight-color: transparent; }
   [hidden] { display: none !important; }
   button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0;
@@ -225,9 +241,10 @@ const BASE_CSS = `${ROLL_CSS}
     --well: color-mix(in oklab, var(--primary-text-color) 6%, transparent);
     --line: color-mix(in oklab, var(--primary-text-color) 9%, transparent);
     --accent: 88 142 233;
-    --lvl-good: #4CAF50;
-    --lvl-warn: #E8A33D;
-    --lvl-bad: #E06666;
+    --lvl-good: ${TONE.good};
+    --lvl-warn: ${TONE.warn};
+    --lvl-bad: ${TONE.bad};
+    ${DESIGN_TOKENS}
     position: relative; box-sizing: border-box;
     border-radius: var(--radius);
     border: var(--ha-card-border-width, 1px) solid var(--ha-card-border-color, var(--line));

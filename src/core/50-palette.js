@@ -136,3 +136,21 @@ function modeLook(option, overrides = {}) {
     color: colors[o] !== undefined ? colorOf(colors[o]) : (hit?.color ?? ""),
   };
 }
+
+// Any CSS colour (hex, rgb(), a name) as [r, g, b]; a colour the browser cannot read is amber.
+let paint2d;
+const toRgb = (css) => {
+  const hex = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(css).trim());
+  if (hex) {
+    const h = hex[1].length === 3 ? hex[1].replace(/./g, "$&$&") : hex[1];
+    const n = parseInt(h, 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  paint2d = paint2d || document.createElement("canvas").getContext("2d");
+  paint2d.fillStyle = "#000";
+  paint2d.fillStyle = css;
+  const out = paint2d.fillStyle;
+  if (out[0] === "#") return toRgb(out);
+  const n = out.match(/[\d.]+/g);
+  return n ? n.slice(0, 3).map(Number) : [245, 184, 61];
+};

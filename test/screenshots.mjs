@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const OUT = path.join(ROOT, "docs/images");
+const OUT = process.env.SHOTS_OUT || path.join(ROOT, "docs/images");
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT || "playwright");
 

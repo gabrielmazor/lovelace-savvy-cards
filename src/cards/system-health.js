@@ -61,9 +61,9 @@ const STYLE = `${BASE_CSS}
   .row[role="button"] { cursor: pointer; }
   .row[data-group-start] { border-top: 1px solid var(--line); margin-top: 2px; padding-top: 5px; }
   .row[data-dim] { opacity: 0.55; }
-  .row .disc { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--well); color: var(--secondary-text-color); }
+  .row .disc { flex: none; display: grid; place-items: center; width: var(--b-s); height: var(--b-s); border-radius: 50%; background: var(--well); color: var(--secondary-text-color); }
   .row .disc ha-icon { --mdc-icon-size: 15px; display: flex; }
-  .row[data-alert] .disc { background: color-mix(in oklab, var(--lvl-bad) 18%, transparent); color: var(--lvl-bad); }
+  .row[data-alert] .disc { background: color-mix(in oklab, var(--lvl-bad) var(--mix-alert), transparent); color: var(--lvl-bad); }
   .row .col { min-width: 0; flex: 1; display: flex; flex-direction: column; }
   .row .n { font-size: 12.5px; line-height: 16px; font-weight: 600; letter-spacing: -0.006em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .row .s { font-size: 10.5px; line-height: 13px; font-weight: 500; letter-spacing: 0.006em; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -76,7 +76,7 @@ const STYLE = `${BASE_CSS}
   .report ha-icon { --mdc-icon-size: 14px; display: flex; transform-origin: 50% 50%; }
   .report[hidden] { display: none; }
   .report[data-flash] { background: color-mix(in oklab, var(--lvl-good) 18%, transparent); color: var(--lvl-good); }
-  .row[data-soft] .disc { background: color-mix(in oklab, var(--lvl-warn) 20%, transparent); color: var(--lvl-warn); }
+  .row[data-soft] .disc { background: color-mix(in oklab, var(--lvl-warn) var(--mix-alert), transparent); color: var(--lvl-warn); }
   .row .chev { flex: none; display: flex; --mdc-icon-size: 18px; color: var(--secondary-text-color); transform-origin: 50% 50%; }
   .facts { flex: none; margin: -1px 4px 3px; font-size: 11.5px; line-height: 15px; font-weight: 500; color: var(--secondary-text-color);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -402,6 +402,8 @@ class SavvySystemHealthCard extends HTMLElement {
     const label = SOURCES[c.source];
     const lvl = total === 0 ? "var(--lvl-good)" : total < c.warn_above ? "var(--lvl-warn)" : "var(--lvl-bad)";
     Motion.tintVar(this._el.card, "--lvl", lvl);
+    // the corner glow: amber while a few things need a look, red when it is a lot; nothing when all is well
+    stateGlow(c, this._el.card, total === 0 ? null : total < c.warn_above ? [232, 163, 61] : [224, 102, 102], 0.8);
     text(this._el.pill, total === 0 ? "All good" : `${total} ${total === 1 ? label.noun : label.nouns}`);
     attr(this._el.card, "aria-label", `${c.title || label.title}, ${total === 0 ? "all good" : `${total} ${label.nouns}`}`);
     this._renderRows(sections);

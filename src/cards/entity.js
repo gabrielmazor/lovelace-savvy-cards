@@ -29,8 +29,7 @@ const STYLE = `${BASE_CSS}
     border-radius: 14px; margin: -4px; padding: 4px; cursor: pointer; transform-origin: 30% 50%; }
   .av { position: relative; flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--well);
     --mdc-icon-size: 22px; color: color-mix(in oklab, var(--main-c, var(--primary-text-color)) calc(var(--on) * 100%), var(--secondary-text-color)); }
-  .av[data-kind="icon"] { border-radius: 14px; background: color-mix(in oklab, var(--main-c, var(--primary-text-color)) calc(6% + var(--on) * 10%), transparent); }
-  @supports (corner-shape: squircle) { .av[data-kind="icon"] { corner-shape: squircle; border-radius: 22px; } }
+  .av[data-kind="icon"] { background: color-mix(in oklab, var(--main-c, var(--primary-text-color)) calc(6% + var(--on) * 10%), transparent); }
   .av img { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; object-fit: cover;
     filter: grayscale(calc(var(--away) * 0.85)); opacity: calc(1 - var(--away) * 0.35); }
   .av .ini { font-size: 14px; line-height: 1; font-weight: 650; letter-spacing: -0.01em; transform: translate(-2px, -2px);
@@ -247,6 +246,9 @@ class SavvyEntityCard extends SavvyCard {
     text(el.st, word);
     el.st.hidden = c.show_state === false && !fired;
     this._mainOn.to(active ? 1 : 0, MOTION.ui);
+    // the glow: its colour while it is on, nothing otherwise (people at home, a switch on, a sensor reading on)
+    const mainCss = c.color ? colorOf(c.color) : "";
+    stateGlow(c, el.card, active && !person ? toRgb(mainCss && !mainCss.startsWith("var(") ? mainCss : "#588EE9") : null, 0.8);
     this._mainAway.to(away, MOTION.ui);
     el.main.__st = st;
     this._mainWord = word;

@@ -40,7 +40,7 @@ const ROW_CSS = `
 const STYLE = `${BASE_CSS}${HEADER_CSS}${CHIP_ROW_CSS}${ROW_CSS}`;
 
 // The four chips: how each counts, and its look.
-const ALERT_COLOR = "#E06666";
+const ALERT_COLOR = TONE.bad;
 const AUTO = {
   lights: { name: "Lights", icon: "mdi:lightbulb", color: "#F5B83D", domain: "light" },
   climate: { name: "Climate", icon: "mdi:fan", color: "#7FC4E8", domain: ["climate", "sensor"] },

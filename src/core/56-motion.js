@@ -115,6 +115,29 @@ const Motion = {
     tintDiff(els, before);
   },
 
+  // ---------- Glow ----------
+  // The card's state colour in its corner (ha-card::before reads --glow-rgb and --glow). Pass the
+  // colour and a level 0..1, or no colour for nothing. Colour and strength move together; a glow
+  // coming from nothing takes its colour at once and only grows. Interruptible: a new target
+  // starts from what is on screen.
+  glow(el, rgb, level = 1) {
+    if (!el) return;
+    const g = el.__gl || (el.__gl = { c: (rgb || [128, 128, 128]).slice(), a: 0, to: null, anim: null });
+    const to = { c: rgb ? rgb.map(Number) : g.to ? g.to.c : g.c, a: rgb ? clamp(level) : 0 };
+    if (g.to && g.to.a === to.a && g.to.c.every((v, i) => v === to.c[i])) return;
+    g.to = to;
+    const from = { c: g.c.slice(), a: g.a };
+    if (g.anim) g.anim.dead = true;
+    const paint = (x) => {
+      g.a = from.a + (to.a - from.a) * x;
+      g.c = from.a < 0.02 ? to.c.slice() : from.c.map((v, i) => v + (to.c[i] - v) * x);
+      el.style.setProperty("--glow", g.a.toFixed(3));
+      el.style.setProperty("--glow-rgb", g.c.map(Math.round).join(" "));
+    };
+    if (!this.can(el)) { g.anim = null; paint(1); return; }
+    g.anim = this.start(new MotionAnim(0, 1, MOTION.blend, 0, paint, () => { g.anim = null; }));
+  },
+
   // ---------- Roll ----------
   rollable(el) { return !el.hasAttribute("data-noroll"); },
 
@@ -358,3 +381,6 @@ function tickParts(a, b) {
   const dec = Math.max((ma[0].split(".")[1] || "").length, (mb[0].split(".")[1] || "").length);
   return { sa, na, nb, dec };
 }
+
+// the card's state glow, unless the card (or the Savvy settings) turned it off
+const stateGlow = (config, el, rgb, level = 1) => Motion.glow(el, config && config.state_glow === false ? null : rgb, level);

@@ -97,11 +97,12 @@ const STYLE = `
   [hidden] { display: none !important; }
   button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0;
     cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; }
-
+  ${GLOW_CSS}
   ha-card {
     --radius: var(--ha-card-border-radius, 18px);
     --pad: 16px;
     --accent: 90 169 224;
+    ${DESIGN_TOKENS}
     --line: color-mix(in oklab, var(--primary-text-color) 9%, transparent);
     --well: color-mix(in oklab, var(--primary-text-color) 6%, transparent);
     position: relative;
@@ -157,10 +158,10 @@ const STYLE = `
 
   .power {
     flex: none; display: grid; place-items: center;
-    width: 38px; height: 38px; border-radius: 12px;
+    width: var(--c-l); height: var(--c-l); border-radius: 13px;
     background: var(--well); color: var(--secondary-text-color);
   }
-  .power[data-on] { background: rgb(var(--accent) / 0.16); color: rgb(var(--accent)); }
+  .power[data-on] { background: color-mix(in oklab, rgb(var(--accent)) var(--mix-on), transparent); color: rgb(var(--accent)); }
   .power ha-icon { --mdc-icon-size: 21px; display: flex; }
 
   /* ---- target temperature ---- */
@@ -175,7 +176,7 @@ const STYLE = `
     color: rgb(var(--accent) / 0.55); margin: 2px 0 0 2px;
   }
   .steppers { flex: none; display: flex; gap: 8px; padding-bottom: 3px; }
-  .step { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 13px; background: var(--well); }
+  .step { display: grid; place-items: center; width: var(--c-l); height: var(--c-l); border-radius: 13px; background: var(--well); }
   .step ha-icon { --mdc-icon-size: 22px; display: flex; }
   .step[disabled] { opacity: 0.34; cursor: default; }
 
@@ -308,13 +309,13 @@ const STYLE = `
   ha-card[data-compact] .status { font-size: 12px; line-height: 16px; }
   ha-card[data-compact] .hero { flex: none; margin: 0; align-items: center; gap: 6px; }
   ha-card[data-compact] .steppers { display: contents; }
-  ha-card[data-compact] .step { order: 1; width: 32px; height: 32px; border-radius: 10px; padding: 0; }
+  ha-card[data-compact] .step { order: 1; width: var(--c-s); height: var(--c-s); border-radius: 11px; padding: 0; }
   ha-card[data-compact] #minus { order: -1; }
   ha-card[data-compact] .step ha-icon { --mdc-icon-size: 19px; }
   ha-card[data-compact] .readout { flex: none; justify-content: center; min-width: 58px; }
   ha-card[data-compact] .value { font-size: 25px; line-height: 1; letter-spacing: -0.022em; }
   ha-card[data-compact] .unit { font-size: 13px; margin: 1px 0 0 1px; }
-  ha-card[data-compact] .power { width: 32px; height: 32px; border-radius: 10px; }
+  ha-card[data-compact] .power { width: var(--c-s); height: var(--c-s); border-radius: 11px; }
   ha-card[data-compact] .power ha-icon { --mdc-icon-size: 18px; }
   ha-card[data-compact] .slider { height: 22px; margin: 9px -2px 0; }
   ha-card[data-compact] .bar, ha-card[data-compact] .ticks { height: 8px; margin-top: -4px; }
@@ -978,6 +979,8 @@ class ClimateCard extends HTMLElement {
     this._el.card.toggleAttribute("data-dead", dead);
     const accent = on ? toRgb(HVAC[st.state]?.color || "#5AA9E0") : toRgb("#9AA0A6");
     put(el.card, "--accent", accent.map(Math.round).join(" "));
+    // the glow: the mode's colour, fuller while it is actually heating or cooling
+    stateGlow(c, el.card, on ? accent : null, ["heating", "cooling", "drying", "fan"].includes(a.hvac_action) ? 0.85 : 0.45);
 
     text(el.name, c.name || a.friendly_name || title(c.entity.split(".")[1]));
     el.power.hidden = this._compact && this._modes.some((m) => m === "off");
@@ -1209,7 +1212,7 @@ class ClimateCard extends HTMLElement {
       items.push({
         key: "timer", entity: timer.cfg.entity, state: timer.st,
         icon: timer.cfg.icon || (timer.running ? "mdi:timer" : "mdi:timer-outline"),
-        color: timer.cfg.color || "#E8A33D",
+        color: timer.cfg.color || TONE.warn,
         label: timer.label, on: timer.running,
         tap: () => this._bumpTimer(timer), hold: () => this._moreInfo(timer.cfg.entity),
       });

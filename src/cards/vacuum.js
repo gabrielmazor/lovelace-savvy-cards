@@ -22,7 +22,7 @@ const MOTION = {
   sheetOut: { response: 0.24, damping: 1 },
 };
 
-const COLORS = { accent: "#5BA3D9", warn: "#E8A33D", alert: "#E06666", good: "#4CAF50" };
+const COLORS = { accent: "#5BA3D9", warn: TONE.warn, alert: TONE.bad, good: TONE.good };
 
 // ---------- what the device's entities mean (translation_key, or the id suffix) ----------
 const ONE = {
@@ -140,6 +140,7 @@ const STYLE = `
 }
 [hidden] { display: none !important; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; }
+${GLOW_CSS}
 
 ha-card {
   --radius: var(--ha-card-border-radius, 18px);
@@ -150,6 +151,7 @@ ha-card {
   --warn-c: ${COLORS.warn};
   --alert-c: ${COLORS.alert};
   --accent: 91 163 217;
+  ${DESIGN_TOKENS}
   position: relative; box-sizing: border-box;
   display: flex; flex-direction: column; gap: 12px;
   padding: var(--pad);
@@ -314,7 +316,7 @@ ha-icon, savvy-state-icon { display: flex; align-items: center; justify-content:
   display: flex; align-items: center; gap: 9px; padding: 9px 10px; border-radius: 13px; background: var(--well); text-align: start;
   min-width: 0; --mdc-icon-size: 18px; transform-origin: 50% 50%;
 }
-.tile > ha-icon { flex: none; width: 30px; height: 30px; border-radius: 10px; background: color-mix(in oklab, var(--primary-text-color) 7%, transparent); color: var(--secondary-text-color); }
+.tile > ha-icon { flex: none; width: var(--b-s); height: var(--b-s); border-radius: 50%; background: var(--well); color: var(--secondary-text-color); }
 .tile .tt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .tile .tc { font-size: 11px; line-height: 13px; font-weight: 550; color: var(--secondary-text-color); }
 .tile .tv { font-size: 13px; line-height: 17px; font-weight: 650; letter-spacing: -0.008em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -982,6 +984,9 @@ class VacuumCard extends HTMLElement {
     el.bolt.hidden = !charging;
     this._ringS.to(Number.isFinite(batt) ? clamp(batt / 100) : 0, MOTION.ring);
     this._actS.to(cleaning || act === "returning" ? 1 : 0, MOTION.ui);
+    // the glow: red for a problem, amber for a warning, the accent while it works; nothing when it rests
+    const glowLevel = worst && !this._expect ? worst.level : null;
+    stateGlow(c, el.card, glowLevel === "alert" ? [224, 102, 102] : glowLevel === "warn" ? [232, 163, 61] : cleaning || act === "returning" ? [91, 163, 217] : null, glowLevel ? 0.9 : 0.7);
     attr(el.ring, "aria-label", `${el.name.textContent}, battery ${Number.isFinite(batt) ? Math.round(batt) + "%" : "unknown"}`);
     attr(el.who, "aria-label", `${el.name.textContent}, ${s1}${s2 ? `, ${s2}` : ""}`);
 

@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.10.0
+
+One design language for every card.
+
+- **Circles for things, rounded squares for controls.** The icon of a room, light, lock, player, entity or popup row is a
+  circle of one of three sizes (28, 36, 44); anything you press (power, swatch, step, transport, the header's home button and
+  health cog, a popup's close, bulk and page buttons) is a rounded square of one of two (32, 40). The lights, media, climate,
+  room activity, scene, vacuum, settings and popup icons moved to it; compact layouts take the next size down.
+- **One set of tones.** Idle is the well, on is 16% of the state colour, an alert 18% of amber or red, everywhere. Amber and red
+  are one pair (`--warn-rgb`, `--bad-rgb`) instead of five copies.
+- **A state glow.** A soft corner wash in the colour of what the card is doing: lit lights (their colour), a locked door
+  (green), unlocked (amber), open (red), music playing, heating or cooling, cleaning, a problem, issues in the health card, the
+  room tile's drop. Nothing when idle, 10% at most, one spring. On by default; `state_glow: false` on a card or
+  `design: { state_glow: false }` in the settings card turns it off, and each editor has the toggle.
+- Under the hood: the design tokens (`--b-s/-m/-l`, `--c-s/-l`, `--mix-on`, `--mix-alert`) live once in `core/00-base.js` and on
+  the popup sheet, `Motion.glow` does the glow, and a new spec (`design-language`) fails a card or popup that draws a badge or
+  control outside them. `docs/DESIGN.md` 5.2 and 5.3 describe the rules.
+
 ## 0.9.2
 
 - **Pages are found by name.** A dashboard view called `lights`, `climate`, `media` or `security` is the page for that chip

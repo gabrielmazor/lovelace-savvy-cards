@@ -347,12 +347,17 @@ class SavvyListEditor extends HTMLElement {
 if (!customElements.get("savvy-list-editor")) customElements.define("savvy-list-editor", SavvyListEditor);
 
 // Defines `<type>-editor` for a card from a schema function.
+// the cards with a state they can glow in (the shared option, last in their form)
+const GLOW_CARDS = new Set(["savvy-lights-card", "savvy-climate-card", "savvy-media-card", "savvy-vacuum-card", "savvy-entity-card", "savvy-lock-card",
+  "savvy-room-tile", "savvy-room-activity-card", "savvy-system-health-card"]);
+const GLOW_FIELD = { name: "state_glow", label: "State glow", helper: "A soft glow in the card's corner in what it is doing. Off keeps the card plain.", selector: { boolean: {} }, default: true };
+
 const defineEditor = (type, schemaFn, tidy) => {
   const name = `${type}-editor`;
   if (!customElements.get(name)) {
     customElements.define(name, class extends SavvyEditor {
       get cardType() { return type; }
-      schema(hass, config) { return schemaFn(hass, config); }
+      schema(hass, config) { const s = schemaFn(hass, config); return GLOW_CARDS.has(type) ? [...s, GLOW_FIELD] : s; }
       tidy(config) { return tidy ? tidy(config) : config; }
     });
   }

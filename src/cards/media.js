@@ -72,16 +72,16 @@ const STYLE = `${BASE_CSS}
   /* a narrow row keeps play and power; the stage still has the full transport */
   @container (max-width: 330px) { .row .tb[data-k="prev"], .row .tb[data-k="next"] { display: none; } .vol[data-steps] .pct { display: none; } }
   .row { display: flex; align-items: center; gap: 10px; min-width: 0; }
-  .row .icon { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; background: var(--well); color: var(--secondary-text-color); }
-  .row .icon[data-live] { background: rgb(var(--accent) / 0.16); color: rgb(var(--accent)); }
+  .row .icon { flex: none; display: grid; place-items: center; width: var(--b-m); height: var(--b-m); border-radius: 50%; background: var(--well); color: var(--secondary-text-color); }
+  .row .icon[data-live] { background: color-mix(in oklab, rgb(var(--accent)) var(--mix-on), transparent); color: rgb(var(--accent)); }
   .row .icon ha-icon { --mdc-icon-size: 19px; display: flex; }
   .row .meta { flex: 1; min-width: 0; }
   .row .n { display: block; font-size: 13.5px; line-height: 17px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .row .d { display: block; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .transport { flex: none; display: flex; align-items: center; gap: 4px; }
-  .tb { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; color: var(--secondary-text-color); }
+  .tb { display: grid; place-items: center; width: var(--c-s); height: var(--c-s); border-radius: 11px; color: var(--secondary-text-color); }
   .tb.solid { background: var(--well); color: var(--primary-text-color); }
-  .tb[data-on] { background: rgb(var(--accent) / 0.18); color: rgb(var(--accent)); }
+  .tb[data-on] { background: color-mix(in oklab, rgb(var(--accent)) var(--mix-on), transparent); color: rgb(var(--accent)); }
   .tb[disabled] { opacity: 0.3; cursor: default; }
   .tb ha-icon { --mdc-icon-size: 20px; display: flex; }
   .vol { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
@@ -108,7 +108,7 @@ const STYLE = `${BASE_CSS}
   ha-card[data-compact] .body { padding: 12px; gap: 8px; }
   ha-card[data-compact] .band + .band { padding-top: 0; border-top: 0; }
   ha-card[data-compact] .row { gap: 11px; }
-  ha-card[data-compact] .row .icon { width: 46px; height: 46px; border-radius: 12px; overflow: hidden; padding: 0; }
+  ha-card[data-compact] .row .icon { width: var(--b-l); height: var(--b-l); overflow: hidden; padding: 0; }
   ha-card[data-compact] .row .icon ha-icon { --mdc-icon-size: 22px; }
   ha-card[data-compact] .thumb { width: 100%; height: 100%; object-fit: cover; display: block; border: 0; }
   ha-card[data-compact] .row .n { font-size: 14px; line-height: 18px; }
@@ -522,6 +522,10 @@ class SavvyMediaCard extends SavvyCard {
     put(el.stage, "--art-max", cap ? (typeof cap === "number" ? `${cap}px` : String(cap)) : "none");
     this.toggleAttribute("dark", !!h.themes?.darkMode);
     if (c.accent) put(el.card, "--accent", this._rgb(c.accent));
+    // the glow: the accent while anything is playing, quieter while a player is only on
+    const mine = [...c.video, ...c.audio];
+    const playing = mine.some((m) => ACTIVE.has(h.states[m.entity]?.state)), awake = mine.some((m) => this._isOn(m));
+    stateGlow(c, el.card, playing || awake ? getComputedStyle(el.card).getPropertyValue("--accent").trim().split(/\s+/).map(Number) : null, playing ? 1 : 0.45);
     text(el.title, c.name || (c.area ? areaInfo(h, c.area).name : "Media"));
     this._sources();
     if (!this._compact) this._stage();      // decides what the stage owns, so rows can defer

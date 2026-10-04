@@ -19,7 +19,7 @@ or all of them.
 
 - [Install](#install) · [Quick start](#quick-start) · [How the cards find things](#how-the-cards-find-things)
 - [What the cards expect from your dashboard](#what-the-cards-expect-from-your-dashboard)
-- [Cards](#cards) · [Shared options](#shared-options) · [Troubleshooting](#troubleshooting) · [Development](#development)
+- [Design](#design) · [Cards](#cards) · [Shared options](#shared-options) · [Troubleshooting](#troubleshooting) · [Development](#development)
 
 ## Install
 
@@ -122,6 +122,16 @@ With that in place a bare `type: custom:savvy-home-header-card` already has its 
 weather, and a section title for `area: kitchen` has the kitchen's mode and temperature. Each card's
 editor lists what it is taking from the settings under **From Savvy settings**.
 
+## Design
+
+Every card follows the same few rules, so a dashboard of them reads as one thing. An icon that
+stands for a thing (a room, a light, a lock, a player) sits in a circle; anything you press (power,
+a colour swatch, a step, a button in a popup) is a rounded square. A card with a state, such as a lit
+light, a locked door, music playing or something broken, glows softly in one corner in that colour, and
+shows nothing when it is idle. Turn the glow off with `state_glow: false` on a card, or for all of
+them with `design: { state_glow: false }` in the settings card. The cards also have smooth, tactile
+animations, light and dark themes, and honour reduced motion.
+
 ## Cards
 
 | Card | What it shows | Type |
@@ -174,6 +184,7 @@ it is too wide.
 | `health` | object or `false` | on | The health cog, see below. |
 | `lights`, `climate`, `media`, `security` | object or `false` | on | The four counting chips, see below. |
 | `room_order` | list of areas | by name | Order of rooms in the popups. A chip's own `room_order` wins. |
+| `design` | object | none | `state_glow: false` turns the corner glow off on every card; a card's own `state_glow` still wins. |
 | `aggregate` | `true` or list of kinds | off | Show each room's presence sensors once. See [Aggregate sensors](#aggregate-sensors). |
 | `chips` | chips | none | Your own chips after the four. |
 
@@ -361,6 +372,7 @@ A room at a glance. Its icon sits in a small drop that fills with the room's lig
 | `entities`, `auto_discover`, `exclude_kinds`, `include`, `exclude` | | discovered | The badges, see [Badges](#badges). |
 | `aggregate` | `true` or list | off | See [Aggregate sensors](#aggregate-sensors). |
 | `tap_action`, `double_tap_action`, `hold_action` | action | as above | Replace any gesture. |
+| `state_glow` | boolean | `true` | A soft glow in the card's corner in what it is doing (a lit light, a locked door, music playing). `false` keeps the card plain. |
 
 Minimum:
 
@@ -417,6 +429,7 @@ open door or an unlocked lock turns amber. Swipe left for the room's history.
 | `history` | object or `false` | `{ hours: 24, ranges: [6, 24, 72], show_state: true }` | The history page. |
 | `lux_labels` | object or `false` | `{ dark: 10, dim: 150 }` | Light reads as Dark, Dim or Bright; `false` shows the number. |
 | `chips` | chips | none | Your own. With no `area`, a hand-picked overview. |
+| `state_glow` | boolean | `true` | A soft glow in the card's corner in what it is doing (a lit light, a locked door, music playing). `false` keeps the card plain. |
 
 Minimum:
 
@@ -476,6 +489,7 @@ for warmth and colour. The pill at the top switches the room, or an entity of yo
 | `color_background` | boolean | `false` | Tint lit tiles with their bulb's colour. |
 | `chips` | chips | none | Extra chips under the lights. |
 | `layout` | `full` or `compact` | `full` | `compact`: toggles only, no sliders or swatches. |
+| `state_glow` | boolean | `true` | A soft glow in the card's corner in what it is doing (a lit light, a locked door, music playing). `false` keeps the card plain. |
 
 Minimum:
 
@@ -539,6 +553,7 @@ the fan. Swipe left for history with the unit's on/off band under the chart.
 | `temperature_scale` | list | blue to red | Colour stops: `[{ value, color }]`. |
 | `humidity_color` | colour | teal | Humidity colour. |
 | `chips` | chips | none | Extra chips (a button presses, a switch toggles). |
+| `state_glow` | boolean | `true` | A soft glow in the card's corner in what it is doing (a lit light, a locked door, music playing). `false` keeps the card plain. |
 
 Minimum:
 
@@ -605,6 +620,7 @@ text to speech and an alarm clock. Volume moves only on a sideways drag, or with
 | `artwork_max_height` | number (px) | none | Cap the artwork's height. |
 | `volume_buttons` | boolean | `true` | The minus and plus buttons. |
 | `volume_step` | number (%) | `5` | Their step. |
+| `state_glow` | boolean | `true` | A soft glow in the card's corner in what it is doing (a lit light, a locked door, music playing). `false` keeps the card plain. |
 
 Minimum:
 
@@ -728,6 +744,7 @@ can carry the house alarm and a camera.
 | `hide_camera` | boolean | `false` | Same as `camera: false`. |
 | `camera_view` | `compact`, `full`, `hidden` | `compact` | `compact`: a slim row and an **Open camera** button. `full`: a live still. Both open the camera card in a popup. |
 | `chips` | chips | none | Your own chips, under the lock. |
+| `state_glow` | boolean | `true` | A soft glow in the card's corner in what it is doing (a lit light, a locked door, music playing). `false` keeps the card plain. |
 
 Tap a lock's name for its details. From the keyboard, focus the icon and use the arrow keys; hold Enter
 to open.
@@ -791,6 +808,7 @@ hold "Clean N rooms" to start, so neither happens by accident.
 | `hide_modes` | list | none | Mode selects to leave out. |
 | `exclude` | list of entities | none | Discovered entities to leave out. |
 | `battery_warn`, `battery_critical` | number (%) | `20`, `10` | The battery ring turns amber or red below these. |
+| `state_glow` | boolean | `true` | A soft glow in the card's corner in what it is doing (a lit light, a locked door, music playing). `false` keeps the card plain. |
 
 Minimum:
 
@@ -919,6 +937,7 @@ How it counts:
 | `max_rows` | number | `7` | Rows before a list scrolls. |
 | `show_all_batteries` | boolean | `true` | With `source: battery`: every battery, low ones first. |
 | `action` | object | none | A footer button `{ label, tap_action }`. Shown only when `tap_action` is a real action. |
+| `state_glow` | boolean | `true` | A soft glow in the card's corner in what it is doing (a lit light, a locked door, music playing). `false` keeps the card plain. |
 
 Minimum:
 
@@ -970,6 +989,7 @@ anything else its icon, state and how long. Chips underneath toggle, press or sh
 | `navigation_path` | string | more-info | Where a tap goes. |
 | `tap_action`, `hold_action`, `double_tap_action` | action | more-info | The main entity's gestures. |
 | `chips` | chips | none | The entities that belong with it. |
+| `state_glow` | boolean | `true` | A soft glow in the card's corner in what it is doing (a lit light, a locked door, music playing). `false` keeps the card plain. |
 
 Minimum:
 

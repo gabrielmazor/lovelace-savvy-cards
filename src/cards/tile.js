@@ -40,22 +40,6 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const smooth = (v) => { v = clamp(v); return v * v * (3 - 2 * v); };
 const scaleBy = (x, depth) => (Math.abs(x) < 1e-4 ? "" : `scale(${(1 - depth * x).toFixed(4)})`);
 
-let paint2d;
-const toRgb = (css) => {
-  const hex = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(css).trim());
-  if (hex) {
-    const h = hex[1].length === 3 ? hex[1].replace(/./g, "$&$&") : hex[1];
-    const n = parseInt(h, 16);
-    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-  }
-  paint2d = paint2d || document.createElement("canvas").getContext("2d");
-  paint2d.fillStyle = "#000";
-  paint2d.fillStyle = css;
-  const out = paint2d.fillStyle;
-  if (out[0] === "#") return toRgb(out);
-  const n = out.match(/[\d.]+/g);
-  return n ? n.slice(0, 3).map(Number) : [245, 184, 61];
-};
 // Pull a bulb colour into a band that reads as light on both themes; near-white isn't a
 // colour choice, so it returns null and the card's tint wins.
 const legible = ([r, g, b]) => {
@@ -73,7 +57,7 @@ const legible = ([r, g, b]) => {
 };
 
 const STYLE = `${BASE_CSS}
-  ha-card { --well: 42px; --gap: 12px; --chip: 28px; --tint: 245 184 61;
+  ha-card { --well-size: var(--b-l); --gap: 12px; --chip: var(--b-s); --tint: 245 184 61;
     display: flex; flex-direction: column; gap: 4px; padding: var(--pad); overflow: hidden; cursor: pointer;
     user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation; outline: none; }
   :host([dark]) ha-card::after { z-index: 2; }
@@ -81,12 +65,12 @@ const STYLE = `${BASE_CSS}
   :host([kbd]) ha-card:focus-visible { outline: 2px solid rgb(var(--tint)); outline-offset: 2px; }
 
   /* light spilling from the drop into the card; only ever seen when a switch happens */
-  .spill { position: absolute; z-index: 0; inset-inline-start: calc(var(--pad) + var(--well) / 2); top: calc(var(--pad) + var(--well) / 2);
+  .spill { position: absolute; z-index: 0; inset-inline-start: calc(var(--pad) + var(--well-size) / 2); top: calc(var(--pad) + var(--well-size) / 2);
     width: 320px; height: 320px; margin: -160px 0 0 -160px; border-radius: 50%; pointer-events: none; opacity: 0;
     background: radial-gradient(closest-side, rgb(var(--tint) / 0.9), rgb(var(--tint) / 0.42) 13%, rgb(var(--tint) / 0.16) 30%, rgb(var(--tint) / 0.05) 54%, rgb(var(--tint) / 0)); }
   :host([dark]) .spill { mix-blend-mode: plus-lighter; }
   .top { position: relative; z-index: 1; display: flex; align-items: center; gap: var(--gap); min-width: 0; }
-  .well { position: relative; flex: none; width: var(--well); height: var(--well); display: grid; place-items: center; }
+  .well { position: relative; flex: none; width: var(--well-size); height: var(--well-size); display: grid; place-items: center; }
   .well > svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
   :host([dark]) .well > svg { mix-blend-mode: plus-lighter; }
   .well ha-icon { --mdc-icon-size: 22px; position: relative; display: flex; color: var(--icon, var(--secondary-text-color)); }
@@ -106,7 +90,7 @@ const STYLE = `${BASE_CSS}
   /* breathing room so halos aren't cut off */
   .badges { position: relative; z-index: 1; display: flex; align-items: center; height: var(--chip); padding: 8px; margin: -8px; margin-inline-start: -13px; overflow: hidden; }
   .badges[data-overflow] { -webkit-mask-image: linear-gradient(to left, transparent 8px, #000 40px); mask-image: linear-gradient(to left, transparent 8px, #000 40px); }
-  @container (min-width: 300px) { .badges { padding-inline-start: calc(8px + var(--well) + var(--gap)); } }
+  @container (min-width: 300px) { .badges { padding-inline-start: calc(8px + var(--well-size) + var(--gap)); } }
   .badge { position: relative; flex: none; width: 0; height: var(--chip); outline: none; }
   .chip { position: absolute; top: 0; inset-inline-start: 0; width: var(--chip); height: var(--chip); border-radius: 50%;
     display: grid; place-items: center; color: var(--secondary-text-color); opacity: 0; }
@@ -557,6 +541,9 @@ class SavvyRoomTile extends SavvyCard {
     const I = clamp(sp.intensity.x), lit = smooth(I / 0.2);
     const tint = [sp.r.x, sp.g.x, sp.b.x].map((v) => Math.round(clamp(v, 0, 255)));
     put(e.card, "--tint", tint.join(" "));
+    // the card's corner glow follows the drop: its colour, its brightness (the shared state glow, off with state_glow: false)
+    put(e.card, "--glow-rgb", tint.join(" "));
+    put(e.card, "--glow", this._config.state_glow === false ? "0" : (I * 0.85).toFixed(3));
     // material: neutral still water when dark, tinted light when lit
     const mix = tint.map((v) => Math.round(lerp(127, v, lit))).join(" ");
     attr(e.core, "stop-color", `rgb(${mix})`);
