@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.10.5
+
+- **Sound on the cameras.** Cameras stay muted, as before. When a stream carries sound, a speaker button
+  appears next to full screen on the live view and in the control bar of the recordings player. One tap
+  turns the sound on, for one picture at a time. It goes back to muted when the picture restarts, the
+  card leaves the screen, a popup closes or the browser tab is hidden. It only shows when the stream has
+  sound (the camera has to send it). `audio_button: false` hides it; the editor has "Sound button". The
+  lock card's camera popup gets it too. (`remember_sound` is not offered: a browser only allows sound
+  after a tap, so a remembered choice could never be applied.)
+- **README, media card.** A new screenshot first in the media section: four video sources (console, TV,
+  streamer, PC) with a soundbar and speakers as sound outputs, and the `video`, `audio`, `output` and
+  `video_output` options explained in plain words.
+
 ## 0.10.4
 
 A title with a link on every card, off unless you set it.

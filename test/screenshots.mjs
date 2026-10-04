@@ -32,6 +32,23 @@ const bat = sum.battery.find((b) => b.alert), dev = sum.offline.find((i) => i.ki
 if (bat) window.__savvy.dismissAdd(window.hass, { id: bat.dismissId, kind: "bat", name: bat.name, members: bat.members });
 if (dev) window.__savvy.dismissAdd(window.hass, { id: dev.dismissId, kind: "off", name: dev.name, members: dev.members });
 window.__after = () => { const c = window.cards[0]; c._open.add("dm:battery"); c._open.add("dm:unavailable"); c._update(); };`;
+// the media card with several video sources and sound outputs: a TV, a console, a streamer and a PC, the
+// soundbar the TV and console play through, a speaker pair the PC plays through
+const MEDIA_SOURCES = `(() => {
+  const ago = (m) => new Date(Date.now() - m * 60000).toISOString();
+  const patch = {};
+  const add = (id, state, attrs, mins = 5) => {
+    window.house.entities[id] = { entity_id: id, area_id: "living_room", device_id: null, platform: "demo", entity_category: null, hidden: false, disabled_by: null };
+    patch[id] = { entity_id: id, state, attributes: attrs, last_changed: ago(mins), last_updated: ago(mins) };
+  };
+  const SF = 21437;
+  add("media_player.living_room_console", "playing", { friendly_name: "Console", device_class: "tv", media_title: "Night Drive", media_artist: "Racing game", supported_features: SF }, 14);
+  add("media_player.living_room_streamer", "idle", { friendly_name: "Streamer", device_class: "tv", supported_features: SF }, 90);
+  add("media_player.living_room_pc", "off", { friendly_name: "PC", device_class: "tv", supported_features: SF }, 300);
+  add("media_player.living_room_soundbar", "on", { friendly_name: "Soundbar", device_class: "receiver", volume_level: 0.34, supported_features: SF }, 14);
+  add("media_player.living_room_speakers", "idle", { friendly_name: "Speakers", device_class: "speaker", volume_level: 0.2, supported_features: SF }, 90);
+  window.setStates(patch);
+})();`;
 // the tiles: three rooms side by side (the first is mounted by the loop)
 // the front door: a Nuki-like lock with its door contact and battery, the house alarm, a camera
 const DOOR = (o) => `window.setStates(window.entranceFixture(window.house, ${JSON.stringify(o)}));`;
@@ -133,6 +150,13 @@ const SHOTS = [
   ["room-activity", "savvy-room-activity-card", { area: "living_room", chips: [{ entity: "input_boolean.movie_mode", name: "Movie", icon: "mdi:movie-open" }] }, 460],
   ["room-activity-compact", "savvy-room-activity-card", { area: "bedroom", layout: "compact" }, 400],
   ["media", "savvy-media-card", { area: "living_room", presets: [{ entity: "script.good_night", name: "Good night" }] }, 460],
+  ["media-sources", "savvy-media-card", { name: "Living room", video: [
+      { entity: "media_player.living_room_console", name: "Console", icon: "mdi:controller" },
+      { entity: "media_player.living_room_tv", name: "TV" },
+      { entity: "media_player.living_room_streamer", name: "Streamer", icon: "mdi:cast-variant" },
+      { entity: "media_player.living_room_pc", name: "PC", icon: "mdi:desktop-tower-monitor", output: "media_player.living_room_speakers" }],
+    audio: [{ entity: "media_player.living_room_soundbar", name: "Soundbar" }, { entity: "media_player.living_room_speakers", name: "Speakers" }],
+    video_output: "media_player.living_room_soundbar" }, 460, MEDIA_SOURCES],
   ["media-compact", "savvy-media-card", { area: "kitchen", layout: "compact" }, 460],
   ["scene", "savvy-scene-card", { area: ["living_room", "office"], entities: [{ entity: "scene.party", icon: "mdi:party-popper", color: "purple" }], strip: "^.*//\\s*|\\s*-\\s*on$" }, 460],
   ["lock", "savvy-lock-card", { entity: "lock.entrance_door", alarm: "alarm_control_panel.home_alarm", camera: "camera.living_room" }, 460, DOOR({})],

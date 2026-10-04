@@ -16,6 +16,7 @@
 //
 //   type: custom:savvy-camera-card
 //   area: living_room                 recordings: popup | inline | false
+//   audio_button: false               hides the speaker button (shown only when the stream has sound; always starts muted)
 
 const DAY = 86400;
 const TILE_MIN = 380;         // px of card width per camera before the grid adds a column
@@ -180,6 +181,7 @@ ha-card {
 .dots i { width: 6px; height: 6px; border-radius: 50%; background: rgb(255 255 255 / 0.4); }
 .dots i[data-on] { background: #fff; }
 :host([grid]) .dots, :host([playing]) .dots { display: none; }
+.iconbtn[hidden] { display: none; }
 .iconbtn {
   pointer-events: auto; width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center;
   background: rgb(0 0 0 / 0.38); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
@@ -203,6 +205,8 @@ ha-card {
   background: rgb(0 0 0 / 0.5); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
 }
 :host([grid]) .ctrl { position: static; background: var(--well); color: var(--primary-text-color); backdrop-filter: none; -webkit-backdrop-filter: none; }
+.snd[data-on] { background: rgb(255 255 255 / 0.24); }
+.ctrl .snd[data-on] { background: color-mix(in oklab, currentColor 16%, transparent); }
 .ctrl .iconbtn { background: none; backdrop-filter: none; -webkit-backdrop-filter: none; width: 32px; height: 32px; color: inherit; }
 .bar { position: relative; flex: 1; height: 28px; display: flex; align-items: center; cursor: pointer; touch-action: none; }
 .bar .rail { position: absolute; left: 0; right: 0; height: 4px; border-radius: 2px; background: color-mix(in oklab, currentColor 25%, transparent); overflow: hidden; }
@@ -375,7 +379,7 @@ ha-card {
 const TILE_HTML = `
   <img class="still" alt="" hidden>
   <div class="ph" hidden><ha-icon icon="mdi:cctv-off"></ha-icon><span></span></div>
-  <div class="player" hidden><video playsinline preload="auto"></video></div>
+  <div class="player" hidden><video playsinline muted preload="auto"></video></div>
   <div class="shade-top"></div><div class="shade-bot"></div>
   <div class="tl-row">
     <span class="badge"><span class="dot"></span><ha-icon class="pi" icon="mdi:play"></ha-icon><span class="bt">Live</span></span>
@@ -384,9 +388,21 @@ const TILE_HTML = `
   </div>
   <div class="bot-row">
     <span class="who"><b></b><span></span></span>
+    <button class="iconbtn snd" aria-label="Unmute" aria-pressed="false" hidden><ha-icon icon="mdi:volume-off"></ha-icon></button>
     <button class="iconbtn fs" aria-label="Full screen"><ha-icon icon="mdi:fullscreen"></ha-icon></button>
   </div>
   <div class="msg" hidden><ha-icon icon="mdi:filmstrip-off"></ha-icon><span class="mt"></span><span class="msgd" hidden></span></div>`;
+
+// the <video> inside Home Assistant's camera player, whose real element sits a few shadow roots down
+function deepVideo(node) {
+  if (!node) return null;
+  if (node.localName === "video") return node;
+  for (const k of [node.shadowRoot, ...(node.children || [])]) {
+    const v = deepVideo(k);
+    if (v) return v;
+  }
+  return null;
+}
 
 class SavvyCameraCard extends HTMLElement {
   static getStubConfig(hass) {
@@ -401,6 +417,7 @@ class SavvyCameraCard extends HTMLElement {
     super();
     watchKeyboard(this);
     this._job = (now, dt) => this._frame(now, dt);
+    this._onHidden = () => { if (document.hidden) this._muteAll(); };
     this._onscreen = true;
     this._index = 0;
     this._day = 0;
@@ -466,9 +483,14 @@ class SavvyCameraCard extends HTMLElement {
   connectedCallback() {
     this._observe();
     this._timer = this._timer || setInterval(() => this._refresh(), REFRESH_MS);
+    this._soundTimer = this._soundTimer || setInterval(() => this._syncSound(), 1000);
+    document.addEventListener("visibilitychange", this._onHidden);
     this._wake();
   }
   disconnectedCallback() {
+    clearInterval(this._soundTimer);
+    this._soundTimer = 0;
+    document.removeEventListener("visibilitychange", this._onHidden);
     Clock.remove(this._job);
     this._io?.disconnect();
     this._ro?.disconnect();
@@ -523,6 +545,7 @@ class SavvyCameraCard extends HTMLElement {
               <div class="rail"><div class="fill" id="fill"></div></div><div class="knob" id="knob"></div>
             </div>
             <span class="ctime" id="ctime"></span>
+            <button class="iconbtn snd" id="snd" aria-label="Unmute" aria-pressed="false" hidden><ha-icon icon="mdi:volume-off"></ha-icon></button>
             <span class="sync" id="sync" hidden>Synced</span>
             <button class="livebtn" id="live"><span class="dot"></span>Live</button>
           </div>
@@ -564,7 +587,7 @@ class SavvyCameraCard extends HTMLElement {
       </ha-card>`;
 
     const $ = (id) => this._root.getElementById(id);
-    const ids = ["stage", "track", "dots", "ctrl", "pp", "ppIcon", "bar", "fill", "knob", "ctime", "sync", "live",
+    const ids = ["stage", "track", "dots", "ctrl", "pp", "ppIcon", "bar", "fill", "knob", "ctime", "snd", "sync", "live",
       "pills", "ind", "prev", "next", "dayname", "daysum", "tl", "hours", "act", "actPath", "future", "marks",
       "now", "playhead", "bubble", "legend", "filters", "reviews", "note", "rec", "recBtn", "recSum", "holder"];
     this._el = Object.fromEntries(ids.map((id) => [id, $(id)]));
@@ -579,12 +602,13 @@ class SavvyCameraCard extends HTMLElement {
         i, cam: cams[i], node,
         still: q("img.still"), ph: q(".ph"), phText: q(".ph span"), player: q(".player"), video: q("video"),
         badge: q(".badge"), badgeText: q(".badge .bt"), det: q(".det"), detIcon: q(".det ha-icon"), detText: q(".det span"),
-        name: q(".who b"), status: q(".who span"), fs: q(".fs"),
+        name: q(".who b"), status: q(".who span"), fs: q(".fs"), snd: q(".snd"), sound: false,
         msg: q(".msg"), msgIcon: q(".msg ha-icon"), msgText: q(".msg .mt"), msgDetail: q(".msg .msgd"),
         liveEl: null, liveFor: null,
       };
       this._wireVideo(t);
       this._press(t.fs, () => this._fullscreen(t));
+      this._press(t.snd, () => this._setSound(t, !t.sound));
       return t;
     });
 
@@ -607,6 +631,7 @@ class SavvyCameraCard extends HTMLElement {
     this._press(this._el.next, () => this._stepDay(-1));
     this._press(this._el.live, () => this._goLive());
     this._press(this._el.pp, () => this._togglePlay());
+    this._press(this._el.snd, () => { const l = this._lead(); if (l) this._setSound(l, !l.sound); });
     if (popup) this._press(this._el.recBtn, () => this._openRec());
 
     this._ro?.disconnect();
@@ -843,6 +868,7 @@ class SavvyCameraCard extends HTMLElement {
 
   _dropLive(t) {
     t.liveToken = null;
+    t.sound = false;
     if (t.liveEl) {
       clearInterval(t.liveEl.__timer);
       t.liveEl.remove();
@@ -851,9 +877,62 @@ class SavvyCameraCard extends HTMLElement {
     t.liveFor = null;
   }
 
+  // ---------- sound ----------
+  // Every picture starts muted. The speaker button turns one tile's sound on (one tap is the gesture
+  // browsers want), one tile at a time, and it goes back to muted whenever the picture restarts, the
+  // card leaves the screen, a popup closes or the tab is hidden. It only shows when the stream has sound.
+  _voiceOf(t) { return t.playing ? t.video : t.liveEl ? deepVideo(t.liveEl) : null; }
+
+  _hasSound(t) {
+    const v = this._voiceOf(t);
+    if (!v) return false;
+    if (v.audioTracks?.length || v.mozHasAudio === true) return true;
+    if (v.srcObject?.getAudioTracks?.().length) return true;
+    return (v.webkitAudioDecodedByteCount || 0) > 0;
+  }
+
+  _setSound(t, on) {
+    on = !!on;
+    if (on) for (const o of this._tiles) if (o !== t && o.sound) this._setSound(o, false);
+    t.sound = on;
+    if (t.liveEl && t.liveEl.localName === "ha-camera-stream") t.liveEl.muted = !on;
+    const v = this._voiceOf(t);
+    if (v) v.muted = !on;
+    this._paintSound();
+  }
+
+  _muteAll() { for (const t of this._tiles || []) if (t.sound) this._setSound(t, false); }
+
+  _syncSound() {
+    if (!this._el || !this._tiles) return;
+    const enabled = this._config.audio_button !== false;
+    for (const t of this._tiles) {
+      const show = enabled && !t.playing && !!t.liveEl && this._hasSound(t);
+      t.snd.hidden = !show;
+      if (!show && t.sound && !t.playing) this._setSound(t, false);
+    }
+    const lead = this._mode === "play" ? this._lead() : null;
+    this._el.snd.hidden = !(enabled && lead && this._hasSound(lead));
+    if (this._el.snd.hidden && lead?.sound) this._setSound(lead, false);
+    this._paintSound();
+  }
+
+  _paintSound() {
+    if (!this._el || !this._tiles) return;
+    const paint = (btn, on) => {
+      btn.toggleAttribute("data-on", on);
+      attr(btn, "aria-pressed", on ? "true" : "false");
+      attr(btn, "aria-label", on ? "Mute" : "Unmute");
+      attr(btn.querySelector("ha-icon"), "icon", on ? "mdi:volume-high" : "mdi:volume-off");
+    };
+    for (const t of this._tiles) paint(t.snd, t.sound);
+    paint(this._el.snd, !!this._lead()?.sound);
+  }
+
   // ---------- playback ----------
   _wireVideo(t) {
     const v = t.video;
+    for (const ev of ["loadeddata", "playing"]) v.addEventListener(ev, () => this._syncSound());
     v.addEventListener("loadedmetadata", () => {
       if (t.offset > 0 && Number.isFinite(v.duration)) v.currentTime = Math.min(t.offset, Math.max(0, v.duration - 0.5));
       t.offset = 0;
@@ -1025,7 +1104,7 @@ class SavvyCameraCard extends HTMLElement {
     if (t.playToken !== token || this._play !== play) return;
     if (!url) { this._showMsg(t, "Couldn't open the recording."); return; }
     const v = t.video;
-    v.muted = true;
+    v.muted = !t.sound;
     v.src = url;
     v.play?.().catch(() => {});
   }
@@ -1087,6 +1166,7 @@ class SavvyCameraCard extends HTMLElement {
   }
 
   _closeDialog(now = false) {
+    this._muteAll();
     const d = this._dialog;
     if (!d) return;
     this._dialog = null;
@@ -1158,6 +1238,8 @@ class SavvyCameraCard extends HTMLElement {
 
   _stopVideo(t) {
     t.playToken = null;
+    t.sound = false;
+    t.video.muted = true;
     t.sources = null;
     const v = t.video;
     v.pause?.();
@@ -1898,6 +1980,7 @@ const EDITOR = defineEditor("savvy-camera-card", (hass, c) => [
   S.grid(S.select("recordings", "Recordings", [{ value: "popup", label: "In a popup" }, { value: "inline", label: "In the card" }]),
     { name: "columns", label: "Columns", selector: { select: { mode: "dropdown", options: [{ value: "auto", label: "By width" }, "1", "2", "3", "4"] } } }),
   S.grid(S.number("days", "Recording days", 1, 30), S.text("aspect_ratio", "Aspect ratio")),
+  S.bool("audio_button", "Sound button", "A speaker button on cameras that have sound. It always starts muted; one tap turns the sound on.", true),
   { type: "expandable", name: "frigate", title: "Frigate", schema: [
     { name: "instance", label: "Instance", helper: "Frigate's MQTT client id; 'frigate' unless you changed it. Found by itself when the cameras come from Frigate.", selector: { text: {} } },
   ] },

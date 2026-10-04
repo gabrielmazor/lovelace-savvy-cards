@@ -2,7 +2,8 @@
 
 A collection of Home Assistant dashboard cards that find their own entities. Point a card at a
 room and it shows the lights, climate, media, locks and sensors in that room. Every option is in
-the visual editor.
+the visual editor. The media card is the one to look at first if you have several TVs, consoles or
+streamers: it has a source picker and a sound output for each.
 
 The cards share one look and one feel: tactile animations, light and dark themes, and a
 reduced-motion mode that turns the animation off.
@@ -608,11 +609,17 @@ chips:
 
 ### Media
 
-<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/media-light.png"><img src="docs/images/media-dark.png" width="460" alt="Savvy media card"></picture>
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/media-sources-light.png"><img src="docs/images/media-sources-dark.png" width="460" alt="Savvy media card with four video sources and two sound outputs"></picture>
 
-A room's media the way the hardware works: sources (TVs, boxes) play through an output (a speaker or
-receiver). Artwork of what is playing, a picker for the video sources, the speaker's volume, presets,
-text to speech and an alarm clock. Volume moves only on a sideways drag, or with minus and plus.
+**One card for everything that plays in a room.** Pick the video source (TV, console, streamer, PC) with
+one tap, and the card shows what it is playing and its controls. Each source can send its sound to the
+output you choose: here the TV, console and streamer play through the soundbar, and the PC through the
+speakers. Every output keeps its own volume under it.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/media-light.png"><img src="docs/images/media-dark.png" width="460" alt="Savvy media card with artwork"></picture>
+
+With a player that has artwork, the card also shows what is playing, the way a phone would. It also has
+presets, text to speech and an alarm clock. Volume moves only on a sideways drag, or with minus and plus.
 
 <picture><source media="(prefers-color-scheme: light)" srcset="docs/images/media-compact-light.png"><img src="docs/images/media-compact-dark.png" width="460" alt="Media, compact"></picture>
 
@@ -621,9 +628,9 @@ text to speech and an alarm clock. Volume moves only on a sideways drag, or with
 | `area` | area | **required** (or `video` / `audio`) | Speakers and receivers become outputs; TVs and the rest become sources. |
 | `name` | string | the area's | Title. |
 | `layout` | `full` or `compact` | `full` | `compact`: one row with what is playing, its transport and the volume. |
-| `video` | list | found | Video sources: `{ entity, name, icon, power, output, volume, artwork }`. `power`: a switch that powers it. `output`: where its sound comes out (empty: it plays through itself; overrides `video_output`). `volume`: a helper that is its real volume. `artwork`: a binary sensor that says its artwork is worth showing. |
-| `audio` | list | found | Speakers, same item format. |
-| `video_output` | entity | none | The speaker every video source plays through. Its volume sits under the picked source. |
+| `video` | list | found | The video sources in the picker (TVs, consoles, streamers, PCs): `{ entity, name, icon, power, output, volume, artwork }`. `power`: a switch that turns it on. `output`: the speaker its sound comes out of (leave empty and it plays through itself); it wins over `video_output`. `volume`: a helper that holds its real volume. `artwork`: a binary sensor that says its artwork is worth showing. |
+| `audio` | list | found | The outputs and plain speakers, shown under the picker with their own volume. Same item format as `video`. |
+| `video_output` | entity | none | The one speaker, receiver or soundbar that every video source plays through, unless a source sets its own `output`. Its volume sits under the picked source. |
 | `presets` | chips | none | Stations and playlists. |
 | `tts` | object | none | `{ action, data, placeholder }`: a text box. `$MSG` in `data` is where the text goes. |
 | `alarm` | object | none | `{ entity, time, name }`: an alarm clock that rings here. |
@@ -656,9 +663,13 @@ video:
     power: switch.tv_plug
   - entity: media_player.console
     artwork: binary_sensor.console_online
+  - entity: media_player.pc
+    name: PC
+    output: media_player.speakers      # this one plays through the speakers, not the soundbar
 audio:
   - entity: media_player.soundbar
-video_output: media_player.soundbar
+  - entity: media_player.speakers
+video_output: media_player.soundbar    # the TV and the console play through this
 presets:
   - entity: script.play_radio
     name: Jazz
@@ -687,7 +698,9 @@ volume_step: 5
 
 Live cameras, side by side when there is room and a swipe apart when there is not. With
 [Frigate](https://github.com/blakeblackshear/frigate-hass-integration), which is found by itself: the
-day's alerts and detections, a motion timeline, and recordings that play in sync across cameras.
+day's alerts and detections, a motion timeline, and recordings that play in sync across cameras. Cameras
+are muted; when a stream carries sound a speaker button appears (live and in recordings, and in the
+camera popup of the lock card). The sound only exists if your camera sends it.
 
 | Option | Type | Default | What it does |
 |---|---|---|---|
@@ -698,6 +711,7 @@ day's alerts and detections, a motion timeline, and recordings that play in sync
 | `columns` | number or `auto` | by width | Cameras side by side (`1`: one at a time). |
 | `days` | number | `7` | Days of recordings offered. |
 | `aspect_ratio` | string | `16/9` | The tiles' shape. |
+| `audio_button` | boolean | `true` | A speaker button on a camera that has sound. Everything starts muted and one tap turns the sound on. It goes back to muted when the picture restarts, the card leaves the screen, a popup closes or the tab is hidden. `false` removes the button. |
 | `title` | string | none | A line at the top of the card. |
 | `title_path` | string | none | Title link: tapping the title opens this page. Only the words are the link. |
 
@@ -723,6 +737,7 @@ recordings: inline
 columns: 2
 days: 14
 aspect_ratio: 4/3
+audio_button: true
 ```
 
 ---
