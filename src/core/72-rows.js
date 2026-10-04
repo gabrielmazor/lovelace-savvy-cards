@@ -329,25 +329,92 @@ ROW_KINDS.alarm_control_panel = {
   },
 };
 
-// ---- fans: the switch on the line; a speed bar on the extra line
+// ---- fans: the switch on the line; a speed bar, the preset modes and oscillation on the extra line
+const presetItems = (modes) => modes.map((m) => ({ value: m, label: title(String(m).replace(/_/g, " ")) }));
 ROW_KINDS.fan = {
   build(ctx) {
     const { kit } = ctx;
-    const extra = div("sv-xline sv-ctl-fan");
+    const extra = div("sv-ctl-stack");
+    const speed = div("sv-xline sv-ctl-fan");
     const bar = new SideBar(kit, { label: "Speed", step: 0.1, onChange: (v) => call(ctx, "fan", "set_percentage", { percentage: Math.max(1, Math.round(v * 100)) }) });
     const pct = document.createElement("span");
     pct.className = "sv-pct";
-    extra.append(bar.el, pct);
-    let first = true;
+    const osc = iconButton(kit, { icon: "mdi:rotate-3d-variant", label: "Oscillate", onTap: () => call(ctx, "fan", "oscillate", { oscillating: !ctx.hass().states[ctx.id]?.attributes.oscillating }) });
+    speed.append(bar.el, pct, osc);
+    const modes = div("sv-xline sv-ctl-modes");
+    extra.append(speed, modes);
+    let first = true, seg = null, segKey = "";
     return {
       extra,
       update(st) {
+        const f = st.attributes.supported_features ?? 0;
+        const on = st.state === "on";
         const p = Number(st.attributes.percentage);
-        const on = st.state === "on" && st.attributes.percentage != null && Number.isFinite(p);
-        if (on) bar.setLevel(clamp(p / 100), first);
-        if (on) text(pct, `${Math.round((bar.pending ?? p / 100) * 100)}%`);
-        first = !on;
-        return { extra: on, sub: on ? `${Math.round(p)}%` : null };
+        const hasSpeed = on && st.attributes.percentage != null && Number.isFinite(p);
+        bar.el.hidden = pct.hidden = !hasSpeed;
+        if (hasSpeed) { bar.setLevel(clamp(p / 100), first); text(pct, `${Math.round((bar.pending ?? p / 100) * 100)}%`); }
+        first = !hasSpeed;
+        const canOsc = on && (!!(f & 2) || st.attributes.oscillating != null);
+        osc.hidden = !canOsc;
+        attr(osc, "data-on", !!st.attributes.oscillating);
+        speed.hidden = !hasSpeed && !canOsc;
+        // preset modes: a segmented control while there are few, rebuilt only when the list changes
+        const list = on && Array.isArray(st.attributes.preset_modes) ? st.attributes.preset_modes : [];
+        const key = list.join("|");
+        if (key !== segKey) {
+          segKey = key;
+          seg?.el.remove();
+          seg = list.length ? new Seg(kit, { label: "Mode", items: presetItems(list), onPick: (v) => call(ctx, "fan", "set_preset_mode", { preset_mode: v }) }) : null;
+          if (seg) modes.appendChild(seg.el);
+          if (seg && list.length > 4) seg.el.style.setProperty("grid-auto-flow", "row");
+        }
+        modes.hidden = !seg;
+        if (seg) seg.setValue(st.attributes.preset_mode, false);
+        const sub = on ? [hasSpeed ? `${Math.round(p)}%` : null, st.attributes.preset_mode ? title(String(st.attributes.preset_mode).replace(/_/g, " ")) : null].filter(Boolean).join(" · ") : null;
+        return { extra: hasSpeed || canOsc || !!seg, sub: sub || null };
+      },
+    };
+  },
+};
+
+// ---- humidifiers and dehumidifiers: the switch on the line; the target humidity and the modes below
+ROW_KINDS.humidifier = {
+  build(ctx) {
+    const { kit } = ctx;
+    const extra = div("sv-ctl-stack");
+    const line = div("sv-xline sv-ctl-hum");
+    let lo = 0, hi = 100;
+    const bar = new SideBar(kit, { label: "Target humidity", onChange: (v) => call(ctx, "humidifier", "set_humidity", { humidity: Math.round(lo + v * (hi - lo)) }) });
+    const pct = document.createElement("span");
+    pct.className = "sv-pct";
+    line.append(bar.el, pct);
+    const modes = div("sv-xline sv-ctl-modes");
+    extra.append(line, modes);
+    let first = true, seg = null, segKey = "";
+    return {
+      extra,
+      update(st) {
+        const on = st.state === "on";
+        lo = Number(st.attributes.min_humidity ?? 0);
+        hi = Number(st.attributes.max_humidity ?? 100);
+        const target = Number(st.attributes.humidity);
+        const hasTarget = on && Number.isFinite(target) && hi > lo;
+        line.hidden = !hasTarget;
+        if (hasTarget) { bar.setLevel(clamp((target - lo) / (hi - lo)), first); text(pct, `${Math.round(bar.pending != null ? lo + bar.pending * (hi - lo) : target)}%`); }
+        first = !hasTarget;
+        const list = on && Array.isArray(st.attributes.available_modes) ? st.attributes.available_modes : [];
+        const key = list.join("|");
+        if (key !== segKey) {
+          segKey = key;
+          seg?.el.remove();
+          seg = list.length ? new Seg(kit, { label: "Mode", items: presetItems(list), onPick: (v) => call(ctx, "humidifier", "set_mode", { mode: v }) }) : null;
+          if (seg) modes.appendChild(seg.el);
+        }
+        modes.hidden = !seg;
+        if (seg) seg.setValue(st.attributes.mode, false);
+        const now = Number(st.attributes.current_humidity);
+        const sub = [Number.isFinite(now) ? `${Math.round(now)}% now` : null, on && Number.isFinite(target) ? `target ${Math.round(target)}%` : null, on && st.attributes.mode ? title(String(st.attributes.mode).replace(/_/g, " ")) : null].filter(Boolean).join(" · ");
+        return { extra: hasTarget || !!seg, sub: sub || null };
       },
     };
   },

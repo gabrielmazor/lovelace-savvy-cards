@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.14.0 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.15.0 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.14.0";
+const SAVVY_VERSION = "0.15.0";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -624,6 +624,12 @@ const fanRate = (st) => {
   if (/quiet|silent|eco|min|low/.test(mode)) return SPIN.low;
   if (/turbo|max|strong|high/.test(mode)) return SPIN.high;
   return SPIN.medium;
+};
+
+// Turns per second for a fan that reports its speed in percent.
+const fanSpeedRate = (st) => {
+  const p = Number(st?.attributes.percentage);
+  return Number.isFinite(p) && p > 0 ? SPIN.low + (SPIN.high - SPIN.low) * Math.min(1, p / 100) : SPIN.medium;
 };
 
 // The room's temperature: the one config names (false: none), else the area's temperature
@@ -2775,7 +2781,7 @@ class EntityListSheet {
     row.className = "sv-row";
     row.dataset.kind = d;
     row.dataset.id = id;
-    const fan = d === "climate";
+    const fan = d === "climate", spins = fan || d === "fan";
     row.innerHTML = `<div class="sv-line1">
         <div class="sv-main" role="button" tabindex="0">
           <span class="sv-ic">${fan ? '<ha-icon icon="mdi:fan"></ha-icon>' : "<savvy-state-icon></savvy-state-icon>"}</span>
@@ -2794,7 +2800,7 @@ class EntityListSheet {
     row.__ctlIn = row.querySelector(".sv-ctl-in");
     row.__chev = row.querySelector(".sv-chev");
     row.__tog = row.querySelector(".sv-tog");
-    if (fan) { row.__spin = new Spring(0, MOTION.spin, "spin", 1e-4); row.__angle = 0; }
+    if (spins) { row.__spin = new Spring(0, MOTION.spin, "spin", 1e-4); row.__angle = 0; }
     row.__kit = new RowKit(() => Clock.add(this.ctlJob));
     row.__exp = row.__kit.spring(0, MOTION.ui, 0.002);
     row.__kit.paints.push(() => this.paintOpen(row));
@@ -2852,9 +2858,12 @@ class EntityListSheet {
       attr(row, "data-off", !st || isOff(st));
       attr(row.__main, "data-on", on);
       if (row.__spin) {
-        row.__spin.to(climateRunning(st) && !MQ.reduced.matches ? fanRate(st) : 0);
+        // an A/C's fan turns while the unit runs, a fan's own icon while it is on
+        const turning = d === "fan" ? !!st && st.state === "on" : climateRunning(st);
+        row.__spin.to(turning && !MQ.reduced.matches ? (d === "fan" ? fanSpeedRate(st) : fanRate(st)) : 0);
         if (!row.__spin.idle || row.__spin.x > 1e-4) Clock.add(this.spinJob);
-      } else if (st && row.__icon && row.__icon.stateObj !== st) { row.__icon.hass = hass; row.__icon.stateObj = st; }
+      }
+      if (d !== "climate" && st && row.__icon && row.__icon.stateObj !== st) { row.__icon.hass = hass; row.__icon.stateObj = st; }
       text(row.querySelector(".sv-name"), shortName(hass, id, null));
       const res = (st && row.__ctrl?.update(st, hass)) || {};
       attr(row, "data-alert", !!res.alert);
@@ -3898,25 +3907,92 @@ ROW_KINDS.alarm_control_panel = {
   },
 };
 
-// ---- fans: the switch on the line; a speed bar on the extra line
+// ---- fans: the switch on the line; a speed bar, the preset modes and oscillation on the extra line
+const presetItems = (modes) => modes.map((m) => ({ value: m, label: title(String(m).replace(/_/g, " ")) }));
 ROW_KINDS.fan = {
   build(ctx) {
     const { kit } = ctx;
-    const extra = div("sv-xline sv-ctl-fan");
+    const extra = div("sv-ctl-stack");
+    const speed = div("sv-xline sv-ctl-fan");
     const bar = new SideBar(kit, { label: "Speed", step: 0.1, onChange: (v) => call(ctx, "fan", "set_percentage", { percentage: Math.max(1, Math.round(v * 100)) }) });
     const pct = document.createElement("span");
     pct.className = "sv-pct";
-    extra.append(bar.el, pct);
-    let first = true;
+    const osc = iconButton(kit, { icon: "mdi:rotate-3d-variant", label: "Oscillate", onTap: () => call(ctx, "fan", "oscillate", { oscillating: !ctx.hass().states[ctx.id]?.attributes.oscillating }) });
+    speed.append(bar.el, pct, osc);
+    const modes = div("sv-xline sv-ctl-modes");
+    extra.append(speed, modes);
+    let first = true, seg = null, segKey = "";
     return {
       extra,
       update(st) {
+        const f = st.attributes.supported_features ?? 0;
+        const on = st.state === "on";
         const p = Number(st.attributes.percentage);
-        const on = st.state === "on" && st.attributes.percentage != null && Number.isFinite(p);
-        if (on) bar.setLevel(clamp(p / 100), first);
-        if (on) text(pct, `${Math.round((bar.pending ?? p / 100) * 100)}%`);
-        first = !on;
-        return { extra: on, sub: on ? `${Math.round(p)}%` : null };
+        const hasSpeed = on && st.attributes.percentage != null && Number.isFinite(p);
+        bar.el.hidden = pct.hidden = !hasSpeed;
+        if (hasSpeed) { bar.setLevel(clamp(p / 100), first); text(pct, `${Math.round((bar.pending ?? p / 100) * 100)}%`); }
+        first = !hasSpeed;
+        const canOsc = on && (!!(f & 2) || st.attributes.oscillating != null);
+        osc.hidden = !canOsc;
+        attr(osc, "data-on", !!st.attributes.oscillating);
+        speed.hidden = !hasSpeed && !canOsc;
+        // preset modes: a segmented control while there are few, rebuilt only when the list changes
+        const list = on && Array.isArray(st.attributes.preset_modes) ? st.attributes.preset_modes : [];
+        const key = list.join("|");
+        if (key !== segKey) {
+          segKey = key;
+          seg?.el.remove();
+          seg = list.length ? new Seg(kit, { label: "Mode", items: presetItems(list), onPick: (v) => call(ctx, "fan", "set_preset_mode", { preset_mode: v }) }) : null;
+          if (seg) modes.appendChild(seg.el);
+          if (seg && list.length > 4) seg.el.style.setProperty("grid-auto-flow", "row");
+        }
+        modes.hidden = !seg;
+        if (seg) seg.setValue(st.attributes.preset_mode, false);
+        const sub = on ? [hasSpeed ? `${Math.round(p)}%` : null, st.attributes.preset_mode ? title(String(st.attributes.preset_mode).replace(/_/g, " ")) : null].filter(Boolean).join(" · ") : null;
+        return { extra: hasSpeed || canOsc || !!seg, sub: sub || null };
+      },
+    };
+  },
+};
+
+// ---- humidifiers and dehumidifiers: the switch on the line; the target humidity and the modes below
+ROW_KINDS.humidifier = {
+  build(ctx) {
+    const { kit } = ctx;
+    const extra = div("sv-ctl-stack");
+    const line = div("sv-xline sv-ctl-hum");
+    let lo = 0, hi = 100;
+    const bar = new SideBar(kit, { label: "Target humidity", onChange: (v) => call(ctx, "humidifier", "set_humidity", { humidity: Math.round(lo + v * (hi - lo)) }) });
+    const pct = document.createElement("span");
+    pct.className = "sv-pct";
+    line.append(bar.el, pct);
+    const modes = div("sv-xline sv-ctl-modes");
+    extra.append(line, modes);
+    let first = true, seg = null, segKey = "";
+    return {
+      extra,
+      update(st) {
+        const on = st.state === "on";
+        lo = Number(st.attributes.min_humidity ?? 0);
+        hi = Number(st.attributes.max_humidity ?? 100);
+        const target = Number(st.attributes.humidity);
+        const hasTarget = on && Number.isFinite(target) && hi > lo;
+        line.hidden = !hasTarget;
+        if (hasTarget) { bar.setLevel(clamp((target - lo) / (hi - lo)), first); text(pct, `${Math.round(bar.pending != null ? lo + bar.pending * (hi - lo) : target)}%`); }
+        first = !hasTarget;
+        const list = on && Array.isArray(st.attributes.available_modes) ? st.attributes.available_modes : [];
+        const key = list.join("|");
+        if (key !== segKey) {
+          segKey = key;
+          seg?.el.remove();
+          seg = list.length ? new Seg(kit, { label: "Mode", items: presetItems(list), onPick: (v) => call(ctx, "humidifier", "set_mode", { mode: v }) }) : null;
+          if (seg) modes.appendChild(seg.el);
+        }
+        modes.hidden = !seg;
+        if (seg) seg.setValue(st.attributes.mode, false);
+        const now = Number(st.attributes.current_humidity);
+        const sub = [Number.isFinite(now) ? `${Math.round(now)}% now` : null, on && Number.isFinite(target) ? `target ${Math.round(target)}%` : null, on && st.attributes.mode ? title(String(st.attributes.mode).replace(/_/g, " ")) : null].filter(Boolean).join(" · ");
+        return { extra: hasTarget || !!seg, sub: sub || null };
       },
     };
   },
@@ -5378,6 +5454,11 @@ const SETTINGS_RULES = {
   ],
   "savvy-people-card": [
     { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
+  ],
+  "savvy-fan-card": [
+    glowRule,
+    { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
+    { path: "exclude_areas", label: "Ignored rooms", kind: "union", get: (s) => s.ignore?.areas, src: "ignore" },
   ],
   "savvy-cover-card": [
     glowRule,
@@ -10295,6 +10376,161 @@ const EDITOR = defineEditor("savvy-entity-card", (hass, c) => [
 
 registerCard("savvy-entity-card", SavvyEntityCard, "Entity",
   "One main entity (a person gets their picture and zone) with the entities that belong with it as chips.");
+})();
+
+// ===== cards/fan.js =====
+(() => {
+// savvy-fan-card: the fans, air purifiers and humidifiers of a room. One row each, the same rows the popups
+// use: the switch, and behind the chevron the speed, the preset modes and oscillation of a fan, or the
+// target humidity and modes of a humidifier. A fan's icon turns while it runs, faster at a higher speed.
+// "All off" acts on exactly what is listed.
+//
+//   type: custom:savvy-fan-card
+//   area: bedroom                         (or a list; empty: every fan and humidifier of the house)
+//   title: Air                            (default: the area's name + fans, else Fans)    title_path: /lovelace/air
+//   kinds: [fan, humidifier]              (default both)
+//   include: [fan.x]  exclude: [fan.y]    (the Savvy settings' ignore list is added to exclude)
+//   all: true                             (the All off button; false hides it)
+//   layout: full | compact                (compact: the summary and the button, no rows)
+//
+// Tap a name for the details. The chevron opens the speed, modes and oscillation.
+
+const FN_KINDS = ["fan", "humidifier"];
+
+const STYLE = `${BASE_CSS}${LIST_CSS}${ROWS_CSS}
+  ha-card { --pad: 14px; --tone: var(--accent); position: relative; display: flex; flex-direction: column; gap: 8px; padding: var(--pad); overflow: hidden; }
+  :host([data-compact]) ha-card { --pad: 12px; }
+  ha-card > * { position: relative; }
+  .head { display: flex; align-items: center; gap: 8px; min-height: 32px; }
+  .head .t { flex: 1; min-width: 0; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pill { flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 12px; white-space: nowrap;
+    font-size: 12px; font-weight: 650; color: rgb(var(--tone)); background: color-mix(in oklab, rgb(var(--tone)) var(--mix-on), transparent); }
+  .pill[data-off] { color: var(--secondary-text-color); background: var(--well); }
+  .ctl { flex: none; display: grid; place-items: center; width: var(--c-s); height: var(--c-s); border-radius: 11px; background: var(--well); --mdc-icon-size: 18px; }
+  .ctl ha-icon { display: flex; }
+  .ctl[disabled] { opacity: 0.4; cursor: default; }
+  .empty { padding: 4px 2px; font-size: 12.5px; font-weight: 500; color: var(--secondary-text-color); }
+`;
+
+class SavvyFanCard extends SavvyCard {
+  static getStubConfig(hass) {
+    const a = allAreas(hass).find((x) => pick(hass, areaEntities(hass, x.id), { domains: FN_KINDS }).length);
+    return a ? { area: a.id } : {};
+  }
+  static getConfigElement() { return document.createElement(EDITOR); }
+
+  setConfig(config) {
+    if (!config || typeof config !== "object") throw new Error("savvy-fan-card: invalid configuration");
+    const areas = [].concat(config.area ?? config.areas ?? []).filter(Boolean);
+    const kinds = [].concat(config.kinds ?? FN_KINDS).filter((k) => FN_KINDS.includes(k));
+    this._config = { ...config, areas, kinds: kinds.length ? kinds : FN_KINDS, include: asItems(config.include).map((i) => i.entity),
+      exclude: asItems(config.exclude).map((i) => i.entity), exclude_areas: [].concat(config.exclude_areas || []) };
+    this._compact = config.layout === "compact";
+    if (this._el) { this._build(); if (this._hass) this._update(); }
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._config) return;
+    if (!this._el) this._build();
+    this._update();
+  }
+
+  connectedCallback() { this._wake(); }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._rows?.dispose();
+    this._rows = null;
+  }
+  getCardSize() { return this._compact ? 1 : 1 + Math.max(1, this._count || 2); }
+  getGridOptions() { return { columns: 12, min_columns: 4, rows: "auto" }; }
+
+  _build() {
+    const root = this.shadowRoot || this.attachShadow({ mode: "open" });
+    this._resetMotion();
+    this._rows?.dispose();
+    root.innerHTML = `<style>${STYLE}</style>
+      <ha-card>
+        <div class="head"><span class="t" id="title"></span><span class="pill" id="pill"></span>
+          <button class="ctl" id="off" aria-label="All off"><ha-icon icon="mdi:power"></ha-icon></button></div>
+        <div id="rows"></div>
+        <div class="empty" id="empty" hidden></div>
+      </ha-card>`;
+    const $ = (id) => root.getElementById(id);
+    this._el = { card: root.querySelector("ha-card"), title: $("title"), pill: $("pill"), off: $("off"), rows: $("rows"), empty: $("empty") };
+    this._rows = new InlineRows(this);
+    this._el.rows.appendChild(this._rows.rows);
+    linkTitle(root, this._el.title, titlePathOf(this._config), (el, onTap) => this._pressable(el, { onTap }, 0.04));
+    this._pressable(this._el.off, { onTap: () => this._allOff() }, 0.08);
+    this._first = true;
+  }
+
+  _ids() {
+    const h = this._hass, c = this._config;
+    const skip = new Set(c.exclude), skipArea = new Set(c.exclude_areas), kinds = new Set(c.kinds);
+    let ids = c.areas.length ? [...new Set(c.areas.flatMap((a) => areaEntities(h, a)))] : houseEntities(h);
+    for (const id of c.include) if (h.states[id] && !ids.includes(id)) ids = [...ids, id];
+    const inc = new Set(c.include);
+    return ids.filter((id) => {
+      if (skip.has(id) || !h.states[id]) return false;
+      const a = entityArea(h, id);
+      if (a && skipArea.has(a)) return false;
+      return inc.has(id) || kinds.has(domainOf(id));
+    });
+  }
+
+  _on(ids) { return ids.filter((id) => this._hass.states[id].state === "on"); }
+
+  _allOff() {
+    const on = this._on(this._ids());
+    if (!on.length) return;
+    haptic("medium");
+    const by = { fan: [], humidifier: [] };
+    for (const id of on) (by[domainOf(id)] || (by[domainOf(id)] = [])).push(id);
+    for (const [d, list] of Object.entries(by)) if (list.length) this._hass.callService(d, "turn_off", {}, { entity_id: list });
+  }
+
+  _update() {
+    const h = this._hass;
+    if (!h || !this._el) return;
+    this.toggleAttribute("dark", !!h.themes?.darkMode);
+    this.toggleAttribute("data-compact", this._compact);
+    const c = this._config, el = this._el;
+    const ids = this._ids();
+    this._count = ids.length;
+    const areaName = c.areas.length === 1 ? areaInfo(h, c.areas[0]).name : "";
+    const fansOnly = ids.every((id) => domainOf(id) === "fan");
+    text(el.title, c.title ?? `${areaName ? `${areaName} ` : ""}${fansOnly ? (areaName ? "fans" : "Fans") : (areaName ? "air" : "Air")}`);
+    const on = this._on(ids);
+    el.pill.hidden = !ids.length;
+    text(el.pill, !ids.length ? "" : on.length ? `${on.length} on` : "All off");
+    attr(el.pill, "data-off", !on.length);
+    stateGlow(c, el.card, on.length ? [88, 142, 233] : null, 0.7);
+    el.off.hidden = c.all === false || !ids.length;
+    attr(el.off, "disabled", on.length ? null : "");
+    el.rows.hidden = this._compact || !ids.length;
+    if (!this._compact) this._rows.update(h, ids, { sort: c.areas.length > 1 ? "room" : null, hideArea: c.areas.length === 1 });
+    el.empty.hidden = ids.length > 0;
+    if (!ids.length) text(el.empty, c.areas.length ? "No fans in this area." : "No fans found.");
+    attr(el.card, "aria-label", `${el.title.textContent}${el.pill.textContent ? `, ${el.pill.textContent}` : ""}`);
+    if (this._first) { this._first = false; requestAnimationFrame(() => this._paintAll(null)); }
+    this._wake();
+  }
+}
+
+// ---------- editor ----------
+const EDITOR = defineEditor("savvy-fan-card", () => [
+  { name: "area", label: "Areas", helper: "Empty: every fan and humidifier of the house.", selector: { area: { multiple: true } } },
+  S.grid(S.text("title", "Title", "Empty: the area's name + fans."), S.titleLink("title")),
+  { name: "kinds", label: "Kinds", helper: "Empty: both.", selector: { select: { multiple: true, mode: "list", options: [{ value: "fan", label: "Fans and air purifiers" }, { value: "humidifier", label: "Humidifiers" }] } } },
+  { name: "include", label: "Also show", selector: { entity: { multiple: true } } },
+  { name: "exclude", label: "Never show", selector: { entity: { multiple: true } } },
+  S.grid(S.bool("all", "All off", "A button that turns off everything listed.", true), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact" }])),
+  GLOW_FIELD,
+]);
+
+registerCard("savvy-fan-card", SavvyFanCard, "Fans",
+  "The fans, air purifiers and humidifiers of a room: speed, modes, oscillation and target humidity, with All off.");
 })();
 
 // ===== cards/graph.js =====

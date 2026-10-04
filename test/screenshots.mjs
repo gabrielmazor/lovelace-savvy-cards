@@ -171,6 +171,16 @@ const FAMILY = `(() => {
   for (const id of ["person.alex", "person.sam", "person.jo"]) house.states[id].attributes.user_id = id;
   window.hass = { ...h, states: { ...house.states } };
 })();`;
+// air around the house, for the Fan card
+const AIR = `(() => {
+  const h = window.hass, house = window.house;
+  const add = (id, state, attributes, area) => { house.states[id] = { entity_id: id, state, attributes, last_changed: new Date().toISOString(), last_updated: new Date().toISOString() }; h.entities[id] = { entity_id: id, area_id: area, device_id: null, platform: "demo", entity_category: null, hidden: false, disabled_by: null }; };
+  add("fan.bedroom_fan", "on", { friendly_name: "Bedroom Fan", percentage: 60, preset_modes: ["auto", "sleep", "turbo"], preset_mode: "sleep", oscillating: true, supported_features: 11 }, "bedroom");
+  add("fan.bedroom_purifier", "off", { friendly_name: "Bedroom Purifier", preset_modes: ["auto", "sleep"], supported_features: 8 }, "bedroom");
+  add("humidifier.bedroom_humidifier", "on", { friendly_name: "Bedroom Humidifier", humidity: 50, current_humidity: 38, min_humidity: 30, max_humidity: 80, available_modes: ["normal", "eco", "sleep"], mode: "eco" }, "bedroom");
+  window.hass = { ...h, states: { ...house.states } };
+  window.__after = () => { for (const r of window.cards[0].shadowRoot.querySelectorAll(".sv-row")) if (/^Fan$/.test(r.querySelector(".sv-name").textContent)) r.querySelector(".sv-chev")?.click(); };
+})();`;
 const SHOTS = [
   ["lights", "savvy-lights-card", { area: "living_room", featured: ["light.living_room_ceiling"], chips: [{ entity: "switch.living_room_plug", name: "Plug" }] }, 520],
   ["lights-compact", "savvy-lights-card", { area: "living_room", layout: "compact" }, 520],
@@ -226,6 +236,8 @@ const SHOTS = [
   ["cover-compact", "savvy-cover-card", { area: "living_room", layout: "compact" }, 420, COVERS],
   ["people", "savvy-people-card", { title: "Family", people: ["person.alex", "person.sam", { entity: "person.jo", eta: "sensor.jo_travel" }] }, 420, FAMILY],
   ["people-compact", "savvy-people-card", { layout: "compact", title: "Family" }, 420, FAMILY],
+  ["fan", "savvy-fan-card", { area: "bedroom" }, 420, AIR],
+  ["fan-compact", "savvy-fan-card", { area: "bedroom", layout: "compact" }, 420, AIR],
   ["settings", "savvy-settings-card", SETTINGS_CFG, 460, SETTINGS_USERS],
   ["settings-compact", "savvy-settings-card", { ...SETTINGS_CFG, layout: "compact" }, 460, SETTINGS_USERS],
   ["camera", "savvy-camera-card", { area: ["living_room", "kitchen"] }, 820, FRIGATE],

@@ -396,7 +396,7 @@ class EntityListSheet {
     row.className = "sv-row";
     row.dataset.kind = d;
     row.dataset.id = id;
-    const fan = d === "climate";
+    const fan = d === "climate", spins = fan || d === "fan";
     row.innerHTML = `<div class="sv-line1">
         <div class="sv-main" role="button" tabindex="0">
           <span class="sv-ic">${fan ? '<ha-icon icon="mdi:fan"></ha-icon>' : "<savvy-state-icon></savvy-state-icon>"}</span>
@@ -415,7 +415,7 @@ class EntityListSheet {
     row.__ctlIn = row.querySelector(".sv-ctl-in");
     row.__chev = row.querySelector(".sv-chev");
     row.__tog = row.querySelector(".sv-tog");
-    if (fan) { row.__spin = new Spring(0, MOTION.spin, "spin", 1e-4); row.__angle = 0; }
+    if (spins) { row.__spin = new Spring(0, MOTION.spin, "spin", 1e-4); row.__angle = 0; }
     row.__kit = new RowKit(() => Clock.add(this.ctlJob));
     row.__exp = row.__kit.spring(0, MOTION.ui, 0.002);
     row.__kit.paints.push(() => this.paintOpen(row));
@@ -473,9 +473,12 @@ class EntityListSheet {
       attr(row, "data-off", !st || isOff(st));
       attr(row.__main, "data-on", on);
       if (row.__spin) {
-        row.__spin.to(climateRunning(st) && !MQ.reduced.matches ? fanRate(st) : 0);
+        // an A/C's fan turns while the unit runs, a fan's own icon while it is on
+        const turning = d === "fan" ? !!st && st.state === "on" : climateRunning(st);
+        row.__spin.to(turning && !MQ.reduced.matches ? (d === "fan" ? fanSpeedRate(st) : fanRate(st)) : 0);
         if (!row.__spin.idle || row.__spin.x > 1e-4) Clock.add(this.spinJob);
-      } else if (st && row.__icon && row.__icon.stateObj !== st) { row.__icon.hass = hass; row.__icon.stateObj = st; }
+      }
+      if (d !== "climate" && st && row.__icon && row.__icon.stateObj !== st) { row.__icon.hass = hass; row.__icon.stateObj = st; }
       text(row.querySelector(".sv-name"), shortName(hass, id, null));
       const res = (st && row.__ctrl?.update(st, hass)) || {};
       attr(row, "data-alert", !!res.alert);

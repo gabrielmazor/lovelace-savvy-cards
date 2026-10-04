@@ -153,6 +153,7 @@ animations, light and dark themes, and honour reduced motion.
 | [Home story](#home-story) | What happened at home, in plain sentences | `custom:savvy-story-card` |
 | [Covers](#covers) | Blinds, shutters, curtains, garage and gate of a room | `custom:savvy-cover-card` |
 | [People](#people) | Who is home, where the others are, battery and time to get home | `custom:savvy-people-card` |
+| [Fans](#fans) | Fans, air purifiers and humidifiers of a room | `custom:savvy-fan-card` |
 | [System health](#system-health) | Offline devices, low batteries, Watchman | `custom:savvy-system-health-card` |
 | [Entity](#entity) | One entity and the ones that go with it | `custom:savvy-entity-card` |
 | [Graph](#graph) | Number and state tiles with history | `custom:savvy-graph-card` |
@@ -1141,6 +1142,52 @@ people:
 battery: true
 battery_warn: 20
 exclude: [person.guest]
+layout: full
+```
+
+---
+
+### Fans
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/fan-light.png"><img src="docs/images/fan-dark.png" width="420" alt="Savvy fan card"></picture>
+
+The fans, air purifiers and humidifiers of a room, one row each: the same rows the popups use. The switch is
+on the line; behind the chevron a fan has its speed, its preset modes and oscillation, and a humidifier its
+target humidity and modes (the line says the humidity now). A fan's icon turns while it runs, faster at a
+higher speed. **All off** turns off exactly what is listed.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/fan-compact-light.png"><img src="docs/images/fan-compact-dark.png" width="420" alt="Fans, compact"></picture>
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `area` | area or list | the whole house | The areas whose fans to show. With several areas the rows are grouped by room. |
+| `title` | string | the area's name + fans or air | The heading. |
+| `title_path` | string | none | Title link: tapping the title opens this page. |
+| `kinds` | list | `[fan, humidifier]` | Which kinds to list. Air purifiers are fans. |
+| `include` | list of entities | none | Entities to add that the area or kinds would leave out. |
+| `exclude` | list of entities | none | Never shown. The ignore list in the [Savvy settings](#savvy-settings) is added to it. |
+| `all` | boolean | `true` | The All off button. `false` hides it. |
+| `layout` | `full` or `compact` | `full` | `compact`: the summary and the button, no rows. |
+| `state_glow` | boolean | `true` | A soft glow while anything is on. |
+
+Minimum:
+
+```yaml
+type: custom:savvy-fan-card
+area: bedroom
+```
+
+Full:
+
+```yaml
+type: custom:savvy-fan-card
+area: [bedroom, office]
+title: Air
+title_path: /lovelace/air
+kinds: [fan, humidifier]
+include: [fan.hallway_extractor]
+exclude: [fan.guest_room_fan]
+all: true
 layout: full
 ```
 

@@ -311,7 +311,7 @@ export default async function ({ browser, base, check }) {
     await click(page, "media_player.pr_tv", ".sv-main .sv-name");
     check(`${tag} the name area opens more-info`, (await page.evaluate(() => window.info))[0] === "media_player.pr_tv");
 
-    await page.evaluate(() => { window.push("climate.pr_ac", "off", { hvac_action: "off" }); window.push("climate.pr_range", "off", { hvac_action: "off" }); });
+    await page.evaluate(() => { window.push("climate.pr_ac", "off", { hvac_action: "off" }); window.push("climate.pr_range", "off", { hvac_action: "off" }); window.push("fan.pr_fan", "off", { supported_features: 1, percentage: 0 }); });   // a fan that is on keeps its icon turning, so it is off too
     await page.waitForTimeout(5200);
     check(`${tag} the clock goes to sleep`, await page.evaluate(() => window.__savvy.Clock.jobs.size === 0),
       await page.evaluate(() => JSON.stringify({ jobs: window.__savvy.Clock.jobs.size, busy: [...window.list.rows.__rows.entries()].filter(([, r]) => r.__kit.springs.some((s) => !s.idle)).map(([id]) => id),

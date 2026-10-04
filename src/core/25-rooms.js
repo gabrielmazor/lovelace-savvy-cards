@@ -98,6 +98,12 @@ const fanRate = (st) => {
   return SPIN.medium;
 };
 
+// Turns per second for a fan that reports its speed in percent.
+const fanSpeedRate = (st) => {
+  const p = Number(st?.attributes.percentage);
+  return Number.isFinite(p) && p > 0 ? SPIN.low + (SPIN.high - SPIN.low) * Math.min(1, p / 100) : SPIN.medium;
+};
+
 // The room's temperature: the one config names (false: none), else the area's temperature
 // sensor, else its climate unit's own reading. -> { entity, value, unit } or null
 function roomTemperature(hass, area, cfg = {}) {

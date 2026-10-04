@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.0
+
+- **New card: Fans** (`custom:savvy-fan-card`). The fans, air purifiers and humidifiers of a room as the
+  popup's rows, with All off. A fan has its speed, its preset modes and oscillation; a humidifier its
+  target humidity and modes. A running fan's icon turns, faster at a higher speed (in the card and the
+  popup). The ignore list in the Savvy settings applies.
+
 ## 0.14.0
 
 - **New card: People** (`custom:savvy-people-card`). Who is home: avatars with a green ring when home,

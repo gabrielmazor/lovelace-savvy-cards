@@ -172,6 +172,11 @@ const SETTINGS_RULES = {
   "savvy-people-card": [
     { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
   ],
+  "savvy-fan-card": [
+    glowRule,
+    { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
+    { path: "exclude_areas", label: "Ignored rooms", kind: "union", get: (s) => s.ignore?.areas, src: "ignore" },
+  ],
   "savvy-cover-card": [
     glowRule,
     { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
