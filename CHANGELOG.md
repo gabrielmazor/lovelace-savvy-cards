@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.10.2
+
+The room activity card: no alarm unless you ask, and its states in colour.
+
+- **The alarm is opt-in.** The card no longer finds an alarm panel by itself. Name one with `alarm:
+  alarm_control_panel.home`, or write `alarm: auto` for the house's first panel; then the armed pill shows and
+  an open door or window while it is armed (presence while armed away) turns red. Without it there is no pill
+  and nothing escalates. If you relied on the old behaviour, add `alarm: auto`.
+- **States have their own colour, alarm or not.** Presence is the accent, an open door or window and an
+  unlocked lock are amber, an alert is red (a leak blue); closed, locked and clear stay grey. The status line
+  and the card's soft corner wash follow the strongest state. `colored_states: false` (editor toggle "Coloured
+  states") keeps it all grey.
+
 ## 0.10.1
 
 A dismiss button on the health card, and admin-only visibility.

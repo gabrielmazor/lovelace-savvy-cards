@@ -267,9 +267,10 @@ state colour when on (`--mix-on`), 18% of amber or red when it is an alert
 - Derive surfaces from the text colour so they work on any theme:
   `color-mix(in oklab, var(--primary-text-color) 6%, transparent)` for a
   "well", 9% for a hairline border.
-- **Colour is reserved for energy and alerts.** Presence, doors, covers, and
-  windows light up in the text colour. Lights, climate, media, leak, and
-  alarm get a hue.
+- **Colour is reserved for energy and alerts.** Doors, covers and windows light up
+  in the text colour. Lights, climate, media, leak, and alarm get a hue. The room
+  activity card is the one exception: its states carry their own colour (presence
+  the accent, open or unlocked amber, alerts red) unless `colored_states: false`.
 - **Amber and red are one pair everywhere:** `--warn-rgb`, `--bad-rgb` (and `--good-rgb`),
   with `TONE` for the places that need a hex string. No card spells its own.
 - **The state glow.** A soft radial wash in the top corner of the card, in the colour of

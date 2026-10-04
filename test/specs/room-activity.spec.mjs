@@ -18,7 +18,7 @@ export default async function ({ browser, base, check }) {
     const r = await page.evaluate(async (width) => {
       window.mount("savvy-room-activity-card", { area: "living_room", navigation_path: "/lovelace/living-room",
         chips: [{ entity: "input_boolean.movie_mode", name: "Movie", icon: "mdi:movie-open" }, { entity: "switch.living_room_plug", name: "Plug", tap_action: "more-info" }] }, width);
-      window.mount("savvy-room-activity-card", { area: "bedroom" }, width);
+      window.mount("savvy-room-activity-card", { area: "bedroom", alarm: "auto" }, width);
       window.mount("savvy-room-activity-card", { area: "hallway", layout: "compact" }, width);
       // the pre-Savvy shape: a hand-picked Home overview, no area
       window.mount("savvy-room-activity-card", { name: "Home", icon: "mdi:home", alarm: "alarm_control_panel.home_alarm",
@@ -40,7 +40,7 @@ export default async function ({ browser, base, check }) {
       && JSON.stringify(lr.events) === JSON.stringify(["Occupied|for 12 min", "Closed|47 min ago"])
       && JSON.stringify(lr.reads) === JSON.stringify(["Temperature:23.6°C", "Humidity:47%", "Dim:140 lx"]), JSON.stringify(lr));
     check(`${tag} your chips`, JSON.stringify(lr.pills) === JSON.stringify(["Movie", "Plug"]), JSON.stringify(lr.pills));
-    check(`${tag} the alarm is found by itself: an open window while armed turns amber`, bed.armed === "Home" && bed.level === "warn" && bed.status === "Window open" && Number(bed.warn[0]) > 0.99, JSON.stringify(bed));
+    check(`${tag} alarm: auto finds the house panel: an open window while armed escalates to red`, bed.armed === "Home" && bed.level === "alert" && bed.status === "Window open" && Number(bed.warn[0]) > 0.99, JSON.stringify(bed));
     check(`${tag} compact: one row of glyphs and the temperature`, hall.glyphs >= 0 && hall.events.length === 0, JSON.stringify(hall));
     check(`${tag} the pre-Savvy hand-picked overview still works`, home.title === "Home" && home.reads.includes("Energy:3.45 $") && JSON.stringify(home.pills) === JSON.stringify(["Back door"]), JSON.stringify(home));
 

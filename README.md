@@ -411,8 +411,9 @@ aggregate: true
 <picture><source media="(prefers-color-scheme: light)" srcset="docs/images/room-activity-light.png"><img src="docs/images/room-activity-dark.png" width="460" alt="Savvy room activity card"></picture>
 
 What is happening in a room and when it last changed: presence ("for 12 min"), doors, windows, locks,
-readings, and smoke, gas and leak sensors that stay quiet until one trips. While the alarm is armed an
-open door or an unlocked lock turns amber. Swipe left for the room's history.
+readings, and smoke, gas and leak sensors that stay quiet until one trips. A state that is on shows its own
+colour: presence in the accent, an open door, window or unlocked lock in amber, an alert in red; idle stays
+grey. Name an alarm and an open door while it is armed turns red. Swipe left for the room's history.
 
 <picture><source media="(prefers-color-scheme: light)" srcset="docs/images/room-activity-compact-light.png"><img src="docs/images/room-activity-compact-dark.png" width="400" alt="Room activity, compact"></picture>
 
@@ -426,7 +427,8 @@ open door or an unlocked lock turns amber. Swipe left for the room's history.
 | `include` | list of entities | none | Entities with no area, shown with this room (a lock, a door contact). |
 | `exclude_kinds` | list of kinds | none | Kinds to hide (any of the keys above). |
 | `exclude` | list of entities | none | Entities never shown. |
-| `alarm` | entity or `false` | the house's panel | The alarm panel. |
+| `alarm` | entity or `auto` | none | The alarm panel. Adds the armed pill, and an open door or window while armed (presence while armed away) turns red. `auto` uses the house's first panel. |
+| `colored_states` | boolean | `true` | Presence in the accent, open doors, windows and unlocked locks amber, alerts red. `false` keeps everything grey. |
 | `aggregate` | `true` or list | off | See [Aggregate sensors](#aggregate-sensors). |
 | `history` | object or `false` | `{ hours: 24, ranges: [6, 24, 72], show_state: true }` | The history page. |
 | `lux_labels` | object or `false` | `{ dark: 10, dim: 150 }` | Light reads as Dark, Dim or Bright; `false` shows the number. |
@@ -454,7 +456,8 @@ door: binary_sensor.patio_door
 include: [lock.front_door]                 # a lock with no area
 exclude_kinds: [humidity]
 exclude: [binary_sensor.hallway_motion]
-alarm: alarm_control_panel.home
+alarm: alarm_control_panel.home            # or auto; leave out for none
+colored_states: true
 aggregate: true
 history: { hours: 24, ranges: [6, 24, 72] }
 lux_labels: { dark: 10, dim: 150 }

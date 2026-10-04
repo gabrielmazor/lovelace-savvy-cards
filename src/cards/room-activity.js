@@ -9,8 +9,11 @@
 //   chips     your own (the one chip spec), and hand-picked entities placed by what they
 //             are: a toggle is a chip, a door a tile, a number a readout
 //
-// With an alarm (found by itself; `alarm: false` for none), an open door or window while
-// armed, or presence while armed away, turns amber: the only time they borrow a hue.
+// A state that is on has its own colour, alarm or not: presence the accent, an open door or window
+// and an unlocked lock amber, a tripped alert red (a leak blue); idle stays grey. `colored_states:
+// false` keeps everything grey. The alarm is opt-in: `alarm: alarm_control_panel.home` (or `alarm:
+// auto` for the house's first panel) adds the armed pill, and an open door or window while armed, or
+// presence while armed away, escalates to red.
 //
 // Swipe the card left for its history: a lane per presence / door / window sensor over
 // the room's temperature, for 6 h / 24 h / 3 d; scrubbing snaps onto the nearest change,
@@ -19,6 +22,7 @@
 //   type: custom:savvy-room-activity-card
 //   area: living_room            navigation_path: /lovelace/living-room
 //   layout: compact              one row: glyphs and the temperature
+//   alarm: alarm_control_panel.home | auto | (none)   colored_states: false
 
 const SNAP_TICK_MS = 30000;
 const SNAP_PREDICT_MS = 4000;
@@ -57,8 +61,10 @@ const chipAction = (a, entity) => (a === "press" || a === "turn_on"
   ? { action: "perform-action", perform_action: `${domainOf(entity)}.${a}`, target: { entity_id: entity } } : asAction(a));
 
 const STYLE = `${BASE_CSS}
-  ha-card { --warn-c: ${SNAP_COLORS.warn}; --alert-c: ${SNAP_COLORS.alert}; display: flex; flex-direction: column; gap: 10px; padding: var(--pad); overflow: hidden; }
+  ha-card { --warn-c: ${SNAP_COLORS.warn}; --alert-c: ${SNAP_COLORS.alert}; --esc: var(--alert-c); --acc-c: rgb(var(--accent)); display: flex; flex-direction: column; gap: 10px; padding: var(--pad); overflow: hidden; }
   :host([compact]) ha-card { --pad: 12px; gap: 0; }
+  /* colored_states: false: everything stays grey, and an alarm escalation is amber as it used to be */
+  ha-card[data-plain] { --esc: var(--warn-c); }
   /* the alert wash (steady) and glow (bloom), both springs, never transitions */
   .wash, .glow { position: absolute; inset: 0; pointer-events: none; z-index: -1; opacity: 0; border-radius: inherit; }
   .wash { background: radial-gradient(140% 110% at 0% 0%, color-mix(in oklab, var(--alert-hue, var(--alert-c)) 14%, transparent), transparent 68%); }
@@ -73,6 +79,7 @@ const STYLE = `${BASE_CSS}
   .title { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; overflow-wrap: anywhere; }
   .status { font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: -0.003em; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .status[data-level="warn"] { color: var(--warn-c); font-weight: 600; }
+  .status[data-level="info"] { color: var(--acc-c); font-weight: 600; }
   .status[data-level="alert"] { color: var(--alert-hue, var(--alert-c)); font-weight: 600; }
   .armed { flex: none; display: flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 9px; background: var(--well); color: var(--secondary-text-color);
     font-size: 11px; line-height: 13px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; --mdc-icon-size: 14px; }
@@ -84,7 +91,8 @@ const STYLE = `${BASE_CSS}
   .banner .b2 { font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: -0.003em; opacity: 0.85; }
 
   .events { display: grid; grid-template-columns: repeat(auto-fit, minmax(124px, 1fr)); gap: 8px; }
-  .ev { --on: 0; --warn: 0; --hue: color-mix(in oklab, var(--warn-c) calc(var(--warn) * 100%), var(--primary-text-color));
+  .ev { --on: 0; --warn: 0; --tone-c: var(--primary-text-color);
+    --hue: color-mix(in oklab, var(--esc) calc(var(--warn) * 100%), color-mix(in oklab, var(--tone-c) calc(var(--on) * 100%), var(--primary-text-color)));
     position: relative; box-sizing: border-box; min-width: 0; display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 10px; align-items: center;
     padding: 10px 12px 10px 10px; border-radius: 14px; background: color-mix(in oklab, var(--hue) calc(6% + var(--warn) * 8%), transparent); cursor: pointer; transform-origin: 50% 50%; }
   .ev .disc { grid-row: span 2; width: var(--b-m); height: var(--b-m); border-radius: 50%; display: grid; place-items: center; --mdc-icon-size: 19px;
@@ -119,7 +127,8 @@ const STYLE = `${BASE_CSS}
   .empty { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); padding: 6px 2px; }
 
   .glyphs { display: flex; align-items: center; gap: 4px; flex: none; }
-  .gl { --on: 0; --warn: 0; --hue: color-mix(in oklab, var(--warn-c) calc(var(--warn) * 100%), var(--primary-text-color));
+  .gl { --on: 0; --warn: 0; --tone-c: var(--primary-text-color);
+    --hue: color-mix(in oklab, var(--esc) calc(var(--warn) * 100%), color-mix(in oklab, var(--tone-c) calc(var(--on) * 100%), var(--primary-text-color)));
     width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; --mdc-icon-size: 17px; cursor: pointer; transform-origin: 50% 50%;
     background: color-mix(in oklab, var(--hue) calc(var(--on) * 14%), transparent); color: color-mix(in oklab, var(--hue) calc(var(--on) * 100%), var(--secondary-text-color)); }
   .gl[data-alert] { --hue: var(--alert-hue, var(--alert-c)); --on: 1; }
@@ -408,12 +417,21 @@ class SavvyRoomActivityCard extends SavvyCard {
     return c.name || (c.area ? areaInfo(this._hass, c.area).name : "Home");
   }
 
-  // The alarm: the one config names, else the house's (false: none).
+  // The alarm is opt-in: the panel the config names, or `auto` for the house's first one. Without it there is no
+  // armed pill and nothing escalates.
   _alarmState() {
     const a = this._config.alarm;
-    if (a === false) return null;
-    const id = typeof a === "string" ? a : Object.keys(this._hass.states).find((x) => x.startsWith("alarm_control_panel."));
-    return id ? this._hass.states[id]?.state : null;
+    if (typeof a !== "string" || !a) return null;
+    const id = a === "auto" ? Object.keys(this._hass.states).find((x) => x.startsWith("alarm_control_panel.")) : a;
+    return id ? this._hass.states[id]?.state ?? null : null;
+  }
+
+  // The hue a state carries on its own (colored_states): presence the accent, a door, window or open lock amber.
+  _toneOf(slot) {
+    if (this._config.colored_states === false) return null;
+    if (slot.key === "presence") return "var(--acc-c)";
+    if (slot.key === "door" || slot.key === "window" || slot.key === "lock") return "var(--warn-c)";
+    return null;
   }
 
   // A door or window escalates whenever armed; presence only when armed away (people
@@ -441,6 +459,7 @@ class SavvyRoomActivityCard extends SavvyCard {
     text(el.title, this._areaName());
     attr(el.roomIcon, "icon", c.icon || (c.area && areaInfo(h, c.area).icon) || (c.area ? "mdi:home-outline" : "mdi:home"));
     const alarm = this._alarmState();
+    attr(el.card, "data-plain", c.colored_states === false);
     const seen = new Set();
     const summary = { active: [], warn: false, alerts: [], offline: 0, count: 0, watch: 0 };
     const tally = (slot, item, st) => {
@@ -585,6 +604,7 @@ class SavvyRoomActivityCard extends SavvyCard {
     node.__label = label;
     text(node.__el.lbl, label);
     node.__el.lbl.hidden = !(item.name || siblings > 1);
+    put(node, "--tone-c", this._toneOf(slot) || "var(--primary-text-color)");
     this._nodeSpring(node, "__onS", on ? 1 : 0, MOTION.ui).to(on ? 1 : 0, MOTION.ui);
     this._nodeSpring(node, "__warn", 0, MOTION.ui).to(this._escalates(slot, on, alarm) ? 1 : 0, MOTION.ui);
     this._timeText(node);
@@ -607,6 +627,7 @@ class SavvyRoomActivityCard extends SavvyCard {
     attr(node, "data-off", !st || isOff(st));
     attr(node, "data-alert", slot.kind === "alert");
     if (slot.color) put(node, "--alert-hue", slot.color);
+    put(node, "--tone-c", this._toneOf(slot) || "var(--primary-text-color)");
     attr(node.__el.icon, "icon", this._iconFor(slot, item, on));
     this._nodeSpring(node, "__onS", on ? 1 : 0, MOTION.ui).to(on ? 1 : 0, MOTION.ui);
     this._nodeSpring(node, "__warn", 0, MOTION.ui).to(this._escalates(slot, on, alarm) ? 1 : 0, MOTION.ui);
@@ -767,7 +788,17 @@ class SavvyRoomActivityCard extends SavvyCard {
       attr(el.banner, "aria-label", `${first.slot.label} detected. Open details.`);
     } else { this._bannerEntity = null; this._bannerNode = null; }
     const alerting = !!first;
-    this._alert.to(alerting ? 1 : 0, MOTION.ui);
+    // the strongest state sets the card's soft wash and its status colour: a tripped alert, an escalation (red),
+    // anything open or unlocked (amber), presence (the accent); with colored_states off only an alert washes
+    const colored = this._config.colored_states !== false;
+    const openNow = sum.active.some((k) => k === "door" || k === "window" || k === "lock");
+    let tier = alerting ? "alert" : null, wash = alerting ? 1 : 0;
+    if (!alerting && colored) {
+      if (sum.warn) { tier = "esc"; wash = 0.85; put(el.card, "--alert-hue", "var(--alert-c)"); }
+      else if (openNow) { tier = "open"; wash = 0.6; put(el.card, "--alert-hue", "var(--warn-c)"); }
+      else if (sum.active.includes("presence")) { tier = "presence"; wash = 0.5; put(el.card, "--alert-hue", "var(--acc-c)"); }
+    }
+    this._alert.to(wash, MOTION.ui);
     if (alerting && !this._wasAlert) bloom(this._glow, 1, MOTION.bloom);
     this._wasAlert = alerting;
     let level = null, words;
@@ -784,7 +815,7 @@ class SavvyRoomActivityCard extends SavvyCard {
         if (n === 1) parts.push(`${SLOT[k].label} open`);
         else if (n > 1) parts.push(`${n} ${k}s open`);
       }
-      if (sum.warn) level = "warn";
+      level = tier === "esc" ? "alert" : tier === "open" ? "warn" : tier === "presence" ? "info" : sum.warn ? "warn" : null;
       words = parts.length ? parts.join(" · ") : (sum.watch ? "All quiet" : "");
     }
     if (sum.offline) words = words ? `${words} · ${sum.offline} offline` : `${sum.offline} offline`;
@@ -1375,7 +1406,8 @@ const EDITOR = defineEditor("savvy-room-activity-card", (hass, c) => [
   S.area("area", "Area"),
   S.grid(S.text("name", "Name"), S.icon("icon", "Icon")),
   S.grid(S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (one row)" }]),
-    { name: "alarm", label: "Alarm", helper: "Found by itself. Doors and windows turn amber while it's armed.", selector: { entity: { domain: "alarm_control_panel" } } }),
+    { name: "alarm", label: "Alarm", helper: "Empty: none. Adds the armed pill, and an open door turns red while it's armed. Write auto in YAML for the house's first alarm.", selector: { entity: { domain: "alarm_control_panel" } } }),
+  S.bool("colored_states", "Coloured states", "Presence in the accent colour, open doors, windows and unlocked locks amber, alerts red. Off keeps everything grey.", true),
   S.nav("navigation_path", "Target page", "Where tapping the name goes."),
   { name: "exclude_kinds", label: "Hide kinds", selector: { select: { multiple: true, options: SLOTS.map((s) => ({ value: s.key, label: s.label })) } } },
   { name: "exclude", label: "Exclude", selector: { entity: { multiple: true } } },

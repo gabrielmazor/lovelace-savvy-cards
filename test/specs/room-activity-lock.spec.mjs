@@ -1,5 +1,5 @@
 // The room activity card knows locks: "Locked" / "Unlocked" with how long, amber when unlocked
-// while the alarm is armed (like an open door), a lock option, include (a lock with no area,
+// by itself and red while the alarm is armed (like an open door), a lock option, include (a lock with no area,
 // from the card or the room's settings), exclude_kinds, compact, and the history lanes.
 import { openPage } from "./_util.mjs";
 
@@ -28,8 +28,8 @@ export default async function ({ browser, base, check }) {
     await page.evaluate(RECORDER);
     const ids = await page.evaluate((width) => {
       const m = (cfg) => window.cards.indexOf(window.mount("savvy-room-activity-card", cfg, width));
-      return { hall: m({ area: "hallway" }), kitchen: m({ area: "kitchen", lock: "lock.back_door" }), off: m({ area: "hallway", lock: false }), kinds: m({ area: "hallway", exclude_kinds: ["lock"] }),
-        compact: m({ area: "hallway", layout: "compact" }) };
+      return { hall: m({ area: "hallway", alarm: "auto" }), kitchen: m({ area: "kitchen", lock: "lock.back_door" }), off: m({ area: "hallway", lock: false }), kinds: m({ area: "hallway", exclude_kinds: ["lock"] }),
+        compact: m({ area: "hallway", layout: "compact", alarm: "auto" }) };
     }, width);
     await page.waitForTimeout(700);
     const hall = await read(page, ids.hall);
@@ -38,13 +38,13 @@ export default async function ({ browser, base, check }) {
     const kit = await read(page, ids.kitchen);
     check(`${tag} lock: names the lock, and an unlocked one shows Unlocked`, kit.events.some((e) => /^Unlocked\|/.test(e)), JSON.stringify(kit));
     check(`${tag} lock: false and exclude_kinds leave it out`, (await read(page, ids.off)).events.length === 0 && (await read(page, ids.kinds)).events.length === 0);
-    // unlocked while the alarm is armed: amber, like an open door
+    // unlocked while the alarm is armed: escalates to red, like an open door
     await page.evaluate(() => window.setStates({ "lock.front_door": { entity_id: "lock.front_door", state: "unlocked", attributes: { friendly_name: "Front Door" } } }));
     await page.waitForTimeout(800);
     const un = await read(page, ids.hall);
-    check(`${tag} unlocked while the alarm is armed turns amber, and the status says so`, un.events.some((e) => /^Unlocked\|/.test(e)) && Number(un.warn[0]) > 0.99 && un.level === "warn" && /Unlocked/.test(un.status), JSON.stringify(un));
+    check(`${tag} unlocked while the alarm is armed escalates to red, and the status says so`, un.events.some((e) => /^Unlocked\|/.test(e)) && Number(un.warn[0]) > 0.99 && un.level === "alert" && /Unlocked/.test(un.status), JSON.stringify(un));
     const cp = await read(page, ids.compact);
-    check(`${tag} compact: a lock glyph, amber while unlocked and armed`, cp.glyphs.some((g) => g.icon === "mdi:lock-open-variant" && g.warn > 0.99), JSON.stringify(cp));
+    check(`${tag} compact: a lock glyph, escalated while unlocked and armed`, cp.glyphs.some((g) => g.icon === "mdi:lock-open-variant" && g.warn > 0.99), JSON.stringify(cp));
     await page.evaluate(() => window.setStates({ "lock.front_door": { entity_id: "lock.front_door", state: "locked", attributes: { friendly_name: "Front Door" } } }));
     await page.waitForTimeout(600);
 
