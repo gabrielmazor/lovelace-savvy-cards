@@ -152,6 +152,7 @@ animations, light and dark themes, and honour reduced motion.
 | [Last check](#last-check) | What would be left on when you leave or go to bed, and one slide to turn it off | `custom:savvy-last-check-card` |
 | [Home story](#home-story) | What happened at home, in plain sentences | `custom:savvy-story-card` |
 | [Covers](#covers) | Blinds, shutters, curtains, garage and gate of a room | `custom:savvy-cover-card` |
+| [People](#people) | Who is home, where the others are, battery and time to get home | `custom:savvy-people-card` |
 | [System health](#system-health) | Offline devices, low batteries, Watchman | `custom:savvy-system-health-card` |
 | [Entity](#entity) | One entity and the ones that go with it | `custom:savvy-entity-card` |
 | [Graph](#graph) | Number and state tiles with history | `custom:savvy-graph-card` |
@@ -1092,6 +1093,54 @@ classes: [blind, shutter, curtain]
 include: [cover.patio_awning]
 exclude: [cover.guest_blind]
 all: true
+layout: full
+```
+
+---
+
+### People
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/people-light.png"><img src="docs/images/people-dark.png" width="420" alt="Savvy people card"></picture>
+
+Who is home. Each person has an avatar with a green ring when they are home, where they are ("Home · 3 h",
+"At Work · 40 min", "Away · 25 min"), the phone's battery (amber under 20 %, red at 10 %) and, while they
+are away, how long until they are home. The battery is found through the person's phone, with no setup.
+The way home needs a sensor from you (a travel time sensor): minutes, or a time. Home comes first, then the
+others by name. Tap a person for their details; the map is there.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/people-compact-light.png"><img src="docs/images/people-compact-dark.png" width="420" alt="People, compact"></picture>
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `people` | list | every person | `person.x`, or `{ entity, name, eta, battery }`. A list keeps its order. |
+| `title` | string | People | The heading. |
+| `title_path` | string | none | Title link: tapping the title opens this page. |
+| `battery` | boolean | `true` | The phone's battery. `false` hides it. On a person, `battery` is a sensor, or `false`. |
+| `battery_warn` | number | `20` | Amber below this percentage. |
+| `eta` | entity | none | A sensor with the time to get home, for everyone. On a person it is theirs. |
+| `exclude` | list of people | none | Never shown. The ignore list in the [Savvy settings](#savvy-settings) is added to it. |
+| `layout` | `full` or `compact` | `full` | `compact`: a row of avatars with their names. |
+
+Minimum:
+
+```yaml
+type: custom:savvy-people-card
+```
+
+Full:
+
+```yaml
+type: custom:savvy-people-card
+title: Family
+people:
+  - person.alex
+  - entity: person.sam
+    name: Sam
+    battery: sensor.sam_phone_battery
+    eta: sensor.sam_travel_time
+battery: true
+battery_warn: 20
+exclude: [person.guest]
 layout: full
 ```
 

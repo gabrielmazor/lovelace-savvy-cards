@@ -169,6 +169,9 @@ const SETTINGS_RULES = {
     glowRule,
     { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
   ],
+  "savvy-people-card": [
+    { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
+  ],
   "savvy-cover-card": [
     glowRule,
     { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },

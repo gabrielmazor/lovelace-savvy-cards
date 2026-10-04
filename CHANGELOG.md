@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.14.0
+
+- **New card: People** (`custom:savvy-people-card`). Who is home: avatars with a green ring when home,
+  where each person is and for how long, the phone's battery (found through their phone) and, while they
+  are away, the time to get home from a sensor you give it. Home first. A compact row of avatars too. The
+  ignore list in the Savvy settings applies.
+
 ## 0.13.0
 
 - **New card: Covers** (`custom:savvy-cover-card`). The blinds, shutters, curtains, awnings, garage and

@@ -153,6 +153,24 @@ const COVERS = `(() => {
   window.hass = { ...h, states: { ...house.states } };
   window.__after = () => { const R = window.cards[0].shadowRoot; R.querySelector(".sv-row .sv-chev")?.click(); };
 })();`;
+// a family, for the People card
+const FAMILY = `(() => {
+  const h = window.hass, house = window.house;
+  const ago = (min) => new Date(Date.now() - min * 60000).toISOString();
+  const add = (id, state, attributes, extra = {}) => { house.states[id] = { entity_id: id, state, attributes, last_changed: extra.changed || ago(30), last_updated: ago(30) }; h.entities[id] = { entity_id: id, area_id: null, device_id: extra.device || null, platform: "demo", entity_category: null, hidden: false, disabled_by: null }; };
+  const pic = (c) => "data:image/svg+xml;utf8," + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='88' height='88'><rect width='88' height='88' fill='" + c + "'/><circle cx='44' cy='34' r='15' fill='white' fill-opacity='.85'/><ellipse cx='44' cy='78' rx='26' ry='22' fill='white' fill-opacity='.85'/></svg>");
+  add("person.alex", "home", { friendly_name: "Alex", source: "device_tracker.alex_phone", entity_picture: pic("#5a8fd6") }, { changed: ago(190) });
+  add("device_tracker.alex_phone", "home", {}, { device: "d_alex" });
+  add("sensor.alex_phone_battery", "78", { device_class: "battery", unit_of_measurement: "%" }, { device: "d_alex" });
+  add("person.sam", "Work", { friendly_name: "Sam", source: "device_tracker.sam_phone", entity_picture: pic("#c98bd9") }, { changed: ago(40) });
+  add("device_tracker.sam_phone", "Work", { battery_level: 14 });
+  add("zone.work", "0", { friendly_name: "Work" });
+  add("person.jo", "not_home", { friendly_name: "Jo", source: "device_tracker.jo_phone" }, { changed: ago(25) });
+  add("device_tracker.jo_phone", "not_home", { battery_level: 56 });
+  add("sensor.jo_travel", "12", { unit_of_measurement: "min" });
+  for (const id of ["person.alex", "person.sam", "person.jo"]) house.states[id].attributes.user_id = id;
+  window.hass = { ...h, states: { ...house.states } };
+})();`;
 const SHOTS = [
   ["lights", "savvy-lights-card", { area: "living_room", featured: ["light.living_room_ceiling"], chips: [{ entity: "switch.living_room_plug", name: "Plug" }] }, 520],
   ["lights-compact", "savvy-lights-card", { area: "living_room", layout: "compact" }, 520],
@@ -206,6 +224,8 @@ const SHOTS = [
   ["story-compact", "savvy-story-card", { layout: "compact", filters: false, max_events: 5 }, 420, STORY_DAY],
   ["cover", "savvy-cover-card", { area: "living_room" }, 420, COVERS],
   ["cover-compact", "savvy-cover-card", { area: "living_room", layout: "compact" }, 420, COVERS],
+  ["people", "savvy-people-card", { title: "Family", people: ["person.alex", "person.sam", { entity: "person.jo", eta: "sensor.jo_travel" }] }, 420, FAMILY],
+  ["people-compact", "savvy-people-card", { layout: "compact", title: "Family" }, 420, FAMILY],
   ["settings", "savvy-settings-card", SETTINGS_CFG, 460, SETTINGS_USERS],
   ["settings-compact", "savvy-settings-card", { ...SETTINGS_CFG, layout: "compact" }, 460, SETTINGS_USERS],
   ["camera", "savvy-camera-card", { area: ["living_room", "kitchen"] }, 820, FRIGATE],
