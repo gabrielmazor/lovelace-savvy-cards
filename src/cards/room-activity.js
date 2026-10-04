@@ -333,7 +333,9 @@ class SavvyRoomActivityCard extends SavvyCard {
       this._syncPage();
     }
     const c = this._config;
-    if (c.navigation_path || c.tap_action) {
+    // the whole name block links to navigation_path / tap_action; a title link replaces that with just the words
+    linkTitle(root, this._el.title, titlePathOf(c), (el, onTap) => this._pressable(el, { onTap }, 0.035));
+    if ((c.navigation_path || c.tap_action) && !titlePathOf(c)) {
       attr(this._el.name, "role", "button");
       attr(this._el.name, "tabindex", "0");
       this._pressable(this._el.name, { onTap: () => runAction(this, this._hass, c.tap_action || { action: "navigate", navigation_path: c.navigation_path }, {}) }, 0.035);
@@ -414,7 +416,7 @@ class SavvyRoomActivityCard extends SavvyCard {
 
   _areaName() {
     const c = this._config;
-    return c.name || (c.area ? areaInfo(this._hass, c.area).name : "Home");
+    return c.name || c.title || (c.area ? areaInfo(this._hass, c.area).name : "Home");
   }
 
   // The alarm is opt-in: the panel the config names, or `auto` for the house's first one. Without it there is no
@@ -1409,6 +1411,7 @@ const EDITOR = defineEditor("savvy-room-activity-card", (hass, c) => [
     { name: "alarm", label: "Alarm", helper: "Empty: none. Adds the armed pill, and an open door turns red while it's armed. Write auto in YAML for the house's first alarm.", selector: { entity: { domain: "alarm_control_panel" } } }),
   S.bool("colored_states", "Coloured states", "Presence in the accent colour, open doors, windows and unlocked locks amber, alerts red. Off keeps everything grey.", true),
   S.nav("navigation_path", "Target page", "Where tapping the name goes."),
+  S.titleLink("title"),
   { name: "exclude_kinds", label: "Hide kinds", selector: { select: { multiple: true, options: SLOTS.map((s) => ({ value: s.key, label: s.label })) } } },
   { name: "exclude", label: "Exclude", selector: { entity: { multiple: true } } },
   S.section("Sensor overrides", SLOTS.map((s) => ({ name: s.key, label: s.label,

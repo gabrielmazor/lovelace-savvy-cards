@@ -188,6 +188,8 @@ it is too wide.
 | `design` | object | none | `state_glow: false` turns the corner glow off on every card; a card's own `state_glow` still wins. |
 | `aggregate` | `true` or list of kinds | off | Show each room's presence sensors once. See [Aggregate sensors](#aggregate-sensors). |
 | `chips` | chips | none | Your own chips after the four. |
+| `title` | string | none | A line at the top of the card. |
+| `title_path` | string | none | Title link: tapping the title opens this page. Only the words are the link. |
 
 **`health` options.** `navigation_path` (string, none) where the popup's page button leads; `popup_button`
 (boolean, `true`) that button, shown whenever there is a target page; `popup_label` (string, "Open system
@@ -269,6 +271,8 @@ dimmed), your own chips, and a row to jump to the other rooms.
 | `room_order` | list of areas | by name | Rooms listed first, in this order. |
 | `exclude_rooms` | list of areas | none | Rooms left out of the row. |
 | `rooms` | list | none | Per room: `{ area, name, icon, navigation_path }`. |
+| `title` | string | none | A line at the top of the card. |
+| `title_path` | string | none | Title link: tapping the title opens this page. Only the words are the link. |
 
 Minimum:
 
@@ -322,6 +326,7 @@ its mode, temperature and badges. No background unless `filled: true`.
 | `aggregate` | `true` or list | off | See [Aggregate sensors](#aggregate-sensors). |
 | `heading_style` | `title` or `subtitle` | `title` | `subtitle` for a smaller heading. |
 | `filled` | boolean | `false` | Sit on a card background. |
+| `title_path` | string | none | The same as `navigation_path`, written like the other cards. `title` is the same as `name`. |
 
 Minimum:
 
@@ -434,6 +439,7 @@ grey. Name an alarm and an open door while it is armed turns red. Swipe left for
 | `lux_labels` | object or `false` | `{ dark: 10, dim: 150 }` | Light reads as Dark, Dim or Bright; `false` shows the number. |
 | `chips` | chips | none | Your own. With no `area`, a hand-picked overview. |
 | `state_glow` | boolean | `true` | A soft glow in the card's corner in what it is doing (a lit light, a locked door, music playing). `false` keeps the card plain. |
+| `title_path` | string | none | Title link: tapping the name opens this page. Only the words are the link, so it replaces the whole name block as a tap target. `title` writes the name, like `name`. |
 
 Minimum:
 
@@ -495,6 +501,7 @@ for warmth and colour. The pill at the top switches the room, or an entity of yo
 | `chips` | chips | none | Extra chips under the lights. |
 | `layout` | `full` or `compact` | `full` | `compact`: toggles only, no sliders or swatches. |
 | `state_glow` | boolean | `true` | A soft glow in the card's corner in what it is doing (a lit light, a locked door, music playing). `false` keeps the card plain. |
+| `title_path` | string | none | Title link: tapping the title opens this page. Only the words are the link. |
 
 Minimum:
 
@@ -559,6 +566,7 @@ the fan. Swipe left for history with the unit's on/off band under the chart.
 | `humidity_color` | colour | teal | Humidity colour. |
 | `chips` | chips | none | Extra chips (a button presses, a switch toggles). |
 | `state_glow` | boolean | `true` | A soft glow in the card's corner in what it is doing (a lit light, a locked door, music playing). `false` keeps the card plain. |
+| `title_path` | string | none | Title link: tapping the name opens this page. Only the words are the link. `title` writes the name, like `name`. |
 
 Minimum:
 
@@ -626,6 +634,7 @@ text to speech and an alarm clock. Volume moves only on a sideways drag, or with
 | `volume_buttons` | boolean | `true` | The minus and plus buttons. |
 | `volume_step` | number (%) | `5` | Their step. |
 | `state_glow` | boolean | `true` | A soft glow in the card's corner in what it is doing (a lit light, a locked door, music playing). `false` keeps the card plain. |
+| `title_path` | string | none | Title link: tapping the name opens this page. Only the words are the link. `title` writes the name, like `name`. |
 
 Minimum:
 
@@ -689,6 +698,8 @@ day's alerts and detections, a motion timeline, and recordings that play in sync
 | `columns` | number or `auto` | by width | Cameras side by side (`1`: one at a time). |
 | `days` | number | `7` | Days of recordings offered. |
 | `aspect_ratio` | string | `16/9` | The tiles' shape. |
+| `title` | string | none | A line at the top of the card. |
+| `title_path` | string | none | Title link: tapping the title opens this page. Only the words are the link. |
 
 Minimum:
 
@@ -750,6 +761,7 @@ can carry the house alarm and a camera.
 | `camera_view` | `compact`, `full`, `hidden` | `compact` | `compact`: a slim row and an **Open camera** button. `full`: a live still. Both open the camera card in a popup. |
 | `chips` | chips | none | Your own chips, under the lock. |
 | `state_glow` | boolean | `true` | A soft glow in the card's corner in what it is doing (a lit light, a locked door, music playing). `false` keeps the card plain. |
+| `title_path` | string | none | Title link: tapping the header opens this page. Setting it (or `title`) shows the header on a single lock too. Only the words are the link. |
 
 Tap a lock's name for its details. From the keyboard, focus the icon and use the arrow keys; hold Enter
 to open.
@@ -814,6 +826,7 @@ hold "Clean N rooms" to start, so neither happens by accident.
 | `exclude` | list of entities | none | Discovered entities to leave out. |
 | `battery_warn`, `battery_critical` | number (%) | `20`, `10` | The battery ring turns amber or red below these. |
 | `state_glow` | boolean | `true` | A soft glow in the card's corner in what it is doing (a lit light, a locked door, music playing). `false` keeps the card plain. |
+| `title_path` | string | none | Title link: tapping the name opens this page. Only the words are the link. `title` writes the name, like `name`. |
 
 Minimum:
 
@@ -871,6 +884,7 @@ after it runs, from here or from anywhere else.
 | `color` | colour | `blue` | The tint. |
 | `show_icon` | boolean | `true` | The icons. |
 | `navigation_path` | string | none | Tapping the title goes there. |
+| `title_path` | string | none | Title link: tapping the title opens this page. Only the words are the link, so it replaces `navigation_path` (which links the whole header). |
 
 Minimum:
 
@@ -952,6 +966,7 @@ How it counts:
 | `show_all_batteries` | boolean | `true` | With `source: battery`: every battery, low ones first. |
 | `action` | object | none | A footer button `{ label, tap_action }`. Shown only when `tap_action` is a real action. |
 | `state_glow` | boolean | `true` | A soft glow in the card's corner in what it is doing (a lit light, a locked door, music playing). `false` keeps the card plain. |
+| `title_path` | string | none | Title link: tapping the title opens this page. Only the words are the link. |
 
 Minimum:
 
@@ -1005,6 +1020,7 @@ anything else its icon, state and how long. Chips underneath toggle, press or sh
 | `tap_action`, `hold_action`, `double_tap_action` | action | more-info | The main entity's gestures. |
 | `chips` | chips | none | The entities that belong with it. |
 | `state_glow` | boolean | `true` | A soft glow in the card's corner in what it is doing (a lit light, a locked door, music playing). `false` keeps the card plain. |
+| `title_path` | string | none | Title link: tapping the name opens this page. Only the words are the link; the rest of the card keeps its own tap. `title` writes the name, like `name`. |
 
 Minimum:
 
@@ -1048,6 +1064,7 @@ anything else a small tile with its state. Past a week it reads long-term statis
 | `hours_to_show` | number | `24` | Every graph's range, unless a tile sets its own. |
 | `ranges` | list of hours | none | An hours selector in the header, e.g. `[24, 168, 720]`. |
 | `columns` | number | automatic | Small tiles per row. |
+| `title_path` | string | none | Title link: tapping the title opens this page. Only the words are the link. |
 
 Each tile in `entities`:
 
@@ -1139,6 +1156,7 @@ browser, and follow it live while you edit. With two settings cards the first is
 | `room_order` | list of areas | by name | Order of rooms in the popups and on the room header. |
 | `rooms` | object | none | Per area: `name`, `icon`, `page`, `control`, `light_state` (the helper behind the lights card's pill and the room tile's toggle), `temperature`, `humidity`, `include`, `exclude`. |
 | `layout` | `full` or `compact` | `full` | `compact`: a single row. |
+| `title` | string | Savvy settings | The card's name. It has no link: the card goes nowhere. |
 
 What each card takes from it:
 
@@ -1273,6 +1291,29 @@ on a card (`entity`, `entities`, `video`, `lights`) is always shown.
 
 An entity's own icon wins, then the one in its registry entry, then a built-in table by domain, device
 class and state. Savvy never shows Home Assistant's bookmark placeholder.
+
+### Title and link
+
+Every card takes `title_path` (editor: *Title link*), a page that opens when you tap the card's title. It is
+off by default, and only the words of the title are the link: the rest of the card keeps doing what it did.
+A card that already shows a name makes that name the link. A card that shows none (home header, room header,
+camera) draws a slim title line when you set `title`.
+
+```yaml
+type: custom:savvy-climate-card
+area: living_room
+title_path: /lovelace/climate
+```
+
+| Card | What the link is | `title` |
+|---|---|---|
+| Home header, Room header, Camera | A title line, drawn when `title` is set | The line's text |
+| Lights, Scenes, System health, Graph | Their title | The title |
+| Climate, Media, Vacuum, Entity, Room activity | Their name | Another way to write `name` |
+| Lock | The header, shown for a single lock too when this is set | The header text |
+| Section title | Its name (the same as `navigation_path`) | The same as `name` |
+| Savvy settings | None | Replaces "Savvy settings" |
+| Room tile | None: the whole tile already goes to its page | None |
 
 ## Troubleshooting
 

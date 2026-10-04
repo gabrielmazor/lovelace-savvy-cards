@@ -258,6 +258,7 @@ class SavvyMediaCard extends SavvyCard {
       swap: this._spring(1, SWAP_IN, "now"),
       progress: this._spring(0, MOTION.value, "stage", 0.0005),
     };
+    linkTitle(root, this._el.title, titlePathOf(c), (el, onTap) => this._pressable(el, { onTap }, 0.04));
     const P = (el, onTap, onHold) => this._pressable(el, { onTap, onHold, haptic: null }, 0.08);
     P(this._el.stage, () => this._stageOwner && moreInfo(this, this._stageOwner.entity));
     const alarmTime = () => moreInfo(this, this._config.alarm?.time || this._config.alarm?.entity);
@@ -526,7 +527,7 @@ class SavvyMediaCard extends SavvyCard {
     const mine = [...c.video, ...c.audio];
     const playing = mine.some((m) => ACTIVE.has(h.states[m.entity]?.state)), awake = mine.some((m) => this._isOn(m));
     stateGlow(c, el.card, playing || awake ? getComputedStyle(el.card).getPropertyValue("--accent").trim().split(/\s+/).map(Number) : null, playing ? 1 : 0.45);
-    text(el.title, c.name || (c.area ? areaInfo(h, c.area).name : "Media"));
+    text(el.title, c.name || c.title || (c.area ? areaInfo(h, c.area).name : "Media"));
     this._sources();
     if (!this._compact) this._stage();      // decides what the stage owns, so rows can defer
     this._nowPlaying();
@@ -949,6 +950,7 @@ const playerList = (name, label, helper) => ({ name, label, helper, type: "list"
 const EDITOR = defineEditor("savvy-media-card", (hass, c) => [
   S.area(),
   S.grid(S.text("name", "Name"), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (one row)" }])),
+  S.titleLink("name"),
   playerList("video", "Video sources", "Empty: the area's players (not its speakers)."),
   playerList("audio", "Speakers", "The room's speakers: each gets its own row with transport, volume and power. Empty: the area's speakers and receivers."),
   { name: "video_output", label: "Sound output for all sources", helper: "The speaker, receiver or soundbar every video source plays through. Its volume sits under the picked source.", selector: { entity: { domain: "media_player" } } },

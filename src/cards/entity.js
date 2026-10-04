@@ -130,6 +130,7 @@ class SavvyEntityCard extends SavvyCard {
       </ha-card>`;
     const $ = (id) => root.getElementById(id);
     this._el = { card: root.querySelector("ha-card"), main: $("main"), av: $("av"), name: $("name"), st: $("st"), since: $("since"), sub: $("sub"), pills: $("pills") };
+    linkTitle(root, this._el.name, titlePathOf(this._config), (el, onTap) => this._pressable(el, { onTap, haptic: null }, 0.05));
     this._mainOn = this._spring(0, MOTION.ui, "main");
     this._mainAway = this._spring(0, MOTION.ui, "main");
     this._first = true;
@@ -200,7 +201,7 @@ class SavvyEntityCard extends SavvyCard {
   _renderMain() {
     const h = this._hass, c = this._config, el = this._el, st = h.states[c.entity];
     const person = PEOPLE.has(domainOf(c.entity));
-    const name = c.name || st?.attributes.friendly_name || title(c.entity.split(".")[1] || c.entity);
+    const name = c.name || c.title || st?.attributes.friendly_name || title(c.entity.split(".")[1] || c.entity);
     text(el.name, name);
     attr(el.main, "data-off", !st || isOff(st));
     if (c.color) put(el.main, "--main-c", colorOf(c.color));
@@ -439,6 +440,7 @@ class SavvyEntityCard extends SavvyCard {
 const EDITOR = defineEditor("savvy-entity-card", (hass, c) => [
   S.entity("entity", "Entity", null, { helper: "A person gets their picture, zone and how long they've been there." }),
   S.grid(S.text("name", "Name"), S.icon("icon", "Icon")),
+  S.titleLink("name"),
   S.grid(S.color("color", "Colour"), { name: "picture", label: "Picture", helper: "A person's picture, instead of theirs in HA.", selector: { text: {} } }),
   S.grid(S.bool("show_state", "Show state", null, true), S.bool("show_since", "Show since", null, true)),
   S.nav("navigation_path", "Target page", "Empty: tapping opens more-info (or set a tap action below)."),

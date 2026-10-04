@@ -558,6 +558,10 @@ class ClimateCard extends HTMLElement {
       this._el.dots.appendChild(dot);
     }
 
+    linkTitle(this._root, this._el.name, titlePathOf(this._config), (el, onTap) => {
+      this._pressable(el, new Spring(0, MOTION.press, "x"), onTap);
+      el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); el.click(); } });
+    });
     this._pressable(this._el.power, this._sp.power, () => this._togglePower());
     this._pressable(this._el.minus, this._sp.minus, () => this._nudge(-1));
     this._pressable(this._el.plus, this._sp.plus, () => this._nudge(1));
@@ -982,7 +986,7 @@ class ClimateCard extends HTMLElement {
     // the glow: the mode's colour, fuller while it is actually heating or cooling
     stateGlow(c, el.card, on ? accent : null, ["heating", "cooling", "drying", "fan"].includes(a.hvac_action) ? 0.85 : 0.45);
 
-    text(el.name, c.name || a.friendly_name || title(c.entity.split(".")[1]));
+    text(el.name, c.name || c.title || a.friendly_name || title(c.entity.split(".")[1]));
     el.power.hidden = this._compact && this._modes.some((m) => m === "off");
     attr(el.power, "data-on", on ? "" : null);
     attr(el.power, "aria-pressed", on ? "true" : "false");
@@ -1732,6 +1736,7 @@ const EDITOR = defineEditor("savvy-climate-card", (hass, c) => {
       ? { name: "entity", label: "Unit", selector: { select: { mode: "dropdown", options: found.map((id) => ({ value: id, label: hass.states[id].attributes.friendly_name || id })) } } }
       : S.entity("entity", "Climate entity", "climate"),
     S.grid(S.text("name", "Name"), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact" }])),
+    S.titleLink("name"),
     { name: "hvac_modes", label: "Modes", helper: "In this order. Empty: all the unit's modes.", selector: { select: { multiple: true, mode: "list", options: modes } } },
     S.grid(S.select("default_hvac_mode", "Power mode", modes.filter((m) => m !== "off")), S.bool("fan_control", "Fan button", null, true)),
     S.section("Readings", [

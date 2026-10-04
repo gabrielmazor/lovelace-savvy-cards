@@ -202,6 +202,7 @@ class SavvyLockCard extends SavvyCard {
     this._el = { card: root.querySelector("ha-card"), head: $("head"), title: $("title"), sum: $("sum"), all: $("all"), locks: $("locks"),
       nudge: $("nudge"), nudgeTx: $("nudgeTx"), nudgeBtn: $("nudgeBtn"), alarm: $("alarm"), alarmIc: $("alarmIc"), alarmSt: $("alarmSt"), alarmModes: $("alarmModes"), alarmChev: $("alarmChev"),
       cam: $("cam"), camImg: $("camImg"), camName: $("camName"), camRow: $("camRow"), camThumb: $("camThumb"), camTx: $("camTx"), camBtn: $("camBtn"), camRowName: $("camRowName"), empty: $("empty"), chips: $("chips") };
+    linkTitle(root, this._el.title, titlePathOf(this._config), (el, onTap) => this._pressable(el, { onTap }, 0.04));
     this._pressable(this._el.all, { onTap: () => this._lockAll() }, 0.05);
     this._pressable(this._el.nudgeBtn, { onTap: () => this._nudged && this._call(this._nudged, "lock") }, 0.05);
     this._pressable(this._el.cam, { onTap: () => this._camId && this._openCamera() }, 0.025);
@@ -341,13 +342,18 @@ class SavvyLockCard extends SavvyCard {
       this._nodes.delete(id);
     }
     // header: only with several locks
+    // (a title or a title link asks for the header on a single lock too)
     const multi = items.length > 1 && !this._compact;
-    el.head.hidden = !multi;
-    if (multi) {
-      text(el.title, c.name || "Locks");
-      const open = items.length - locked;
-      text(el.sum, open ? `${open} unlocked` : "All locked");
-      Motion.show(el.all, !!needing.length);
+    const headed = multi || !!(c.title || titlePathOf(c));
+    el.head.hidden = !headed;
+    if (headed) {
+      text(el.title, c.name || c.title || (multi ? "Locks" : "Lock"));
+      el.sum.hidden = !multi;
+      if (multi) {
+        const open = items.length - locked;
+        text(el.sum, open ? `${open} unlocked` : "All locked");
+      }
+      Motion.show(el.all, multi && !!needing.length);
     }
     // the nudge: unlocked for a while
     this._nudged = nudged;
@@ -602,6 +608,7 @@ class SavvyLockCard extends SavvyCard {
 const VIEWS = [{ value: "compact", label: "Compact" }, { value: "full", label: "Full" }, { value: "hidden", label: "Hidden" }];
 const EDITOR = defineEditor("savvy-lock-card", (hass, c) => [
   S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (one row)" }]),
+  S.titleLink("title"),
   S.entity("entity", "Lock", "lock", { helper: "One lock. Or pick an area, or list several below." }),
   { name: "area", label: "Area", helper: "Every lock in these areas. Locks with no area: add them under Include.", selector: { area: { multiple: true } } },
   { name: "entities", label: "Locks", helper: "Several locks, each with its own door, battery and camera.", type: "list",

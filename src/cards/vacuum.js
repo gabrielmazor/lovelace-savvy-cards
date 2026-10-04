@@ -637,6 +637,7 @@ class VacuumCard extends HTMLElement {
     this._nodes = new Map();
 
     const openInfo = () => this._moreInfo(this._config.entity);
+    linkTitle(this._root, this._el.name, titlePathOf(this._config), (el, onTap) => this._press(el, onTap, { haptic: null }));
     this._press(this._el.ring, openInfo, { haptic: null });
     this._press(this._el.who, () => (this._config.navigation_path ? this._navigate(this._config.navigation_path) : openInfo()), { haptic: null });
     this._press(this._el.banner, () => this._moreInfo(this._bannerEntity || this._config.entity), { haptic: null });
@@ -944,7 +945,7 @@ class VacuumCard extends HTMLElement {
     const h = this._hass, c = this._config, el = this._el, st = h.states[c.entity];
     const act = this._activity();
     const off = !st || st.state === "unavailable";
-    text(el.name, c.name || st?.attributes.friendly_name || "Vacuum");
+    text(el.name, c.name || c.title || st?.attributes.friendly_name || "Vacuum");
 
     // the rich status sensor says what's really happening ("Washing the mop")
     let s1;
@@ -1660,6 +1661,7 @@ const EDITOR = defineEditor("savvy-vacuum-card", () => {
     { value: "auto", label: "Automatic" }, { value: "off", label: "Hidden" }] } } });
   return [
     S.entity("entity", "Vacuum", "vacuum"),
+    S.titleLink("name"),
     S.grid(S.text("name", "Name"), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (one row)" }])),
     S.entity("start", "Start action", null, { helper: "A button, script or scene (e.g. an app routine). Empty: the vacuum's own start. Resume after a pause is always a real resume." }),
     S.text("start_name", "Start label"),

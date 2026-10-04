@@ -124,6 +124,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
         </div>
       </ha-card>`;
     const $ = (id) => root.getElementById(id);
+    mountTitleLine(root, root.querySelector("ha-card"), this._config, (el, onTap) => this._pressable(el, { onTap }, 0.04));
     this._el = { card: root.querySelector("ha-card"), row: $("row"), home: $("home"), pill: $("pill"), swap: $("swap"), pillIcon: $("pillIcon"), val: $("val"), pre: $("pre"),
       spacer: $("spacer"), weather: $("weather"), wicon: $("wicon"), wtemp: $("wtemp"), health: $("health"), count: $("count"), chips: $("chips") };
     const el = this._el;
@@ -306,6 +307,7 @@ const autoSection = (key, what) => ({ type: "expandable", name: key, title: `${A
 ] });
 
 const EDITOR = defineEditor("savvy-home-header-card", (hass, c) => [
+  S.grid(S.titleLine(), S.titleLink("title")),
   ...modeSchema(hass, c),
   S.nav("home_path", "Home button", "The page it opens. Empty: the one from the Savvy settings."),
   { name: "admin_only", label: "Admin only", helper: "Kept from people who are not administrators. Empty: from the Savvy settings; everyone sees everything unless it is listed here or there.",

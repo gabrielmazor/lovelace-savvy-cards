@@ -70,15 +70,17 @@ class SavvySettingsCard extends SavvyCard {
     root.innerHTML = `<style>${STYLE}</style>
       <ha-card>
         <span class="disc" id="disc"><ha-icon icon="mdi:cog-sync-outline"></ha-icon></span>
-        <span class="col"><span class="name">Savvy settings</span><span class="sub" id="sub"></span></span>
+        <span class="col"><span class="name" id="name">Savvy settings</span><span class="sub" id="sub"></span></span>
       </ha-card>`;
-    this._el = { card: root.querySelector("ha-card"), disc: root.getElementById("disc"), sub: root.getElementById("sub") };
+    this._el = { card: root.querySelector("ha-card"), disc: root.getElementById("disc"), sub: root.getElementById("sub"), name: root.getElementById("name") };
   }
 
   _update() {
     const el = this._el;
     if (!el) return;
     this.toggleAttribute("dark", !!this._hass?.themes?.darkMode);
+    // the card names itself; a title says it another way (no link: this card goes nowhere)
+    text(el.name, String(this._config?.title ?? "").trim() || "Savvy settings");
     const { defaults, consumers, found } = SettingsStore.stats();
     const cards = `${consumers} ${consumers === 1 ? "card" : "cards"}`;
     const many = found > 1;
@@ -170,7 +172,7 @@ class SettingsEditor extends SavvyEditor {
     const found = SettingsStore.autoPages();
     const page = (key, label) => S.nav(key, label, found[key] ? `Found automatically: ${found[key]}. Fill it in to use another page; false for none.` : undefined);
     return [
-      S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact" }]),
+      S.grid(S.text("title", "Title", "Empty: Savvy settings."), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact" }])),
       { type: "expandable", name: "pages", title: "Pages", schema: [
         S.nav("home", "Home", "Where the home button goes."),
         page("lights", "Lights page"), page("climate", "Climate page"), page("media", "Media page"), page("security", "Security page"),

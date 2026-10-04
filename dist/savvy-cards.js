@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.10.3 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.10.4 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.10.3";
+const SAVVY_VERSION = "0.10.4";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -4598,6 +4598,76 @@ function chipItem(hass, x, i) {
   };
 }
 
+// ===== core/81-title.js =====
+// ---------------------------------------------------------------------------------------
+// core/title: an optional title and an optional link on every card.
+//
+//   title_path   a page. Off unless set. With it, the card's title text (and only that text:
+//                never the header, the icon or anything around it) is a link to the page.
+//   title        text for a card that shows no name or title of its own: a slim line at the
+//                top of the card. A card that already shows a name makes that name the link
+//                and takes `title` as another way to write it.
+//
+//   titlePathOf(config)                         the page, or null
+//   linkTitle(root, el, path, bind)             `el` is the card's own title text; bind(el, onTap)
+//                                               is how that card makes something pressable
+//   mountTitleLine(root, frame, config, bind)   the slim line, first in the card's frame
+// ---------------------------------------------------------------------------------------
+
+const TITLE_CSS = `
+  [data-tlink] { display: block; flex: 0 1 auto !important; width: fit-content; max-width: 100%; box-sizing: border-box;
+    margin-inline-end: auto !important; padding: 4px 3px; margin-block: -4px; margin-inline-start: -3px; border-radius: 7px;
+    cursor: pointer; outline: none; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    transition: color 160ms ease; }
+  @media (hover: hover) { [data-tlink]:hover { color: color-mix(in oklab, rgb(var(--accent, 88 142 233)) 82%, var(--primary-text-color)); } }
+  :host([kbd]) [data-tlink]:focus-visible { box-shadow: 0 0 0 2px rgb(var(--accent, 88 142 233)); }
+  .sv-ttl { display: flex; min-width: 0; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; color: var(--primary-text-color); }
+  .sv-ttl-t { display: block; min-width: 0; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+`;
+
+const titlePathOf = (c) => (typeof c?.title_path === "string" && c.title_path.trim() ? c.title_path.trim() : null);
+
+function ensureTitleStyle(root) {
+  if (!root || root.querySelector("style[data-title]")) return;
+  const s = document.createElement("style");
+  s.setAttribute("data-title", "");
+  s.textContent = TITLE_CSS;
+  root.appendChild(s);
+}
+
+function linkTitle(root, el, path, bind) {
+  if (!el) return;
+  const on = !!path;
+  el.__tpath = on ? path : null;
+  if (on) ensureTitleStyle(root);
+  attr(el, "data-tlink", on ? "" : null);
+  attr(el, "role", on ? "link" : null);
+  attr(el, "tabindex", on ? "0" : null);
+  if (on && !el.__tbound) {
+    el.__tbound = true;
+    // pressing the words is not pressing whatever the words sit in
+    el.addEventListener("pointerdown", (e) => e.stopPropagation());
+    bind(el, () => { if (el.__tpath) navigate(el.__tpath); });
+  }
+}
+
+function mountTitleLine(root, frame, c, bind) {
+  if (!frame) return null;
+  frame.querySelector(":scope > .sv-ttl")?.remove();
+  const t = String(c?.title ?? "").trim();
+  if (!t) return null;
+  ensureTitleStyle(root);
+  const line = document.createElement("div");
+  line.className = "sv-ttl";
+  const span = document.createElement("span");
+  span.className = "sv-ttl-t";
+  span.textContent = t;
+  line.appendChild(span);
+  frame.insertBefore(line, frame.firstChild);
+  linkTitle(root, span, titlePathOf(c), bind);
+  return line;
+}
+
 // ===== core/90-editor.js =====
 // ---------------------------------------------------------------------------------------
 // core/editor: the visual editor every card gets. A card describes its options as a schema;
@@ -5023,6 +5093,9 @@ const S = {
   action: (name, label, helper) => ({ name, label, ...(helper ? { helper } : {}), selector: { ui_action: {} } }),
   // HA's own page picker: every dashboard and view, or a path typed in
   nav: (name, label, helper) => ({ name, label, helper, selector: { navigation: {} } }),
+  // the title and its link, on every card: the name a card already shows becomes the link; a card with no name gets a title line
+  titleLink: (what = "name") => ({ name: "title_path", label: "Title link", helper: `Tapping the ${what} opens this page. Off by default.`, selector: { navigation: {} } }),
+  titleLine: () => ({ name: "title", label: "Title", helper: "A line at the top of the card. Empty: none.", selector: { text: {} } }),
   color: (name = "color", label = "Colour") => ({ name, label, selector: { text: {} }, helper: "An HA colour name (blue, amber…) or a hex like #F5B83D" }),
   grid: (...schema) => ({ type: "grid", name: "", schema }),
   section: (label, schema, expanded = false) => ({ type: "expandable", name: "", title: label, expanded, schema }),
@@ -6264,6 +6337,8 @@ class SavvyCameraCard extends HTMLElement {
       "now", "playhead", "bubble", "legend", "filters", "reviews", "note", "rec", "recBtn", "recSum", "holder"];
     this._el = Object.fromEntries(ids.map((id) => [id, $(id)]));
     this._el.card = this._root.querySelector("ha-card");
+    // a camera card shows no name of its own (each camera names itself), so a title is its own line, which can link
+    mountTitleLine(this._root, this._el.card, this._config, (el, onTap) => this._press(el, onTap, { haptic: null }));
     this._el.pillBtns = [...this._root.querySelectorAll(".pill")];
 
     this._tiles = [...this._root.querySelectorAll(".tile")].map((node, i) => {
@@ -7580,6 +7655,7 @@ class SavvyCameraCard extends HTMLElement {
 
 // ---------- editor ----------
 const EDITOR = defineEditor("savvy-camera-card", (hass, c) => [
+  S.grid(S.titleLine(), S.titleLink("title")),
   { name: "area", label: "Area", helper: "Its cameras. Pick several areas for one card across rooms.", selector: { area: { multiple: true } } },
   { name: "cameras", label: "Cameras", type: "list", helper: "Instead of the area's: these, in this order.", add: { selector: { entity: { domain: "camera" } }, label: "Add a camera" },
     item: [
@@ -8161,6 +8237,10 @@ class ClimateCard extends HTMLElement {
       this._el.dots.appendChild(dot);
     }
 
+    linkTitle(this._root, this._el.name, titlePathOf(this._config), (el, onTap) => {
+      this._pressable(el, new Spring(0, MOTION.press, "x"), onTap);
+      el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); el.click(); } });
+    });
     this._pressable(this._el.power, this._sp.power, () => this._togglePower());
     this._pressable(this._el.minus, this._sp.minus, () => this._nudge(-1));
     this._pressable(this._el.plus, this._sp.plus, () => this._nudge(1));
@@ -8585,7 +8665,7 @@ class ClimateCard extends HTMLElement {
     // the glow: the mode's colour, fuller while it is actually heating or cooling
     stateGlow(c, el.card, on ? accent : null, ["heating", "cooling", "drying", "fan"].includes(a.hvac_action) ? 0.85 : 0.45);
 
-    text(el.name, c.name || a.friendly_name || title(c.entity.split(".")[1]));
+    text(el.name, c.name || c.title || a.friendly_name || title(c.entity.split(".")[1]));
     el.power.hidden = this._compact && this._modes.some((m) => m === "off");
     attr(el.power, "data-on", on ? "" : null);
     attr(el.power, "aria-pressed", on ? "true" : "false");
@@ -9335,6 +9415,7 @@ const EDITOR = defineEditor("savvy-climate-card", (hass, c) => {
       ? { name: "entity", label: "Unit", selector: { select: { mode: "dropdown", options: found.map((id) => ({ value: id, label: hass.states[id].attributes.friendly_name || id })) } } }
       : S.entity("entity", "Climate entity", "climate"),
     S.grid(S.text("name", "Name"), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact" }])),
+    S.titleLink("name"),
     { name: "hvac_modes", label: "Modes", helper: "In this order. Empty: all the unit's modes.", selector: { select: { multiple: true, mode: "list", options: modes } } },
     S.grid(S.select("default_hvac_mode", "Power mode", modes.filter((m) => m !== "off")), S.bool("fan_control", "Fan button", null, true)),
     S.section("Readings", [
@@ -9494,6 +9575,7 @@ class SavvyEntityCard extends SavvyCard {
       </ha-card>`;
     const $ = (id) => root.getElementById(id);
     this._el = { card: root.querySelector("ha-card"), main: $("main"), av: $("av"), name: $("name"), st: $("st"), since: $("since"), sub: $("sub"), pills: $("pills") };
+    linkTitle(root, this._el.name, titlePathOf(this._config), (el, onTap) => this._pressable(el, { onTap, haptic: null }, 0.05));
     this._mainOn = this._spring(0, MOTION.ui, "main");
     this._mainAway = this._spring(0, MOTION.ui, "main");
     this._first = true;
@@ -9564,7 +9646,7 @@ class SavvyEntityCard extends SavvyCard {
   _renderMain() {
     const h = this._hass, c = this._config, el = this._el, st = h.states[c.entity];
     const person = PEOPLE.has(domainOf(c.entity));
-    const name = c.name || st?.attributes.friendly_name || title(c.entity.split(".")[1] || c.entity);
+    const name = c.name || c.title || st?.attributes.friendly_name || title(c.entity.split(".")[1] || c.entity);
     text(el.name, name);
     attr(el.main, "data-off", !st || isOff(st));
     if (c.color) put(el.main, "--main-c", colorOf(c.color));
@@ -9803,6 +9885,7 @@ class SavvyEntityCard extends SavvyCard {
 const EDITOR = defineEditor("savvy-entity-card", (hass, c) => [
   S.entity("entity", "Entity", null, { helper: "A person gets their picture, zone and how long they've been there." }),
   S.grid(S.text("name", "Name"), S.icon("icon", "Icon")),
+  S.titleLink("name"),
   S.grid(S.color("color", "Colour"), { name: "picture", label: "Picture", helper: "A person's picture, instead of theirs in HA.", selector: { text: {} } }),
   S.grid(S.bool("show_state", "Show state", null, true), S.bool("show_since", "Show since", null, true)),
   S.nav("navigation_path", "Target page", "Empty: tapping opens more-info (or set a tap action below)."),
@@ -9988,6 +10071,7 @@ class SavvyGraphCard extends SavvyCard {
     const $ = (id) => root.getElementById(id);
     this._el = { card: root.querySelector("ha-card"), head: $("head"), ht: $("ht"), ranges: $("ranges"), graphs: $("graphs"), grid: $("grid") };
     text(this._el.ht, this._config.title || "");
+    linkTitle(root, this._el.ht, titlePathOf(this._config), (el, onTap) => this._pressable(el, { onTap }, 0.04));
     if (this._config.columns) put(this._el.grid, "--cols", this._config.columns);
     this._rangeX = this._spring(0, MOTION.pill, "ranges", 0.02);
     this._rangeW = this._spring(0, MOTION.pill, "ranges", 0.02);
@@ -10415,7 +10499,7 @@ class SavvyGraphCard extends SavvyCard {
 
 // ---------- editor ----------
 const EDITOR = defineEditor("savvy-graph-card", (hass, c) => [
-  S.text("title", "Title"),
+  S.grid(S.text("title", "Title"), S.titleLink("title")),
   S.grid(S.number("hours_to_show", "Hours", 1, 8760, 1, "h"), S.number("columns", "Columns", 1, 8)),
   { name: "ranges", label: "Hours selector", helper: "Offer these ranges in the header (e.g. 24, 168, 720). Empty: no selector.",
     selector: { select: { multiple: true, custom_value: true, options: ["6", "24", "48", "168", "720"] } } },
@@ -10576,6 +10660,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
         </div>
       </ha-card>`;
     const $ = (id) => root.getElementById(id);
+    mountTitleLine(root, root.querySelector("ha-card"), this._config, (el, onTap) => this._pressable(el, { onTap }, 0.04));
     this._el = { card: root.querySelector("ha-card"), row: $("row"), home: $("home"), pill: $("pill"), swap: $("swap"), pillIcon: $("pillIcon"), val: $("val"), pre: $("pre"),
       spacer: $("spacer"), weather: $("weather"), wicon: $("wicon"), wtemp: $("wtemp"), health: $("health"), count: $("count"), chips: $("chips") };
     const el = this._el;
@@ -10758,6 +10843,7 @@ const autoSection = (key, what) => ({ type: "expandable", name: key, title: `${A
 ] });
 
 const EDITOR = defineEditor("savvy-home-header-card", (hass, c) => [
+  S.grid(S.titleLine(), S.titleLink("title")),
   ...modeSchema(hass, c),
   S.nav("home_path", "Home button", "The page it opens. Empty: the one from the Savvy settings."),
   { name: "admin_only", label: "Admin only", helper: "Kept from people who are not administrators. Empty: from the Savvy settings; everyone sees everything unless it is listed here or there.",
@@ -11282,6 +11368,7 @@ class LightsCard extends HTMLElement {
 
     this._sp = { sheet: this._spring(0, MOTION.sheetIn, "sheet", 0.002) };
 
+    linkTitle(this._root, this._el.title, titlePathOf(this._config), (el, onTap) => this._press(el, onTap));
     this._press(this._el.master, () => this._masterTap(), () => this._masterHold());
     this._el.scrim.addEventListener("pointerdown", (e) => { e.stopPropagation(); this._closeSheet(); });
     this._root.addEventListener("keydown", (e) => {
@@ -12008,7 +12095,8 @@ const lightsOf = (hass, c) => {
 
 const EDITOR = defineEditor("savvy-lights-card", (hass, c) => [
   { name: "area", label: "Area", helper: "Every light in these areas is shown. Pick several for one card across rooms.", selector: { area: { multiple: true } } },
-  S.grid(S.text("title", "Title"), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact" }])),
+  S.grid(S.text("title", "Title"), S.titleLink("title")),
+  S.grid(S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact" }])),
   S.grid(S.bool("show_header", "Show header", null, true), S.bool("show_toggle", "Show pill", null, true)),
   { type: "expandable", name: "toggle", title: "On/off pill", schema: [
     { name: "entity", label: "Pill entity", helper: "Empty: the pill turns this card's lights on and off. An entity (e.g. a room helper): tap toggles it, double tap turns every light off.", selector: { entity: {} } },
@@ -12240,6 +12328,7 @@ class SavvyLockCard extends SavvyCard {
     this._el = { card: root.querySelector("ha-card"), head: $("head"), title: $("title"), sum: $("sum"), all: $("all"), locks: $("locks"),
       nudge: $("nudge"), nudgeTx: $("nudgeTx"), nudgeBtn: $("nudgeBtn"), alarm: $("alarm"), alarmIc: $("alarmIc"), alarmSt: $("alarmSt"), alarmModes: $("alarmModes"), alarmChev: $("alarmChev"),
       cam: $("cam"), camImg: $("camImg"), camName: $("camName"), camRow: $("camRow"), camThumb: $("camThumb"), camTx: $("camTx"), camBtn: $("camBtn"), camRowName: $("camRowName"), empty: $("empty"), chips: $("chips") };
+    linkTitle(root, this._el.title, titlePathOf(this._config), (el, onTap) => this._pressable(el, { onTap }, 0.04));
     this._pressable(this._el.all, { onTap: () => this._lockAll() }, 0.05);
     this._pressable(this._el.nudgeBtn, { onTap: () => this._nudged && this._call(this._nudged, "lock") }, 0.05);
     this._pressable(this._el.cam, { onTap: () => this._camId && this._openCamera() }, 0.025);
@@ -12379,13 +12468,18 @@ class SavvyLockCard extends SavvyCard {
       this._nodes.delete(id);
     }
     // header: only with several locks
+    // (a title or a title link asks for the header on a single lock too)
     const multi = items.length > 1 && !this._compact;
-    el.head.hidden = !multi;
-    if (multi) {
-      text(el.title, c.name || "Locks");
-      const open = items.length - locked;
-      text(el.sum, open ? `${open} unlocked` : "All locked");
-      Motion.show(el.all, !!needing.length);
+    const headed = multi || !!(c.title || titlePathOf(c));
+    el.head.hidden = !headed;
+    if (headed) {
+      text(el.title, c.name || c.title || (multi ? "Locks" : "Lock"));
+      el.sum.hidden = !multi;
+      if (multi) {
+        const open = items.length - locked;
+        text(el.sum, open ? `${open} unlocked` : "All locked");
+      }
+      Motion.show(el.all, multi && !!needing.length);
     }
     // the nudge: unlocked for a while
     this._nudged = nudged;
@@ -12640,6 +12734,7 @@ class SavvyLockCard extends SavvyCard {
 const VIEWS = [{ value: "compact", label: "Compact" }, { value: "full", label: "Full" }, { value: "hidden", label: "Hidden" }];
 const EDITOR = defineEditor("savvy-lock-card", (hass, c) => [
   S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (one row)" }]),
+  S.titleLink("title"),
   S.entity("entity", "Lock", "lock", { helper: "One lock. Or pick an area, or list several below." }),
   { name: "area", label: "Area", helper: "Every lock in these areas. Locks with no area: add them under Include.", selector: { area: { multiple: true } } },
   { name: "entities", label: "Locks", helper: "Several locks, each with its own door, battery and camera.", type: "list",
@@ -12937,6 +13032,7 @@ class SavvyMediaCard extends SavvyCard {
       swap: this._spring(1, SWAP_IN, "now"),
       progress: this._spring(0, MOTION.value, "stage", 0.0005),
     };
+    linkTitle(root, this._el.title, titlePathOf(c), (el, onTap) => this._pressable(el, { onTap }, 0.04));
     const P = (el, onTap, onHold) => this._pressable(el, { onTap, onHold, haptic: null }, 0.08);
     P(this._el.stage, () => this._stageOwner && moreInfo(this, this._stageOwner.entity));
     const alarmTime = () => moreInfo(this, this._config.alarm?.time || this._config.alarm?.entity);
@@ -13205,7 +13301,7 @@ class SavvyMediaCard extends SavvyCard {
     const mine = [...c.video, ...c.audio];
     const playing = mine.some((m) => ACTIVE.has(h.states[m.entity]?.state)), awake = mine.some((m) => this._isOn(m));
     stateGlow(c, el.card, playing || awake ? getComputedStyle(el.card).getPropertyValue("--accent").trim().split(/\s+/).map(Number) : null, playing ? 1 : 0.45);
-    text(el.title, c.name || (c.area ? areaInfo(h, c.area).name : "Media"));
+    text(el.title, c.name || c.title || (c.area ? areaInfo(h, c.area).name : "Media"));
     this._sources();
     if (!this._compact) this._stage();      // decides what the stage owns, so rows can defer
     this._nowPlaying();
@@ -13628,6 +13724,7 @@ const playerList = (name, label, helper) => ({ name, label, helper, type: "list"
 const EDITOR = defineEditor("savvy-media-card", (hass, c) => [
   S.area(),
   S.grid(S.text("name", "Name"), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (one row)" }])),
+  S.titleLink("name"),
   playerList("video", "Video sources", "Empty: the area's players (not its speakers)."),
   playerList("audio", "Speakers", "The room's speakers: each gets its own row with transport, volume and power. Empty: the area's speakers and receivers."),
   { name: "video_output", label: "Sound output for all sources", helper: "The speaker, receiver or soundbar every video source plays through. Its volume sits under the picked source.", selector: { entity: { domain: "media_player" } } },
@@ -13989,7 +14086,9 @@ class SavvyRoomActivityCard extends SavvyCard {
       this._syncPage();
     }
     const c = this._config;
-    if (c.navigation_path || c.tap_action) {
+    // the whole name block links to navigation_path / tap_action; a title link replaces that with just the words
+    linkTitle(root, this._el.title, titlePathOf(c), (el, onTap) => this._pressable(el, { onTap }, 0.035));
+    if ((c.navigation_path || c.tap_action) && !titlePathOf(c)) {
       attr(this._el.name, "role", "button");
       attr(this._el.name, "tabindex", "0");
       this._pressable(this._el.name, { onTap: () => runAction(this, this._hass, c.tap_action || { action: "navigate", navigation_path: c.navigation_path }, {}) }, 0.035);
@@ -14070,7 +14169,7 @@ class SavvyRoomActivityCard extends SavvyCard {
 
   _areaName() {
     const c = this._config;
-    return c.name || (c.area ? areaInfo(this._hass, c.area).name : "Home");
+    return c.name || c.title || (c.area ? areaInfo(this._hass, c.area).name : "Home");
   }
 
   // The alarm is opt-in: the panel the config names, or `auto` for the house's first one. Without it there is no
@@ -15065,6 +15164,7 @@ const EDITOR = defineEditor("savvy-room-activity-card", (hass, c) => [
     { name: "alarm", label: "Alarm", helper: "Empty: none. Adds the armed pill, and an open door turns red while it's armed. Write auto in YAML for the house's first alarm.", selector: { entity: { domain: "alarm_control_panel" } } }),
   S.bool("colored_states", "Coloured states", "Presence in the accent colour, open doors, windows and unlocked locks amber, alerts red. Off keeps everything grey.", true),
   S.nav("navigation_path", "Target page", "Where tapping the name goes."),
+  S.titleLink("title"),
   { name: "exclude_kinds", label: "Hide kinds", selector: { select: { multiple: true, options: SLOTS.map((s) => ({ value: s.key, label: s.label })) } } },
   { name: "exclude", label: "Exclude", selector: { entity: { multiple: true } } },
   S.section("Sensor overrides", SLOTS.map((s) => ({ name: s.key, label: s.label,
@@ -15147,6 +15247,7 @@ class SavvyRoomHeaderCard extends SavvyCard {
         <div class="chips nav" id="rooms"></div>
       </ha-card>`;
     const $ = (id) => root.getElementById(id);
+    mountTitleLine(root, root.querySelector("ha-card"), this._config, (el, onTap) => this._pressable(el, { onTap }, 0.04));
     this._el = { card: root.querySelector("ha-card"), home: $("home"), pill: $("pill"), swap: $("swap"), pillIcon: $("pillIcon"), val: $("val"), pre: $("pre"),
       spacer: $("spacer"), temp: $("temp"), deg: $("deg"), sensors: $("sensors"), chips: $("chips"), sep: $("sep"), rooms: $("rooms") };
     const el = this._el;
@@ -15251,6 +15352,7 @@ const areasOf = (hass, c) => allAreas(hass).filter((a) => a.id !== c.area && are
 
 const EDITOR = defineEditor("savvy-room-header-card", (hass, c) => [
   S.area(),
+  S.grid(S.titleLine(), S.titleLink("title")),
   ...modeSchema(hass, c),
   S.nav("home_path", "Home button", "Empty hides the button."),
   { name: "temperature", label: "Temperature", helper: "Found from the area. Pick another to override.", selector: { entity: { domain: ["sensor", "climate"] } } },
@@ -15380,7 +15482,9 @@ class SavvySceneCard extends SavvyCard {
   }
   getGridOptions() { return { columns: 12, min_columns: 3, rows: "auto" }; }
 
-  _headed() { const c = this._config; return !!(c.title || c.navigation_path); }
+  _headed() { const c = this._config; return !!(c.title || c.navigation_path || titlePathOf(c)); }
+  // the whole header links to navigation_path; a title link replaces that with just the words
+  _headLink() { const c = this._config; return titlePathOf(c) ? null : c.navigation_path || null; }
 
   _build() {
     const root = this.shadowRoot || this.attachShadow({ mode: "open" });
@@ -15400,11 +15504,12 @@ class SavvySceneCard extends SavvyCard {
     attr(this._el.grid, "data-noicon", c.show_icon === false);
     const cols = Number(c.columns);
     if (!this._compact && cols >= 1) { attr(this._el.grid, "data-cols", String(cols)); put(this._el.grid, "--cols", String(Math.min(6, Math.round(cols)))); }
-    if (c.navigation_path) {
+    if (this._headLink()) {
       attr(this._el.head, "role", "button");
       attr(this._el.head, "tabindex", "0");
       this._pressable(this._el.head, { onTap: () => navigate(c.navigation_path) }, 0.03);
     }
+    linkTitle(root, this._el.title, titlePathOf(c), (el, onTap) => this._pressable(el, { onTap }, 0.04));
     this._ro?.disconnect();
     this._ro = new ResizeObserver(() => this._fitRow(this._el.grid));
     this._ro.observe(this._el.grid);
@@ -15456,7 +15561,7 @@ class SavvySceneCard extends SavvyCard {
     el.head.hidden = !headed;
     if (headed) {
       text(el.title, c.title || "Scenes");
-      el.chev.hidden = !c.navigation_path;
+      el.chev.hidden = !this._headLink();
     }
     this._renderTiles(this._items());
     if (this._first) { this._first = false; requestAnimationFrame(() => this._paintAll(null)); }
@@ -15561,7 +15666,7 @@ class SavvySceneCard extends SavvyCard {
 const SCENE_PICK = { entity: { domain: "scene" } };
 const EDITOR = defineEditor("savvy-scene-card", () => [
   { name: "area", label: "Area", helper: "Every scene in these areas is shown. Pick several for one card across rooms.", selector: { area: { multiple: true } } },
-  S.text("title", "Title", "Empty: no heading."),
+  S.grid(S.text("title", "Title", "Empty: no heading."), S.titleLink("title")),
   S.grid({ ...S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (one row)" }]), default: "full" },
     { ...S.number("columns", "Columns", 1, 6), helper: "Empty: 2 to 4, by the card's width." }),
   S.grid(S.color(), S.bool("show_icon", "Show icons", null, true)),
@@ -15671,8 +15776,9 @@ class SavvySectionTitleCard extends SavvyCard {
   static getConfigElement() { return document.createElement(EDITOR); }
 
   setConfig(config) {
-    if (!config || (!config.area && !config.name && !config.heading)) throw new Error("savvy-section-title-card: set an area (or a name)");
-    this._config = legacyBadges({ heading_style: "title", ...config, name: config.name || config.heading });
+    if (!config || (!config.area && !config.name && !config.heading && !config.title)) throw new Error("savvy-section-title-card: set an area (or a name)");
+    // `title` and `title_path` are the same name and target page the other cards call by those words
+    this._config = legacyBadges({ heading_style: "title", ...config, name: config.name || config.heading || config.title, navigation_path: config.navigation_path || config.title_path });
     if (this.shadowRoot && this._el) { this._build(); if (this._hass) this._update(); }
   }
 
@@ -15978,15 +16084,17 @@ class SavvySettingsCard extends SavvyCard {
     root.innerHTML = `<style>${STYLE}</style>
       <ha-card>
         <span class="disc" id="disc"><ha-icon icon="mdi:cog-sync-outline"></ha-icon></span>
-        <span class="col"><span class="name">Savvy settings</span><span class="sub" id="sub"></span></span>
+        <span class="col"><span class="name" id="name">Savvy settings</span><span class="sub" id="sub"></span></span>
       </ha-card>`;
-    this._el = { card: root.querySelector("ha-card"), disc: root.getElementById("disc"), sub: root.getElementById("sub") };
+    this._el = { card: root.querySelector("ha-card"), disc: root.getElementById("disc"), sub: root.getElementById("sub"), name: root.getElementById("name") };
   }
 
   _update() {
     const el = this._el;
     if (!el) return;
     this.toggleAttribute("dark", !!this._hass?.themes?.darkMode);
+    // the card names itself; a title says it another way (no link: this card goes nowhere)
+    text(el.name, String(this._config?.title ?? "").trim() || "Savvy settings");
     const { defaults, consumers, found } = SettingsStore.stats();
     const cards = `${consumers} ${consumers === 1 ? "card" : "cards"}`;
     const many = found > 1;
@@ -16078,7 +16186,7 @@ class SettingsEditor extends SavvyEditor {
     const found = SettingsStore.autoPages();
     const page = (key, label) => S.nav(key, label, found[key] ? `Found automatically: ${found[key]}. Fill it in to use another page; false for none.` : undefined);
     return [
-      S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact" }]),
+      S.grid(S.text("title", "Title", "Empty: Savvy settings."), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact" }])),
       { type: "expandable", name: "pages", title: "Pages", schema: [
         S.nav("home", "Home", "Where the home button goes."),
         page("lights", "Lights page"), page("climate", "Climate page"), page("media", "Media page"), page("security", "Security page"),
@@ -16356,6 +16464,7 @@ class SavvySystemHealthCard extends HTMLElement {
     const c = this._config;
     put(this._el.cols, "--max-rows", c.max_rows);
     text(this._el.name, c.title || SOURCES[c.source].title);
+    linkTitle(this._root, this._el.name, titlePathOf(c), (el, onTap) => this._pressable(el, onTap));
     // the footer button is off unless it has something to do
     const footer = footerAction(c.action);
     if (footer) {
@@ -16830,7 +16939,7 @@ const EDITOR = defineEditor("savvy-system-health-card", (hass, c) => [
     { value: "all", label: "Everything (Watchman, offline devices, low batteries)" },
     { value: "battery", label: "Batteries" }, { value: "unavailable", label: "Offline devices" }, { value: "watchman", label: "Watchman" },
   ]),
-  S.text("title", "Title"),
+  S.grid(S.text("title", "Title"), S.titleLink("title")),
   S.grid(S.number("battery_threshold", "Battery alert", 1, 100, 1, "%"), S.number("warn_above", "Red threshold", 1, 99)),
   S.number("max_rows", "Max rows", 3, 30),
   { name: "columns", label: "Columns", helper: "Side by side when the card is wide: one column per category. Empty: automatic. 1 keeps them stacked.",
@@ -18117,6 +18226,7 @@ class VacuumCard extends HTMLElement {
     this._nodes = new Map();
 
     const openInfo = () => this._moreInfo(this._config.entity);
+    linkTitle(this._root, this._el.name, titlePathOf(this._config), (el, onTap) => this._press(el, onTap, { haptic: null }));
     this._press(this._el.ring, openInfo, { haptic: null });
     this._press(this._el.who, () => (this._config.navigation_path ? this._navigate(this._config.navigation_path) : openInfo()), { haptic: null });
     this._press(this._el.banner, () => this._moreInfo(this._bannerEntity || this._config.entity), { haptic: null });
@@ -18424,7 +18534,7 @@ class VacuumCard extends HTMLElement {
     const h = this._hass, c = this._config, el = this._el, st = h.states[c.entity];
     const act = this._activity();
     const off = !st || st.state === "unavailable";
-    text(el.name, c.name || st?.attributes.friendly_name || "Vacuum");
+    text(el.name, c.name || c.title || st?.attributes.friendly_name || "Vacuum");
 
     // the rich status sensor says what's really happening ("Washing the mop")
     let s1;
@@ -19140,6 +19250,7 @@ const EDITOR = defineEditor("savvy-vacuum-card", () => {
     { value: "auto", label: "Automatic" }, { value: "off", label: "Hidden" }] } } });
   return [
     S.entity("entity", "Vacuum", "vacuum"),
+    S.titleLink("name"),
     S.grid(S.text("name", "Name"), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (one row)" }])),
     S.entity("start", "Start action", null, { helper: "A button, script or scene (e.g. an app routine). Empty: the vacuum's own start. Resume after a pause is always a real resume." }),
     S.text("start_name", "Start label"),

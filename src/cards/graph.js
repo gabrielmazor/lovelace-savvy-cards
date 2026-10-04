@@ -170,6 +170,7 @@ class SavvyGraphCard extends SavvyCard {
     const $ = (id) => root.getElementById(id);
     this._el = { card: root.querySelector("ha-card"), head: $("head"), ht: $("ht"), ranges: $("ranges"), graphs: $("graphs"), grid: $("grid") };
     text(this._el.ht, this._config.title || "");
+    linkTitle(root, this._el.ht, titlePathOf(this._config), (el, onTap) => this._pressable(el, { onTap }, 0.04));
     if (this._config.columns) put(this._el.grid, "--cols", this._config.columns);
     this._rangeX = this._spring(0, MOTION.pill, "ranges", 0.02);
     this._rangeW = this._spring(0, MOTION.pill, "ranges", 0.02);
@@ -597,7 +598,7 @@ class SavvyGraphCard extends SavvyCard {
 
 // ---------- editor ----------
 const EDITOR = defineEditor("savvy-graph-card", (hass, c) => [
-  S.text("title", "Title"),
+  S.grid(S.text("title", "Title"), S.titleLink("title")),
   S.grid(S.number("hours_to_show", "Hours", 1, 8760, 1, "h"), S.number("columns", "Columns", 1, 8)),
   { name: "ranges", label: "Hours selector", helper: "Offer these ranges in the header (e.g. 24, 168, 720). Empty: no selector.",
     selector: { select: { multiple: true, custom_value: true, options: ["6", "24", "48", "168", "720"] } } },

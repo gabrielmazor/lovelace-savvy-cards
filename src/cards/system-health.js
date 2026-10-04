@@ -207,6 +207,7 @@ class SavvySystemHealthCard extends HTMLElement {
     const c = this._config;
     put(this._el.cols, "--max-rows", c.max_rows);
     text(this._el.name, c.title || SOURCES[c.source].title);
+    linkTitle(this._root, this._el.name, titlePathOf(c), (el, onTap) => this._pressable(el, onTap));
     // the footer button is off unless it has something to do
     const footer = footerAction(c.action);
     if (footer) {
@@ -681,7 +682,7 @@ const EDITOR = defineEditor("savvy-system-health-card", (hass, c) => [
     { value: "all", label: "Everything (Watchman, offline devices, low batteries)" },
     { value: "battery", label: "Batteries" }, { value: "unavailable", label: "Offline devices" }, { value: "watchman", label: "Watchman" },
   ]),
-  S.text("title", "Title"),
+  S.grid(S.text("title", "Title"), S.titleLink("title")),
   S.grid(S.number("battery_threshold", "Battery alert", 1, 100, 1, "%"), S.number("warn_above", "Red threshold", 1, 99)),
   S.number("max_rows", "Max rows", 3, 30),
   { name: "columns", label: "Columns", helper: "Side by side when the card is wide: one column per category. Empty: automatic. 1 keeps them stacked.",

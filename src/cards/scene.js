@@ -108,7 +108,9 @@ class SavvySceneCard extends SavvyCard {
   }
   getGridOptions() { return { columns: 12, min_columns: 3, rows: "auto" }; }
 
-  _headed() { const c = this._config; return !!(c.title || c.navigation_path); }
+  _headed() { const c = this._config; return !!(c.title || c.navigation_path || titlePathOf(c)); }
+  // the whole header links to navigation_path; a title link replaces that with just the words
+  _headLink() { const c = this._config; return titlePathOf(c) ? null : c.navigation_path || null; }
 
   _build() {
     const root = this.shadowRoot || this.attachShadow({ mode: "open" });
@@ -128,11 +130,12 @@ class SavvySceneCard extends SavvyCard {
     attr(this._el.grid, "data-noicon", c.show_icon === false);
     const cols = Number(c.columns);
     if (!this._compact && cols >= 1) { attr(this._el.grid, "data-cols", String(cols)); put(this._el.grid, "--cols", String(Math.min(6, Math.round(cols)))); }
-    if (c.navigation_path) {
+    if (this._headLink()) {
       attr(this._el.head, "role", "button");
       attr(this._el.head, "tabindex", "0");
       this._pressable(this._el.head, { onTap: () => navigate(c.navigation_path) }, 0.03);
     }
+    linkTitle(root, this._el.title, titlePathOf(c), (el, onTap) => this._pressable(el, { onTap }, 0.04));
     this._ro?.disconnect();
     this._ro = new ResizeObserver(() => this._fitRow(this._el.grid));
     this._ro.observe(this._el.grid);
@@ -184,7 +187,7 @@ class SavvySceneCard extends SavvyCard {
     el.head.hidden = !headed;
     if (headed) {
       text(el.title, c.title || "Scenes");
-      el.chev.hidden = !c.navigation_path;
+      el.chev.hidden = !this._headLink();
     }
     this._renderTiles(this._items());
     if (this._first) { this._first = false; requestAnimationFrame(() => this._paintAll(null)); }
@@ -289,7 +292,7 @@ class SavvySceneCard extends SavvyCard {
 const SCENE_PICK = { entity: { domain: "scene" } };
 const EDITOR = defineEditor("savvy-scene-card", () => [
   { name: "area", label: "Area", helper: "Every scene in these areas is shown. Pick several for one card across rooms.", selector: { area: { multiple: true } } },
-  S.text("title", "Title", "Empty: no heading."),
+  S.grid(S.text("title", "Title", "Empty: no heading."), S.titleLink("title")),
   S.grid({ ...S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (one row)" }]), default: "full" },
     { ...S.number("columns", "Columns", 1, 6), helper: "Empty: 2 to 4, by the card's width." }),
   S.grid(S.color(), S.bool("show_icon", "Show icons", null, true)),

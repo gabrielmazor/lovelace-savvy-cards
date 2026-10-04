@@ -64,6 +64,7 @@ class SavvyRoomHeaderCard extends SavvyCard {
         <div class="chips nav" id="rooms"></div>
       </ha-card>`;
     const $ = (id) => root.getElementById(id);
+    mountTitleLine(root, root.querySelector("ha-card"), this._config, (el, onTap) => this._pressable(el, { onTap }, 0.04));
     this._el = { card: root.querySelector("ha-card"), home: $("home"), pill: $("pill"), swap: $("swap"), pillIcon: $("pillIcon"), val: $("val"), pre: $("pre"),
       spacer: $("spacer"), temp: $("temp"), deg: $("deg"), sensors: $("sensors"), chips: $("chips"), sep: $("sep"), rooms: $("rooms") };
     const el = this._el;
@@ -168,6 +169,7 @@ const areasOf = (hass, c) => allAreas(hass).filter((a) => a.id !== c.area && are
 
 const EDITOR = defineEditor("savvy-room-header-card", (hass, c) => [
   S.area(),
+  S.grid(S.titleLine(), S.titleLink("title")),
   ...modeSchema(hass, c),
   S.nav("home_path", "Home button", "Empty hides the button."),
   { name: "temperature", label: "Temperature", helper: "Found from the area. Pick another to override.", selector: { entity: { domain: ["sensor", "climate"] } } },

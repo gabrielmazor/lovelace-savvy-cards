@@ -422,6 +422,9 @@ const S = {
   action: (name, label, helper) => ({ name, label, ...(helper ? { helper } : {}), selector: { ui_action: {} } }),
   // HA's own page picker: every dashboard and view, or a path typed in
   nav: (name, label, helper) => ({ name, label, helper, selector: { navigation: {} } }),
+  // the title and its link, on every card: the name a card already shows becomes the link; a card with no name gets a title line
+  titleLink: (what = "name") => ({ name: "title_path", label: "Title link", helper: `Tapping the ${what} opens this page. Off by default.`, selector: { navigation: {} } }),
+  titleLine: () => ({ name: "title", label: "Title", helper: "A line at the top of the card. Empty: none.", selector: { text: {} } }),
   color: (name = "color", label = "Colour") => ({ name, label, selector: { text: {} }, helper: "An HA colour name (blue, amber…) or a hex like #F5B83D" }),
   grid: (...schema) => ({ type: "grid", name: "", schema }),
   section: (label, schema, expanded = false) => ({ type: "expandable", name: "", title: label, expanded, schema }),

@@ -569,6 +569,8 @@ class SavvyCameraCard extends HTMLElement {
       "now", "playhead", "bubble", "legend", "filters", "reviews", "note", "rec", "recBtn", "recSum", "holder"];
     this._el = Object.fromEntries(ids.map((id) => [id, $(id)]));
     this._el.card = this._root.querySelector("ha-card");
+    // a camera card shows no name of its own (each camera names itself), so a title is its own line, which can link
+    mountTitleLine(this._root, this._el.card, this._config, (el, onTap) => this._press(el, onTap, { haptic: null }));
     this._el.pillBtns = [...this._root.querySelectorAll(".pill")];
 
     this._tiles = [...this._root.querySelectorAll(".tile")].map((node, i) => {
@@ -1885,6 +1887,7 @@ class SavvyCameraCard extends HTMLElement {
 
 // ---------- editor ----------
 const EDITOR = defineEditor("savvy-camera-card", (hass, c) => [
+  S.grid(S.titleLine(), S.titleLink("title")),
   { name: "area", label: "Area", helper: "Its cameras. Pick several areas for one card across rooms.", selector: { area: { multiple: true } } },
   { name: "cameras", label: "Cameras", type: "list", helper: "Instead of the area's: these, in this order.", add: { selector: { entity: { domain: "camera" } }, label: "Add a camera" },
     item: [

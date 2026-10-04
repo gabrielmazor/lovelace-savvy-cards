@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.10.4
+
+A title with a link on every card, off unless you set it.
+
+- **`title_path` (Title link) on every card.** A page that opens when you tap the card's title. Only the
+  words are the link: pressing anywhere else on the card does what it always did, and pressing the words does
+  not also do the card's own thing. The page you are already on is a no-op. Keyboard: Enter or Space.
+- **Cards that show a name make that name the link** (climate, media, vacuum, entity, lights, scenes, lock,
+  system health, graph, room activity). `title` is another way to write `name` there.
+- **Cards that show no name get a title line** when `title` is set: home header, room header and camera.
+- **Not changed:** the room tile (the whole tile already goes to its page) and the section title (it already
+  had `navigation_path`; `title_path` and `title` are accepted as the same thing). The settings card takes a
+  `title` and no link.
+- A lock card with a title or a title link shows its header for a single lock too.
+
 ## 0.10.3
 
 The graph card has colours of its own.

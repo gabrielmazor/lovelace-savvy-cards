@@ -475,6 +475,7 @@ class LightsCard extends HTMLElement {
 
     this._sp = { sheet: this._spring(0, MOTION.sheetIn, "sheet", 0.002) };
 
+    linkTitle(this._root, this._el.title, titlePathOf(this._config), (el, onTap) => this._press(el, onTap));
     this._press(this._el.master, () => this._masterTap(), () => this._masterHold());
     this._el.scrim.addEventListener("pointerdown", (e) => { e.stopPropagation(); this._closeSheet(); });
     this._root.addEventListener("keydown", (e) => {
@@ -1201,7 +1202,8 @@ const lightsOf = (hass, c) => {
 
 const EDITOR = defineEditor("savvy-lights-card", (hass, c) => [
   { name: "area", label: "Area", helper: "Every light in these areas is shown. Pick several for one card across rooms.", selector: { area: { multiple: true } } },
-  S.grid(S.text("title", "Title"), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact" }])),
+  S.grid(S.text("title", "Title"), S.titleLink("title")),
+  S.grid(S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact" }])),
   S.grid(S.bool("show_header", "Show header", null, true), S.bool("show_toggle", "Show pill", null, true)),
   { type: "expandable", name: "toggle", title: "On/off pill", schema: [
     { name: "entity", label: "Pill entity", helper: "Empty: the pill turns this card's lights on and off. An entity (e.g. a room helper): tap toggles it, double tap turns every light off.", selector: { entity: {} } },

@@ -85,8 +85,9 @@ class SavvySectionTitleCard extends SavvyCard {
   static getConfigElement() { return document.createElement(EDITOR); }
 
   setConfig(config) {
-    if (!config || (!config.area && !config.name && !config.heading)) throw new Error("savvy-section-title-card: set an area (or a name)");
-    this._config = legacyBadges({ heading_style: "title", ...config, name: config.name || config.heading });
+    if (!config || (!config.area && !config.name && !config.heading && !config.title)) throw new Error("savvy-section-title-card: set an area (or a name)");
+    // `title` and `title_path` are the same name and target page the other cards call by those words
+    this._config = legacyBadges({ heading_style: "title", ...config, name: config.name || config.heading || config.title, navigation_path: config.navigation_path || config.title_path });
     if (this.shadowRoot && this._el) { this._build(); if (this._hass) this._update(); }
   }
 
