@@ -976,8 +976,9 @@ How it counts:
 | `watchman_report` | object | `{ parse_config: true }` | The data the chip sends to `watchman.report`. |
 | `watchman_last_run` | entity or `false` | found | Watchman's last-parse timestamp ("Checked 2 h ago"). |
 | `ignore` | object | none | Known problems: `{ devices: [device ids], entities: [entity ids] }`. |
-| `dismiss` | boolean | `true` | The dismiss button on each row. `false` hides the buttons; what was dismissed stays dismissed, with its Bring back button. |
+| `dismiss` | boolean | `true` | The dismiss button on each row. `false` hides the buttons; what was dismissed stays dismissed, listed in the Dismissed section at the bottom with its Bring back button. |
 | `warn_above` | number | `6` | The count turns red at this many issues. |
+| `categories` | list | all four | Which sections show and in what order: `watchman`, `unavailable`, `battery`, `dismissed`. Hidden sections still count. Dismissed goes last unless you place it. |
 | `columns` | number | automatic | With `source: all`, how many sections sit side by side when the card is wide. `1` stacks them. |
 | `max_rows` | number | `7` | Rows before a list scrolls. |
 | `show_all_batteries` | boolean | `true` | With `source: battery`: every battery, low ones first. |

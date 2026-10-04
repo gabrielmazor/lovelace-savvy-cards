@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.8
+
+- **System health: Dismissed is its own section**, at the bottom, listing everything you put aside with a
+  Bring back button (it says whether it is a Watchman item, an offline device or a battery).
+- **Choose and order the sections.** `categories` lists the sections to show in the order you want
+  (Watchman, Offline devices, Low batteries, Dismissed); the editor has a tick list. Hidden sections still
+  count.
+- **The summary line sits under its title** (for example "3 missing entities, all from offline
+  devices") and wraps, so it is read in full instead of being cut.
+
 ## 0.10.7
 
 - **Fine scrubbing on the recordings timeline.** Press the bar and drag as before; drag up and the same

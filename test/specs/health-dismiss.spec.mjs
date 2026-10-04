@@ -134,9 +134,10 @@ export default async function ({ browser, base, check }) {
     const read = () => page.evaluate(() => {
       const R = window.cards[0].shadowRoot, H = window.cards[1].shadowRoot;
       return { pill: R.getElementById("pill").textContent, cog: H.getElementById("count").hidden ? "" : H.getElementById("count").textContent,
-        rows: [...R.querySelectorAll(".row .n")].map((n) => n.textContent),
+        rows: [...R.querySelectorAll(".row")].filter((r) => !/^Bring back/.test(r.querySelector(".x")?.getAttribute("aria-label") || "")).map((r) => r.querySelector(".n").textContent),
         buttons: [...R.querySelectorAll(".row .x:not([hidden])")].map((b) => b.getAttribute("aria-label")),
-        dismissedRow: [...R.querySelectorAll(".row .n")].map((n) => n.textContent).find((t) => /^Dismissed/.test(t)) || "" };
+        dismissedRow: [...R.querySelectorAll(".group")].map((g) => g.textContent).find((t) => /^Dismissed/.test(t)) || "",
+        last: [...R.querySelectorAll(".group .gt")].map((g) => g.textContent).pop() };
     });
     const at = (sel, i = 0) => page.evaluate(({ sel, i }) => { const b = window.cards[0].shadowRoot.querySelectorAll(sel)[i].getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; }, { sel, i });
     const first = await read();
@@ -151,15 +152,12 @@ export default async function ({ browser, base, check }) {
     const after = await read();
     check(`${tag} dismissing a row lowers the count on the card and on the cog, and the row leaves the list`,
       Number(after.pill.split(" ")[0]) === Number(first.pill.split(" ")[0]) - 1 && after.cog === after.pill.split(" ")[0] && !after.rows.includes("Front Door Battery"), JSON.stringify(after));
-    check(`${tag} a collapsed "Dismissed · 1" line appears in its category`, after.dismissedRow === "Dismissed · 1", after.dismissedRow);
+    check(`${tag} a Dismissed category appears, the last one`, /^Dismissed1 hidden/.test(after.dismissedRow) && after.last === "Dismissed", JSON.stringify([after.dismissedRow, after.last]));
     check(`${tag} the row did not open anything (a button of its own)`, !(await page.evaluate(() => (window.moreInfoOpened || []).length)), "");
 
-    // open the line: the item is there with a way back
-    const d = await page.evaluate(() => { const n = [...window.cards[0].shadowRoot.querySelectorAll(".row")].find((r) => /^Dismissed/.test(r.querySelector(".n").textContent)).getBoundingClientRect(); return { x: n.x + 24, y: n.y + n.height / 2 }; });
-    await page.mouse.click(d.x, d.y);
-    await page.waitForTimeout(500);
+    // the item is listed there with a way back
     const open = await page.evaluate(() => [...window.cards[0].shadowRoot.querySelectorAll(".row .x:not([hidden])")].map((b) => b.getAttribute("aria-label")).filter((l) => /^Bring back/.test(l)));
-    check(`${tag} the dismissed line lists it with a "Bring back" button`, open.length === 1 && /Front Door Battery/.test(open[0]), JSON.stringify(open));
+    check(`${tag} the Dismissed category lists it with a "Bring back" button`, open.length === 1 && /Front Door Battery/.test(open[0]), JSON.stringify(open));
     const bi = await page.evaluate(() => [...window.cards[0].shadowRoot.querySelectorAll(".row .x:not([hidden])")].findIndex((b) => /^Bring back/.test(b.getAttribute("aria-label"))));
     const q = await at(".row .x:not([hidden])", bi);
     await page.mouse.click(q.x, q.y);
@@ -202,7 +200,7 @@ export default async function ({ browser, base, check }) {
     const off = await page.evaluate(() => {
       const R = window.cards[2].shadowRoot;
       return { dismissButtons: [...R.querySelectorAll(".row .x:not([hidden])")].filter((b) => /^Dismiss /.test(b.getAttribute("aria-label"))).length, pill: R.getElementById("pill").textContent,
-        line: [...R.querySelectorAll(".row .n")].map((n) => n.textContent).find((t) => /^Dismissed/.test(t)) || "" };
+        line: [...R.querySelectorAll(".group")].map((g) => g.textContent).find((t) => /^Dismissed/.test(t)) || "" };
     });
     check(`${tag} dismiss: false hides the buttons, and what was dismissed stays dismissed`, off.dismissButtons === 0 && /^Dismissed/.test(off.line) && off.pill === popAfter.card, JSON.stringify(off));
 

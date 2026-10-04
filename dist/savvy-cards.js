@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.10.7 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.10.8 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.10.7";
+const SAVVY_VERSION = "0.10.8";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -16437,6 +16437,7 @@ const SOURCES = {
   battery: { title: "Batteries", noun: "low", nouns: "low" },
 };
 const GROUP_TITLE = { watchman: "Watchman", unavailable: "Offline devices", battery: "Low batteries" };
+const CATEGORIES = ["watchman", "unavailable", "battery", "dismissed"];
 const ALL_FINE = { watchman: "Nothing missing", unavailable: "All devices online", battery: "All batteries fine" };
 const REPORT_TIMEOUT = 60000;
 const COL_MIN = 240, COL_GAP = 14;
@@ -16500,13 +16501,11 @@ const STYLE = `${BASE_CSS}
     font-size: 12.5px; line-height: 16px; font-weight: 650; letter-spacing: -0.006em; transform-origin: 50% 50%; }
   @media (prefers-contrast: more) { .row .s { color: var(--primary-text-color); opacity: 0.8; } }
   @container card (max-width: 260px) { .row .s { display: none; } }
-  /* a narrow column: the title and the chip on one line, what is wrong under them */
-  @container rows (max-width: 340px) {
-    .group { flex-wrap: wrap; row-gap: 2px; }
-    .group .gt { white-space: nowrap; flex: 1 1 auto; }
-    .group .report { order: 2; margin-inline-start: auto; }
-    .group .gw { order: 3; flex: 1 0 100%; margin-inline-start: 0; white-space: normal; }
-  }
+  /* the title and the chip on one line, what is wrong under them, in full */
+  .group { flex-wrap: wrap; row-gap: 2px; }
+  .group .gt { white-space: nowrap; flex: 1 1 auto; }
+  .group .report { order: 2; margin-inline-start: auto; }
+  .group .gw { order: 3; flex: 1 0 100%; margin-inline-start: 0; white-space: normal; }
 `;
 
 // What the footer button does, or null: it needs a tap_action that is not "none" (or the pre-Savvy
@@ -16790,15 +16789,22 @@ class SavvySystemHealthCard extends HTMLElement {
     const open = this._open.has(`dm:${key}`);
     const out = [{ type: "row", key: `dm:${key}`, icon: "mdi:bell-off-outline", soft: true, depth: 0, expandable: true, open, name: `Dismissed · ${items.length}`,
       secondary: "Hidden for you. They come back if they break again" }];
-    if (!open) return out;
+    if (open) out.push(...this._dismissedItems(key, sum, 1));
+    return out;
+  }
+
+  // the dismissed rows themselves; `tag` names the category when they are listed together
+  _dismissedItems(key, sum, depth, tag) {
+    const items = key === "unavailable" ? sum.dismissed.offline : key === "battery" ? sum.dismissed.battery : sum.dismissed.watchman;
     const kind = key === "unavailable" ? "off" : key === "battery" ? "bat" : "wat";
+    const out = [];
     for (const it of items) {
       const age = Number.isFinite(it.since) ? duration(Date.now() - it.since) : "";
       const name = it.name, restore = { kind, members: it.members, name };
-      if (kind === "off") out.push({ type: "row", key: `dm:${it.key}`, icon: "mdi:bell-off-outline", soft: true, depth: 1, name, restore,
-        secondary: [it.area, age && `offline for ${age}`].filter(Boolean).join(" · ") });
-      else if (kind === "bat") out.push({ type: "row", key: `dm:${it.entity}`, icon: "mdi:bell-off-outline", soft: true, depth: 1, entity: it.entity, name, value: it.value, restore });
-      else out.push({ type: "row", key: `dm:${it.key}`, icon: "mdi:bell-off-outline", soft: true, depth: 1, entity: it.entity, name, secondary: it.secondary, restore });
+      const row = { type: "row", icon: "mdi:bell-off-outline", soft: true, depth, name, restore };
+      if (kind === "off") out.push({ ...row, key: `dm:${it.key}`, secondary: [tag, it.area, age && `offline for ${age}`].filter(Boolean).join(" · ") });
+      else if (kind === "bat") out.push({ ...row, key: `dm:${it.entity}`, entity: it.entity, value: it.value, secondary: tag || "" });
+      else out.push({ ...row, key: `dm:${it.key}`, entity: it.entity, secondary: [tag, it.secondary].filter(Boolean).join(" · ") });
     }
     return out;
   }
@@ -16821,17 +16827,27 @@ class SavvySystemHealthCard extends HTMLElement {
       if (det) out.push({ type: "facts", key: `f:${key}`, text: this._facts(key, sum) });
       const aside = sum.counts.dismissedBy[key];
       if (!sum.counts[key]) out.push({ type: "ok", key: `ok:${key}`, text: aside ? "Nothing else needs a look" : key === "watchman" && sum.counts.watchmanExplained ? "Nothing else missing" : ALL_FINE[key] });
-      out.push(...rows, ...this._dismissedRows(key, sum));
+      out.push(...rows, ...(group ? [] : this._dismissedRows(key, sum)));
       return out;
     };
     if (src === "watchman") return { total: sum.counts.watchman, sections: [{ key: "watchman", rows: section("watchman", watchRows(), false) }] };
     if (src === "unavailable") return { total: sum.counts.unavailable, sections: [{ key: "unavailable", rows: section("unavailable", [...this._offlineRows(sum.offline), ...this._knownRows(sum.known)], false) }] };
     if (src === "battery") return { total: sum.counts.battery, sections: [{ key: "battery", rows: section("battery", this._batteryRows(sum, c.show_all_batteries !== false), false) }] };
-    // every category shows, with its issue line or a tick and what's fine
-    const sections = [];
-    if (sum.opts.watchman.length) sections.push({ key: "watchman", rows: section("watchman", watchRows(), true) });
-    sections.push({ key: "unavailable", rows: section("unavailable", [...this._offlineRows(sum.offline), ...this._knownRows(sum.known)], true) });
-    sections.push({ key: "battery", rows: section("battery", this._batteryRows(sum, false), true) });
+    // every category shows, with its issue line or a tick and what's fine; what was dismissed is the last one
+    const build = {
+      watchman: () => sum.opts.watchman.length && { key: "watchman", rows: section("watchman", watchRows(), true) },
+      unavailable: () => ({ key: "unavailable", rows: section("unavailable", [...this._offlineRows(sum.offline), ...this._knownRows(sum.known)], true) }),
+      battery: () => ({ key: "battery", rows: section("battery", this._batteryRows(sum, false), true) }),
+      dismissed: () => {
+        const n = sum.dismissed.count;
+        if (!n) return null;
+        return { key: "dismissed", rows: [{ type: "group", key: "g:dismissed", title: "Dismissed", line: `${n} hidden for you. They come back if they break again` },
+          ...this._dismissedItems("watchman", sum, 0, "Watchman"), ...this._dismissedItems("unavailable", sum, 0, "Offline"), ...this._dismissedItems("battery", sum, 0, "Battery")] };
+      },
+    };
+    const want = [].concat(c.categories ?? CATEGORIES).map(String).filter((k) => build[k]);
+    const order = want.includes("dismissed") || c.categories === false ? want : [...want, "dismissed"];
+    const sections = [...new Set(order)].map((k) => build[k]()).filter(Boolean);
     return { total: sum.total, sections };
   }
 
@@ -17092,6 +17108,8 @@ const EDITOR = defineEditor("savvy-system-health-card", (hass, c) => [
   ]),
   S.grid(S.text("title", "Title"), S.titleLink("title")),
   S.grid(S.number("battery_threshold", "Battery alert", 1, 100, 1, "%"), S.number("warn_above", "Red threshold", 1, 99)),
+  { name: "categories", label: "Categories", helper: "Tick the ones to show, in the order you want them. Hidden ones still count. Dismissed stays last unless you place it.",
+    selector: { select: { multiple: true, mode: "list", options: [{ value: "watchman", label: "Watchman" }, { value: "unavailable", label: "Offline devices" }, { value: "battery", label: "Low batteries" }, { value: "dismissed", label: "Dismissed" }] } } },
   S.number("max_rows", "Max rows", 3, 30),
   { name: "columns", label: "Columns", helper: "Side by side when the card is wide: one column per category. Empty: automatic. 1 keeps them stacked.",
     selector: { number: { min: 1, max: 4, step: 1, mode: "box" } } },
