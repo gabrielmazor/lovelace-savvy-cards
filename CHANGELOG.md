@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.16.0
+
+- **New card: Energy** (`custom:savvy-energy-card`). Today, this week or this month against the same
+  stretch before it, a bar for every hour or day, the live power and the biggest consumers (by device or
+  by room). The cost is each hour's energy times that hour's price (a number, or a tariff sensor), read
+  from Home Assistant's long-term statistics. Tap a bar for that hour or day. The ignore list in the Savvy
+  settings applies.
+
 ## 0.15.0
 
 - **New card: Fans** (`custom:savvy-fan-card`). The fans, air purifiers and humidifiers of a room as the

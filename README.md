@@ -154,6 +154,7 @@ animations, light and dark themes, and honour reduced motion.
 | [Covers](#covers) | Blinds, shutters, curtains, garage and gate of a room | `custom:savvy-cover-card` |
 | [People](#people) | Who is home, where the others are, battery and time to get home | `custom:savvy-people-card` |
 | [Fans](#fans) | Fans, air purifiers and humidifiers of a room | `custom:savvy-fan-card` |
+| [Energy](#energy) | What the house used and cost, against the period before, with live power | `custom:savvy-energy-card` |
 | [System health](#system-health) | Offline devices, low batteries, Watchman | `custom:savvy-system-health-card` |
 | [Entity](#entity) | One entity and the ones that go with it | `custom:savvy-entity-card` |
 | [Graph](#graph) | Number and state tiles with history | `custom:savvy-graph-card` |
@@ -1188,6 +1189,65 @@ kinds: [fan, humidifier]
 include: [fan.hallway_extractor]
 exclude: [fan.guest_room_fan]
 all: true
+layout: full
+```
+
+---
+
+### Energy
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/energy-light.png"><img src="docs/images/energy-dark.png" width="420" alt="Savvy energy card"></picture>
+
+What the house used, what it cost and where it went. Today, this week or this month (the chips under the
+title), against the same stretch before it (today so far against the same hours of yesterday, so the
+comparison is fair), a bar for every hour or day, the live power, and the biggest consumers. The cost is
+each hour's energy times that hour's price, so a tariff that changes through the day is counted properly.
+Tap a bar to see that hour or day, tap it again to let go. Tap a consumer for its details.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/energy-week-light.png"><img src="docs/images/energy-week-dark.png" width="420" alt="Energy, this week by room"></picture>
+
+The card reads Home Assistant's long-term statistics. An energy sensor needs a state class (`total_increasing`
+or `total`) and the unit kWh, Wh or MWh; the same sensors the Energy dashboard uses. The card stores nothing.
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `total` | entity | the consumers' sum | The energy sensor of the whole house. **Set it when you have one**: without it the card adds up the consumers, and finding them automatically would count a whole-house sensor twice. |
+| `consumers` | list of entities | every energy sensor found | The sensors to rank (and, with no `total`, to add up). |
+| `power` | entity | none | A power sensor (W or kW) for the live reading. |
+| `price` | number or entity | none | The price per kWh: a number, or a sensor (each hour's own average is used; prices in cents are understood). No price, no cost. |
+| `currency` | string | Home Assistant's | The currency of the cost, e.g. `EUR`. |
+| `range` | `today`, `week` or `month` | `today` | The period shown first. |
+| `by` | `device` or `room` | `device` | What the ranking adds up. |
+| `max_consumers` | number | `5` | Rows in the ranking. |
+| `area` | area or list | all | Only the consumers of these areas. |
+| `exclude` | list of entities | none | Never ranked. The ignore list in the [Savvy settings](#savvy-settings) is added to it. |
+| `title` | string | Energy | The heading. |
+| `title_path` | string | none | Title link: tapping the title opens this page. |
+| `layout` | `full` or `compact` | `full` | `compact`: the numbers only, no chart or ranking. |
+
+Minimum:
+
+```yaml
+type: custom:savvy-energy-card
+total: sensor.house_energy
+```
+
+Full:
+
+```yaml
+type: custom:savvy-energy-card
+total: sensor.house_energy
+consumers:
+  - sensor.kitchen_oven_energy
+  - sensor.living_room_tv_energy
+  - sensor.bedroom_ac_energy
+power: sensor.house_power
+price: sensor.electricity_tariff      # or a number: 0.28
+currency: EUR
+range: today
+by: device
+max_consumers: 5
+exclude: [sensor.guest_room_energy]
 layout: full
 ```
 

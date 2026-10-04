@@ -181,6 +181,30 @@ const AIR = `(() => {
   window.hass = { ...h, states: { ...house.states } };
   window.__after = () => { for (const r of window.cards[0].shadowRoot.querySelectorAll(".sv-row")) if (/^Fan$/.test(r.querySelector(".sv-name").textContent)) r.querySelector(".sv-chev")?.click(); };
 })();`;
+// a house's energy, for the Energy card: the clock is set to a Friday at half past six in the evening so the picture is the same at any hour
+const POWER = `(() => {
+  const RealDate = Date, fixed = new RealDate(); fixed.setHours(18, 30, 0, 0); fixed.setDate(fixed.getDate() - ((fixed.getDay() - 5 + 7) % 7));
+  const offset = fixed - RealDate.now();
+  window.Date = class extends RealDate { constructor(...a) { if (a.length) super(...a); else super(RealDate.now() + offset); } static now() { return RealDate.now() + offset; } };
+  const h = window.hass, house = window.house;
+  const add = (id, state, attributes, area) => { house.states[id] = { entity_id: id, state, attributes, last_changed: new Date().toISOString(), last_updated: new Date().toISOString() }; h.entities[id] = { entity_id: id, area_id: area, device_id: null, platform: "demo", entity_category: null, hidden: false, disabled_by: null }; };
+  const energy = { device_class: "energy", state_class: "total_increasing", unit_of_measurement: "kWh" };
+  add("sensor.house_energy", "1200", { ...energy, friendly_name: "House Energy" }, null);
+  add("sensor.kitchen_oven_energy", "300", { ...energy, friendly_name: "Kitchen Oven" }, "kitchen");
+  add("sensor.living_room_tv_energy", "80", { ...energy, friendly_name: "Living Room TV" }, "living_room");
+  add("sensor.bedroom_ac_energy", "90", { ...energy, friendly_name: "Bedroom AC" }, "bedroom");
+  add("sensor.washer_energy", "40", { ...energy, friendly_name: "Washer" }, "kitchen");
+  add("sensor.house_power", "1420", { device_class: "power", unit_of_measurement: "W", friendly_name: "House Power" }, null);
+  window.hass = { ...h, states: { ...house.states } };
+  const base = { "sensor.house_energy": (hr) => 0.35 + (hr >= 6 && hr <= 9 ? 0.7 : 0) + (hr >= 17 && hr <= 22 ? 1.1 : 0) + (hr >= 12 && hr <= 14 ? 0.4 : 0),
+    "sensor.kitchen_oven_energy": (hr) => (hr === 18 || hr === 12 ? 0.9 : 0.02), "sensor.living_room_tv_energy": (hr) => (hr >= 17 ? 0.18 : 0.01), "sensor.bedroom_ac_energy": (hr) => (hr >= 21 || hr < 6 ? 0.45 : 0.05), "sensor.washer_energy": (hr) => (hr === 8 || hr === 9 ? 0.5 : 0) };
+  window.hass.callWS = async (m) => {
+    if (m.type !== "recorder/statistics_during_period") return {};
+    const out = {};
+    for (const id of m.statistic_ids) { out[id] = []; for (let t = Date.parse(m.start_time); t < Date.parse(m.end_time) && t <= Date.now(); t += 3600000) out[id].push({ start: t, end: t + 3600000, change: base[id](new Date(t).getHours()) * (t < Date.now() - 86400000 * 0.5 ? 0.85 : 1) }); }
+    return out;
+  };
+})();`;
 const SHOTS = [
   ["lights", "savvy-lights-card", { area: "living_room", featured: ["light.living_room_ceiling"], chips: [{ entity: "switch.living_room_plug", name: "Plug" }] }, 520],
   ["lights-compact", "savvy-lights-card", { area: "living_room", layout: "compact" }, 520],
@@ -238,6 +262,8 @@ const SHOTS = [
   ["people-compact", "savvy-people-card", { layout: "compact", title: "Family" }, 420, FAMILY],
   ["fan", "savvy-fan-card", { area: "bedroom" }, 420, AIR],
   ["fan-compact", "savvy-fan-card", { area: "bedroom", layout: "compact" }, 420, AIR],
+  ["energy", "savvy-energy-card", { total: "sensor.house_energy", consumers: ["sensor.kitchen_oven_energy", "sensor.living_room_tv_energy", "sensor.bedroom_ac_energy", "sensor.washer_energy"], power: "sensor.house_power", price: 0.28, currency: "EUR" }, 420, POWER],
+  ["energy-week", "savvy-energy-card", { range: "week", by: "room", total: "sensor.house_energy", consumers: ["sensor.kitchen_oven_energy", "sensor.living_room_tv_energy", "sensor.bedroom_ac_energy", "sensor.washer_energy"], price: 0.28, currency: "EUR" }, 420, POWER],
   ["settings", "savvy-settings-card", SETTINGS_CFG, 460, SETTINGS_USERS],
   ["settings-compact", "savvy-settings-card", { ...SETTINGS_CFG, layout: "compact" }, 460, SETTINGS_USERS],
   ["camera", "savvy-camera-card", { area: ["living_room", "kitchen"] }, 820, FRIGATE],
