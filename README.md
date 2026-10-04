@@ -182,6 +182,7 @@ it is too wide.
 | `show_home` | boolean | `true` | `false` hides the home button even when the settings card supplies a page. The button is also hidden on the home page itself. |
 | `weather` | entity or `false` | first weather entity | The weather shown. |
 | `health` | object or `false` | on | The health cog, see below. |
+| `admin_only` | list or boolean | from the settings | Kept from people who are not administrators: `health_cog` (the cog, its count and its popup) and `health_badges` (the count on the cog; the cog stays). `true` is both, `false` hides nothing even when the settings list something. Nothing is hidden unless it is listed here or in the settings. |
 | `lights`, `climate`, `media`, `security` | object or `false` | on | The four counting chips, see below. |
 | `room_order` | list of areas | by name | Order of rooms in the popups. A chip's own `room_order` wins. |
 | `design` | object | none | `state_glow: false` turns the corner glow off on every card; a card's own `state_glow` still wins. |
@@ -190,9 +191,9 @@ it is too wide.
 
 **`health` options.** `navigation_path` (string, none) where the popup's page button leads; `popup_button`
 (boolean, `true`) that button, shown whenever there is a target page; `popup_label` (string, "Open system
-health"); `tap_action`, `hold_action` (action, open the list); and the [System health](#system-health)
-options `watchman`, `watchman_button`, `watchman_report`, `battery_threshold`, `warn_above`,
-`exclude_platforms`, `group_by`, `group_min`, `ignore`.
+health"); `tap_action`, `hold_action` (action, open the list); `dismiss` (boolean, `true`) the dismiss
+buttons in the popup; and the [System health](#system-health) options `watchman`, `watchman_button`,
+`watchman_report`, `battery_threshold`, `warn_above`, `exclude_platforms`, `group_by`, `group_min`, `ignore`.
 
 **Chip options** for `lights`, `climate`, `media`, `security`:
 
@@ -228,6 +229,7 @@ home_path: /lovelace/home
 weather: weather.home
 room_order: [living_room, kitchen]
 aggregate: true
+admin_only: [health_cog]         # a non-admin does not see the cog at all
 health:
   navigation_path: /lovelace/admin
   watchman: [sensor.watchman_missing_entities]
@@ -914,7 +916,15 @@ How it counts:
 - An integration is one issue when its setup failed or is retrying, or when most of its devices are offline.
 - A Watchman item whose entity belongs to a device that is already an issue is folded into that device
   ("2 dashboard references broken") and counts once.
-- Known problems under `ignore` leave every count and wait in a collapsed "Known" line.
+- Known problems under `ignore` leave every count and wait in a collapsed "Known" line. They are shared by
+  everyone and set in YAML or the settings card.
+- A **dismiss button** on each row puts it aside for you: it leaves every count (the card's and the home
+  header's cog) and waits in a collapsed "Dismissed" line at the foot of its category, with a Bring back
+  button. It is personal, kept in your Home Assistant profile (so it follows you to your other devices;
+  without one, in that browser), and it forgets itself when the problem is gone, so it returns if it breaks
+  again. A problem that gets bigger (one more entity goes down) comes back too.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/system-health-dismissed-light.png"><img src="docs/images/system-health-dismissed-dark.png" width="420" alt="System health with dismissed rows"></picture>
 
 <picture><source media="(prefers-color-scheme: light)" srcset="docs/images/system-health-columns-light.png"><img src="docs/images/system-health-columns-dark.png" width="760" alt="System health in columns"></picture>
 
@@ -932,6 +942,7 @@ How it counts:
 | `watchman_report` | object | `{ parse_config: true }` | The data the chip sends to `watchman.report`. |
 | `watchman_last_run` | entity or `false` | found | Watchman's last-parse timestamp ("Checked 2 h ago"). |
 | `ignore` | object | none | Known problems: `{ devices: [device ids], entities: [entity ids] }`. |
+| `dismiss` | boolean | `true` | The dismiss button on each row. `false` hides the buttons; what was dismissed stays dismissed, with its Bring back button. |
 | `warn_above` | number | `6` | The count turns red at this many issues. |
 | `columns` | number | automatic | With `source: all`, how many sections sit side by side when the card is wide. `1` stacks them. |
 | `max_rows` | number | `7` | Rows before a list scrolls. |
@@ -963,6 +974,7 @@ watchman_report: { parse_config: true }
 ignore:
   devices: [3f9c2a7e1d4b4a0e9c1d]
   entities: [sensor.bedroom_thermostat_battery]
+dismiss: true
 columns: 3
 max_rows: 7
 action:
@@ -1090,6 +1102,7 @@ browser, and follow it live while you edit. With two settings cards the first is
 | `health` | object | none | `watchman`, `battery_threshold`, `warn_above`, `exclude_platforms`, `group_by`, `group_min`, `watchman_last_run`, and `ignore` (`{ devices, entities }`). Used by the card and the home header's cog. |
 | `ignore` | object | none | `entities`: left out of everything the cards discover (room headers, section titles, tiles, room activity, locks, lights, scenes, vacuums) and the home header counts; `areas`: left out of the home header counts. A card that names an entity still shows it. |
 | `aggregate` | `true` or list of kinds | off | See [Aggregate sensors](#aggregate-sensors). |
+| `admin_only` | list or `true` | none | `health_cog`, `health_badges`: kept from people who are not administrators (the health cog in the home header, and the count on it). Everyone sees everything unless it is listed. A card can only hide itself, not lock a page: someone who types the address still reaches the page. A card's own `admin_only` wins. |
 | `room_order` | list of areas | by name | Order of rooms in the popups and on the room header. |
 | `rooms` | object | none | Per area: `name`, `icon`, `page`, `control`, `light_state` (the helper behind the lights card's pill and the room tile's toggle), `temperature`, `humidity`, `include`, `exclude`. |
 | `layout` | `full` or `compact` | `full` | `compact`: a single row. |
@@ -1098,7 +1111,7 @@ What each card takes from it:
 
 | Card | From the settings |
 |---|---|
-| Home header | `control`, `weather`, home button, each chip's page and `tap`, the security entity, `ignore`, `room_order`, `aggregate`, the cog's page and health options |
+| Home header | `control`, `weather`, home button, each chip's page and `tap`, the security entity, `ignore`, `room_order`, `aggregate`, `admin_only`, the cog's page and health options |
 | System health | the health options, including known problems |
 | Room header | the room's `control`, `temperature`, `include`, `exclude`; home button, room pages, `room_order`, `ignore.entities`, `aggregate` |
 | Section title | the room's `name`, `icon`, `control`, `temperature`, `include`, `exclude`, page; `ignore.entities`, `aggregate` |
@@ -1149,6 +1162,7 @@ ignore:
   entities: [light.garden_string]
   areas: [garage]
 aggregate: true
+admin_only: [health_cog, health_badges]
 room_order: [living_room, kitchen, bedroom]
 rooms:
   kitchen:

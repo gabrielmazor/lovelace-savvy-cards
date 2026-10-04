@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.10.0 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.10.1 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.10.0";
+const SAVVY_VERSION = "0.10.1";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -936,6 +936,7 @@ function linePath(pts) {
 //   group_min           how many devices a hub or an integration needs to roll up (default 3)
 //   ignore              known problems: { entities: [...], devices: [device ids] } (or one list of both).
 //                       They leave every count and list, and wait under "Known"
+//   dismiss             false hides the dismiss buttons (what was dismissed stays dismissed: core/dismiss)
 //
 // A Watchman item whose entity belongs to a device that is already an issue (or is ignored) is not a
 // second problem: it is folded into that device's row and counts once. Only what nothing else explains
@@ -1203,7 +1204,7 @@ function watchmanRows(hass, opts) {
       rows.push({
         key: `${id}:${item.id}:${rows.length}`, entity: item.id, name: item.id,
         secondary: occ ? occ.split("/").pop().split(":")[0] : "", tooltip: occ,
-        icon: item.state ? (WATCHMAN_ICON[item.state] || "mdi:cloud-question") : "mdi:cloud-alert", alert: true,
+        icon: item.state ? (WATCHMAN_ICON[item.state] || "mdi:cloud-question") : "mdi:cloud-alert", alert: true, actions,
       });
     }
   }
@@ -1234,24 +1235,70 @@ function explainWatchman(hass, opts, issues, known, rows) {
   return { keep, gone };
 }
 
+// still failing? (for pruning what a person dismissed): an unavailable entity, a connectivity sensor that
+// reads off, or an issue that is still in the list. A member that is gone from Home Assistant is fine.
+const stillDown = (hass, id, keys) => {
+  if (id.startsWith("issue:")) return keys.has(id.slice(6));
+  const st = hass.states[id];
+  return !!st && (st.state === "unavailable" || (st.attributes.device_class === "connectivity" && st.state === "off"));
+};
+// the failing entities an issue is made of (an integration that failed with no device of it in sight stands for itself)
+const issueMembers = (is) => {
+  const out = [];
+  const walk = (n) => { if (n.kind === "entity") out.push(n.entity); (n.entities || []).forEach(walk); (n.devices || []).forEach(walk); };
+  walk(is);
+  return out.length ? [...new Set(out)] : [`issue:${is.key}`];
+};
+
 // Everything at once. `total` is what the home card's cog shows: the offline issues
-// (a hub, a device or a loose entity is one each), the low batteries and Watchman's count.
+// (a hub, a device or a loose entity is one each), the low batteries and Watchman's count,
+// less what this person has dismissed (core/dismiss), which is listed under `dismissed`.
 function healthSummary(hass, cfg) {
   const opts = healthOptions(cfg);
   const battery = batteryRows(hass, opts);
   const offline = offlineIssues(hass, opts);
   const watchman = watchmanRows(hass, opts);
-  const low = battery.filter((b) => b.alert).length;
   const { keep, gone } = explainWatchman(hass, opts, offline.issues, offline.known, watchman.rows);
-  // what is left of Watchman's count once the items the offline issues explain are taken out
-  const left = Math.max(0, watchman.total - gone.length);
-  const kinds = { entities: Math.max(0, watchman.kinds.entities - gone.length), actions: watchman.kinds.actions };
+
+  // what has recovered since it was dismissed is forgotten, so it returns if it breaks again
+  const keys = new Set(offline.issues.map((i) => i.key));
+  if (dismissStore.entries.size && Object.keys(hass.states || {}).length) {
+    const lowNow = new Map(battery.map((b) => [b.entity, b.alert]));
+    const watchOk = opts.watchman.length > 0 && opts.watchman.every((id) => hass.states[id]);
+    const listed = new Set(watchman.rows.map((r) => r.entity));
+    dismissPrune(hass, (kind, m) => {
+      if (kind === "off") return stillDown(hass, m, keys);
+      if (kind === "bat") return lowNow.has(m) ? lowNow.get(m) : !!hass.states[m] && hass.states[m].state === "unavailable";
+      return watchOk ? listed.has(m) : true;
+    });
+  }
+  const dv = dismissView();
+  const covered = (set, members) => set.size > 0 && members.length > 0 && members.every((m) => set.has(m));
+  for (const is of offline.issues) { is.members = issueMembers(is); is.dismissId = `off:${is.key}`; }
+  for (const b of battery) { b.members = [b.entity]; b.dismissId = `bat:${b.entity}`; }
+  for (const r of watchman.rows) { r.members = [r.entity]; r.dismissId = `wat:${r.entity}`; }
+
+  const offLive = offline.issues.filter((i) => !covered(dv.off, i.members));
+  const offAside = offline.issues.filter((i) => covered(dv.off, i.members));
+  const batLive = battery.filter((b) => !(b.alert && dv.bat.has(b.entity)));
+  const batAside = battery.filter((b) => b.alert && dv.bat.has(b.entity));
+  const watLive = keep.filter((r) => !dv.wat.has(r.entity));
+  const watAside = keep.filter((r) => dv.wat.has(r.entity));
+
+  const low = batLive.filter((b) => b.alert).length;
+  // what is left of Watchman's count once the items the offline issues explain, and the dismissed ones, are taken out
+  const left = Math.max(0, watchman.total - gone.length - watAside.length);
+  const kinds = { entities: Math.max(0, watchman.kinds.entities - gone.length - watAside.filter((r) => !r.actions).length),
+    actions: Math.max(0, watchman.kinds.actions - watAside.filter((r) => r.actions).length) };
+  const dismissedCount = offAside.length + batAside.length + watAside.length;
   return {
-    opts, battery, offline: offline.issues, watchman: keep, watchmanExplained: gone, known: offline.known,
-    counts: { battery: low, unavailable: offline.issues.length, watchman: left, watchmanAll: watchman.total, watchmanExplained: gone.length, watchmanKinds: kinds, watchmanAllKinds: watchman.kinds,
-      known: offline.known.devices.length + offline.known.entities.length },
+    opts, battery: batLive, offline: offLive, watchman: watLive, watchmanExplained: gone, known: offline.known,
+    dismissed: { offline: offAside, battery: batAside, watchman: watAside, count: dismissedCount },
+    counts: { battery: low, unavailable: offLive.length, watchman: left, watchmanAll: watchman.total, watchmanExplained: gone.length, watchmanKinds: kinds, watchmanAllKinds: watchman.kinds,
+      known: offline.known.devices.length + offline.known.entities.length, dismissed: dismissedCount,
+      dismissedBy: { unavailable: offAside.length, battery: batAside.length, watchman: watAside.length } },
     stats: { devices: offline.devices, batteries: { count: battery.length, lowest: battery.length ? battery[0].num : null } },
-    total: low + offline.issues.length + left,
+    total: low + offLive.length + left,
   };
 }
 
@@ -1268,6 +1315,113 @@ function watchmanLastRun(hass, cfg = {}) {
   const named = (re) => found.find((id) => re.test(hass.entities[id].translation_key || "") || re.test(hass.states[id].attributes.friendly_name || ""));
   return named(/parse/i) || named(/updat/i) || found[0] || null;
 }
+
+// ===== core/41-dismiss.js =====
+// ---------------------------------------------------------------------------------------
+// core/dismiss: what one person has put aside on the health card. A dismissed offline issue,
+// low battery or Watchman item leaves every count (the card's, its categories', the home
+// cog's) and waits under "Dismissed". It is personal: kept in the user's Home Assistant profile
+// (frontend/set_user_data, so it follows them to their other devices, no admin needed) and in
+// localStorage when that is not available. The settings' `health.ignore` is the shared, permanent
+// list; this one is for one person's "I know, leave me alone".
+//
+// An entry remembers the entities that were failing when it was set (`members`). An issue is
+// dismissed while every one of its failing entities is a member, whatever the card groups them
+// into, so a hub dismissed on one card is dismissed on a card that lists its devices too. A member
+// that recovers is forgotten, and an issue that grows (a new entity goes down) is not covered any
+// more: it comes back by itself.
+// ---------------------------------------------------------------------------------------
+
+const DISMISS_KEY = "savvy_dismissed";
+const DISMISS_LS = "savvy-dismissed";
+const DISMISS_KINDS = ["off", "bat", "wat"];
+const dismissStore = { entries: new Map(), version: 0, listeners: new Set(), local: false, remote: null, loading: false };
+
+// the cards hear about it a moment later, never from inside the summary that pruned
+const dismissChanged = () => {
+  dismissStore.version++;
+  Promise.resolve().then(() => dismissStore.listeners.forEach((fn) => { try { fn(); } catch (err) { /* a card that went away */ } }));
+};
+const dismissList = () => [...dismissStore.entries.values()].map((e) => ({ id: e.id, kind: e.kind, name: e.name, members: e.members }));
+const dismissLoad = (list) => {
+  dismissStore.entries = new Map((Array.isArray(list) ? list : [])
+    .filter((e) => e && typeof e.id === "string" && DISMISS_KINDS.includes(e.kind) && Array.isArray(e.members) && e.members.length)
+    .map((e) => [e.id, { id: e.id, kind: e.kind, name: String(e.name || ""), members: e.members.map(String) }]));
+};
+const dismissSave = (hass) => {
+  const list = dismissList();
+  try { localStorage.setItem(DISMISS_LS, JSON.stringify(list)); } catch (err) { /* storage blocked: the profile copy still works */ }
+  if (hass?.callWS && dismissStore.remote !== false) {
+    Promise.resolve().then(() => hass.callWS({ type: "frontend/set_user_data", key: DISMISS_KEY, value: list })).catch(() => {});
+  }
+};
+
+// Read what is kept: localStorage at once, the profile as soon as Home Assistant answers (once; a refusal is not asked again).
+function ensureDismissed(hass) {
+  const S = dismissStore;
+  if (!S.local) {
+    S.local = true;
+    let saved = [];
+    try { saved = JSON.parse(localStorage.getItem(DISMISS_LS) || "[]"); } catch (err) { saved = []; }
+    if (Array.isArray(saved) && saved.length) { dismissLoad(saved); dismissChanged(); }
+  }
+  if (!hass?.callWS || S.loading || S.remote !== null) return;
+  S.loading = true;
+  Promise.resolve().then(() => hass.callWS({ type: "frontend/get_user_data", key: DISMISS_KEY })).then((res) => {
+    S.remote = true;
+    const value = res?.value;
+    if (Array.isArray(value)) {
+      dismissLoad(value);
+      try { localStorage.setItem(DISMISS_LS, JSON.stringify(dismissList())); } catch (err) { /* ignore */ }
+      dismissChanged();
+    } else if (S.entries.size) dismissSave(hass);
+  }).catch(() => { S.remote = false; }).finally(() => { S.loading = false; });
+}
+
+function dismissAdd(hass, entry) {
+  dismissStore.entries.set(entry.id, { id: entry.id, kind: entry.kind, name: String(entry.name || ""), members: [...new Set(entry.members.map(String))] });
+  dismissSave(hass);
+  dismissChanged();
+}
+
+// bring back every entry of that kind that shares a member with these
+function dismissRestore(hass, kind, members) {
+  const want = new Set(members);
+  let any = false;
+  for (const [id, e] of dismissStore.entries) {
+    if (e.kind === kind && e.members.some((m) => want.has(m))) { dismissStore.entries.delete(id); any = true; }
+  }
+  if (!any) return;
+  dismissSave(hass);
+  dismissChanged();
+}
+
+// drop the members that are fine again (`still(kind, member)` says whether one still needs attention)
+function dismissPrune(hass, still) {
+  let any = false;
+  for (const [id, e] of dismissStore.entries) {
+    const keep = e.members.filter((m) => still(e.kind, m) !== false);
+    if (keep.length === e.members.length) continue;
+    any = true;
+    if (keep.length) e.members = keep; else dismissStore.entries.delete(id);
+  }
+  if (!any) return;
+  dismissSave(hass);
+  dismissChanged();
+}
+
+// the entities each kind covers right now
+function dismissView() {
+  const view = { off: new Set(), bat: new Set(), wat: new Set(), size: dismissStore.entries.size };
+  for (const e of dismissStore.entries.values()) e.members.forEach((m) => view[e.kind].add(m));
+  return view;
+}
+
+const resetDismissed = () => {
+  Object.assign(dismissStore, { entries: new Map(), version: 0, local: false, remote: null, loading: false });
+  try { localStorage.removeItem(DISMISS_LS); } catch (err) { /* ignore */ }
+  dismissChanged();
+};
 
 // ===== core/50-palette.js =====
 // ---------------------------------------------------------------------------------------
@@ -4891,6 +5045,19 @@ const SETTINGS_TYPE = "custom:savvy-settings-card";
 const SETTINGS_REFRESH_MS = 5 * 60 * 1000;
 const SETTINGS_SECTIONS = ["pages", "house", "health", "ignore", "rooms", "design"];
 
+// What a card can keep from people who are not administrators: the health cog in the home header, and
+// the count badge on it. Everyone sees everything unless it is listed. A card can only hide itself: it
+// cannot lock a page. A user Home Assistant does not describe (no `hass.user`) counts as an administrator.
+const ADMIN_ITEMS = ["health_cog", "health_badges"];
+const isAdminUser = (hass) => hass?.user?.is_admin !== false;
+function adminOnlyItems(v) {
+  if (v === true) return new Set(ADMIN_ITEMS);
+  if (!v) return new Set();
+  const list = Array.isArray(v) ? v : typeof v === "object" ? Object.keys(v).filter((k) => v[k]) : [v];
+  return new Set(list.filter((k) => ADMIN_ITEMS.includes(k)));
+}
+const hiddenFromUser = (hass, config, item) => !isAdminUser(hass) && adminOnlyItems(config?.admin_only).has(item);
+
 // ---- the table -------------------------------------------------------------------------
 
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -4960,6 +5127,7 @@ const HOME_CHIPS = ["lights", "climate", "media", "security"];
 const SETTINGS_RULES = {
   "savvy-home-header-card": [
     { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
+    { path: "admin_only", label: "Admin only", get: (s) => s.admin_only, src: "admin_only" },
     { path: "control", label: "Control", get: glob("house", "control"), src: "house" },
     { path: "weather", label: "Weather", get: glob("house", "weather"), src: "house" },
     { path: "home_path", label: "Home button", get: glob("pages", "home"), src: "pages" },
@@ -5171,6 +5339,9 @@ function normalizeSettings(config) {
   // which kinds of sensor each room shows once (true: presence)
   const agg = aggKinds(config.aggregate);
   if (agg.length) out.aggregate = agg;
+  // what only administrators see (true: everything that can be kept)
+  const admin = [...adminOnlyItems(config.admin_only)];
+  if (admin.length) out.admin_only = admin;
   return Object.keys(out).length ? out : null;
 }
 
@@ -5465,7 +5636,7 @@ function wireSettings(type, cls) {
 if (window.__SAVVY_TEST__) {
   window.__savvy = {
     Spring, Clock, MOTION, Motion, attr, text, put, place, norm, title, modeLook, MODE_DICTIONARY, colorOf,
-    healthSummary, healthOptions, refreshConfigEntries, resetConfigEntries, areaEntities, houseEntities, pick, rankBy, entityArea, shortName, asItems,
+    healthSummary, healthOptions, dismissStore, ensureDismissed, resetDismissed, dismissAdd, dismissRestore, isAdminUser, adminOnlyItems, hiddenFromUser, refreshConfigEntries, resetConfigEntries, areaEntities, houseEntities, pick, rankBy, entityArea, shortName, asItems,
     isActive, isOff, runAction, defaultTapAction, toggleEntity, bindPress, bindActions,
     duration, since, relativeTime, axisLabel, momentLabel, fmtNumber, withUnit, isTimestamp,
     fetchHistory, fetchRange, fetchAttributeHistory, resample, seriesStats, stateRuns, numericPoints, linePath,
@@ -10257,10 +10428,13 @@ class SavvyHomeHeaderCard extends SavvyCard {
     // the cog counts failed integrations, which Home Assistant only tells us about asynchronously
     this._onEntries = this._onEntries || (() => { this._sumFor = null; if (this._hass && this._el) this._update(); });
     entryStore.listeners.add(this._onEntries);
+    // what this person dismissed on the health card leaves the cog's count too
+    dismissStore.listeners.add(this._onEntries);
   }
   disconnectedCallback() {
     super.disconnectedCallback();
     entryStore.listeners.delete(this._onEntries);
+    dismissStore.listeners.delete(this._onEntries);
   }
   getCardSize() { return 2; }
   getGridOptions() { return { columns: 12, min_columns: 6, rows: "auto" }; }
@@ -10364,11 +10538,14 @@ class SavvyHomeHeaderCard extends SavvyCard {
   // Exactly what savvy-system-health-card counts: broken references, offline devices, low batteries.
   _renderHealth() {
     const hc = this._healthCfg(), el = this._el;
-    el.health.hidden = !hc;
-    if (!hc) return;
     const h = this._hass;
+    // the cog can be kept from people who are not administrators; no gap is left where it was
+    el.health.hidden = !hc || hiddenFromUser(h, this._config, "health_cog");
+    if (!hc) return;
     refreshConfigEntries(h);
-    if (this._sumFor !== h.states || this._sumReg !== h.entities || this._sumDev !== h.devices || this._sumEntries !== entryStore.map) {
+    ensureDismissed(h);
+    if (this._sumFor !== h.states || this._sumReg !== h.entities || this._sumDev !== h.devices || this._sumEntries !== entryStore.map || this._sumDismiss !== dismissStore.version) {
+      this._sumDismiss = dismissStore.version;
       this._sumFor = h.states;
       this._sumReg = h.entities;
       this._sumDev = h.devices;
@@ -10378,9 +10555,10 @@ class SavvyHomeHeaderCard extends SavvyCard {
     const total = this._sum.total, warn = hc.warn_above ?? 6;
     Motion.tintVar(el.health, "--ac", total === 0 ? "var(--secondary-text-color)" : total < warn ? "var(--lvl-warn)" : "var(--lvl-bad)");
     attr(el.health, "data-alert", total > 0);
-    el.count.hidden = !total;
+    const showCount = !!total && !hiddenFromUser(h, this._config, "health_badges");
+    el.count.hidden = !showCount;
     text(el.count, String(total));
-    attr(el.health, "aria-label", total ? `System health, ${total} need attention` : "System health, all good");
+    attr(el.health, "aria-label", !showCount ? "System health" : `System health, ${total} need attention`);
   }
 
   // The four that count by themselves (each can be false, or point at an entity), then yours.
@@ -10469,11 +10647,14 @@ const autoSection = (key, what) => ({ type: "expandable", name: key, title: `${A
 const EDITOR = defineEditor("savvy-home-header-card", (hass, c) => [
   ...modeSchema(hass, c),
   S.nav("home_path", "Home button", "The page it opens. Empty: the one from the Savvy settings."),
+  { name: "admin_only", label: "Admin only", helper: "Kept from people who are not administrators. Empty: from the Savvy settings; everyone sees everything unless it is listed here or there.",
+    selector: { select: { multiple: true, options: [{ value: "health_cog", label: "Health cog" }, { value: "health_badges", label: "Health count badge" }] } } },
   S.bool("show_home", "Show home button", "Off hides it, even when the Savvy settings have a home page.", true),
   S.bool("show_control", "Show control", "Off hides the control chip, even when the Savvy settings have one.", true),
   { name: "weather", label: "Weather", helper: "Empty: the first weather entity.", selector: { entity: { domain: "weather" } } },
   { type: "expandable", name: "health", title: "Health cog", schema: [
     S.nav("navigation_path", "Target page", "Where the popup's page button leads."),
+    S.bool("dismiss", "Dismiss button", "A button on each health row that puts it aside for you. Off hides the buttons; what was dismissed stays dismissed.", true),
     S.bool("popup_button", "Page button", "A button under the popup that opens the target page. On whenever there is one.", true),
     S.text("popup_label", "Button text", "Default: Open system health"),
     S.action("tap_action", "Tap action", "Default: open the list of what needs attention."),
@@ -15784,6 +15965,8 @@ class SettingsEditor extends SavvyEditor {
       { type: "expandable", name: "design", title: "Design", schema: [
         S.bool("state_glow", "State glow", "A soft glow in a corner of a card in what it is doing: a lit light, a locked door, music playing. Off here turns it off on every card; a card can still set its own.", true),
       ] },
+      { name: "admin_only", label: "Admin only", helper: "Kept from people who are not administrators; everyone sees everything unless it is listed. A card can only hide itself: it does not lock a page. In YAML, true means both.",
+        selector: { select: { multiple: true, options: [{ value: "health_cog", label: "Health cog" }, { value: "health_badges", label: "Health count badge" }] } } },
       { name: "aggregate", label: "Aggregate sensors", helper: "Show a room's sensors of these kinds once: occupied if any one is. Sensors on your ignore list are left out. In YAML, true means presence.",
     selector: { select: { multiple: true, options: [{ value: "presence", label: "Presence and motion" }, { value: "door", label: "Doors" }, { value: "window", label: "Windows" },
       { value: "leak", label: "Leaks" }, { value: "smoke", label: "Smoke" }, { value: "gas", label: "Gas" }] } } },
@@ -15838,6 +16021,7 @@ registerCard("savvy-settings-card", SavvySettingsCard, "settings",
 //   watchman: [sensor.watchman_missing_entities, sensor.watchman_missing_actions]
 //   group_by: hub | device | none      group_min: 3      details: false
 //   warn_above: 6  max_rows: 7   title: …     columns: auto | 1 | 2 | 3   (source all: a column per category when wide)
+//   dismiss: true                a button on each row that puts it aside for you (false hides the buttons)
 //   watchman_button: true        watchman_report: { parse_config: true }
 //   action: { label: Generate report, tap_action: { action: perform-action, perform_action: watchman.report } }
 //           (a footer button only when there is an action to run: none by default, and `none` is none)
@@ -15901,6 +16085,11 @@ const STYLE = `${BASE_CSS}
   .row .chev { flex: none; display: flex; --mdc-icon-size: 18px; color: var(--secondary-text-color); transform-origin: 50% 50%; }
   .facts { flex: none; margin: -1px 4px 3px; font-size: 11.5px; line-height: 15px; font-weight: 500; color: var(--secondary-text-color);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .x { flex: none; display: grid; place-items: center; width: var(--c-s); height: var(--c-s); border-radius: 11px; margin-inline-end: -3px;
+    color: var(--secondary-text-color); opacity: 0.62; transform-origin: 50% 50%; }
+  .row .x ha-icon { --mdc-icon-size: 18px; display: flex; }
+  .row .x:hover { opacity: 1; background: var(--well); }
+  :host([kbd]) .row .x:focus-visible { opacity: 1; box-shadow: 0 0 0 2px rgb(var(--accent)); }
   .row .v { flex: none; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--secondary-text-color); }
   .action { flex: none; display: flex; align-items: center; justify-content: center; gap: 6px; height: 34px; margin-top: 2px; border-radius: 11px;
     background: color-mix(in oklab, rgb(var(--accent)) 16%, transparent); color: rgb(var(--accent));
@@ -15974,10 +16163,12 @@ class SavvySystemHealthCard extends HTMLElement {
     // failed integrations are only told to us asynchronously
     this._onEntries = this._onEntries || (() => { if (this._hass && this._root) this._update(); });
     entryStore.listeners.add(this._onEntries);
+    dismissStore.listeners.add(this._onEntries);
   }
   disconnectedCallback() {
     Clock.remove(this._job); this._ro?.disconnect(); clearInterval(this._ticker); this._ticker = 0;
     entryStore.listeners.delete(this._onEntries);
+    dismissStore.listeners.delete(this._onEntries);
     clearTimeout(this._repTimer); clearTimeout(this._flashTimer);
   }
 
@@ -16153,7 +16344,9 @@ class SavvySystemHealthCard extends HTMLElement {
     const out = [];
     const walk = (is, depth) => {
       const open = this._open.has(is.key);
-      out.push(this._issueRow(is, depth, open));
+      const row = this._issueRow(is, depth, open);
+      if (!depth) row.dismiss = this._dismissOf("off", is.dismissId, is.name, is.members);
+      out.push(row);
       if (!open) return;
       if (is.kind === "integration") is.devices.forEach((d) => walk(d, depth + 1));
       else if (is.kind === "hub") { is.entities.forEach((e) => walk(e, depth + 1)); is.devices.forEach((d) => walk(d, depth + 1)); }
@@ -16180,24 +16373,50 @@ class SavvySystemHealthCard extends HTMLElement {
     return out;
   }
 
+  // the button on a row: null when the card has them off
+  _dismissOf(kind, id, name, members) { return this._config.dismiss === false || !id ? null : { id, kind, name, members }; }
+  _dismiss(d) { haptic("light"); dismissAdd(this._hass, d); }
+  _restore(d) { haptic("light"); dismissRestore(this._hass, d.kind, d.members); }
+
+  // what this person put aside, one collapsed line at the foot of its category; a row brings its issue back
+  _dismissedRows(key, sum) {
+    const items = key === "unavailable" ? sum.dismissed.offline : key === "battery" ? sum.dismissed.battery : sum.dismissed.watchman;
+    if (!items.length) return [];
+    const open = this._open.has(`dm:${key}`);
+    const out = [{ type: "row", key: `dm:${key}`, icon: "mdi:bell-off-outline", soft: true, depth: 0, expandable: true, open, name: `Dismissed · ${items.length}`,
+      secondary: "Hidden for you. They come back if they break again" }];
+    if (!open) return out;
+    const kind = key === "unavailable" ? "off" : key === "battery" ? "bat" : "wat";
+    for (const it of items) {
+      const age = Number.isFinite(it.since) ? duration(Date.now() - it.since) : "";
+      const name = it.name, restore = { kind, members: it.members, name };
+      if (kind === "off") out.push({ type: "row", key: `dm:${it.key}`, icon: "mdi:bell-off-outline", soft: true, depth: 1, name, restore,
+        secondary: [it.area, age && `offline for ${age}`].filter(Boolean).join(" · ") });
+      else if (kind === "bat") out.push({ type: "row", key: `dm:${it.entity}`, icon: "mdi:bell-off-outline", soft: true, depth: 1, entity: it.entity, name, value: it.value, restore });
+      else out.push({ type: "row", key: `dm:${it.key}`, icon: "mdi:bell-off-outline", soft: true, depth: 1, entity: it.entity, name, secondary: it.secondary, restore });
+    }
+    return out;
+  }
+
   _batteryRows(sum, all) {
     const det = this._config.details, h = this._hass;
     return (all ? sum.battery : sum.battery.filter((r) => r.alert)).map((r) => {
       const area = det ? entityArea(h, r.entity) : null;
-      return { ...r, type: "row", secondary: area ? h.areas?.[area]?.name || title(area.replace(/_/g, " ")) : "" };
+      return { ...r, type: "row", secondary: area ? h.areas?.[area]?.name || title(area.replace(/_/g, " ")) : "", dismiss: r.alert ? this._dismissOf("bat", r.dismissId, r.name, r.members) : null };
     });
   }
 
   // The rows for this card's source; the pill counts exactly what the home cog counts.
   _compute() {
     const c = this._config, sum = healthSummary(this._hass, c), det = c.details, src = c.source;
-    const watchRows = () => sum.watchman.map((r) => ({ ...r, type: "row" }));
+    const watchRows = () => sum.watchman.map((r) => ({ ...r, type: "row", dismiss: this._dismissOf("wat", r.dismissId, r.name, r.members) }));
     const section = (key, rows, group) => {
       const out = [];
       if (group) out.push({ type: "group", key: `g:${key}`, title: GROUP_TITLE[key], line: this._line(key, sum) });
       if (det) out.push({ type: "facts", key: `f:${key}`, text: this._facts(key, sum) });
-      if (!sum.counts[key]) out.push({ type: "ok", key: `ok:${key}`, text: key === "watchman" && sum.counts.watchmanExplained ? "Nothing else missing" : ALL_FINE[key] });
-      out.push(...rows);
+      const aside = sum.counts.dismissedBy[key];
+      if (!sum.counts[key]) out.push({ type: "ok", key: `ok:${key}`, text: aside ? "Nothing else needs a look" : key === "watchman" && sum.counts.watchmanExplained ? "Nothing else missing" : ALL_FINE[key] });
+      out.push(...rows, ...this._dismissedRows(key, sum));
       return out;
     };
     if (src === "watchman") return { total: sum.counts.watchman, sections: [{ key: "watchman", rows: section("watchman", watchRows(), false) }] };
@@ -16216,6 +16435,7 @@ class SavvySystemHealthCard extends HTMLElement {
     if (!h || !this._root) return;
     this._reduced = MQ.reduced.matches;
     this.toggleAttribute("dark", !!h.themes?.darkMode);
+    ensureDismissed(h);
     this._lastRun = c.source === "all" || c.source === "watchman" ? watchmanLastRun(h, c) : null;
     if (c.source === "all" || c.source === "unavailable") refreshConfigEntries(h);
     this._checkReport();
@@ -16300,8 +16520,9 @@ class SavvySystemHealthCard extends HTMLElement {
       node.className = "facts";
     } else {
       node.className = "row";
-      node.innerHTML = `<span class="disc"><ha-icon></ha-icon></span><span class="col"><span class="n"></span><span class="s"></span></span><span class="v" hidden></span><ha-icon class="chev" icon="mdi:chevron-right" hidden></ha-icon>`;
-      node.__el = { icon: node.querySelector(".disc ha-icon"), n: node.querySelector(".n"), s: node.querySelector(".s"), v: node.querySelector(".v"), chev: node.querySelector(".chev") };
+      node.innerHTML = `<span class="disc"><ha-icon></ha-icon></span><span class="col"><span class="n"></span><span class="s"></span></span><span class="v" hidden></span><ha-icon class="chev" icon="mdi:chevron-right" hidden></ha-icon><button class="x" hidden><ha-icon icon="mdi:bell-off-outline"></ha-icon></button>`;
+      node.__el = { icon: node.querySelector(".disc ha-icon"), n: node.querySelector(".n"), s: node.querySelector(".s"), v: node.querySelector(".v"), chev: node.querySelector(".chev"),
+        x: node.querySelector(".x"), xicon: node.querySelector(".x ha-icon") };
       node.__enter = new Spring(0, MOTION.ui, `row:${r.key}`).to(1, MOTION.ui);
       this._springs.push(node.__enter);
     }
@@ -16333,9 +16554,8 @@ class SavvySystemHealthCard extends HTMLElement {
     });
     for (const [key, node] of this._rows) {
       if (seen.has(key)) continue;
-      for (const s of [node.__enter, node.__spring, node.__chev]) { const i = this._springs.indexOf(s); if (i >= 0) this._springs.splice(i, 1); }
-      const p = this._pressNodes.indexOf(node);
-      if (p >= 0) this._pressNodes.splice(p, 1);
+      for (const s of [node.__enter, node.__spring, node.__chev, node.__el?.x?.__spring]) { const i = this._springs.indexOf(s); if (i >= 0) this._springs.splice(i, 1); }
+      for (const n of [node, node.__el?.x]) { const p = this._pressNodes.indexOf(n); if (p >= 0) this._pressNodes.splice(p, 1); }
       node.remove();
       this._rows.delete(key);
     }
@@ -16364,6 +16584,20 @@ class SavvySystemHealthCard extends HTMLElement {
     attr(node, "data-group-start", r.groupStart);
     attr(node, "data-depth", r.depth || null);
     el.chev.hidden = !r.expandable;
+    // the button on the row: dismiss it, or (in the dismissed list) bring it back
+    const act = r.dismiss || r.restore;
+    el.x.hidden = !act;
+    if (act) {
+      attr(el.xicon, "icon", r.restore ? "mdi:bell-ring-outline" : "mdi:bell-off-outline");
+      attr(el.x, "aria-label", r.restore ? `Bring back ${act.name}` : `Dismiss ${act.name}`);
+      attr(el.x, "title", r.restore ? "Bring back" : "Dismiss");
+      if (!el.x.__wired) {
+        el.x.__wired = true;
+        // its press is its own: the row under it does not dip or open
+        el.x.addEventListener("pointerdown", (e) => e.stopPropagation());
+        this._pressable(el.x, () => { const cur = node.__r; if (cur.restore) this._restore(cur.restore); else if (cur.dismiss) this._dismiss(cur.dismiss); });
+      }
+    }
     attr(node, "aria-expanded", r.expandable ? String(!!r.open) : null);
     if (r.expandable) {
       if (!node.__chev) {
@@ -16456,6 +16690,7 @@ const EDITOR = defineEditor("savvy-system-health-card", (hass, c) => [
   S.number("max_rows", "Max rows", 3, 30),
   { name: "columns", label: "Columns", helper: "Side by side when the card is wide: one column per category. Empty: automatic. 1 keeps them stacked.",
     selector: { number: { min: 1, max: 4, step: 1, mode: "box" } } },
+  S.bool("dismiss", "Dismiss button", "A button on each health row that puts it aside for you: it leaves the count and waits under Dismissed, and comes back if it breaks again. Off hides the buttons.", true),
   S.bool("details", "Show details", "A line of facts under each section (how many devices, the lowest battery, when Watchman checked), and area and integration on the rows."),
   S.select("group_by", "Grouping", [
     { value: "hub", label: "Device, and the hub behind it" }, { value: "device", label: "Device" }, { value: "none", label: "Nothing: one row per entity" },

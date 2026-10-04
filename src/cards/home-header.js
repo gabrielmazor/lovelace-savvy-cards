@@ -89,10 +89,13 @@ class SavvyHomeHeaderCard extends SavvyCard {
     // the cog counts failed integrations, which Home Assistant only tells us about asynchronously
     this._onEntries = this._onEntries || (() => { this._sumFor = null; if (this._hass && this._el) this._update(); });
     entryStore.listeners.add(this._onEntries);
+    // what this person dismissed on the health card leaves the cog's count too
+    dismissStore.listeners.add(this._onEntries);
   }
   disconnectedCallback() {
     super.disconnectedCallback();
     entryStore.listeners.delete(this._onEntries);
+    dismissStore.listeners.delete(this._onEntries);
   }
   getCardSize() { return 2; }
   getGridOptions() { return { columns: 12, min_columns: 6, rows: "auto" }; }
@@ -196,11 +199,14 @@ class SavvyHomeHeaderCard extends SavvyCard {
   // Exactly what savvy-system-health-card counts: broken references, offline devices, low batteries.
   _renderHealth() {
     const hc = this._healthCfg(), el = this._el;
-    el.health.hidden = !hc;
-    if (!hc) return;
     const h = this._hass;
+    // the cog can be kept from people who are not administrators; no gap is left where it was
+    el.health.hidden = !hc || hiddenFromUser(h, this._config, "health_cog");
+    if (!hc) return;
     refreshConfigEntries(h);
-    if (this._sumFor !== h.states || this._sumReg !== h.entities || this._sumDev !== h.devices || this._sumEntries !== entryStore.map) {
+    ensureDismissed(h);
+    if (this._sumFor !== h.states || this._sumReg !== h.entities || this._sumDev !== h.devices || this._sumEntries !== entryStore.map || this._sumDismiss !== dismissStore.version) {
+      this._sumDismiss = dismissStore.version;
       this._sumFor = h.states;
       this._sumReg = h.entities;
       this._sumDev = h.devices;
@@ -210,9 +216,10 @@ class SavvyHomeHeaderCard extends SavvyCard {
     const total = this._sum.total, warn = hc.warn_above ?? 6;
     Motion.tintVar(el.health, "--ac", total === 0 ? "var(--secondary-text-color)" : total < warn ? "var(--lvl-warn)" : "var(--lvl-bad)");
     attr(el.health, "data-alert", total > 0);
-    el.count.hidden = !total;
+    const showCount = !!total && !hiddenFromUser(h, this._config, "health_badges");
+    el.count.hidden = !showCount;
     text(el.count, String(total));
-    attr(el.health, "aria-label", total ? `System health, ${total} need attention` : "System health, all good");
+    attr(el.health, "aria-label", !showCount ? "System health" : `System health, ${total} need attention`);
   }
 
   // The four that count by themselves (each can be false, or point at an entity), then yours.
@@ -301,11 +308,14 @@ const autoSection = (key, what) => ({ type: "expandable", name: key, title: `${A
 const EDITOR = defineEditor("savvy-home-header-card", (hass, c) => [
   ...modeSchema(hass, c),
   S.nav("home_path", "Home button", "The page it opens. Empty: the one from the Savvy settings."),
+  { name: "admin_only", label: "Admin only", helper: "Kept from people who are not administrators. Empty: from the Savvy settings; everyone sees everything unless it is listed here or there.",
+    selector: { select: { multiple: true, options: [{ value: "health_cog", label: "Health cog" }, { value: "health_badges", label: "Health count badge" }] } } },
   S.bool("show_home", "Show home button", "Off hides it, even when the Savvy settings have a home page.", true),
   S.bool("show_control", "Show control", "Off hides the control chip, even when the Savvy settings have one.", true),
   { name: "weather", label: "Weather", helper: "Empty: the first weather entity.", selector: { entity: { domain: "weather" } } },
   { type: "expandable", name: "health", title: "Health cog", schema: [
     S.nav("navigation_path", "Target page", "Where the popup's page button leads."),
+    S.bool("dismiss", "Dismiss button", "A button on each health row that puts it aside for you. Off hides the buttons; what was dismissed stays dismissed.", true),
     S.bool("popup_button", "Page button", "A button under the popup that opens the target page. On whenever there is one.", true),
     S.text("popup_label", "Button text", "Default: Open system health"),
     S.action("tap_action", "Tap action", "Default: open the list of what needs attention."),

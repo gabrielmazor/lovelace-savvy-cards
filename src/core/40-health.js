@@ -19,6 +19,7 @@
 //   group_min           how many devices a hub or an integration needs to roll up (default 3)
 //   ignore              known problems: { entities: [...], devices: [device ids] } (or one list of both).
 //                       They leave every count and list, and wait under "Known"
+//   dismiss             false hides the dismiss buttons (what was dismissed stays dismissed: core/dismiss)
 //
 // A Watchman item whose entity belongs to a device that is already an issue (or is ignored) is not a
 // second problem: it is folded into that device's row and counts once. Only what nothing else explains
@@ -286,7 +287,7 @@ function watchmanRows(hass, opts) {
       rows.push({
         key: `${id}:${item.id}:${rows.length}`, entity: item.id, name: item.id,
         secondary: occ ? occ.split("/").pop().split(":")[0] : "", tooltip: occ,
-        icon: item.state ? (WATCHMAN_ICON[item.state] || "mdi:cloud-question") : "mdi:cloud-alert", alert: true,
+        icon: item.state ? (WATCHMAN_ICON[item.state] || "mdi:cloud-question") : "mdi:cloud-alert", alert: true, actions,
       });
     }
   }
@@ -317,24 +318,70 @@ function explainWatchman(hass, opts, issues, known, rows) {
   return { keep, gone };
 }
 
+// still failing? (for pruning what a person dismissed): an unavailable entity, a connectivity sensor that
+// reads off, or an issue that is still in the list. A member that is gone from Home Assistant is fine.
+const stillDown = (hass, id, keys) => {
+  if (id.startsWith("issue:")) return keys.has(id.slice(6));
+  const st = hass.states[id];
+  return !!st && (st.state === "unavailable" || (st.attributes.device_class === "connectivity" && st.state === "off"));
+};
+// the failing entities an issue is made of (an integration that failed with no device of it in sight stands for itself)
+const issueMembers = (is) => {
+  const out = [];
+  const walk = (n) => { if (n.kind === "entity") out.push(n.entity); (n.entities || []).forEach(walk); (n.devices || []).forEach(walk); };
+  walk(is);
+  return out.length ? [...new Set(out)] : [`issue:${is.key}`];
+};
+
 // Everything at once. `total` is what the home card's cog shows: the offline issues
-// (a hub, a device or a loose entity is one each), the low batteries and Watchman's count.
+// (a hub, a device or a loose entity is one each), the low batteries and Watchman's count,
+// less what this person has dismissed (core/dismiss), which is listed under `dismissed`.
 function healthSummary(hass, cfg) {
   const opts = healthOptions(cfg);
   const battery = batteryRows(hass, opts);
   const offline = offlineIssues(hass, opts);
   const watchman = watchmanRows(hass, opts);
-  const low = battery.filter((b) => b.alert).length;
   const { keep, gone } = explainWatchman(hass, opts, offline.issues, offline.known, watchman.rows);
-  // what is left of Watchman's count once the items the offline issues explain are taken out
-  const left = Math.max(0, watchman.total - gone.length);
-  const kinds = { entities: Math.max(0, watchman.kinds.entities - gone.length), actions: watchman.kinds.actions };
+
+  // what has recovered since it was dismissed is forgotten, so it returns if it breaks again
+  const keys = new Set(offline.issues.map((i) => i.key));
+  if (dismissStore.entries.size && Object.keys(hass.states || {}).length) {
+    const lowNow = new Map(battery.map((b) => [b.entity, b.alert]));
+    const watchOk = opts.watchman.length > 0 && opts.watchman.every((id) => hass.states[id]);
+    const listed = new Set(watchman.rows.map((r) => r.entity));
+    dismissPrune(hass, (kind, m) => {
+      if (kind === "off") return stillDown(hass, m, keys);
+      if (kind === "bat") return lowNow.has(m) ? lowNow.get(m) : !!hass.states[m] && hass.states[m].state === "unavailable";
+      return watchOk ? listed.has(m) : true;
+    });
+  }
+  const dv = dismissView();
+  const covered = (set, members) => set.size > 0 && members.length > 0 && members.every((m) => set.has(m));
+  for (const is of offline.issues) { is.members = issueMembers(is); is.dismissId = `off:${is.key}`; }
+  for (const b of battery) { b.members = [b.entity]; b.dismissId = `bat:${b.entity}`; }
+  for (const r of watchman.rows) { r.members = [r.entity]; r.dismissId = `wat:${r.entity}`; }
+
+  const offLive = offline.issues.filter((i) => !covered(dv.off, i.members));
+  const offAside = offline.issues.filter((i) => covered(dv.off, i.members));
+  const batLive = battery.filter((b) => !(b.alert && dv.bat.has(b.entity)));
+  const batAside = battery.filter((b) => b.alert && dv.bat.has(b.entity));
+  const watLive = keep.filter((r) => !dv.wat.has(r.entity));
+  const watAside = keep.filter((r) => dv.wat.has(r.entity));
+
+  const low = batLive.filter((b) => b.alert).length;
+  // what is left of Watchman's count once the items the offline issues explain, and the dismissed ones, are taken out
+  const left = Math.max(0, watchman.total - gone.length - watAside.length);
+  const kinds = { entities: Math.max(0, watchman.kinds.entities - gone.length - watAside.filter((r) => !r.actions).length),
+    actions: Math.max(0, watchman.kinds.actions - watAside.filter((r) => r.actions).length) };
+  const dismissedCount = offAside.length + batAside.length + watAside.length;
   return {
-    opts, battery, offline: offline.issues, watchman: keep, watchmanExplained: gone, known: offline.known,
-    counts: { battery: low, unavailable: offline.issues.length, watchman: left, watchmanAll: watchman.total, watchmanExplained: gone.length, watchmanKinds: kinds, watchmanAllKinds: watchman.kinds,
-      known: offline.known.devices.length + offline.known.entities.length },
+    opts, battery: batLive, offline: offLive, watchman: watLive, watchmanExplained: gone, known: offline.known,
+    dismissed: { offline: offAside, battery: batAside, watchman: watAside, count: dismissedCount },
+    counts: { battery: low, unavailable: offLive.length, watchman: left, watchmanAll: watchman.total, watchmanExplained: gone.length, watchmanKinds: kinds, watchmanAllKinds: watchman.kinds,
+      known: offline.known.devices.length + offline.known.entities.length, dismissed: dismissedCount,
+      dismissedBy: { unavailable: offAside.length, battery: batAside.length, watchman: watAside.length } },
     stats: { devices: offline.devices, batteries: { count: battery.length, lowest: battery.length ? battery[0].num : null } },
-    total: low + offline.issues.length + left,
+    total: low + offLive.length + left,
   };
 }
 

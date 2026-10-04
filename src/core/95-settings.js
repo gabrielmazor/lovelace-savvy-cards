@@ -17,6 +17,19 @@ const SETTINGS_TYPE = "custom:savvy-settings-card";
 const SETTINGS_REFRESH_MS = 5 * 60 * 1000;
 const SETTINGS_SECTIONS = ["pages", "house", "health", "ignore", "rooms", "design"];
 
+// What a card can keep from people who are not administrators: the health cog in the home header, and
+// the count badge on it. Everyone sees everything unless it is listed. A card can only hide itself: it
+// cannot lock a page. A user Home Assistant does not describe (no `hass.user`) counts as an administrator.
+const ADMIN_ITEMS = ["health_cog", "health_badges"];
+const isAdminUser = (hass) => hass?.user?.is_admin !== false;
+function adminOnlyItems(v) {
+  if (v === true) return new Set(ADMIN_ITEMS);
+  if (!v) return new Set();
+  const list = Array.isArray(v) ? v : typeof v === "object" ? Object.keys(v).filter((k) => v[k]) : [v];
+  return new Set(list.filter((k) => ADMIN_ITEMS.includes(k)));
+}
+const hiddenFromUser = (hass, config, item) => !isAdminUser(hass) && adminOnlyItems(config?.admin_only).has(item);
+
 // ---- the table -------------------------------------------------------------------------
 
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -86,6 +99,7 @@ const HOME_CHIPS = ["lights", "climate", "media", "security"];
 const SETTINGS_RULES = {
   "savvy-home-header-card": [
     { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
+    { path: "admin_only", label: "Admin only", get: (s) => s.admin_only, src: "admin_only" },
     { path: "control", label: "Control", get: glob("house", "control"), src: "house" },
     { path: "weather", label: "Weather", get: glob("house", "weather"), src: "house" },
     { path: "home_path", label: "Home button", get: glob("pages", "home"), src: "pages" },
@@ -297,6 +311,9 @@ function normalizeSettings(config) {
   // which kinds of sensor each room shows once (true: presence)
   const agg = aggKinds(config.aggregate);
   if (agg.length) out.aggregate = agg;
+  // what only administrators see (true: everything that can be kept)
+  const admin = [...adminOnlyItems(config.admin_only)];
+  if (admin.length) out.admin_only = admin;
   return Object.keys(out).length ? out : null;
 }
 

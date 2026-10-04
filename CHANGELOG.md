@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.10.1
+
+A dismiss button on the health card, and admin-only visibility.
+
+- **Dismiss a health row.** Every offline issue, low battery and Watchman item has a small button that puts it
+  aside for you. It leaves every count (the card's, its categories', the home header's cog and its popup) and
+  waits in a collapsed "Dismissed · N" line at the foot of its category; each dismissed row has a Bring back
+  button. It is personal, kept in your Home Assistant profile (`frontend/set_user_data`, so it follows you to
+  your other devices, no admin needed) and in the browser when that is not available. A dismissal forgets
+  itself when the problem is gone, so it returns if it breaks again, and a problem that grows (one more entity
+  goes down) comes back by itself. Matching is by entity, so a hub dismissed on one card stays dismissed on a
+  card that groups by device. `dismiss: false` hides the buttons (editor: "Dismiss button", on by default).
+  `health.ignore` in the settings stays the shared, permanent list, in its own "Known" line.
+- **Admin only.** `admin_only: [health_cog, health_badges]` in the Savvy settings (a checkbox list in its editor)
+  keeps the health cog, or only its count, from people who are not administrators. Everyone sees everything
+  unless it is listed. A home header can set its own `admin_only` (a list, `true` for both, `false` for nothing)
+  and it wins over the settings. Without the cog the one-row header leaves no gap. A user Home Assistant does not
+  describe counts as an administrator, so nothing is hidden by mistake. A card can only hide itself: it does not
+  lock a page.
+
 ## 0.10.0
 
 One design language for every card.

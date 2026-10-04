@@ -26,6 +26,12 @@ window.hass.callWS = async (m) => { if (m.type === "config_entries/get") return 
 window.hass.services = { watchman: { report: {} } };
 window.setStates(f.patch);`;
 const OFFLINE_OPEN = OFFLINE + `window.__after = () => { const c = window.cards[0]; c._open.add("h:dev_n_bridge"); c._open.add("h:dev_n_bridge/d:dev_n_k1"); c._open.add("i:e:entry_tuya"); c._update(); };`;
+// the same house, with a low battery and a device put aside, and their line opened
+const DISMISSED = OFFLINE + `const sum = window.__savvy.healthSummary(window.hass, {});
+const bat = sum.battery.find((b) => b.alert), dev = sum.offline.find((i) => i.kind === "device");
+if (bat) window.__savvy.dismissAdd(window.hass, { id: bat.dismissId, kind: "bat", name: bat.name, members: bat.members });
+if (dev) window.__savvy.dismissAdd(window.hass, { id: dev.dismissId, kind: "off", name: dev.name, members: dev.members });
+window.__after = () => { const c = window.cards[0]; c._open.add("dm:battery"); c._open.add("dm:unavailable"); c._update(); };`;
 // the tiles: three rooms side by side (the first is mounted by the loop)
 // the front door: a Nuki-like lock with its door contact and battery, the house alarm, a camera
 const DOOR = (o) => `window.setStates(window.entranceFixture(window.house, ${JSON.stringify(o)}));`;
@@ -105,6 +111,7 @@ const SHOTS = [
   ["system-health-columns", "savvy-system-health-card", { watchman: ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"], max_rows: 6 }, 900, OFFLINE],
   ["system-health-expanded", "savvy-system-health-card", { max_rows: 16 }, 420, OFFLINE_OPEN],
   ["system-health-details", "savvy-system-health-card", { watchman: ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"], max_rows: 10, details: true }, 420, OFFLINE],
+  ["system-health-dismissed", "savvy-system-health-card", { max_rows: 16 }, 420, DISMISSED],
   ["system-health-batteries", "savvy-system-health-card", { source: "battery" }, 420],
   ["home-header", "savvy-home-header-card", { control: "input_select.house_mode", home_path: "/lovelace/home",
     health: { watchman: ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"] } }, 600],
