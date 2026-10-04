@@ -169,6 +169,10 @@ const SETTINGS_RULES = {
     glowRule,
     { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
   ],
+  "savvy-story-card": [
+    { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
+    { path: "exclude_areas", label: "Ignored rooms", kind: "union", get: (s) => s.ignore?.areas, src: "ignore" },
+  ],
   "savvy-last-check-card": [
     glowRule,
     { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },

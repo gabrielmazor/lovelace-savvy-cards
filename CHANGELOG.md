@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.12.0
+
+- **New card: Home story** (`custom:savvy-story-card`). What happened at home, in plain sentences: who
+  arrived and left, doors and windows, locks (and who unlocked from the app), motion, a room's lights as
+  one span with its hours, players starting, alarms and leaks. Repeats merge into one line ("7 times,
+  07:10 to 07:40"), lines are grouped by part of the day, and chips filter by All, People, Security and
+  Rooms. The range is today, the last 24 hours or **while you were away** (since the last person left).
+  It asks the logbook only for the kinds of things it shows and refreshes every minute while visible. The
+  ignore list in the Savvy settings applies.
+
 ## 0.11.0
 
 - **New card: Last check** (`custom:savvy-last-check-card`). The last look before you leave or go to bed.

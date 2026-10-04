@@ -150,6 +150,7 @@ animations, light and dark themes, and honour reduced motion.
 | [Vacuum](#vacuum) | A robot vacuum: rooms, map, dock | `custom:savvy-vacuum-card` |
 | [Scenes](#scenes) | Every scene of a room as a tile | `custom:savvy-scene-card` |
 | [Last check](#last-check) | What would be left on when you leave or go to bed, and one slide to turn it off | `custom:savvy-last-check-card` |
+| [Home story](#home-story) | What happened at home, in plain sentences | `custom:savvy-story-card` |
 | [System health](#system-health) | Offline devices, low batteries, Watchman | `custom:savvy-system-health-card` |
 | [Entity](#entity) | One entity and the ones that go with it | `custom:savvy-entity-card` |
 | [Graph](#graph) | Number and state tiles with history | `custom:savvy-graph-card` |
@@ -992,6 +993,58 @@ then:
   perform_action: alarm_control_panel.alarm_arm_away
   target:
     entity_id: alarm_control_panel.home_alarm
+```
+
+---
+
+### Home story
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/story-light.png"><img src="docs/images/story-dark.png" width="420" alt="Savvy home story card"></picture>
+
+What happened at home, told in plain sentences instead of a logbook. A motion sensor that fired seven times
+is one line; a room's lights are one span ("on 06:02 PM to 09:52 PM, 3 h 50 min"); a door unlocked from the
+app says who did it; people arriving and leaving are in words. Lines are grouped by part of the day, newest
+first. Tap a line for its details. Sensors, automations, updates and the like stay out. The chips filter
+the story (All, People, Security, Rooms) and the last chip changes the range: today, the last 24 hours, or
+**while you were away**, from the moment the last person left.
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `range` | `today`, `24h` or `away` | `today` | The time window. `away` starts when the last person left (and ends when the first came back). |
+| `area` | area or list | the whole house | Only these areas. People still show. |
+| `title` | string | Home story | The heading. |
+| `title_path` | string | none | Title link: tapping the title opens this page. |
+| `people` | boolean | `true` | Arrivals and departures. |
+| `filters` | boolean | `true` | The chips row. |
+| `include` | list of entities | none | Things that are left out by default, for example a switch. |
+| `exclude` | list of entities | none | Never shown. The ignore list in the [Savvy settings](#savvy-settings) is added to it. |
+| `max_events` | number | `30` | Lines before "Show more". |
+| `merge_minutes` | number | `20` | Repeats of one thing closer together than this are one line. |
+| `layout` | `full` or `compact` | `full` | `compact`: one line each, no details. |
+
+The card reads the logbook (and, for `away`, the people's history) through Home Assistant, refreshes every
+minute while it is on screen, and only asks for the kinds of things it shows.
+
+Minimum:
+
+```yaml
+type: custom:savvy-story-card
+```
+
+Full:
+
+```yaml
+type: custom:savvy-story-card
+range: today
+area: [hallway, kitchen, living_room]
+title: Home story
+people: true
+filters: true
+include: [switch.coffee_machine]
+exclude: [light.hall_night_light]
+max_events: 30
+merge_minutes: 20
+layout: full
 ```
 
 ---

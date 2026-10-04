@@ -124,6 +124,25 @@ const LEFT_OPEN = `(() => {
   h.entities["cover.garage_door"] = { entity_id: "cover.garage_door", area_id: "hallway", device_id: null, platform: "demo", entity_category: null, hidden: false, disabled_by: null };
   window.hass = { ...h, states: { ...house.states } };
 })();`;
+// a day at home, for the Home story card: the logbook is faked
+const STORY_DAY = `(() => {
+  const h = window.hass, house = window.house;
+  const add = (id, state, attributes, area) => { house.states[id] = { entity_id: id, state, attributes, last_changed: new Date().toISOString(), last_updated: new Date().toISOString() }; h.entities[id] = { entity_id: id, area_id: area, device_id: null, platform: "demo", entity_category: null, hidden: false, disabled_by: null }; };
+  add("binary_sensor.kitchen_motion", "off", { friendly_name: "Kitchen Motion", device_class: "motion" }, "kitchen");
+  add("person.alex", "home", { friendly_name: "Alex", user_id: "u1" }, null);
+  window.hass = { ...h, states: { ...house.states } };
+  const day = new Date(); day.setHours(0, 0, 0, 0);
+  const at = (hh, mm = 0) => (day.getTime() + (hh * 60 + mm) * 60000) / 1000;
+  const ev = (entity_id, state, when, extra = {}) => ({ entity_id, state, when, ...extra });
+  const events = [
+    ...[0, 5, 10, 15, 20, 25, 30].map((m) => ev("binary_sensor.kitchen_motion", "on", at(7, 10 + m))),
+    ev("person.alex", "not_home", at(8)), ev("binary_sensor.living_room_door", "on", at(12)), ev("binary_sensor.living_room_door", "off", at(12, 1)),
+    ev("person.alex", "home", at(17, 55)), ev("lock.front_door", "unlocked", at(18, 2), { context_user_id: "u1" }), ev("lock.front_door", "locked", at(18, 3)),
+    ev("light.living_room_ceiling", "on", at(18, 2)), ev("light.living_room_floor_lamp", "on", at(18, 10)),
+    ev("light.living_room_ceiling", "off", at(21, 40)), ev("light.living_room_floor_lamp", "off", at(21, 52)),
+  ];
+  window.hass.callWS = async (m) => (m.type === "logbook/get_events" ? events : {});
+})();`;
 const SHOTS = [
   ["lights", "savvy-lights-card", { area: "living_room", featured: ["light.living_room_ceiling"], chips: [{ entity: "switch.living_room_plug", name: "Plug" }] }, 520],
   ["lights-compact", "savvy-lights-card", { area: "living_room", layout: "compact" }, 520],
@@ -173,6 +192,8 @@ const SHOTS = [
   ["lock-several", "savvy-lock-card", { entities: ["lock.entrance_door", "lock.shed", "lock.back_door"], name: "Doors", alarm: false, camera: false }, 460, DOOR({})],
   ["last-check", "savvy-last-check-card", { mode: "leave", area: ["living_room", "kitchen", "hallway", "bedroom"], max_rows: 6 }, 420, LEFT_OPEN],
   ["last-check-compact", "savvy-last-check-card", { mode: "goodnight", layout: "compact", area: ["living_room", "kitchen", "hallway", "bedroom"] }, 420, LEFT_OPEN],
+  ["story", "savvy-story-card", { range: "24h" }, 420, STORY_DAY],
+  ["story-compact", "savvy-story-card", { layout: "compact", filters: false, max_events: 5 }, 420, STORY_DAY],
   ["settings", "savvy-settings-card", SETTINGS_CFG, 460, SETTINGS_USERS],
   ["settings-compact", "savvy-settings-card", { ...SETTINGS_CFG, layout: "compact" }, 460, SETTINGS_USERS],
   ["camera", "savvy-camera-card", { area: ["living_room", "kitchen"] }, 820, FRIGATE],
