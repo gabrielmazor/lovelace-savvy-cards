@@ -128,8 +128,8 @@ editor lists what it is taking from the settings under **From Savvy settings**.
 Every card follows the same few rules, so a dashboard of them reads as one thing. An icon that
 stands for a thing (a room, a light, a lock, a player) sits in a circle; anything you press (power,
 a colour swatch, a step, a button in a popup) is a rounded square. A card with a state, such as a lit
-light, a locked door, music playing or something broken, glows softly in one corner in that colour, and
-shows nothing when it is idle. Turn the glow off with `state_glow: false` on a card, or for all of
+light, a locked door, music playing or something broken, glows softly in one corner in the colour of its icon (the lights card takes the colour of the
+lit colour light, like the room tile), and shows nothing when it is idle. Turn the glow off with `state_glow: false` on a card, or for all of
 them with `design: { state_glow: false }` in the settings card. The cards also have smooth, tactile
 animations, light and dark themes, and honour reduced motion.
 

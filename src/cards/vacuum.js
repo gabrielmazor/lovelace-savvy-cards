@@ -987,7 +987,7 @@ class VacuumCard extends HTMLElement {
     this._actS.to(cleaning || act === "returning" ? 1 : 0, MOTION.ui);
     // the glow: red for a problem, amber for a warning, the accent while it works; nothing when it rests
     const glowLevel = worst && !this._expect ? worst.level : null;
-    stateGlow(c, el.card, glowLevel === "alert" ? [224, 102, 102] : glowLevel === "warn" ? [232, 163, 61] : cleaning || act === "returning" ? [91, 163, 217] : null, glowLevel ? 0.9 : 0.7);
+    stateGlow(c, el.card, glowLevel === "alert" ? [224, 102, 102] : glowLevel === "warn" ? [232, 163, 61] : cleaning || act === "returning" ? toRgb(getComputedStyle(el.card).getPropertyValue("--acc").trim() || COLORS.accent) : null, glowLevel ? 0.9 : 0.7);
     attr(el.ring, "aria-label", `${el.name.textContent}, battery ${Number.isFinite(batt) ? Math.round(batt) + "%" : "unknown"}`);
     attr(el.who, "aria-label", `${el.name.textContent}, ${s1}${s2 ? `, ${s2}` : ""}`);
 

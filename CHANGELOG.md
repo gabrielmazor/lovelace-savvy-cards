@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.6
+
+- **The glow is the colour of the icon.** On every card with a state glow, the corner wash now takes the
+  colour its own icon has. On the lights card it works like the room tile: the first colour light that is
+  on gives its own colour, and white or warm-white lights glow in the amber of their icons instead of
+  coming out white. The colour slides when the lights change. The vacuum glow follows the card's accent.
+
 ## 0.10.5
 
 - **Sound on the cameras.** Cameras stay muted, as before. When a stream carries sound, a speaker button

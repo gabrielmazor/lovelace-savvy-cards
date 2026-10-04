@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.10.5 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.10.6 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.10.5";
+const SAVVY_VERSION = "0.10.6";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -11900,9 +11900,11 @@ class LightsCard extends HTMLElement {
     const master = c.toggle.entity && h.states[c.toggle.entity];
     const lit = master ? master.state === "on" : on > 0;
     attr(el.master, "data-on", lit ? "" : null);
-    // the corner glow: the colour of the first light that is on, stronger the more of the room is lit
+    // the corner glow: the colour of the first colour light that is on, stronger the more of the room is lit
     const litIds = ids.filter((id) => this._isOn(id));
-    const glowRgb = lit || litIds.length ? (litIds.map((id) => this._lightRgb(h.states[id])).find(Boolean) || [245, 184, 61]) : null;
+    // like the room tile: the first colour light's own (legible) colour; white and warm-white lights glow in the amber their icons have
+    const hueOf = (id) => { const st = h.states[id]; return st && HUE_MODES.has(st.attributes.color_mode) && st.attributes.rgb_color ? legible(st.attributes.rgb_color) : null; };
+    const glowRgb = lit || litIds.length ? (litIds.map(hueOf).find(Boolean) || [245, 184, 61]) : null;
     stateGlow(c, el.card, glowRgb, ids.length ? 0.55 + 0.45 * (litIds.length / ids.length) : 0.55);
     // the pill says what the room's lights ARE doing, not what tapping it would do
     text(el.masterText, c.toggle.name || (lit ? "Lights on" : "Lights off"));
@@ -18659,7 +18661,7 @@ class VacuumCard extends HTMLElement {
     this._actS.to(cleaning || act === "returning" ? 1 : 0, MOTION.ui);
     // the glow: red for a problem, amber for a warning, the accent while it works; nothing when it rests
     const glowLevel = worst && !this._expect ? worst.level : null;
-    stateGlow(c, el.card, glowLevel === "alert" ? [224, 102, 102] : glowLevel === "warn" ? [232, 163, 61] : cleaning || act === "returning" ? [91, 163, 217] : null, glowLevel ? 0.9 : 0.7);
+    stateGlow(c, el.card, glowLevel === "alert" ? [224, 102, 102] : glowLevel === "warn" ? [232, 163, 61] : cleaning || act === "returning" ? toRgb(getComputedStyle(el.card).getPropertyValue("--acc").trim() || COLORS.accent) : null, glowLevel ? 0.9 : 0.7);
     attr(el.ring, "aria-label", `${el.name.textContent}, battery ${Number.isFinite(batt) ? Math.round(batt) + "%" : "unknown"}`);
     attr(el.who, "aria-label", `${el.name.textContent}, ${s1}${s2 ? `, ${s2}` : ""}`);
 

@@ -924,9 +924,11 @@ class LightsCard extends HTMLElement {
     const master = c.toggle.entity && h.states[c.toggle.entity];
     const lit = master ? master.state === "on" : on > 0;
     attr(el.master, "data-on", lit ? "" : null);
-    // the corner glow: the colour of the first light that is on, stronger the more of the room is lit
+    // the corner glow: the colour of the first colour light that is on, stronger the more of the room is lit
     const litIds = ids.filter((id) => this._isOn(id));
-    const glowRgb = lit || litIds.length ? (litIds.map((id) => this._lightRgb(h.states[id])).find(Boolean) || [245, 184, 61]) : null;
+    // like the room tile: the first colour light's own (legible) colour; white and warm-white lights glow in the amber their icons have
+    const hueOf = (id) => { const st = h.states[id]; return st && HUE_MODES.has(st.attributes.color_mode) && st.attributes.rgb_color ? legible(st.attributes.rgb_color) : null; };
+    const glowRgb = lit || litIds.length ? (litIds.map(hueOf).find(Boolean) || [245, 184, 61]) : null;
     stateGlow(c, el.card, glowRgb, ids.length ? 0.55 + 0.45 * (litIds.length / ids.length) : 0.55);
     // the pill says what the room's lights ARE doing, not what tapping it would do
     text(el.masterText, c.toggle.name || (lit ? "Lights on" : "Lights off"));

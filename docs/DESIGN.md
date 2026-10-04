@@ -274,7 +274,9 @@ state colour when on (`--mix-on`), 18% of amber or red when it is an alert
 - **Amber and red are one pair everywhere:** `--warn-rgb`, `--bad-rgb` (and `--good-rgb`),
   with `TONE` for the places that need a hex string. No card spells its own.
 - **The state glow.** A soft radial wash in the top corner of the card, in the colour of
-  what it is doing: a lit light, a locked door (green), an unlocked one (amber), music
+  the card's own icon (never a second colour to keep in sync; the lights card takes the first
+  colour light's own legible colour like the room tile, and the amber of its icons for white
+  lights, never white), for what it is doing: a lit light, a locked door (green), an unlocked one (amber), music
   playing, heating, cleaning, an alert. Nothing when idle, at most 10% when
   active, one spring for colour and strength (`Motion.glow`, `stateGlow()`), snapping
   under reduced motion. It is on by default; `state_glow: false` on a card, or
