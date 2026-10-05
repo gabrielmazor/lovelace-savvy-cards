@@ -383,4 +383,11 @@ function tickParts(a, b) {
 }
 
 // the card's state glow, unless the card (or the Savvy settings) turned it off
+// A tile that throws light (design: glass): the colour, and how strongly 0..1; no colour is dark.
+const lit = (el, rgb, level = 1) => {
+  if (!el) return;
+  el.toggleAttribute("data-lit", true);
+  if (rgb) el.style.setProperty("--lc", rgb.map((v) => Math.round(Number(v))).join(" "));
+  el.style.setProperty("--on", rgb ? Math.max(0, Math.min(1, level)).toFixed(2) : "0");
+};
 const stateGlow = (config, el, rgb, level = 1) => Motion.glow(el, config && config.state_glow === false ? null : rgb, level);

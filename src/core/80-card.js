@@ -12,6 +12,13 @@
 //   _paint(dirty, all)                        the card's own painting, after the shared part
 // ---------------------------------------------------------------------------------------
 
+// design: glass (the card's own, else the dashboard's) is one attribute on the card surface
+function syncDesign(card) {
+  const root = card.shadowRoot || card._root;
+  const el = card._glassEl?.isConnected ? card._glassEl : (card._glassEl = root?.querySelector("ha-card"));
+  if (el) el.toggleAttribute("data-glass", card._config?.design === "glass");
+}
+
 class SavvyCard extends HTMLElement {
   constructor() {
     super();
@@ -69,7 +76,10 @@ class SavvyCard extends HTMLElement {
     this._list.show(this._hass, ids, from, opts);
   }
 
-  _wake() { if (this.shadowRoot && this.isConnected) Clock.add(this._job); }
+  _wake() {
+    if (this.shadowRoot && this.isConnected) Clock.add(this._job);
+    syncDesign(this);
+  }
 
   disconnectedCallback() {
     Clock.remove(this._job);

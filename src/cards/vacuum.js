@@ -140,7 +140,7 @@ const STYLE = `
 }
 [hidden] { display: none !important; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; }
-${GLOW_CSS}
+${GLOW_CSS}${GLASS_CSS}
 
 ha-card {
   --radius: var(--ha-card-border-radius, 18px);
@@ -1607,7 +1607,7 @@ class VacuumCard extends HTMLElement {
   _haptic(type) { window.dispatchEvent(new CustomEvent("haptic", { detail: type })); }
 
   // ---------- frame ----------
-  _wake() { if (this._root && this.isConnected) Clock.add(this._job); }
+  _wake() { if (this._root && this.isConnected) Clock.add(this._job); syncDesign(this); }
 
   _frame(now, dt) {
     const dirty = new Set();

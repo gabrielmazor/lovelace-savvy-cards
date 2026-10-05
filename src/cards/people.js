@@ -57,6 +57,12 @@ const STYLE = `${BASE_CSS}
   :host([data-dir="horizontal"]:not([data-compact])) .st ha-icon { margin-top: 1px; }
   :host([data-dir="horizontal"]:not([data-compact])) .chipz { flex: 1 0 100%; padding-inline-start: 54px; flex-wrap: wrap; }
   :host([data-dir="horizontal"]:not([data-compact])) .chipz:empty { display: none; }
+  /* glass: every person is a lit tile, the content a little smaller */
+  ha-card[data-glass] .list { gap: 6px; }
+  ha-card[data-glass] .p { padding: 6px 10px 6px 6px; border-radius: 16px; min-height: 0; --lx: 28px; }
+  ha-card[data-glass] .av { width: 40px; height: 40px; font-size: 15px; }
+  :host([data-dir="horizontal"]:not([data-compact])) ha-card[data-glass] .chipz { padding-inline-start: 50px; }
+  :host([data-compact]) ha-card[data-glass] .p { padding: 6px 8px; --lx: 50%; --ly: 26px; }
   /* compact: a row of avatars with a first name under each */
   :host([data-compact]) .list { flex-direction: row; gap: 4px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; touch-action: pan-x pan-y; padding: 2px; margin: -2px; }
   :host([data-compact]) .list::-webkit-scrollbar { display: none; }
@@ -230,6 +236,9 @@ class SavvyPeopleCard extends SavvyCard {
         const name = item.name || st.attributes.friendly_name || title(id.split(".")[1]);
         const isHome = st.state === "home";
         attr(node, "data-home", isHome);
+        // glass: the frame is lit in the person's state: home green, a zone blue, away a quiet neutral
+        const away = ["not_home", "unknown", "unavailable"].includes(st.state);
+        lit(node, isHome ? [76, 175, 80] : away ? [190, 196, 208] : [88, 142, 233], away ? 0.3 : 1);
         text(node.querySelector(".nm"), name);
         const t = Date.parse(st.last_changed), age = Number.isFinite(t) ? Date.now() - t : NaN;
         const where = this._where(st);

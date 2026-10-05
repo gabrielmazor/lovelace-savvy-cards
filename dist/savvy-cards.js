@@ -235,8 +235,48 @@ const GLOW_CSS = `
     background: radial-gradient(140% 110% at 0% 0%, rgb(var(--glow-rgb, var(--accent)) / calc(var(--glow, 0) * 0.1 + var(--pulse, 0) * 0.05)), transparent 66%); }
 `;
 
+// design: glass. A frosted surface, and anything marked data-lit is a light source (lit(el, rgb, level) sets
+// --lc, --on). The source sits at --lx --ly (the icon). A broad ambient bleed falls off with distance, a tighter
+// core gives depth, and a rim light brightens the edge nearest the source. The colour mixes additively
+// (plus-lighter) so it shows on pure black too: a lit tile is a faintly lifted matte surface for it to land on.
+const GLASS_CSS = `
+  ha-card[data-glass] {
+    --glass-tint: rgb(255 255 255 / 0.06); --glass-edge: rgb(255 255 255 / 0.13); --glass-hi: rgb(255 255 255 / 0.2);
+    --glass-tile: rgb(255 255 255 / 0.045); --glass-tile-edge: rgb(255 255 255 / 0.06); --lblend: plus-lighter;
+    background: linear-gradient(155deg, rgb(255 255 255 / 0.1), var(--glass-tint) 55%, rgb(255 255 255 / 0.03));
+    -webkit-backdrop-filter: blur(26px) saturate(1.6); backdrop-filter: blur(26px) saturate(1.6);
+    border-color: var(--glass-edge);
+    box-shadow: inset 0 1px 0 var(--glass-hi), 0 12px 32px rgb(0 0 0 / 0.28);
+  }
+  :host(:not([dark])) ha-card[data-glass] {
+    --glass-tint: rgb(255 255 255 / 0.4); --glass-edge: rgb(255 255 255 / 0.75); --glass-hi: rgb(255 255 255 / 0.95);
+    --glass-tile: rgb(255 255 255 / 0.5); --glass-tile-edge: rgb(255 255 255 / 0.7); --lblend: normal;
+    background: linear-gradient(155deg, rgb(255 255 255 / 0.62), var(--glass-tint) 60%, rgb(255 255 255 / 0.3));
+    box-shadow: inset 0 1px 0 var(--glass-hi), 0 10px 28px rgb(40 50 90 / 0.14);
+  }
+  ha-card[data-glass] [data-lit] { --lx: 28px; --ly: 50%; position: relative; isolation: isolate; background: var(--glass-tile); box-shadow: inset 0 0 0 1px var(--glass-tile-edge); }
+  :host(:not([dark])) ha-card[data-glass] [data-lit] { box-shadow: inset 0 0 0 1px var(--glass-tile-edge), 0 1px 3px rgb(40 50 90 / 0.08); }
+  ha-card[data-glass] [data-lit]::before {
+    content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; corner-shape: inherit; pointer-events: none;
+    background:
+      radial-gradient(circle 34px at var(--lx) var(--ly), rgb(var(--lc, 128 128 128) / 0.34), transparent),
+      radial-gradient(ellipse 150% 260% at var(--lx) var(--ly), rgb(var(--lc, 128 128 128) / 0.25), rgb(var(--lc, 128 128 128) / 0.1) 34%, rgb(var(--lc, 128 128 128) / 0.03) 66%, transparent 100%);
+    mix-blend-mode: var(--lblend); opacity: var(--on, 0); transition: opacity 360ms ease;
+  }
+  ha-card[data-glass] [data-lit]::after {
+    content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; corner-shape: inherit; padding: 1px; pointer-events: none;
+    background: radial-gradient(circle 170px at var(--lx) var(--ly), rgb(var(--lc, 128 128 128) / 0.58), rgb(var(--lc, 128 128 128) / 0.17) 42%, transparent 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+    mix-blend-mode: var(--lblend); opacity: var(--on, 0); transition: opacity 360ms ease;
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    ha-card[data-glass] { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--ha-card-background, var(--card-background-color)); }
+  }
+`;
+
 // The CSS every card shares: host basics, the card surface, focus rings.
-const BASE_CSS = `${ROLL_CSS}${GLOW_CSS}
+const BASE_CSS = `${ROLL_CSS}${GLOW_CSS}${GLASS_CSS}
   :host { display: block; -webkit-tap-highlight-color: transparent; }
   [hidden] { display: none !important; }
   button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0;
@@ -2145,6 +2185,13 @@ function tickParts(a, b) {
 }
 
 // the card's state glow, unless the card (or the Savvy settings) turned it off
+// A tile that throws light (design: glass): the colour, and how strongly 0..1; no colour is dark.
+const lit = (el, rgb, level = 1) => {
+  if (!el) return;
+  el.toggleAttribute("data-lit", true);
+  if (rgb) el.style.setProperty("--lc", rgb.map((v) => Math.round(Number(v))).join(" "));
+  el.style.setProperty("--on", rgb ? Math.max(0, Math.min(1, level)).toFixed(2) : "0");
+};
 const stateGlow = (config, el, rgb, level = 1) => Motion.glow(el, config && config.state_glow === false ? null : rgb, level);
 
 // ===== core/57-aggregate.js =====
@@ -4478,6 +4525,13 @@ class ModePicker {
 //   _paint(dirty, all)                        the card's own painting, after the shared part
 // ---------------------------------------------------------------------------------------
 
+// design: glass (the card's own, else the dashboard's) is one attribute on the card surface
+function syncDesign(card) {
+  const root = card.shadowRoot || card._root;
+  const el = card._glassEl?.isConnected ? card._glassEl : (card._glassEl = root?.querySelector("ha-card"));
+  if (el) el.toggleAttribute("data-glass", card._config?.design === "glass");
+}
+
 class SavvyCard extends HTMLElement {
   constructor() {
     super();
@@ -4535,7 +4589,10 @@ class SavvyCard extends HTMLElement {
     this._list.show(this._hass, ids, from, opts);
   }
 
-  _wake() { if (this.shadowRoot && this.isConnected) Clock.add(this._job); }
+  _wake() {
+    if (this.shadowRoot && this.isConnected) Clock.add(this._job);
+    syncDesign(this);
+  }
 
   disconnectedCallback() {
     Clock.remove(this._job);
@@ -5232,12 +5289,15 @@ const GLOW_CARDS = new Set(["savvy-lights-card", "savvy-climate-card", "savvy-me
   "savvy-room-tile", "savvy-room-activity-card", "savvy-system-health-card"]);
 const GLOW_FIELD = { name: "state_glow", label: "State glow", helper: "A soft glow in the card's corner in what it is doing. Off keeps the card plain.", selector: { boolean: {} }, default: true };
 
+const DESIGN_FIELD = { name: "design", label: "Design", helper: "Empty: the dashboard's setting (Savvy settings, Design). Glass is a frosted surface where every lit icon throws its light.",
+  selector: { select: { mode: "dropdown", options: [{ value: "glass", label: "Glass" }, { value: "plain", label: "Plain" }] } } };
+
 const defineEditor = (type, schemaFn, tidy) => {
   const name = `${type}-editor`;
   if (!customElements.get(name)) {
     customElements.define(name, class extends SavvyEditor {
       get cardType() { return type; }
-      schema(hass, config) { const s = schemaFn(hass, config); return GLOW_CARDS.has(type) ? [...s, GLOW_FIELD] : s; }
+      schema(hass, config) { const s = schemaFn(hass, config); const t = GLOW_CARDS.has(type) ? [...s, GLOW_FIELD] : s; return type === "savvy-settings-card" ? t : [...t, DESIGN_FIELD]; }
       tidy(config) { return tidy ? tidy(config) : config; }
     });
   }
@@ -5399,6 +5459,7 @@ const knownRules = (prefix = "") => ["entities", "devices"].map((k) => ({ path: 
   get: (s) => (Array.isArray(s.health?.ignore) ? s.health.ignore.filter((x) => (k === "entities") === String(x).includes(".")) : s.health?.ignore?.[k]) }));
 
 // the state glow is on unless the settings turn it off for every card
+const styleRule = { path: "design", label: "Design", get: (s) => (s.design?.style === "glass" ? "glass" : undefined), src: "design" };
 const glowRule = { path: "state_glow", label: "State glow", get: (s) => (s.design?.state_glow === false ? false : undefined), src: "design" };
 
 const HOME_CHIPS = ["lights", "climate", "media", "security"];
@@ -5582,7 +5643,7 @@ const showValue = (v) => {
 
 // resolveSettings(type, cfg, settings) -> { config, inherited: [{ path, label, value, from }] }
 function resolveSettings(type, cfg, settings) {
-  const rules = SETTINGS_RULES[type];
+  const rules = SETTINGS_RULES[type] && [...SETTINGS_RULES[type], styleRule];
   if (!rules || !cfg || typeof cfg !== "object") return { config: cfg, inherited: [] };
   settings = settings || {};         // the dashboard's own pages and orders count even with no settings card
   const x = settingsArea(cfg, settings);
@@ -7884,7 +7945,7 @@ class SavvyCameraCard extends HTMLElement {
   _haptic(type) { window.dispatchEvent(new CustomEvent("haptic", { detail: type })); }
 
   // ---------- frame ----------
-  _wake() { if (this._root && this.isConnected) Clock.add(this._job); }
+  _wake() { if (this._root && this.isConnected) Clock.add(this._job); syncDesign(this); }
 
   _frame(now, dt) {
     const dirty = new Set();
@@ -8083,7 +8144,7 @@ const STYLE = `
   [hidden] { display: none !important; }
   button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0;
     cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; }
-  ${GLOW_CSS}
+  ${GLOW_CSS}${GLASS_CSS}
   ha-card {
     --radius: var(--ha-card-border-radius, 18px);
     --pad: 16px;
@@ -8152,6 +8213,8 @@ const STYLE = `
 
   /* ---- target temperature ---- */
   .hero { display: flex; align-items: flex-end; gap: 12px; margin-top: 14px; }
+  /* glass: the target and its buttons are one tile, lit in the mode's colour */
+  ha-card[data-glass] .hero { padding: 10px 12px; border-radius: 18px; --lx: 46px; --ly: 55%; }
   .readout { flex: 1; min-width: 0; display: flex; align-items: flex-start; }
   .value {
     font-size: 52px; line-height: 0.92; font-weight: 600; letter-spacing: -0.035em;
@@ -8467,7 +8530,7 @@ class ClimateCard extends HTMLElement {
                 </div>
                 <button class="power" id="power" aria-label="Power"><ha-icon icon="mdi:power"></ha-icon></button>
               </header>
-              <div class="hero">
+              <div class="hero" id="hero">
                 <div class="readout" id="readout">
                   <span class="value" id="value"></span><span class="unit" id="unit"></span>
                 </div>
@@ -8516,7 +8579,7 @@ class ClimateCard extends HTMLElement {
     this._el = {
       card: this._root.querySelector("ha-card"), pager: $("pager"), track: $("track"),
       p0: $("p0"), p1: $("p1"), name: $("name"), status: $("status"), power: $("power"),
-      readout: $("readout"), value: $("value"), unit: $("unit"), minus: $("minus"), plus: $("plus"),
+      readout: $("readout"), hero: $("hero"), value: $("value"), unit: $("unit"), minus: $("minus"), plus: $("plus"),
       slider: $("slider"), bar: $("bar"), fill: $("fill"), now: $("now"), lo: $("lo"), hi: $("hi"),
       stats: $("stats"), modes: this._root.querySelector(".modes"), actions: $("actions"),
       legend: $("legend"), ranges: this._root.querySelector(".ranges"), chart: $("chart"),
@@ -8996,7 +9059,9 @@ class ClimateCard extends HTMLElement {
     const accent = on ? toRgb(HVAC[st.state]?.color || "#5AA9E0") : toRgb("#9AA0A6");
     put(el.card, "--accent", accent.map(Math.round).join(" "));
     // the glow: the mode's colour, fuller while it is actually heating or cooling
-    stateGlow(c, el.card, on ? accent : null, ["heating", "cooling", "drying", "fan"].includes(a.hvac_action) ? 0.85 : 0.45);
+    const busy = ["heating", "cooling", "drying", "fan"].includes(a.hvac_action);
+    stateGlow(c, el.card, on ? accent : null, busy ? 0.85 : 0.45);
+    lit(el.hero, on ? accent : null, busy ? 1 : 0.55);
 
     text(el.name, c.name || c.title || a.friendly_name || title(c.entity.split(".")[1]));
     el.power.hidden = this._compact && this._modes.some((m) => m === "off");
@@ -9476,7 +9541,7 @@ class ClimateCard extends HTMLElement {
   }
 
   // ---------- frames ----------
-  _wake() { if (this._root && this.isConnected) Clock.add(this._job); }
+  _wake() { if (this._root && this.isConnected) Clock.add(this._job); syncDesign(this); }
 
   _frame(now, dt) {
     const dirty = new Set();
@@ -12691,7 +12756,7 @@ const STYLE = `
 [hidden] { display: none !important; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0;
   cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; }
-${GLOW_CSS}
+${GLOW_CSS}${GLASS_CSS}
 
 ha-card {
   --radius: var(--ha-card-border-radius, 18px);
@@ -12799,47 +12864,8 @@ header { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .power ha-icon { --mdc-icon-size: 18px; display: flex; }
 
 
-/* ---- glass (design: glass): a frosted surface, and every lit light is a light source ----
-   The icon is the source. A broad ambient bleed falls off with distance, a tighter core gives it
-   depth, and a rim light brightens the tile's edge most where it is nearest the icon. The colour
-   mixes through the blur additively (plus-lighter), so it shows on pure black too: the tile
-   body is a faintly lifted matte surface for the light to land on. */
-ha-card[data-glass] {
-  --glass-tint: rgb(255 255 255 / 0.06); --glass-edge: rgb(255 255 255 / 0.13); --glass-hi: rgb(255 255 255 / 0.2);
-  --glass-tile: rgb(255 255 255 / 0.045); --lblend: plus-lighter;
-  background: linear-gradient(155deg, rgb(255 255 255 / 0.1), var(--glass-tint) 55%, rgb(255 255 255 / 0.03));
-  -webkit-backdrop-filter: blur(26px) saturate(1.6); backdrop-filter: blur(26px) saturate(1.6);
-  border-color: var(--glass-edge);
-  box-shadow: inset 0 1px 0 var(--glass-hi), 0 12px 32px rgb(0 0 0 / 0.28);
-}
-:host(:not([dark])) ha-card[data-glass] {
-  --glass-tint: rgb(255 255 255 / 0.4); --glass-edge: rgb(255 255 255 / 0.75); --glass-hi: rgb(255 255 255 / 0.95);
-  --glass-tile: rgb(255 255 255 / 0.5); --lblend: normal;
-  background: linear-gradient(155deg, rgb(255 255 255 / 0.62), var(--glass-tint) 60%, rgb(255 255 255 / 0.3));
-  box-shadow: inset 0 1px 0 var(--glass-hi), 0 10px 28px rgb(40 50 90 / 0.14);
-}
-ha-card[data-glass] .light { --lx: 24px; --ly: 50%; background: var(--glass-tile); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.05); }
-:host(:not([dark])) ha-card[data-glass] .light { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.7), 0 1px 3px rgb(40 50 90 / 0.08); }
-ha-card[data-glass] .light::before {
-  background:
-    radial-gradient(circle 34px at var(--lx) var(--ly), rgb(var(--lc) / 0.34), transparent),
-    radial-gradient(ellipse 150% 260% at var(--lx) var(--ly), rgb(var(--lc) / 0.25), rgb(var(--lc) / 0.1) 34%, rgb(var(--lc) / 0.03) 66%, transparent 100%);
-  mix-blend-mode: var(--lblend); opacity: var(--on, 0); transition: opacity 360ms ease;
-}
-ha-card[data-glass] .light::after {
-  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
-  background: radial-gradient(circle 170px at var(--lx) var(--ly), rgb(var(--lc) / 0.58), rgb(var(--lc) / 0.17) 42%, transparent 100%);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-  mix-blend-mode: var(--lblend); opacity: var(--on, 0); transition: opacity 360ms ease;
-}
-ha-card[data-glass] .orb[data-on] { box-shadow: 0 0 16px rgb(var(--lc) / 0.5), inset 0 0 0 1px rgb(var(--lc) / 0.35); }
-@media (prefers-reduced-transparency: reduce) {
-  ha-card[data-glass] { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--ha-card-background, var(--card-background-color)); }
-}
-
 /* ---- compact: the light, its name and its state, and nothing else ---- */
-ha-card[data-compact] .light { padding: 8px 10px; border-radius: 13px; }
+ha-card[data-compact] .light { padding: 8px 10px; border-radius: 13px; --lx: 24px; }
 ha-card[data-compact] .orb { width: var(--b-s); height: var(--b-s); }
 ha-card[data-compact] .orb ha-icon, ha-card[data-compact] .orb savvy-state-icon { --mdc-icon-size: 16px; }
 ha-card[data-compact] .meta .n { font-size: 13px; line-height: 16px; }
@@ -13549,7 +13575,6 @@ class LightsCard extends HTMLElement {
     this._reduced = MQ.reduced.matches;
     this.toggleAttribute("dark", !!h.themes?.darkMode);
     el.card.toggleAttribute("data-compact", this._compact);
-    el.card.toggleAttribute("data-glass", c.design === "glass");
     const cols = Number(c.columns);
     put(el.grid, "gridTemplateColumns", cols > 0 ? `repeat(${cols}, minmax(0, 1fr))` : "");
 
@@ -13645,7 +13670,7 @@ class LightsCard extends HTMLElement {
     attr(node.querySelector(".orb"), "data-on", on ? "" : null);
     attr(node, "data-on", on && !dead ? "" : null);
     // the light follows the lamp's brightness: a dim lamp throws less, never none
-    put(node, "--on", on && !dead ? (0.35 + 0.65 * level).toFixed(2) : "0");
+    lit(node, on && !dead ? this._lightRgb(st) || [245, 184, 61] : null, 0.35 + 0.65 * level);
     const icon = node.querySelector("savvy-state-icon");
     if (icon.stateObj !== st) { icon.hass = h; icon.stateObj = st; }
     text(node.querySelector(".n"), this._stripRoomPrefix(st?.attributes.friendly_name || title(id.split(".")[1]), id));
@@ -13775,7 +13800,7 @@ class LightsCard extends HTMLElement {
   }
 
   // ---------- frames ----------
-  _wake() { if (this._root && this.isConnected) Clock.add(this._job); }
+  _wake() { if (this._root && this.isConnected) Clock.add(this._job); syncDesign(this); }
 
   _frame(now, dt) {
     const dirty = new Set();
@@ -14612,6 +14637,8 @@ const STYLE = `${BASE_CSS}
   .tb[data-on] { background: color-mix(in oklab, rgb(var(--accent)) var(--mix-on), transparent); color: rgb(var(--accent)); }
   .tb[disabled] { opacity: 0.3; cursor: default; }
   .tb ha-icon { --mdc-icon-size: 20px; display: flex; }
+  /* glass: a player's icon, name and buttons are one lit tile; its volume stays outside */
+  ha-card[data-glass] .row { padding: 8px 10px; border-radius: 15px; --lx: 28px; }
   .vol { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
   .vol .bar { position: absolute; left: 0; right: 0; top: 50%; height: 9px; margin-top: -4.5px; border-radius: 99px; background: var(--well); overflow: hidden; transform-origin: 50% 50%; }
   .vol .mute { flex: none; display: grid; place-items: center; width: 34px; height: 32px; border-radius: 10px; color: var(--secondary-text-color); }
@@ -15060,6 +15087,12 @@ class SavvyMediaCard extends SavvyCard {
     if (!this._compact) this._stage();      // decides what the stage owns, so rows can defer
     this._nowPlaying();
     if (!this._compact) { this._outputs(); this._alarm(); this._chips(); }
+    // glass: each player row throws the accent while it is the one playing
+    const accent = getComputedStyle(el.card).getPropertyValue("--accent").trim().split(/\s+/).map(Number);
+    for (const r of this.shadowRoot.querySelectorAll(".row")) {
+      const live = r.querySelector(".icon[data-live]") || r.querySelector("[data-on]");
+      lit(r, live ? accent : null, playing ? 1 : 0.55);
+    }
     const labels = c.labels || {};
     for (const [key, node] of [["video", el.videoCap], ["audio", el.audioCap]]) {
       node.hidden = !labels[key];
@@ -15564,6 +15597,12 @@ const STYLE = `${BASE_CSS}
   :host([data-dir="horizontal"]:not([data-compact])) .st ha-icon { margin-top: 1px; }
   :host([data-dir="horizontal"]:not([data-compact])) .chipz { flex: 1 0 100%; padding-inline-start: 54px; flex-wrap: wrap; }
   :host([data-dir="horizontal"]:not([data-compact])) .chipz:empty { display: none; }
+  /* glass: every person is a lit tile, the content a little smaller */
+  ha-card[data-glass] .list { gap: 6px; }
+  ha-card[data-glass] .p { padding: 6px 10px 6px 6px; border-radius: 16px; min-height: 0; --lx: 28px; }
+  ha-card[data-glass] .av { width: 40px; height: 40px; font-size: 15px; }
+  :host([data-dir="horizontal"]:not([data-compact])) ha-card[data-glass] .chipz { padding-inline-start: 50px; }
+  :host([data-compact]) ha-card[data-glass] .p { padding: 6px 8px; --lx: 50%; --ly: 26px; }
   /* compact: a row of avatars with a first name under each */
   :host([data-compact]) .list { flex-direction: row; gap: 4px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; touch-action: pan-x pan-y; padding: 2px; margin: -2px; }
   :host([data-compact]) .list::-webkit-scrollbar { display: none; }
@@ -15737,6 +15776,9 @@ class SavvyPeopleCard extends SavvyCard {
         const name = item.name || st.attributes.friendly_name || title(id.split(".")[1]);
         const isHome = st.state === "home";
         attr(node, "data-home", isHome);
+        // glass: the frame is lit in the person's state: home green, a zone blue, away a quiet neutral
+        const away = ["not_home", "unknown", "unavailable"].includes(st.state);
+        lit(node, isHome ? [76, 175, 80] : away ? [190, 196, 208] : [88, 142, 233], away ? 0.3 : 1);
         text(node.querySelector(".nm"), name);
         const t = Date.parse(st.last_changed), age = Number.isFinite(t) ? Date.now() - t : NaN;
         const where = this._where(st);
@@ -18308,6 +18350,7 @@ class SettingsEditor extends SavvyEditor {
         { name: "areas", label: "Ignored rooms", selector: { area: { multiple: true } } },
       ] },
       { type: "expandable", name: "design", title: "Design", schema: [
+        S.select("style", "Style", [{ value: "plain", label: "Plain" }, { value: "glass", label: "Glass" }]),
         S.bool("state_glow", "State glow", "A soft glow in a corner of a card in what it is doing: a lit light, a locked door, music playing. Off here turns it off on every card; a card can still set its own.", true),
       ] },
       { name: "admin_only", label: "Admin only", helper: "Kept from people who are not administrators; everyone sees everything unless it is listed. A card can only hide itself: it does not lock a page. In YAML, true means both.",
@@ -19509,7 +19552,7 @@ class SavvySystemHealthCard extends HTMLElement {
     }
   }
 
-  _wake() { if (this._root && this.isConnected) Clock.add(this._job); }
+  _wake() { if (this._root && this.isConnected) Clock.add(this._job); syncDesign(this); }
 
   _frame(dt) {
     const dirty = new Set();
@@ -20348,7 +20391,7 @@ const STYLE = `
 }
 [hidden] { display: none !important; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; }
-${GLOW_CSS}
+${GLOW_CSS}${GLASS_CSS}
 
 ha-card {
   --radius: var(--ha-card-border-radius, 18px);
@@ -21815,7 +21858,7 @@ class VacuumCard extends HTMLElement {
   _haptic(type) { window.dispatchEvent(new CustomEvent("haptic", { detail: type })); }
 
   // ---------- frame ----------
-  _wake() { if (this._root && this.isConnected) Clock.add(this._job); }
+  _wake() { if (this._root && this.isConnected) Clock.add(this._job); syncDesign(this); }
 
   _frame(now, dt) {
     const dirty = new Set();

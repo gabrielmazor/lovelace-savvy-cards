@@ -97,7 +97,7 @@ const STYLE = `
   [hidden] { display: none !important; }
   button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0;
     cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; }
-  ${GLOW_CSS}
+  ${GLOW_CSS}${GLASS_CSS}
   ha-card {
     --radius: var(--ha-card-border-radius, 18px);
     --pad: 16px;
@@ -166,6 +166,8 @@ const STYLE = `
 
   /* ---- target temperature ---- */
   .hero { display: flex; align-items: flex-end; gap: 12px; margin-top: 14px; }
+  /* glass: the target and its buttons are one tile, lit in the mode's colour */
+  ha-card[data-glass] .hero { padding: 10px 12px; border-radius: 18px; --lx: 46px; --ly: 55%; }
   .readout { flex: 1; min-width: 0; display: flex; align-items: flex-start; }
   .value {
     font-size: 52px; line-height: 0.92; font-weight: 600; letter-spacing: -0.035em;
@@ -481,7 +483,7 @@ class ClimateCard extends HTMLElement {
                 </div>
                 <button class="power" id="power" aria-label="Power"><ha-icon icon="mdi:power"></ha-icon></button>
               </header>
-              <div class="hero">
+              <div class="hero" id="hero">
                 <div class="readout" id="readout">
                   <span class="value" id="value"></span><span class="unit" id="unit"></span>
                 </div>
@@ -530,7 +532,7 @@ class ClimateCard extends HTMLElement {
     this._el = {
       card: this._root.querySelector("ha-card"), pager: $("pager"), track: $("track"),
       p0: $("p0"), p1: $("p1"), name: $("name"), status: $("status"), power: $("power"),
-      readout: $("readout"), value: $("value"), unit: $("unit"), minus: $("minus"), plus: $("plus"),
+      readout: $("readout"), hero: $("hero"), value: $("value"), unit: $("unit"), minus: $("minus"), plus: $("plus"),
       slider: $("slider"), bar: $("bar"), fill: $("fill"), now: $("now"), lo: $("lo"), hi: $("hi"),
       stats: $("stats"), modes: this._root.querySelector(".modes"), actions: $("actions"),
       legend: $("legend"), ranges: this._root.querySelector(".ranges"), chart: $("chart"),
@@ -1010,7 +1012,9 @@ class ClimateCard extends HTMLElement {
     const accent = on ? toRgb(HVAC[st.state]?.color || "#5AA9E0") : toRgb("#9AA0A6");
     put(el.card, "--accent", accent.map(Math.round).join(" "));
     // the glow: the mode's colour, fuller while it is actually heating or cooling
-    stateGlow(c, el.card, on ? accent : null, ["heating", "cooling", "drying", "fan"].includes(a.hvac_action) ? 0.85 : 0.45);
+    const busy = ["heating", "cooling", "drying", "fan"].includes(a.hvac_action);
+    stateGlow(c, el.card, on ? accent : null, busy ? 0.85 : 0.45);
+    lit(el.hero, on ? accent : null, busy ? 1 : 0.55);
 
     text(el.name, c.name || c.title || a.friendly_name || title(c.entity.split(".")[1]));
     el.power.hidden = this._compact && this._modes.some((m) => m === "off");
@@ -1490,7 +1494,7 @@ class ClimateCard extends HTMLElement {
   }
 
   // ---------- frames ----------
-  _wake() { if (this._root && this.isConnected) Clock.add(this._job); }
+  _wake() { if (this._root && this.isConnected) Clock.add(this._job); syncDesign(this); }
 
   _frame(now, dt) {
     const dirty = new Set();

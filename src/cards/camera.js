@@ -1927,7 +1927,7 @@ class SavvyCameraCard extends HTMLElement {
   _haptic(type) { window.dispatchEvent(new CustomEvent("haptic", { detail: type })); }
 
   // ---------- frame ----------
-  _wake() { if (this._root && this.isConnected) Clock.add(this._job); }
+  _wake() { if (this._root && this.isConnected) Clock.add(this._job); syncDesign(this); }
 
   _frame(now, dt) {
     const dirty = new Set();

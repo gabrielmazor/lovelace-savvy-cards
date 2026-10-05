@@ -90,7 +90,7 @@ const STYLE = `
 [hidden] { display: none !important; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0;
   cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; }
-${GLOW_CSS}
+${GLOW_CSS}${GLASS_CSS}
 
 ha-card {
   --radius: var(--ha-card-border-radius, 18px);
@@ -198,47 +198,8 @@ header { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .power ha-icon { --mdc-icon-size: 18px; display: flex; }
 
 
-/* ---- glass (design: glass): a frosted surface, and every lit light is a light source ----
-   The icon is the source. A broad ambient bleed falls off with distance, a tighter core gives it
-   depth, and a rim light brightens the tile's edge most where it is nearest the icon. The colour
-   mixes through the blur additively (plus-lighter), so it shows on pure black too: the tile
-   body is a faintly lifted matte surface for the light to land on. */
-ha-card[data-glass] {
-  --glass-tint: rgb(255 255 255 / 0.06); --glass-edge: rgb(255 255 255 / 0.13); --glass-hi: rgb(255 255 255 / 0.2);
-  --glass-tile: rgb(255 255 255 / 0.045); --lblend: plus-lighter;
-  background: linear-gradient(155deg, rgb(255 255 255 / 0.1), var(--glass-tint) 55%, rgb(255 255 255 / 0.03));
-  -webkit-backdrop-filter: blur(26px) saturate(1.6); backdrop-filter: blur(26px) saturate(1.6);
-  border-color: var(--glass-edge);
-  box-shadow: inset 0 1px 0 var(--glass-hi), 0 12px 32px rgb(0 0 0 / 0.28);
-}
-:host(:not([dark])) ha-card[data-glass] {
-  --glass-tint: rgb(255 255 255 / 0.4); --glass-edge: rgb(255 255 255 / 0.75); --glass-hi: rgb(255 255 255 / 0.95);
-  --glass-tile: rgb(255 255 255 / 0.5); --lblend: normal;
-  background: linear-gradient(155deg, rgb(255 255 255 / 0.62), var(--glass-tint) 60%, rgb(255 255 255 / 0.3));
-  box-shadow: inset 0 1px 0 var(--glass-hi), 0 10px 28px rgb(40 50 90 / 0.14);
-}
-ha-card[data-glass] .light { --lx: 24px; --ly: 50%; background: var(--glass-tile); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.05); }
-:host(:not([dark])) ha-card[data-glass] .light { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.7), 0 1px 3px rgb(40 50 90 / 0.08); }
-ha-card[data-glass] .light::before {
-  background:
-    radial-gradient(circle 34px at var(--lx) var(--ly), rgb(var(--lc) / 0.34), transparent),
-    radial-gradient(ellipse 150% 260% at var(--lx) var(--ly), rgb(var(--lc) / 0.25), rgb(var(--lc) / 0.1) 34%, rgb(var(--lc) / 0.03) 66%, transparent 100%);
-  mix-blend-mode: var(--lblend); opacity: var(--on, 0); transition: opacity 360ms ease;
-}
-ha-card[data-glass] .light::after {
-  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
-  background: radial-gradient(circle 170px at var(--lx) var(--ly), rgb(var(--lc) / 0.58), rgb(var(--lc) / 0.17) 42%, transparent 100%);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-  mix-blend-mode: var(--lblend); opacity: var(--on, 0); transition: opacity 360ms ease;
-}
-ha-card[data-glass] .orb[data-on] { box-shadow: 0 0 16px rgb(var(--lc) / 0.5), inset 0 0 0 1px rgb(var(--lc) / 0.35); }
-@media (prefers-reduced-transparency: reduce) {
-  ha-card[data-glass] { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--ha-card-background, var(--card-background-color)); }
-}
-
 /* ---- compact: the light, its name and its state, and nothing else ---- */
-ha-card[data-compact] .light { padding: 8px 10px; border-radius: 13px; }
+ha-card[data-compact] .light { padding: 8px 10px; border-radius: 13px; --lx: 24px; }
 ha-card[data-compact] .orb { width: var(--b-s); height: var(--b-s); }
 ha-card[data-compact] .orb ha-icon, ha-card[data-compact] .orb savvy-state-icon { --mdc-icon-size: 16px; }
 ha-card[data-compact] .meta .n { font-size: 13px; line-height: 16px; }
@@ -948,7 +909,6 @@ class LightsCard extends HTMLElement {
     this._reduced = MQ.reduced.matches;
     this.toggleAttribute("dark", !!h.themes?.darkMode);
     el.card.toggleAttribute("data-compact", this._compact);
-    el.card.toggleAttribute("data-glass", c.design === "glass");
     const cols = Number(c.columns);
     put(el.grid, "gridTemplateColumns", cols > 0 ? `repeat(${cols}, minmax(0, 1fr))` : "");
 
@@ -1044,7 +1004,7 @@ class LightsCard extends HTMLElement {
     attr(node.querySelector(".orb"), "data-on", on ? "" : null);
     attr(node, "data-on", on && !dead ? "" : null);
     // the light follows the lamp's brightness: a dim lamp throws less, never none
-    put(node, "--on", on && !dead ? (0.35 + 0.65 * level).toFixed(2) : "0");
+    lit(node, on && !dead ? this._lightRgb(st) || [245, 184, 61] : null, 0.35 + 0.65 * level);
     const icon = node.querySelector("savvy-state-icon");
     if (icon.stateObj !== st) { icon.hass = h; icon.stateObj = st; }
     text(node.querySelector(".n"), this._stripRoomPrefix(st?.attributes.friendly_name || title(id.split(".")[1]), id));
@@ -1174,7 +1134,7 @@ class LightsCard extends HTMLElement {
   }
 
   // ---------- frames ----------
-  _wake() { if (this._root && this.isConnected) Clock.add(this._job); }
+  _wake() { if (this._root && this.isConnected) Clock.add(this._job); syncDesign(this); }
 
   _frame(now, dt) {
     const dirty = new Set();

@@ -84,6 +84,8 @@ const STYLE = `${BASE_CSS}
   .tb[data-on] { background: color-mix(in oklab, rgb(var(--accent)) var(--mix-on), transparent); color: rgb(var(--accent)); }
   .tb[disabled] { opacity: 0.3; cursor: default; }
   .tb ha-icon { --mdc-icon-size: 20px; display: flex; }
+  /* glass: a player's icon, name and buttons are one lit tile; its volume stays outside */
+  ha-card[data-glass] .row { padding: 8px 10px; border-radius: 15px; --lx: 28px; }
   .vol { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
   .vol .bar { position: absolute; left: 0; right: 0; top: 50%; height: 9px; margin-top: -4.5px; border-radius: 99px; background: var(--well); overflow: hidden; transform-origin: 50% 50%; }
   .vol .mute { flex: none; display: grid; place-items: center; width: 34px; height: 32px; border-radius: 10px; color: var(--secondary-text-color); }
@@ -532,6 +534,12 @@ class SavvyMediaCard extends SavvyCard {
     if (!this._compact) this._stage();      // decides what the stage owns, so rows can defer
     this._nowPlaying();
     if (!this._compact) { this._outputs(); this._alarm(); this._chips(); }
+    // glass: each player row throws the accent while it is the one playing
+    const accent = getComputedStyle(el.card).getPropertyValue("--accent").trim().split(/\s+/).map(Number);
+    for (const r of this.shadowRoot.querySelectorAll(".row")) {
+      const live = r.querySelector(".icon[data-live]") || r.querySelector("[data-on]");
+      lit(r, live ? accent : null, playing ? 1 : 0.55);
+    }
     const labels = c.labels || {};
     for (const [key, node] of [["video", el.videoCap], ["audio", el.audioCap]]) {
       node.hidden = !labels[key];
