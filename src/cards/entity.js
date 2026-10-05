@@ -24,7 +24,7 @@ const legacyAction = (a, entity) => {
 };
 
 const STYLE = `${BASE_CSS}
-  ha-card { --pad: 12px; display: flex; flex-direction: column; gap: 10px; padding: var(--pad); }
+  ha-card { --pad: 12px; display: flex; flex-direction: column; gap: 10px; padding: var(--pad); overflow: hidden; }
   .main { --on: 0; --away: 0; display: flex; align-items: center; gap: 11px; min-width: 0;
     border-radius: 14px; margin: -4px; padding: 4px; cursor: pointer; transform-origin: 30% 50%; }
   .av { position: relative; flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--well);
@@ -41,11 +41,12 @@ const STYLE = `${BASE_CSS}
   .av > ha-icon, .av > savvy-state-icon, .av .zone ha-icon { display: flex; align-items: center; justify-content: center;
     width: var(--mdc-icon-size); height: var(--mdc-icon-size); line-height: 0; }
   .txt { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-  .name { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .sub { display: flex; gap: 4px; min-width: 0; font-size: 12.5px; line-height: 16px; font-weight: 500; letter-spacing: -0.005em;
-    color: var(--secondary-text-color); white-space: nowrap; }
-  .sub .st { font-weight: 600; color: var(--primary-text-color); flex: none; }
-  .sub .since { overflow: hidden; text-overflow: ellipsis; }
+  .name { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .sub { display: flex; flex-wrap: wrap; column-gap: 4px; min-width: 0; font-size: 12.5px; line-height: 16px; font-weight: 500; letter-spacing: -0.005em;
+    color: var(--secondary-text-color); }
+  /* a long state wraps inside the card instead of running out of it; the time goes under it when there is no room */
+  .sub .st { font-weight: 600; color: var(--primary-text-color); flex: 0 1 auto; min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+  .sub .since { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
   .sub .st:not([hidden]) + .since::before { content: "· "; }
   .sub .since:empty { display: none; }
   .main[data-off] .av, .main[data-off] .sub .st { opacity: 0.55; }

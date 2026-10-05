@@ -14,7 +14,7 @@ const SETUP = () => {
   add("sensor.alex_phone_battery", "78", { device_class: "battery", unit_of_measurement: "%" }, { device: "dev_alex_phone" });
   add("person.sam", "Work", { friendly_name: "Sam", source: "device_tracker.sam_phone" }, { changed: ago(40) });
   add("device_tracker.sam_phone", "Work", { battery_level: 8 });
-  add("zone.work", "0", { friendly_name: "Work" });
+  add("zone.work", "0", { friendly_name: "Work", icon: "mdi:briefcase" });
   add("person.jo", "not_home", { friendly_name: "Jo" }, { changed: ago(125) });
   add("sensor.jo_travel", "12", { unit_of_measurement: "min" });
   add("sensor.sam_travel", "2026-01-01T00:00:00+00:00", { device_class: "timestamp" });
@@ -32,6 +32,7 @@ export default async function ({ browser, base, check }) {
       window.mount("savvy-people-card", { eta: "sensor.jo_travel" }, width);                                                 // 0
       window.mount("savvy-people-card", { people: [{ entity: "person.sam", name: "Samuel", eta: "sensor.jo_travel" }, "person.alex"], battery: false, title: "Family" }, width);  // 1
       window.mount("savvy-people-card", { layout: "compact", exclude: ["person.jo"] }, width);                               // 2
+      window.mount("savvy-people-card", { direction: "horizontal", eta: "sensor.jo_travel" }, width);                        // 3
     }, width);
     await page.waitForTimeout(900);
     const read = (i) => page.evaluate((i) => {
@@ -50,6 +51,13 @@ export default async function ({ browser, base, check }) {
     check(`${tag} compact: avatars with names, exclude honoured`, JSON.stringify(c.people.map((p) => p.n)) === JSON.stringify(["Alex", "Sam"]), JSON.stringify(c));
     const cc = await page.evaluate(() => { const R = window.cards[2].shadowRoot; const p = R.querySelector(".p"); return { dir: getComputedStyle(R.querySelector(".list")).flexDirection, st: getComputedStyle(p.querySelector(".st")).display, w: p.getBoundingClientRect().width }; });
     check(`${tag} compact is a row of avatars`, cc.dir === "row" && cc.st === "none" && cc.w <= 70, JSON.stringify(cc));
+    // the icon of the place, beside the words
+    const icons = await page.evaluate(() => [...window.cards[0].shadowRoot.querySelectorAll(".p")].map((p) => [p.querySelector(".nm").textContent, p.querySelector(".st ha-icon").getAttribute("icon")]));
+    check(`${tag} the place's icon: home, a pin for away, the zone's own`, JSON.stringify(icons) === JSON.stringify([["Alex", "mdi:home"], ["Jo", "mdi:map-marker-off"], ["Sam", "mdi:briefcase"]]), JSON.stringify(icons));
+    // side by side
+    const lay = await page.evaluate(() => { const R = window.cards[3].shadowRoot, ps = [...R.querySelectorAll(".p")].map((p) => { const b = p.getBoundingClientRect(); return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width) }; }); const card = R.querySelector("ha-card").getBoundingClientRect(); return { ps, right: Math.round(card.right), over: ps.some((p) => p.x + p.w > card.right + 1) }; });
+    const sameRow = lay.ps[0].y === lay.ps[1].y;
+    check(`${tag} horizontal: side by side when there is room, wrapping when there is not, never out of the card`, !lay.over && (width >= 700 ? sameRow && lay.ps[1].x > lay.ps[0].x : lay.ps[1].y >= lay.ps[0].y), JSON.stringify(lay));
     const tap = await page.evaluate(() => { const p = window.cards[0].shadowRoot.querySelectorAll(".p")[2]; p.scrollIntoView({ block: "center" }); const r = p.getBoundingClientRect(); return { x: r.x + 60, y: r.y + r.height / 2 }; });
     await page.mouse.click(tap.x, tap.y);
     await page.waitForTimeout(300);

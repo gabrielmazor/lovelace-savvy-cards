@@ -7,7 +7,8 @@
 //   total: sensor.house_energy            (the whole house, kWh, total_increasing; else the consumers' sum)
 //   consumers: [sensor.a, sensor.b]       (energy sensors to rank; default: every energy sensor found)
 //   power: sensor.house_power             (the live reading, W or kW; optional)
-//   price: 0.25  or  sensor.tariff        (per kWh: a number, or a sensor; with sensors, each hour's own average)
+//   tariff: sensor.tariff                 (the price per kWh as an entity; each hour's own average is used)
+//   price: 0.25                           (a fixed price per kWh; used when there is no tariff entity or it is unavailable)
 //   currency: EUR                         (default: Home Assistant's)
 //   range: today | week | month           (the chips below the title change it)
 //   by: device | room                     (what the ranking adds up)     max_consumers: 5
@@ -93,7 +94,11 @@ class SavvyEnergyCard extends SavvyCard {
     const areas = [].concat(config.area ?? config.areas ?? []).filter(Boolean);
     // a number (or a numeric string from the editor) is a fixed price; anything else names a sensor
     const num = (v) => (typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v)) ? Number(v) : null);
-    const price = typeof config.price === "object" && config.price ? config.price : num(config.price) != null ? { value: num(config.price) } : config.price ? { entity: config.price } : null;
+    // `tariff` names the price entity; `price` is a number (or, as before, an entity or { entity, value })
+    const tariff = typeof config.tariff === "string" && config.tariff ? config.tariff : null;
+    const fixed = typeof config.price === "object" && config.price ? config.price.value : num(config.price);
+    const price = tariff ? { entity: tariff, ...(fixed != null ? { value: Number(fixed) } : {}) }
+      : typeof config.price === "object" && config.price ? config.price : fixed != null ? { value: fixed } : config.price ? { entity: config.price } : null;
     this._config = { ...config, areas, price, consumers: asItems(config.consumers).map((i) => i.entity), exclude: asItems(config.exclude).map((i) => i.entity),
       exclude_areas: [].concat(config.exclude_areas || []), max_consumers: Number(config.max_consumers) > 0 ? Number(config.max_consumers) : 5 };
     this._compact = config.layout === "compact";
@@ -230,7 +235,8 @@ class SavvyEnergyCard extends SavvyCard {
   _shape(range, win, ids, consumers, stats, prices, priceId) {
     const h = this._hass, c = this._config;
     const fixed = c.price?.value != null ? Number(c.price.value) : null;
-    const priceNow = priceId ? parseFloat(h.states[priceId].state) : fixed;
+    const entityNow = priceId ? parseFloat(h.states[priceId].state) : NaN;
+    const priceNow = Number.isFinite(entityNow) ? entityNow : fixed;
     const pf = priceId && /^(ct|c|cent|p)[\/ ]/i.test(String(h.states[priceId].attributes.unit_of_measurement || "")) ? 0.01 : 1;
     const priceAt = new Map();
     for (const r of prices?.[priceId] || []) if (Number.isFinite(r.mean)) priceAt.set(msOf(r.start), r.mean * pf);
@@ -472,7 +478,8 @@ const EDITOR = defineEditor("savvy-energy-card", () => [
   S.entity("total", "Whole house", "sensor", { helper: "An energy sensor (kWh, total increasing) for the whole house. Empty: the consumers' sum." }),
   { name: "consumers", label: "Consumers", helper: "Energy sensors to rank. Empty: every energy sensor found.", selector: { entity: { domain: "sensor", device_class: "energy", multiple: true } } },
   S.entity("power", "Live power", "sensor", { helper: "A power sensor (W or kW) for the live reading." }),
-  S.grid({ name: "price", label: "Price per kWh", helper: "A number, or a sensor with the price.", selector: { text: {} } }, S.text("currency", "Currency", "Empty: Home Assistant's.")),
+  { name: "tariff", label: "Tariff entity", helper: "A sensor or input number with the price per kWh. Each hour's own price is used.", selector: { entity: { domain: ["sensor", "input_number"] } } },
+  S.grid({ name: "price", label: "Fixed price", helper: "Per kWh. Used when there is no tariff entity.", selector: { number: { min: 0, step: 0.001, mode: "box" } } }, S.text("currency", "Currency", "Empty: Home Assistant's.")),
   S.grid(S.select("by", "Ranking", [{ value: "device", label: "By device" }, { value: "room", label: "By room" }]), S.number("max_consumers", "Ranked", 1, 20)),
   { name: "area", label: "Areas", helper: "Only the consumers of these areas.", selector: { area: { multiple: true } } },
   { name: "exclude", label: "Never rank", selector: { entity: { domain: "sensor", multiple: true } } },

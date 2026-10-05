@@ -1061,7 +1061,11 @@ The blinds, shutters, curtains, awnings, garage and gate of a room, one row each
 the covers popup of the home header uses: open, close or stop on the line, and behind the chevron a position
 bar and, for slats, a tilt bar. **Open all** and **Close all** act on exactly what is listed. A garage door
 or a gate asks for a second tap to open (the row says "Tap again to open"), and Open all leaves them out;
-closing is always one tap. The same safety applies in the popup.
+closing is always one tap. The same safety applies in the popup. Each row shows the cover's own icon from
+Home Assistant (its `icon`, else the kind of cover and whether it is open); `covers` gives one a different
+name or icon. With `controls: slider` the position bar sits on the row itself.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/cover-sliders-light.png"><img src="docs/images/cover-sliders-dark.png" width="420" alt="Covers with sliders"></picture>
 
 <picture><source media="(prefers-color-scheme: light)" srcset="docs/images/cover-compact-light.png"><img src="docs/images/cover-compact-dark.png" width="420" alt="Covers, compact"></picture>
 
@@ -1073,6 +1077,8 @@ closing is always one tap. The same safety applies in the popup.
 | `classes` | list | all | Only these kinds: `blind`, `shutter`, `curtain`, `awning`, `shade`, `garage`, `gate`, `door`, `window`. |
 | `include` | list of covers | none | Covers to add that the area or kinds would leave out. |
 | `exclude` | list of covers | none | Never shown. The ignore list in the [Savvy settings](#savvy-settings) is added to it. |
+| `controls` | `arrows` or `slider` | `arrows` | `slider`: the position bar sits on each row, where the arrow was. A cover with no position (a garage door, a gate) keeps its arrow. |
+| `covers` | list | none | `{ entity, name, icon }`: a cover with its own name and icon instead of Home Assistant's. Listed covers are always shown. |
 | `all` | boolean | `true` | The Open all / Close all buttons (only with more than one cover). `false` hides them. |
 | `layout` | `full` or `compact` | `full` | `compact`: the summary and the two buttons, no rows. |
 | `state_glow` | boolean | `true` | A soft amber glow while a garage door or a gate is open. |
@@ -1092,6 +1098,11 @@ area: [living_room, bedroom]
 title: Blinds
 title_path: /lovelace/covers
 classes: [blind, shutter, curtain]
+controls: slider
+covers:
+  - entity: cover.living_room_blind
+    name: Lounge blind
+    icon: mdi:blinds-horizontal
 include: [cover.patio_awning]
 exclude: [cover.guest_blind]
 all: true
@@ -1108,7 +1119,10 @@ Who is home. Each person has an avatar with a green ring when they are home, whe
 "At Work · 40 min", "Away · 25 min"), the phone's battery (amber under 20 %, red at 10 %) and, while they
 are away, how long until they are home. The battery is found through the person's phone, with no setup.
 The way home needs a sensor from you (a travel time sensor): minutes, or a time. Home comes first, then the
-others by name. Tap a person for their details; the map is there.
+others by name. The icon of the place they are at (the zone's own) sits beside the words. Tap a person for
+their details; the map is there.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/people-horizontal-light.png"><img src="docs/images/people-horizontal-dark.png" width="640" alt="People, side by side"></picture>
 
 <picture><source media="(prefers-color-scheme: light)" srcset="docs/images/people-compact-light.png"><img src="docs/images/people-compact-dark.png" width="420" alt="People, compact"></picture>
 
@@ -1122,6 +1136,7 @@ others by name. Tap a person for their details; the map is there.
 | `eta` | entity | none | A sensor with the time to get home, for everyone. On a person it is theirs. |
 | `exclude` | list of people | none | Never shown. The ignore list in the [Savvy settings](#savvy-settings) is added to it. |
 | `layout` | `full` or `compact` | `full` | `compact`: a row of avatars with their names. |
+| `direction` | `vertical` or `horizontal` | `vertical` | With the full layout: one person under the other, or side by side (wrapping when the card is narrow). |
 
 Minimum:
 
@@ -1214,7 +1229,8 @@ or `total`) and the unit kWh, Wh or MWh; the same sensors the Energy dashboard u
 | `total` | entity | the consumers' sum | The energy sensor of the whole house. **Set it when you have one**: without it the card adds up the consumers, and finding them automatically would count a whole-house sensor twice. |
 | `consumers` | list of entities | every energy sensor found | The sensors to rank (and, with no `total`, to add up). |
 | `power` | entity | none | A power sensor (W or kW) for the live reading. |
-| `price` | number or entity | none | The price per kWh: a number, or a sensor (each hour's own average is used; prices in cents are understood). No price, no cost. |
+| `tariff` | entity | none | A sensor or input number with the price per kWh. Each hour's own average is used, so a tariff that changes through the day is counted properly; prices in cents are understood. |
+| `price` | number | none | A fixed price per kWh, used when there is no `tariff` or it is unavailable. No price at all, no cost. |
 | `currency` | string | Home Assistant's | The currency of the cost, e.g. `EUR`. |
 | `range` | `today`, `week` or `month` | `today` | The period shown first. |
 | `by` | `device` or `room` | `device` | What the ranking adds up. |
@@ -1242,7 +1258,8 @@ consumers:
   - sensor.living_room_tv_energy
   - sensor.bedroom_ac_energy
 power: sensor.house_power
-price: sensor.electricity_tariff      # or a number: 0.28
+tariff: sensor.electricity_tariff
+price: 0.28                           # used when the tariff is unavailable
 currency: EUR
 range: today
 by: device

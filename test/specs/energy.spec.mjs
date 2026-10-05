@@ -3,6 +3,10 @@
 import { openPage, idle } from "./_util.mjs";
 
 const SETUP = () => {
+  // the clock is set to half past two in the afternoon, so no test straddles an hour
+  const RealDate = Date, fixed = new RealDate(); fixed.setHours(14, 30, 0, 0);
+  const offset = fixed - RealDate.now();
+  window.Date = class extends RealDate { constructor(...a) { if (a.length) super(...a); else super(RealDate.now() + offset); } static now() { return RealDate.now() + offset; } };
   const h = window.hass, house = window.house;
   const add = (id, state, attributes, area) => {
     house.states[id] = { entity_id: id, state, attributes, last_changed: new Date().toISOString(), last_updated: new Date().toISOString() };
@@ -45,7 +49,7 @@ export default async function ({ browser, base, check }) {
     const { page, errors } = await openPage(browser, base, { theme, width });
     await page.evaluate(SETUP);
     await page.evaluate((width) => {
-      window.mount("savvy-energy-card", { total: "sensor.house_energy", power: "sensor.house_power", price: "sensor.tariff", currency: "EUR" }, width);   // 0
+      window.mount("savvy-energy-card", { total: "sensor.house_energy", power: "sensor.house_power", tariff: "sensor.tariff", currency: "EUR" }, width);   // 0
       window.mount("savvy-energy-card", { consumers: ["sensor.kitchen_oven_energy", "sensor.kitchen_washer_energy", "sensor.bedroom_heater_energy"], price: 0.25, currency: "EUR", by: "room" }, width);   // 1  no total: the consumers' sum
       window.mount("savvy-energy-card", { total: "sensor.house_energy", layout: "compact", range: "week" }, width);  // 2  no price
       window.mount("savvy-energy-card", { area: "office" }, width);                                                 // 3  nothing there
@@ -116,11 +120,21 @@ export default async function ({ browser, base, check }) {
     await tap(0, ".bar", 0);
     check(`${tag} and the total is back`, (await read(0)).kwh === before, (await read(0)).kwh);
 
+    // a tariff that is not there falls back to the fixed price; the older `price: sensor.x` still names a tariff
+    await page.evaluate((width) => {
+      window.mount("savvy-energy-card", { total: "sensor.house_energy", tariff: "sensor.not_there", price: 0.5, currency: "EUR" }, width);   // 4
+      window.mount("savvy-energy-card", { total: "sensor.house_energy", price: "sensor.tariff", currency: "EUR" }, width);                   // 5
+    }, width);
+    await page.waitForTimeout(900);
+    const fb = await read(4), old = await read(5);
+    check(`${tag} no tariff entity: the fixed price counts`, Math.abs(num(fb.cost) - exp.kwh * 0.5) < 0.02, JSON.stringify([fb.cost, exp.kwh * 0.5]));
+    check(`${tag} the older price: sensor.x is still a tariff`, Math.abs(num(old.cost) - exp.cost) < 0.02, JSON.stringify([old.cost, exp.cost]));
+
     // the statistics are not there
     await page.evaluate(() => { window.__fail = true; });
     await page.evaluate((width) => window.mount("savvy-energy-card", { total: "sensor.house_energy" }, width), width);
     await page.waitForTimeout(800);
-    check(`${tag} when Home Assistant can't answer it says so`, /Couldn't read/.test((await read(4)).empty), (await read(4)).empty);
+    check(`${tag} when Home Assistant can't answer it says so`, /Couldn't read/.test((await read(6)).empty), (await read(6)).empty);
 
     check(`${tag} springs idle`, await idle(page));
     check(`${tag} no errors`, errors.length === 0, errors.join("; "));

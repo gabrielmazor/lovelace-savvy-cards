@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.16.0 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.17.0 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.16.0";
+const SAVVY_VERSION = "0.17.0";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -2806,7 +2806,7 @@ class EntityListSheet {
     row.__kit.paints.push(() => this.paintOpen(row));
     const kind = ROW_KINDS[d];
     if (kind) {
-      row.__ctrl = kind.build({ id, kit: row.__kit, host: this.host, hass: () => this.hass, refresh: () => this.render(this.hass),
+      row.__ctrl = kind.build({ id, kit: row.__kit, host: this.host, hass: () => this.hass, opts: () => this.opts, refresh: () => this.render(this.hass),
         row, line: row.querySelector(".sv-line1"), handle: row.querySelector(".sv-ic"), text: row.querySelector(".sv-txt") });
       row.__fixed = !!row.__ctrl.fixed;
       if (row.__ctrl.main) row.__act.appendChild(row.__ctrl.main);
@@ -2863,8 +2863,15 @@ class EntityListSheet {
         row.__spin.to(turning && !MQ.reduced.matches ? (d === "fan" ? fanSpeedRate(st) : fanRate(st)) : 0);
         if (!row.__spin.idle || row.__spin.x > 1e-4) Clock.add(this.spinJob);
       }
-      if (d !== "climate" && st && row.__icon && row.__icon.stateObj !== st) { row.__icon.hass = hass; row.__icon.stateObj = st; }
-      text(row.querySelector(".sv-name"), shortName(hass, id, null));
+      // a card can give an entity its own icon and name (opts.icons / opts.names)
+      let shown = st;
+      const own = this.opts.icons?.[id];
+      if (own && st) {
+        if (row.__ovFor !== st || row.__ovIcon !== own) { row.__ov = { ...st, attributes: { ...st.attributes, icon: own } }; row.__ovFor = st; row.__ovIcon = own; }
+        shown = row.__ov;
+      }
+      if (d !== "climate" && shown && row.__icon && row.__icon.stateObj !== shown) { row.__icon.hass = hass; row.__icon.stateObj = shown; }
+      text(row.querySelector(".sv-name"), this.opts.names?.[id] || shortName(hass, id, null));
       const res = (st && row.__ctrl?.update(st, hass)) || {};
       attr(row, "data-alert", !!res.alert);
       this.art(row, res.art);
@@ -3795,6 +3802,8 @@ const GUARDED_COVERS = new Set(["garage", "gate"]);
 ROW_KINDS.cover = {
   build(ctx) {
     const { kit } = ctx;
+    // `controls: slider` (a card's option) puts the position bar on the line, where the arrow is
+    const sliderMode = ctx.opts?.().controls === "slider";
     let armed = false, armTimer = 0;
     kit.onDispose(() => clearTimeout(armTimer));
     const main = div("sv-act-in");
@@ -3813,10 +3822,13 @@ ROW_KINDS.cover = {
       call(ctx, "cover", go.__mode === "stop" ? "stop_cover" : go.__mode === "close" ? "close_cover" : "open_cover");
     } });
     go.__mode = "open";
-    main.appendChild(go);
+    const setPos = (v) => call(ctx, "cover", "set_cover_position", { position: Math.round(v * 100) });
+    const lineBar = sliderMode ? new SideBar(kit, { label: "Position", onChange: setPos }) : null;
+    if (lineBar) lineBar.el.classList.add("sv-linebar");
+    main.append(...(lineBar ? [lineBar.el, go] : [go]));
     const extra = div("sv-xline sv-ctl-cover");
     const stop = iconButton(kit, { icon: "mdi:stop", label: "Stop", onTap: () => call(ctx, "cover", "stop_cover") });
-    const bar = new SideBar(kit, { label: "Position", onChange: (v) => call(ctx, "cover", "set_cover_position", { position: Math.round(v * 100) }) });
+    const bar = new SideBar(kit, { label: "Position", onChange: setPos });
     const pct = document.createElement("span");
     pct.className = "sv-pct";
     extra.append(stop, bar.el, pct);
@@ -3830,7 +3842,7 @@ ROW_KINDS.cover = {
     tiltLine.append(tcap, tbar.el, tpct);
     const both = div("sv-ctl-stack");
     both.append(extra, tiltLine);
-    let first = true, tfirst = true;
+    let first = true, lfirst = true, tfirst = true;
     return {
       main, extra: both,
       update(st) {
@@ -3843,18 +3855,28 @@ ROW_KINDS.cover = {
         if (!guarded) armed = false;
         attr(go, "aria-label", guarded ? "Tap again to open" : { open: "Open", close: "Close", stop: "Stop" }[mode]);
         attr(go, "data-on", guarded);
-        go.hidden = st.state === "unavailable" || (mode === "open" && !(sf & 1)) || (mode === "close" && !(sf & 2));
-        stop.hidden = !(sf & 8);
         const pos = Number(st.attributes.current_position);
         const hasPos = !!(sf & 4) && Number.isFinite(pos);
-        bar.el.hidden = pct.hidden = !hasPos;
-        if (hasPos) { bar.setLevel(clamp(pos / 100), first); text(pct, `${Math.round((bar.pending ?? pos / 100) * 100)}%`); first = false; }
+        // a cover that cannot be set to a position (a garage door, a gate) keeps its arrow
+        const onLine = !!lineBar && hasPos;
+        go.hidden = onLine || st.state === "unavailable" || (mode === "open" && !(sf & 1)) || (mode === "close" && !(sf & 2));
+        if (lineBar) {
+          lineBar.el.hidden = !onLine;
+          if (onLine) { lineBar.setLevel(clamp(pos / 100), lfirst); lfirst = false; }
+        }
+        stop.hidden = !(sf & 8);
+        const inExtra = hasPos && !onLine;
+        bar.el.hidden = pct.hidden = !inExtra;
+        if (inExtra) { bar.setLevel(clamp(pos / 100), first); text(pct, `${Math.round((bar.pending ?? pos / 100) * 100)}%`); first = false; }
         const tilt = Number(st.attributes.current_tilt_position);
         const hasTilt = !!(sf & 128) && Number.isFinite(tilt);
         tiltLine.hidden = !hasTilt;
         if (hasTilt) { tbar.setLevel(clamp(tilt / 100), tfirst); text(tpct, `${Math.round((tbar.pending ?? tilt / 100) * 100)}%`); tfirst = false; }
+        // with the slider on the line the extra line is only the stop button and the tilt
+        const extraOn = st.state !== "unavailable" && (inExtra || hasTilt || !stop.hidden);
+        extra.hidden = stop.hidden && !inExtra;
         const words = title(st.state);
-        return { extra: st.state !== "unavailable" && (!stop.hidden || hasPos || hasTilt), sub: guarded ? "Tap again to open" : Number.isFinite(pos) ? `${words} · ${Math.round(pos)}%` : words };
+        return { extra: extraOn, sub: guarded ? "Tap again to open" : Number.isFinite(pos) ? `${words} · ${Math.round(pos)}%` : words };
       },
     };
   },
@@ -4096,6 +4118,8 @@ const ROWS_CSS = `
   .sv-xline { display: flex; align-items: center; gap: 6px; min-width: 0; }
   .sv-xline .sv-btn { width: var(--c-s); height: var(--c-s); border-radius: 11px; --mdc-icon-size: 18px; }
   .sv-xline .sv-seg { flex: 1; }
+  .sv-act .sv-linebar { flex: none; width: 132px; min-width: 0; height: 28px; }
+  @container (max-width: 380px) { .sv-act .sv-linebar { width: 96px; } }
   .sv-ctl-stack { display: flex; flex-direction: column; gap: 6px; }
   .sv-ctl-stack > [hidden] { display: none; }
   .sv-xline .sv-cap { flex: none; width: var(--c-s); text-align: center; font-size: 11px; }
@@ -9764,6 +9788,8 @@ registerCard("savvy-climate-card", ClimateCard, "Climate",
 //   classes: [blind, shutter]             (only these device classes; default all)
 //   include: [cover.x]  exclude: [cover.y]   (the Savvy settings' ignore list is added to exclude)
 //   all: true                             (the Open all / Close all buttons; false hides them)
+//   controls: slider | arrows             (slider: the position bar on each row; arrows: open and close; default arrows)
+//   covers: [{ entity: cover.x, name: Blind, icon: mdi:blinds }]   (own name and icon; always listed)
 //   layout: full | compact                (compact: the summary and the two buttons, no rows)
 //
 // Tap a name for the cover's details. The chevron opens its position and tilt.
@@ -9796,7 +9822,8 @@ class SavvyCoverCard extends SavvyCard {
   setConfig(config) {
     if (!config || typeof config !== "object") throw new Error("savvy-cover-card: invalid configuration");
     const areas = [].concat(config.area ?? config.areas ?? []).filter(Boolean);
-    this._config = { ...config, areas, classes: [].concat(config.classes || []), include: asItems(config.include).map((i) => i.entity),
+    const covers = asItems(config.covers).filter((i) => i.entity);
+    this._config = { ...config, areas, covers, classes: [].concat(config.classes || []), include: [...asItems(config.include).map((i) => i.entity), ...covers.map((i) => i.entity)],
       exclude: asItems(config.exclude).map((i) => i.entity), exclude_areas: [].concat(config.exclude_areas || []) };
     this._compact = config.layout === "compact";
     if (this._el) { this._build(); if (this._hass) this._update(); }
@@ -9899,7 +9926,8 @@ class SavvyCoverCard extends SavvyCard {
     attr(el.up, "disabled", this._targets("open", ids).length ? null : "");
     attr(el.down, "disabled", this._targets("close", ids).length ? null : "");
     el.rows.hidden = this._compact || !ids.length;
-    if (!this._compact) this._rows.update(h, ids, { sort: c.areas.length > 1 ? "room" : null, hideArea: c.areas.length === 1 });
+    if (!this._compact) this._rows.update(h, ids, { sort: c.areas.length > 1 ? "room" : null, hideArea: c.areas.length === 1, controls: c.controls === "slider" ? "slider" : "arrows",
+      icons: Object.fromEntries(c.covers.filter((i) => i.icon).map((i) => [i.entity, i.icon])), names: Object.fromEntries(c.covers.filter((i) => i.name).map((i) => [i.entity, i.name])) });
     el.empty.hidden = ids.length > 0;
     if (!ids.length) text(el.empty, c.areas.length ? "No covers in this area." : "No covers found.");
     attr(el.card, "aria-label", `${c.title ?? "Covers"}${pill ? `, ${pill}` : ""}`);
@@ -9918,6 +9946,10 @@ const EDITOR = defineEditor("savvy-cover-card", () => [
   ] } } },
   { name: "include", label: "Also show", selector: { entity: { domain: "cover", multiple: true } } },
   { name: "exclude", label: "Never show", selector: { entity: { domain: "cover", multiple: true } } },
+  S.select("controls", "Controls", [{ value: "arrows", label: "Arrows (open, close)" }, { value: "slider", label: "Sliders (position)" }]),
+  { name: "covers", label: "Own name and icon", helper: "Covers listed here are always shown, with this name and icon instead of Home Assistant's.", type: "list",
+    item: [{ name: "entity", label: "Cover", selector: { entity: { domain: "cover" } } }, S.grid(S.text("name", "Name"), S.icon())],
+    add: { selector: { entity: { domain: "cover" } }, label: "Add a cover" } },
   S.grid(S.bool("all", "Open and close all", "Buttons for everything listed. A garage and a gate are not opened by them.", true), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact" }])),
   GLOW_FIELD,
 ]);
@@ -9937,7 +9969,8 @@ registerCard("savvy-cover-card", SavvyCoverCard, "Covers",
 //   total: sensor.house_energy            (the whole house, kWh, total_increasing; else the consumers' sum)
 //   consumers: [sensor.a, sensor.b]       (energy sensors to rank; default: every energy sensor found)
 //   power: sensor.house_power             (the live reading, W or kW; optional)
-//   price: 0.25  or  sensor.tariff        (per kWh: a number, or a sensor; with sensors, each hour's own average)
+//   tariff: sensor.tariff                 (the price per kWh as an entity; each hour's own average is used)
+//   price: 0.25                           (a fixed price per kWh; used when there is no tariff entity or it is unavailable)
 //   currency: EUR                         (default: Home Assistant's)
 //   range: today | week | month           (the chips below the title change it)
 //   by: device | room                     (what the ranking adds up)     max_consumers: 5
@@ -10023,7 +10056,11 @@ class SavvyEnergyCard extends SavvyCard {
     const areas = [].concat(config.area ?? config.areas ?? []).filter(Boolean);
     // a number (or a numeric string from the editor) is a fixed price; anything else names a sensor
     const num = (v) => (typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v)) ? Number(v) : null);
-    const price = typeof config.price === "object" && config.price ? config.price : num(config.price) != null ? { value: num(config.price) } : config.price ? { entity: config.price } : null;
+    // `tariff` names the price entity; `price` is a number (or, as before, an entity or { entity, value })
+    const tariff = typeof config.tariff === "string" && config.tariff ? config.tariff : null;
+    const fixed = typeof config.price === "object" && config.price ? config.price.value : num(config.price);
+    const price = tariff ? { entity: tariff, ...(fixed != null ? { value: Number(fixed) } : {}) }
+      : typeof config.price === "object" && config.price ? config.price : fixed != null ? { value: fixed } : config.price ? { entity: config.price } : null;
     this._config = { ...config, areas, price, consumers: asItems(config.consumers).map((i) => i.entity), exclude: asItems(config.exclude).map((i) => i.entity),
       exclude_areas: [].concat(config.exclude_areas || []), max_consumers: Number(config.max_consumers) > 0 ? Number(config.max_consumers) : 5 };
     this._compact = config.layout === "compact";
@@ -10160,7 +10197,8 @@ class SavvyEnergyCard extends SavvyCard {
   _shape(range, win, ids, consumers, stats, prices, priceId) {
     const h = this._hass, c = this._config;
     const fixed = c.price?.value != null ? Number(c.price.value) : null;
-    const priceNow = priceId ? parseFloat(h.states[priceId].state) : fixed;
+    const entityNow = priceId ? parseFloat(h.states[priceId].state) : NaN;
+    const priceNow = Number.isFinite(entityNow) ? entityNow : fixed;
     const pf = priceId && /^(ct|c|cent|p)[\/ ]/i.test(String(h.states[priceId].attributes.unit_of_measurement || "")) ? 0.01 : 1;
     const priceAt = new Map();
     for (const r of prices?.[priceId] || []) if (Number.isFinite(r.mean)) priceAt.set(msOf(r.start), r.mean * pf);
@@ -10402,7 +10440,8 @@ const EDITOR = defineEditor("savvy-energy-card", () => [
   S.entity("total", "Whole house", "sensor", { helper: "An energy sensor (kWh, total increasing) for the whole house. Empty: the consumers' sum." }),
   { name: "consumers", label: "Consumers", helper: "Energy sensors to rank. Empty: every energy sensor found.", selector: { entity: { domain: "sensor", device_class: "energy", multiple: true } } },
   S.entity("power", "Live power", "sensor", { helper: "A power sensor (W or kW) for the live reading." }),
-  S.grid({ name: "price", label: "Price per kWh", helper: "A number, or a sensor with the price.", selector: { text: {} } }, S.text("currency", "Currency", "Empty: Home Assistant's.")),
+  { name: "tariff", label: "Tariff entity", helper: "A sensor or input number with the price per kWh. Each hour's own price is used.", selector: { entity: { domain: ["sensor", "input_number"] } } },
+  S.grid({ name: "price", label: "Fixed price", helper: "Per kWh. Used when there is no tariff entity.", selector: { number: { min: 0, step: 0.001, mode: "box" } } }, S.text("currency", "Currency", "Empty: Home Assistant's.")),
   S.grid(S.select("by", "Ranking", [{ value: "device", label: "By device" }, { value: "room", label: "By room" }]), S.number("max_consumers", "Ranked", 1, 20)),
   { name: "area", label: "Areas", helper: "Only the consumers of these areas.", selector: { area: { multiple: true } } },
   { name: "exclude", label: "Never rank", selector: { entity: { domain: "sensor", multiple: true } } },
@@ -10441,7 +10480,7 @@ const legacyAction = (a, entity) => {
 };
 
 const STYLE = `${BASE_CSS}
-  ha-card { --pad: 12px; display: flex; flex-direction: column; gap: 10px; padding: var(--pad); }
+  ha-card { --pad: 12px; display: flex; flex-direction: column; gap: 10px; padding: var(--pad); overflow: hidden; }
   .main { --on: 0; --away: 0; display: flex; align-items: center; gap: 11px; min-width: 0;
     border-radius: 14px; margin: -4px; padding: 4px; cursor: pointer; transform-origin: 30% 50%; }
   .av { position: relative; flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--well);
@@ -10458,11 +10497,12 @@ const STYLE = `${BASE_CSS}
   .av > ha-icon, .av > savvy-state-icon, .av .zone ha-icon { display: flex; align-items: center; justify-content: center;
     width: var(--mdc-icon-size); height: var(--mdc-icon-size); line-height: 0; }
   .txt { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-  .name { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .sub { display: flex; gap: 4px; min-width: 0; font-size: 12.5px; line-height: 16px; font-weight: 500; letter-spacing: -0.005em;
-    color: var(--secondary-text-color); white-space: nowrap; }
-  .sub .st { font-weight: 600; color: var(--primary-text-color); flex: none; }
-  .sub .since { overflow: hidden; text-overflow: ellipsis; }
+  .name { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .sub { display: flex; flex-wrap: wrap; column-gap: 4px; min-width: 0; font-size: 12.5px; line-height: 16px; font-weight: 500; letter-spacing: -0.005em;
+    color: var(--secondary-text-color); }
+  /* a long state wraps inside the card instead of running out of it; the time goes under it when there is no room */
+  .sub .st { font-weight: 600; color: var(--primary-text-color); flex: 0 1 auto; min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+  .sub .since { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
   .sub .st:not([hidden]) + .since::before { content: "· "; }
   .sub .since:empty { display: none; }
   .main[data-off] .av, .main[data-off] .sub .st { opacity: 0.55; }
@@ -15424,6 +15464,7 @@ registerCard("savvy-media-card", SavvyMediaCard, "Media",
 //   eta: sensor.x                         (for everyone; or `eta` on a person. Minutes, or a time)
 //   exclude: [person.guest]               (the Savvy settings' ignore list is added to it)
 //   layout: full | compact                (compact: a row of avatars)
+//   direction: vertical | horizontal      (full layout: one under the other, or side by side and wrapping)
 //
 // Home first, then the others by name. An ETA only shows while the person is away.
 
@@ -15447,7 +15488,9 @@ const STYLE = `${BASE_CSS}
   .p:not([data-home]) .av img { filter: saturate(0.55); opacity: 0.85; }
   .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .nm { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .st { font-size: 12.5px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .st { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: 12.5px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); --mdc-icon-size: 14px; }
+  .st ha-icon { flex: none; display: flex; }
+  .st .stt { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .p[data-home] .st { color: rgb(var(--good-rgb)); }
   .chipz { flex: none; display: flex; align-items: center; gap: 6px; }
   .chp { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 9px 0 6px; border-radius: 13px; background: var(--well); white-space: nowrap;
@@ -15456,6 +15499,11 @@ const STYLE = `${BASE_CSS}
   .chp[data-level="warn"] { color: rgb(var(--warn-rgb)); background: color-mix(in oklab, rgb(var(--warn-rgb)) var(--mix-alert), transparent); }
   .chp[data-level="bad"] { color: rgb(var(--bad-rgb)); background: color-mix(in oklab, rgb(var(--bad-rgb)) var(--mix-alert), transparent); }
   .chp.eta { color: rgb(var(--accent)); background: color-mix(in oklab, rgb(var(--accent)) var(--mix-on), transparent); }
+  /* side by side: tiles that wrap, each with its chips under its text when it is narrow */
+  :host([data-dir="horizontal"]:not([data-compact])) .list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: 4px 8px; }
+  :host([data-dir="horizontal"]:not([data-compact])) .p { flex-wrap: wrap; row-gap: 4px; }
+  :host([data-dir="horizontal"]:not([data-compact])) .chipz { flex: 1 0 100%; padding-inline-start: 54px; }
+  :host([data-dir="horizontal"]:not([data-compact])) .chipz:empty { display: none; }
   /* compact: a row of avatars with a first name under each */
   :host([data-compact]) .list { flex-direction: row; gap: 4px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; touch-action: pan-x pan-y; padding: 2px; margin: -2px; }
   :host([data-compact]) .list::-webkit-scrollbar { display: none; }
@@ -15480,6 +15528,7 @@ class SavvyPeopleCard extends SavvyCard {
     if (!config || typeof config !== "object") throw new Error("savvy-people-card: invalid configuration");
     this._config = { ...config, people: asItems(config.people), exclude: asItems(config.exclude).map((i) => i.entity) };
     this._compact = config.layout === "compact";
+    this._horizontal = config.direction === "horizontal";
     if (this._el) { this._build(); if (this._hass) this._update(); }
   }
 
@@ -15568,6 +15617,14 @@ class SavvyPeopleCard extends SavvyCard {
     return null;
   }
 
+  // the icon of the place they are at: the zone's own, else home, away or a pin
+  _zoneIcon(st) {
+    const h = this._hass, s = st.state;
+    if (s === "not_home") return "mdi:map-marker-off";
+    const zone = s === "home" ? h.states["zone.home"] : Object.values(h.states).find((z) => z.entity_id.startsWith("zone.") && z.attributes.friendly_name === s);
+    return zone?.attributes.icon || (s === "home" ? "mdi:home" : "mdi:map-marker");
+  }
+
   _where(st) {
     const h = this._hass, s = st.state;
     if (s === "home") return "Home";
@@ -15582,6 +15639,7 @@ class SavvyPeopleCard extends SavvyCard {
     if (!h || !this._el) return;
     this.toggleAttribute("dark", !!h.themes?.darkMode);
     this.toggleAttribute("data-compact", this._compact);
+    if (this._horizontal) this.setAttribute("data-dir", "horizontal"); else this.removeAttribute("data-dir");
     const c = this._config, el = this._el;
     const items = this._items();
     const home = items.filter((i) => h.states[i.entity].state === "home").length;
@@ -15608,7 +15666,7 @@ class SavvyPeopleCard extends SavvyCard {
         if (!node) {
           node = document.createElement("button");
           node.className = "p";
-          node.innerHTML = `<span class="av"><span class="ini"></span></span><span class="tx"><span class="nm"></span><span class="st"></span></span><span class="chipz"></span>`;
+          node.innerHTML = `<span class="av"><span class="ini"></span></span><span class="tx"><span class="nm"></span><span class="st"><ha-icon></ha-icon><span class="stt"></span></span></span><span class="chipz"></span>`;
           node.__enter = this._spring(0, MOTION.ui, `p:${id}`).to(1, MOTION.ui);
           this._pressable(node, { onTap: () => moreInfo(this, id) }, 0.025);
           this._nodes.set(id, node);
@@ -15619,7 +15677,8 @@ class SavvyPeopleCard extends SavvyCard {
         text(node.querySelector(".nm"), name);
         const t = Date.parse(st.last_changed), age = Number.isFinite(t) ? Date.now() - t : NaN;
         const where = this._where(st);
-        text(node.querySelector(".st"), [where, Number.isFinite(age) ? (age < 60000 ? "just now" : duration(age)) : ""].filter(Boolean).join(" · "));
+        text(node.querySelector(".stt"), [where, Number.isFinite(age) ? (age < 60000 ? "just now" : duration(age)) : ""].filter(Boolean).join(" · "));
+        attr(node.querySelector(".st ha-icon"), "icon", this._zoneIcon(st));
         this._avatar(node, st, name);
         // the phone's battery and the way home
         const bits = [];
@@ -15710,7 +15769,8 @@ const EDITOR = defineEditor("savvy-people-card", () => [
   S.entity("eta", "Time to get home (everyone)", "sensor", { helper: "One sensor for everyone, or set it on a person." }),
   S.grid(S.bool("battery", "Phone battery", "Shown when the phone reports it.", true), S.number("battery_warn", "Battery warning", 5, 80, 1, "%")),
   { name: "exclude", label: "Never show", selector: { entity: { domain: "person", multiple: true } } },
-  S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (avatars)" }]),
+  S.grid(S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (avatars)" }]),
+    S.select("direction", "Direction", [{ value: "vertical", label: "One under the other" }, { value: "horizontal", label: "Side by side" }])),
 ]);
 
 registerCard("savvy-people-card", SavvyPeopleCard, "People",

@@ -25,6 +25,8 @@ export default async function ({ browser, base, check }) {
       window.mount("savvy-cover-card", { area: "living_room" }, width);                           // 1
       window.mount("savvy-cover-card", { classes: ["shutter", "curtain"], exclude: ["cover.living_room_curtain"] }, width);  // 2
       window.mount("savvy-cover-card", { layout: "compact" }, width);                             // 3
+      window.mount("savvy-cover-card", { area: ["living_room", "hallway"], controls: "slider" }, width);   // 4
+      window.mount("savvy-cover-card", { area: "living_room", covers: [{ entity: "cover.living_room_blind", name: "Lounge blind", icon: "mdi:blinds-horizontal" }] }, width);   // 5
     }, width);
     await page.waitForTimeout(900);
     const read = (i) => page.evaluate((i) => {
@@ -74,6 +76,14 @@ export default async function ({ browser, base, check }) {
       await page.keyboard.press("ArrowRight");
     });
     check(`${tag} the tilt bar sets the tilt position`, key.some((c) => /^cover\.set_cover_tilt_position \{"tilt_position":45\} cover\.living_room_blind$/.test(c)), JSON.stringify(key));
+
+    // sliders instead of arrows; a cover with no position keeps its arrow
+    const sl = await page.evaluate(() => [...window.cards[4].shadowRoot.querySelectorAll(".sv-row")].map((r) => ({ n: r.querySelector(".sv-name").textContent, bar: !!r.querySelector(".sv-act .sv-bar:not([hidden])"), arrow: !!r.querySelector(".sv-act .sv-btn:not([hidden])") })));
+    check(`${tag} controls: slider puts the position bar on the line, arrows stay only where a cover has no position`, sl.find((r) => r.n === "Blind").bar && !sl.find((r) => r.n === "Blind").arrow && !sl.find((r) => r.n === "Garage Door").bar && sl.find((r) => r.n === "Garage Door").arrow, JSON.stringify(sl));
+    const lineKey = await calls(async () => { await page.evaluate(() => [...window.cards[4].shadowRoot.querySelectorAll(".sv-row")].find((r) => r.querySelector(".sv-name").textContent === "Blind").querySelector(".sv-act .sv-bar").focus()); await page.keyboard.press("ArrowRight"); });
+    check(`${tag} the slider on the line sets the position`, lineKey.some((x) => /^cover\.set_cover_position \{"position":65\} cover\.living_room_blind$/.test(x)), JSON.stringify(lineKey));
+    const own = await page.evaluate(() => { const r = window.cards[5].shadowRoot.querySelector(".sv-row"); return { n: [...window.cards[5].shadowRoot.querySelectorAll(".sv-row .sv-name")].map((x) => x.textContent), icon: [...window.cards[5].shadowRoot.querySelectorAll(".sv-row")].map((x) => x.querySelector(".sv-ic ha-icon")?.getAttribute("icon")) }; });
+    check(`${tag} a cover's own name and icon replace Home Assistant's`, own.n.includes("Lounge blind") && own.icon.includes("mdi:blinds-horizontal") && own.icon.length === 2, JSON.stringify(own));
 
     check(`${tag} springs idle`, await idle(page));
     check(`${tag} no errors`, errors.length === 0, errors.join("; "));

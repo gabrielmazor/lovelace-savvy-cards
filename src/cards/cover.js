@@ -9,6 +9,8 @@
 //   classes: [blind, shutter]             (only these device classes; default all)
 //   include: [cover.x]  exclude: [cover.y]   (the Savvy settings' ignore list is added to exclude)
 //   all: true                             (the Open all / Close all buttons; false hides them)
+//   controls: slider | arrows             (slider: the position bar on each row; arrows: open and close; default arrows)
+//   covers: [{ entity: cover.x, name: Blind, icon: mdi:blinds }]   (own name and icon; always listed)
 //   layout: full | compact                (compact: the summary and the two buttons, no rows)
 //
 // Tap a name for the cover's details. The chevron opens its position and tilt.
@@ -41,7 +43,8 @@ class SavvyCoverCard extends SavvyCard {
   setConfig(config) {
     if (!config || typeof config !== "object") throw new Error("savvy-cover-card: invalid configuration");
     const areas = [].concat(config.area ?? config.areas ?? []).filter(Boolean);
-    this._config = { ...config, areas, classes: [].concat(config.classes || []), include: asItems(config.include).map((i) => i.entity),
+    const covers = asItems(config.covers).filter((i) => i.entity);
+    this._config = { ...config, areas, covers, classes: [].concat(config.classes || []), include: [...asItems(config.include).map((i) => i.entity), ...covers.map((i) => i.entity)],
       exclude: asItems(config.exclude).map((i) => i.entity), exclude_areas: [].concat(config.exclude_areas || []) };
     this._compact = config.layout === "compact";
     if (this._el) { this._build(); if (this._hass) this._update(); }
@@ -144,7 +147,8 @@ class SavvyCoverCard extends SavvyCard {
     attr(el.up, "disabled", this._targets("open", ids).length ? null : "");
     attr(el.down, "disabled", this._targets("close", ids).length ? null : "");
     el.rows.hidden = this._compact || !ids.length;
-    if (!this._compact) this._rows.update(h, ids, { sort: c.areas.length > 1 ? "room" : null, hideArea: c.areas.length === 1 });
+    if (!this._compact) this._rows.update(h, ids, { sort: c.areas.length > 1 ? "room" : null, hideArea: c.areas.length === 1, controls: c.controls === "slider" ? "slider" : "arrows",
+      icons: Object.fromEntries(c.covers.filter((i) => i.icon).map((i) => [i.entity, i.icon])), names: Object.fromEntries(c.covers.filter((i) => i.name).map((i) => [i.entity, i.name])) });
     el.empty.hidden = ids.length > 0;
     if (!ids.length) text(el.empty, c.areas.length ? "No covers in this area." : "No covers found.");
     attr(el.card, "aria-label", `${c.title ?? "Covers"}${pill ? `, ${pill}` : ""}`);
@@ -163,6 +167,10 @@ const EDITOR = defineEditor("savvy-cover-card", () => [
   ] } } },
   { name: "include", label: "Also show", selector: { entity: { domain: "cover", multiple: true } } },
   { name: "exclude", label: "Never show", selector: { entity: { domain: "cover", multiple: true } } },
+  S.select("controls", "Controls", [{ value: "arrows", label: "Arrows (open, close)" }, { value: "slider", label: "Sliders (position)" }]),
+  { name: "covers", label: "Own name and icon", helper: "Covers listed here are always shown, with this name and icon instead of Home Assistant's.", type: "list",
+    item: [{ name: "entity", label: "Cover", selector: { entity: { domain: "cover" } } }, S.grid(S.text("name", "Name"), S.icon())],
+    add: { selector: { entity: { domain: "cover" } }, label: "Add a cover" } },
   S.grid(S.bool("all", "Open and close all", "Buttons for everything listed. A garage and a gate are not opened by them.", true), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact" }])),
   GLOW_FIELD,
 ]);

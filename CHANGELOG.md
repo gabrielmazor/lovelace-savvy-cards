@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.17.0
+
+- **People:** `direction: horizontal` puts people side by side (wrapping on narrow cards). The icon of the
+  place they are at, the zone's own, sits beside the location text.
+- **Energy:** a Tariff entity picker in the editor (`tariff`) and a separate fixed price (`price`, used when
+  there is no tariff or it is unavailable). The older `price: sensor.x` still works.
+- **Covers:** `controls: slider` puts the position bar on each row instead of the arrows (a garage door or
+  gate without a position keeps its arrow). `covers` gives a cover its own name and icon.
+- **Entity card:** a long name or state no longer runs out of the card; it wraps inside it.
+
 ## 0.16.0
 
 - **New card: Energy** (`custom:savvy-energy-card`). Today, this week or this month against the same

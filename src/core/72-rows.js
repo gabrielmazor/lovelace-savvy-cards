@@ -217,6 +217,8 @@ const GUARDED_COVERS = new Set(["garage", "gate"]);
 ROW_KINDS.cover = {
   build(ctx) {
     const { kit } = ctx;
+    // `controls: slider` (a card's option) puts the position bar on the line, where the arrow is
+    const sliderMode = ctx.opts?.().controls === "slider";
     let armed = false, armTimer = 0;
     kit.onDispose(() => clearTimeout(armTimer));
     const main = div("sv-act-in");
@@ -235,10 +237,13 @@ ROW_KINDS.cover = {
       call(ctx, "cover", go.__mode === "stop" ? "stop_cover" : go.__mode === "close" ? "close_cover" : "open_cover");
     } });
     go.__mode = "open";
-    main.appendChild(go);
+    const setPos = (v) => call(ctx, "cover", "set_cover_position", { position: Math.round(v * 100) });
+    const lineBar = sliderMode ? new SideBar(kit, { label: "Position", onChange: setPos }) : null;
+    if (lineBar) lineBar.el.classList.add("sv-linebar");
+    main.append(...(lineBar ? [lineBar.el, go] : [go]));
     const extra = div("sv-xline sv-ctl-cover");
     const stop = iconButton(kit, { icon: "mdi:stop", label: "Stop", onTap: () => call(ctx, "cover", "stop_cover") });
-    const bar = new SideBar(kit, { label: "Position", onChange: (v) => call(ctx, "cover", "set_cover_position", { position: Math.round(v * 100) }) });
+    const bar = new SideBar(kit, { label: "Position", onChange: setPos });
     const pct = document.createElement("span");
     pct.className = "sv-pct";
     extra.append(stop, bar.el, pct);
@@ -252,7 +257,7 @@ ROW_KINDS.cover = {
     tiltLine.append(tcap, tbar.el, tpct);
     const both = div("sv-ctl-stack");
     both.append(extra, tiltLine);
-    let first = true, tfirst = true;
+    let first = true, lfirst = true, tfirst = true;
     return {
       main, extra: both,
       update(st) {
@@ -265,18 +270,28 @@ ROW_KINDS.cover = {
         if (!guarded) armed = false;
         attr(go, "aria-label", guarded ? "Tap again to open" : { open: "Open", close: "Close", stop: "Stop" }[mode]);
         attr(go, "data-on", guarded);
-        go.hidden = st.state === "unavailable" || (mode === "open" && !(sf & 1)) || (mode === "close" && !(sf & 2));
-        stop.hidden = !(sf & 8);
         const pos = Number(st.attributes.current_position);
         const hasPos = !!(sf & 4) && Number.isFinite(pos);
-        bar.el.hidden = pct.hidden = !hasPos;
-        if (hasPos) { bar.setLevel(clamp(pos / 100), first); text(pct, `${Math.round((bar.pending ?? pos / 100) * 100)}%`); first = false; }
+        // a cover that cannot be set to a position (a garage door, a gate) keeps its arrow
+        const onLine = !!lineBar && hasPos;
+        go.hidden = onLine || st.state === "unavailable" || (mode === "open" && !(sf & 1)) || (mode === "close" && !(sf & 2));
+        if (lineBar) {
+          lineBar.el.hidden = !onLine;
+          if (onLine) { lineBar.setLevel(clamp(pos / 100), lfirst); lfirst = false; }
+        }
+        stop.hidden = !(sf & 8);
+        const inExtra = hasPos && !onLine;
+        bar.el.hidden = pct.hidden = !inExtra;
+        if (inExtra) { bar.setLevel(clamp(pos / 100), first); text(pct, `${Math.round((bar.pending ?? pos / 100) * 100)}%`); first = false; }
         const tilt = Number(st.attributes.current_tilt_position);
         const hasTilt = !!(sf & 128) && Number.isFinite(tilt);
         tiltLine.hidden = !hasTilt;
         if (hasTilt) { tbar.setLevel(clamp(tilt / 100), tfirst); text(tpct, `${Math.round((tbar.pending ?? tilt / 100) * 100)}%`); tfirst = false; }
+        // with the slider on the line the extra line is only the stop button and the tilt
+        const extraOn = st.state !== "unavailable" && (inExtra || hasTilt || !stop.hidden);
+        extra.hidden = stop.hidden && !inExtra;
         const words = title(st.state);
-        return { extra: st.state !== "unavailable" && (!stop.hidden || hasPos || hasTilt), sub: guarded ? "Tap again to open" : Number.isFinite(pos) ? `${words} · ${Math.round(pos)}%` : words };
+        return { extra: extraOn, sub: guarded ? "Tap again to open" : Number.isFinite(pos) ? `${words} · ${Math.round(pos)}%` : words };
       },
     };
   },
@@ -518,6 +533,8 @@ const ROWS_CSS = `
   .sv-xline { display: flex; align-items: center; gap: 6px; min-width: 0; }
   .sv-xline .sv-btn { width: var(--c-s); height: var(--c-s); border-radius: 11px; --mdc-icon-size: 18px; }
   .sv-xline .sv-seg { flex: 1; }
+  .sv-act .sv-linebar { flex: none; width: 132px; min-width: 0; height: 28px; }
+  @container (max-width: 380px) { .sv-act .sv-linebar { width: 96px; } }
   .sv-ctl-stack { display: flex; flex-direction: column; gap: 6px; }
   .sv-ctl-stack > [hidden] { display: none; }
   .sv-xline .sv-cap { flex: none; width: var(--c-s); text-align: center; font-size: 11px; }

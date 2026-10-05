@@ -11,6 +11,7 @@
 //   eta: sensor.x                         (for everyone; or `eta` on a person. Minutes, or a time)
 //   exclude: [person.guest]               (the Savvy settings' ignore list is added to it)
 //   layout: full | compact                (compact: a row of avatars)
+//   direction: vertical | horizontal      (full layout: one under the other, or side by side and wrapping)
 //
 // Home first, then the others by name. An ETA only shows while the person is away.
 
@@ -34,7 +35,9 @@ const STYLE = `${BASE_CSS}
   .p:not([data-home]) .av img { filter: saturate(0.55); opacity: 0.85; }
   .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .nm { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .st { font-size: 12.5px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .st { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: 12.5px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); --mdc-icon-size: 14px; }
+  .st ha-icon { flex: none; display: flex; }
+  .st .stt { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .p[data-home] .st { color: rgb(var(--good-rgb)); }
   .chipz { flex: none; display: flex; align-items: center; gap: 6px; }
   .chp { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 9px 0 6px; border-radius: 13px; background: var(--well); white-space: nowrap;
@@ -43,6 +46,11 @@ const STYLE = `${BASE_CSS}
   .chp[data-level="warn"] { color: rgb(var(--warn-rgb)); background: color-mix(in oklab, rgb(var(--warn-rgb)) var(--mix-alert), transparent); }
   .chp[data-level="bad"] { color: rgb(var(--bad-rgb)); background: color-mix(in oklab, rgb(var(--bad-rgb)) var(--mix-alert), transparent); }
   .chp.eta { color: rgb(var(--accent)); background: color-mix(in oklab, rgb(var(--accent)) var(--mix-on), transparent); }
+  /* side by side: tiles that wrap, each with its chips under its text when it is narrow */
+  :host([data-dir="horizontal"]:not([data-compact])) .list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: 4px 8px; }
+  :host([data-dir="horizontal"]:not([data-compact])) .p { flex-wrap: wrap; row-gap: 4px; }
+  :host([data-dir="horizontal"]:not([data-compact])) .chipz { flex: 1 0 100%; padding-inline-start: 54px; }
+  :host([data-dir="horizontal"]:not([data-compact])) .chipz:empty { display: none; }
   /* compact: a row of avatars with a first name under each */
   :host([data-compact]) .list { flex-direction: row; gap: 4px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; touch-action: pan-x pan-y; padding: 2px; margin: -2px; }
   :host([data-compact]) .list::-webkit-scrollbar { display: none; }
@@ -67,6 +75,7 @@ class SavvyPeopleCard extends SavvyCard {
     if (!config || typeof config !== "object") throw new Error("savvy-people-card: invalid configuration");
     this._config = { ...config, people: asItems(config.people), exclude: asItems(config.exclude).map((i) => i.entity) };
     this._compact = config.layout === "compact";
+    this._horizontal = config.direction === "horizontal";
     if (this._el) { this._build(); if (this._hass) this._update(); }
   }
 
@@ -155,6 +164,14 @@ class SavvyPeopleCard extends SavvyCard {
     return null;
   }
 
+  // the icon of the place they are at: the zone's own, else home, away or a pin
+  _zoneIcon(st) {
+    const h = this._hass, s = st.state;
+    if (s === "not_home") return "mdi:map-marker-off";
+    const zone = s === "home" ? h.states["zone.home"] : Object.values(h.states).find((z) => z.entity_id.startsWith("zone.") && z.attributes.friendly_name === s);
+    return zone?.attributes.icon || (s === "home" ? "mdi:home" : "mdi:map-marker");
+  }
+
   _where(st) {
     const h = this._hass, s = st.state;
     if (s === "home") return "Home";
@@ -169,6 +186,7 @@ class SavvyPeopleCard extends SavvyCard {
     if (!h || !this._el) return;
     this.toggleAttribute("dark", !!h.themes?.darkMode);
     this.toggleAttribute("data-compact", this._compact);
+    if (this._horizontal) this.setAttribute("data-dir", "horizontal"); else this.removeAttribute("data-dir");
     const c = this._config, el = this._el;
     const items = this._items();
     const home = items.filter((i) => h.states[i.entity].state === "home").length;
@@ -195,7 +213,7 @@ class SavvyPeopleCard extends SavvyCard {
         if (!node) {
           node = document.createElement("button");
           node.className = "p";
-          node.innerHTML = `<span class="av"><span class="ini"></span></span><span class="tx"><span class="nm"></span><span class="st"></span></span><span class="chipz"></span>`;
+          node.innerHTML = `<span class="av"><span class="ini"></span></span><span class="tx"><span class="nm"></span><span class="st"><ha-icon></ha-icon><span class="stt"></span></span></span><span class="chipz"></span>`;
           node.__enter = this._spring(0, MOTION.ui, `p:${id}`).to(1, MOTION.ui);
           this._pressable(node, { onTap: () => moreInfo(this, id) }, 0.025);
           this._nodes.set(id, node);
@@ -206,7 +224,8 @@ class SavvyPeopleCard extends SavvyCard {
         text(node.querySelector(".nm"), name);
         const t = Date.parse(st.last_changed), age = Number.isFinite(t) ? Date.now() - t : NaN;
         const where = this._where(st);
-        text(node.querySelector(".st"), [where, Number.isFinite(age) ? (age < 60000 ? "just now" : duration(age)) : ""].filter(Boolean).join(" · "));
+        text(node.querySelector(".stt"), [where, Number.isFinite(age) ? (age < 60000 ? "just now" : duration(age)) : ""].filter(Boolean).join(" · "));
+        attr(node.querySelector(".st ha-icon"), "icon", this._zoneIcon(st));
         this._avatar(node, st, name);
         // the phone's battery and the way home
         const bits = [];
@@ -297,7 +316,8 @@ const EDITOR = defineEditor("savvy-people-card", () => [
   S.entity("eta", "Time to get home (everyone)", "sensor", { helper: "One sensor for everyone, or set it on a person." }),
   S.grid(S.bool("battery", "Phone battery", "Shown when the phone reports it.", true), S.number("battery_warn", "Battery warning", 5, 80, 1, "%")),
   { name: "exclude", label: "Never show", selector: { entity: { domain: "person", multiple: true } } },
-  S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (avatars)" }]),
+  S.grid(S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (avatars)" }]),
+    S.select("direction", "Direction", [{ value: "vertical", label: "One under the other" }, { value: "horizontal", label: "Side by side" }])),
 ]);
 
 registerCard("savvy-people-card", SavvyPeopleCard, "People",

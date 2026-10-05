@@ -421,7 +421,7 @@ class EntityListSheet {
     row.__kit.paints.push(() => this.paintOpen(row));
     const kind = ROW_KINDS[d];
     if (kind) {
-      row.__ctrl = kind.build({ id, kit: row.__kit, host: this.host, hass: () => this.hass, refresh: () => this.render(this.hass),
+      row.__ctrl = kind.build({ id, kit: row.__kit, host: this.host, hass: () => this.hass, opts: () => this.opts, refresh: () => this.render(this.hass),
         row, line: row.querySelector(".sv-line1"), handle: row.querySelector(".sv-ic"), text: row.querySelector(".sv-txt") });
       row.__fixed = !!row.__ctrl.fixed;
       if (row.__ctrl.main) row.__act.appendChild(row.__ctrl.main);
@@ -478,8 +478,15 @@ class EntityListSheet {
         row.__spin.to(turning && !MQ.reduced.matches ? (d === "fan" ? fanSpeedRate(st) : fanRate(st)) : 0);
         if (!row.__spin.idle || row.__spin.x > 1e-4) Clock.add(this.spinJob);
       }
-      if (d !== "climate" && st && row.__icon && row.__icon.stateObj !== st) { row.__icon.hass = hass; row.__icon.stateObj = st; }
-      text(row.querySelector(".sv-name"), shortName(hass, id, null));
+      // a card can give an entity its own icon and name (opts.icons / opts.names)
+      let shown = st;
+      const own = this.opts.icons?.[id];
+      if (own && st) {
+        if (row.__ovFor !== st || row.__ovIcon !== own) { row.__ov = { ...st, attributes: { ...st.attributes, icon: own } }; row.__ovFor = st; row.__ovIcon = own; }
+        shown = row.__ov;
+      }
+      if (d !== "climate" && shown && row.__icon && row.__icon.stateObj !== shown) { row.__icon.hass = hass; row.__icon.stateObj = shown; }
+      text(row.querySelector(".sv-name"), this.opts.names?.[id] || shortName(hass, id, null));
       const res = (st && row.__ctrl?.update(st, hass)) || {};
       attr(row, "data-alert", !!res.alert);
       this.art(row, res.art);
