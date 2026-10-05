@@ -457,7 +457,8 @@ class SavvySystemHealthCard extends HTMLElement {
     const lvl = total === 0 ? "var(--lvl-good)" : total < c.warn_above ? "var(--lvl-warn)" : "var(--lvl-bad)";
     Motion.tintVar(this._el.card, "--lvl", lvl);
     // the corner glow: amber while a few things need a look, red when it is a lot; nothing when all is well
-    stateGlow(c, this._el.card, total === 0 ? null : total < c.warn_above ? [232, 163, 61] : [224, 102, 102], 0.8);
+    this._glowRgb = total === 0 ? null : total < c.warn_above ? [232, 163, 61] : [224, 102, 102];
+    stateGlow(c, this._el.card, this._glowRgb, 0.8);
     text(this._el.pill, total === 0 ? "All good" : `${total} ${total === 1 ? label.noun : label.nouns}`);
     attr(this._el.card, "aria-label", `${c.title || label.title}, ${total === 0 ? "all good" : `${total} ${label.nouns}`}`);
     this._renderRows(sections);

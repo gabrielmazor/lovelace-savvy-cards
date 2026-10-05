@@ -163,7 +163,7 @@ class SavvyEntityCard extends SavvyCard {
     const c = this._config;
     const given = c[`${kind}_action`];
     if (given !== undefined) return legacyAction(given, c.entity);
-    if (kind === "tap") return c.navigation_path ? { action: "navigate", navigation_path: c.navigation_path } : { action: "more-info" };
+    if (kind === "tap") return c.navigation_path ? { action: "navigate", navigation_path: c.navigation_path } : defaultTapAction(c.entity);
     if (kind === "hold") return { action: "more-info" };
     return null;
   }

@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.17.1 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.17.2 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.17.1";
+const SAVVY_VERSION = "0.17.2";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -2429,6 +2429,9 @@ const SHEET_CSS = `
     font-family: var(--savvy-font-family, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", Roboto, sans-serif);
     font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased;
   }
+  /* a sheet that carries a state glow of its own (the health list): the same corner wash as a card, under the title too */
+  .sv-sheet::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; corner-shape: inherit; pointer-events: none;
+    background: radial-gradient(140% 110% at 0% 0%, rgb(var(--glow-rgb, var(--accent)) / calc(var(--glow, 0) * 0.1)), transparent 66%); }
   .sv-sheet[data-wide] { width: min(560px, calc(100vw - 32px)); max-height: min(720px, calc(100vh - 48px)); }
   @supports (corner-shape: squircle) { .sv-sheet { corner-shape: squircle; border-radius: 36px; } }
   .sv-sheet[data-bottom] { left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: 85vh;
@@ -10619,7 +10622,7 @@ class SavvyEntityCard extends SavvyCard {
     const c = this._config;
     const given = c[`${kind}_action`];
     if (given !== undefined) return legacyAction(given, c.entity);
-    if (kind === "tap") return c.navigation_path ? { action: "navigate", navigation_path: c.navigation_path } : { action: "more-info" };
+    if (kind === "tap") return c.navigation_path ? { action: "navigate", navigation_path: c.navigation_path } : defaultTapAction(c.entity);
     if (kind === "hold") return { action: "more-info" };
     return null;
   }
@@ -11782,7 +11785,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
     if (!this._el) this._build();
     this._update();
     this._list?.render(hass);
-    if (this._healthCard) this._healthCard.hass = hass;
+    if (this._healthCard) { this._healthCard.hass = hass; this._healthGlow(); }
     if (this._picker?.isOpen) this._picker.render(this._modeInfo(), this._config.mode_label);
   }
 
@@ -11864,11 +11867,18 @@ class SavvyHomeHeaderCard extends SavvyCard {
     const card = document.createElement("savvy-system-health-card");
     const { navigation_path, tap_action, hold_action, popup_button, popup_label, ...opts } = this._healthCfg() || {};
     this._healthSheet.setFooter(pageButton(this._healthCfg() || {}, "system health"));
-    card.setConfig({ ...opts, source: "all", max_rows: 30, title: " ", columns: 1 });
+    // the card's own corner glow would be cut by the title bar: the sheet draws it instead
+    card.setConfig({ ...opts, source: "all", max_rows: 30, title: " ", columns: 1, state_glow: false });
     this._healthSheet.body.replaceChildren(card);
     card.hass = this._hass;
     this._healthCard = card;
+    this._healthGlow();
     this._healthSheet.open(this._el.health);
+  }
+
+  _healthGlow() {
+    const sheet = this._healthSheet?.el, card = this._healthCard;
+    if (sheet && card) Motion.glow(sheet, (this._healthCfg() || {}).state_glow === false ? null : card._glowRgb, 0.8);
   }
 
   _update() {
@@ -19260,7 +19270,8 @@ class SavvySystemHealthCard extends HTMLElement {
     const lvl = total === 0 ? "var(--lvl-good)" : total < c.warn_above ? "var(--lvl-warn)" : "var(--lvl-bad)";
     Motion.tintVar(this._el.card, "--lvl", lvl);
     // the corner glow: amber while a few things need a look, red when it is a lot; nothing when all is well
-    stateGlow(c, this._el.card, total === 0 ? null : total < c.warn_above ? [232, 163, 61] : [224, 102, 102], 0.8);
+    this._glowRgb = total === 0 ? null : total < c.warn_above ? [232, 163, 61] : [224, 102, 102];
+    stateGlow(c, this._el.card, this._glowRgb, 0.8);
     text(this._el.pill, total === 0 ? "All good" : `${total} ${total === 1 ? label.noun : label.nouns}`);
     attr(this._el.card, "aria-label", `${c.title || label.title}, ${total === 0 ? "all good" : `${total} ${label.nouns}`}`);
     this._renderRows(sections);

@@ -79,7 +79,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
     if (!this._el) this._build();
     this._update();
     this._list?.render(hass);
-    if (this._healthCard) this._healthCard.hass = hass;
+    if (this._healthCard) { this._healthCard.hass = hass; this._healthGlow(); }
     if (this._picker?.isOpen) this._picker.render(this._modeInfo(), this._config.mode_label);
   }
 
@@ -161,11 +161,18 @@ class SavvyHomeHeaderCard extends SavvyCard {
     const card = document.createElement("savvy-system-health-card");
     const { navigation_path, tap_action, hold_action, popup_button, popup_label, ...opts } = this._healthCfg() || {};
     this._healthSheet.setFooter(pageButton(this._healthCfg() || {}, "system health"));
-    card.setConfig({ ...opts, source: "all", max_rows: 30, title: " ", columns: 1 });
+    // the card's own corner glow would be cut by the title bar: the sheet draws it instead
+    card.setConfig({ ...opts, source: "all", max_rows: 30, title: " ", columns: 1, state_glow: false });
     this._healthSheet.body.replaceChildren(card);
     card.hass = this._hass;
     this._healthCard = card;
+    this._healthGlow();
     this._healthSheet.open(this._el.health);
+  }
+
+  _healthGlow() {
+    const sheet = this._healthSheet?.el, card = this._healthCard;
+    if (sheet && card) Motion.glow(sheet, (this._healthCfg() || {}).state_glow === false ? null : card._glowRgb, 0.8);
   }
 
   _update() {

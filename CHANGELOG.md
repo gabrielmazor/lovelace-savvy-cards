@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.17.2
+
+- **Entity:** a tap on the main entity now does what the entity does: toggles a light, switch, fan or
+  automation, presses a button, runs a script or scene; a person or sensor still opens more-info. Hold opens
+  more-info. `navigation_path` still makes a tap navigate, and `tap_action`/`hold_action` still replace both.
+- **Health popup:** the corner glow is drawn by the popup itself, so it fades smoothly under the title
+  instead of being cut by it.
+
 ## 0.17.1
 
 - **People, side by side:** two columns whatever the width (it fell back to one column on a phone), three on a

@@ -1370,8 +1370,8 @@ anything else its icon, state and how long. Chips underneath toggle, press or sh
 | `picture` | string | the person's | A picture URL, instead of the person's own. |
 | `show_state` | boolean | `true` | The state. |
 | `show_since` | boolean | `true` | How long it has been so. |
-| `navigation_path` | string | more-info | Where a tap goes. |
-| `tap_action`, `hold_action`, `double_tap_action` | action | more-info | The main entity's gestures. |
+| `navigation_path` | string | none | Where a tap goes. Without it a tap does what the entity does: a light, switch, fan or automation toggles, a button presses, a script or scene runs, anything else (a person, a sensor) opens more-info. |
+| `tap_action`, `hold_action`, `double_tap_action` | action | by domain, hold: more-info | The main entity's gestures. |
 | `chips` | chips | none | The entities that belong with it. |
 | `state_glow` | boolean | `true` | A soft glow in the card's corner in what it is doing (a lit light, a locked door, music playing). `false` keeps the card plain. |
 | `title_path` | string | none | Title link: tapping the name opens this page. Only the words are the link; the rest of the card keeps its own tap. `title` writes the name, like `name`. |
