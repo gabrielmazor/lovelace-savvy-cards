@@ -47,6 +47,21 @@ const SHEET_CSS = `
   /* a sheet that carries a state glow of its own (the health list): the same corner wash as a card, under the title too */
   .sv-sheet::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; corner-shape: inherit; pointer-events: none;
     background: radial-gradient(140% 110% at 0% 0%, rgb(var(--glow-rgb, var(--accent)) / calc(var(--glow, 0) * 0.1)), transparent 66%); }
+  /* design: glass, in a popup: the same frosted surface, rows lit like the card's */
+  .sv-sheet[data-glass] {
+    --glass-edge: rgb(255 255 255 / 0.14); --glass-hi: rgb(255 255 255 / 0.2); --glass-tile: rgb(255 255 255 / 0.05); --glass-tile-edge: rgb(255 255 255 / 0.07); --lblend: plus-lighter;
+    background: linear-gradient(155deg, rgb(58 58 66 / 0.6), rgb(22 22 26 / 0.62));
+    -webkit-backdrop-filter: blur(30px) saturate(1.6); backdrop-filter: blur(30px) saturate(1.6);
+    box-shadow: inset 0 1px 0 var(--glass-hi), 0 0 0 1px var(--glass-edge), 0 18px 50px rgb(0 0 0 / 0.4);
+  }
+  .sv-sheet[data-glass]:not([dark]) {
+    --glass-edge: rgb(255 255 255 / 0.8); --glass-hi: rgb(255 255 255 / 0.95); --glass-tile: rgb(255 255 255 / 0.5); --glass-tile-edge: rgb(255 255 255 / 0.7); --lblend: normal;
+    background: linear-gradient(155deg, rgb(255 255 255 / 0.72), rgb(255 255 255 / 0.5));
+  }
+  ${GLASS_LIT('.sv-sheet[data-glass]', '.sv-sheet[data-glass]:not([dark])')}
+  .sv-sheet[data-glass] .sv-rows, ha-card[data-glass] .sv-rows { gap: 6px; }
+  .sv-sheet[data-glass] .sv-row[data-light], ha-card[data-glass] .sv-row[data-light] { padding: 2px 6px; border-radius: 16px; --lx: 28px; --ly: 25px; }
+  @media (prefers-reduced-transparency: reduce) { .sv-sheet[data-glass] { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--ha-card-background, var(--card-background-color, #fff)); } }
   .sv-sheet[data-wide] { width: min(560px, calc(100vw - 32px)); max-height: min(720px, calc(100vh - 48px)); }
   @supports (corner-shape: squircle) { .sv-sheet { corner-shape: squircle; border-radius: 36px; } }
   .sv-sheet[data-bottom] { left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: 85vh;
@@ -169,6 +184,8 @@ class Sheet {
   open(returnTo) {
     this.returnTo = returnTo || this.host.shadowRoot?.activeElement || null;
     portalRoot().append(this.scrim, this.el);
+    this.el.toggleAttribute("data-glass", this.host._config?.design === "glass");
+    this.el.toggleAttribute("dark", this.host.hasAttribute?.("dark") || false);
     this.place = () => this.el.toggleAttribute("data-bottom", window.innerWidth < 600);
     this.place();
     this.onKey = (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); this.close(); } };
@@ -440,6 +457,16 @@ class EntityListSheet {
   render(hass) {
     if (!this.open) return;
     Motion.flip(this.rows, () => this.renderNow(hass));
+    this.glassRows();
+  }
+
+  // design: glass: an active row throws the colour of its icon (read once the rows are in the page)
+  glassRows() {
+    if (this.host._config?.design !== "glass") return;
+    for (const row of this.rows.__rows?.values() || []) {
+      const c = row.isConnected && getComputedStyle(row.__ic).color.match(/[\d.]+/g);
+      lit(row, (row.hasAttribute("data-on") || row.hasAttribute("data-alert")) && c ? c.slice(0, 3) : null, 1);
+    }
   }
 
   renderNow(hass) {

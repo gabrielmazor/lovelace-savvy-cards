@@ -41,6 +41,8 @@ const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_SLIDE_CSS}
   .btn ha-icon { display: flex; }
   .btn[data-on] { color: rgb(var(--lk)); background: rgb(var(--lk) / 0.12); }
   .locks { display: flex; flex-direction: column; gap: 12px; }
+  /* glass: each lock is a lit tile, the light at its disc */
+  ha-card[data-glass] .lk { padding: 8px; border-radius: 22px; --lx: 30px; --ly: 30px; }
   .lk { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
   .top { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 4px 8px 4px 4px; border-radius: 32px; }
   .who { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; text-align: start; border-radius: 12px; cursor: pointer; }
@@ -381,6 +383,7 @@ class SavvyLockCard extends SavvyCard {
     if (!this._pulsing) put(el.card, "--pulse", "0");
     clearTimeout(this._timer);
     if (Number.isFinite(nextCheck)) this._timer = setTimeout(() => this._update(), nextCheck + 40);
+    if (c.design === "glass") for (const lk of el.locks.querySelectorAll(".lk")) litFrom(lk, lk.querySelector(".disc"), 1);
     if (this._first) { this._first = false; requestAnimationFrame(() => this._paintAll(null)); }
     this._wake();
   }

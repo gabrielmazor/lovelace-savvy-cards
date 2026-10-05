@@ -20,7 +20,7 @@
 // state attributes whose flip changes colours (layout flags such as data-open stay out)
 const TINT_ATTRS = new Set(["data-on", "data-off", "data-sel", "data-level", "data-live", "data-alert", "data-warn",
   "data-critical", "data-armed", "data-playing", "data-running", "data-unavailable", "data-missing", "data-triggered",
-  "data-active", "data-lit", "data-dim", "data-bad", "data-kind", "data-mode", "data-c", "data-k", "data-soft", "data-solo",
+  "data-active", "data-light", "data-dim", "data-bad", "data-kind", "data-mode", "data-c", "data-k", "data-soft", "data-solo",
   "data-pick", "data-busy", "data-flash", "data-filled", "data-nostate"]);
 const TINT_PROPS = ["color", "background-color", "border-top-color", "fill", "stroke"];
 const COLOR_FN = /^(rgb|rgba|color|oklab|oklch|lab|lch|hsl|hwb)\(/i;
@@ -386,8 +386,13 @@ function tickParts(a, b) {
 // A tile that throws light (design: glass): the colour, and how strongly 0..1; no colour is dark.
 const lit = (el, rgb, level = 1) => {
   if (!el) return;
-  el.toggleAttribute("data-lit", true);
+  el.toggleAttribute("data-light", true);
   if (rgb) el.style.setProperty("--lc", rgb.map((v) => Math.round(Number(v))).join(" "));
   el.style.setProperty("--on", rgb ? Math.max(0, Math.min(1, level)).toFixed(2) : "0");
+};
+// ...in the colour another element (the icon) is showing right now; dark when it is not on screen yet or not active.
+const litFrom = (el, src, level = 1, active = true) => {
+  const c = active && src?.isConnected && getComputedStyle(src).color.match(/[\d.]+/g);
+  lit(el, c ? c.slice(0, 3) : null, level);
 };
 const stateGlow = (config, el, rgb, level = 1) => Motion.glow(el, config && config.state_glow === false ? null : rgb, level);

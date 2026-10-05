@@ -235,10 +235,28 @@ const GLOW_CSS = `
     background: radial-gradient(140% 110% at 0% 0%, rgb(var(--glow-rgb, var(--accent)) / calc(var(--glow, 0) * 0.1 + var(--pulse, 0) * 0.05)), transparent 66%); }
 `;
 
-// design: glass. A frosted surface, and anything marked data-lit is a light source (lit(el, rgb, level) sets
+// design: glass. A frosted surface, and anything marked data-light is a light source (lit(el, rgb, level) sets
 // --lc, --on). The source sits at --lx --ly (the icon). A broad ambient bleed falls off with distance, a tighter
 // core gives depth, and a rim light brightens the edge nearest the source. The colour mixes additively
 // (plus-lighter) so it shows on pure black too: a lit tile is a faintly lifted matte surface for it to land on.
+const GLASS_LIT = (R, L = ':host(:not([dark])) ' + R) => `
+  ${R} [data-light] { --lx: 28px; --ly: 50%; position: relative; isolation: isolate; background: var(--glass-tile); box-shadow: inset 0 0 0 1px var(--glass-tile-edge); }
+  ${L} [data-light] { box-shadow: inset 0 0 0 1px var(--glass-tile-edge), 0 1px 3px rgb(40 50 90 / 0.08); }
+  ${R} [data-light]::before {
+    content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; corner-shape: inherit; pointer-events: none;
+    background:
+      radial-gradient(circle 34px at var(--lx) var(--ly), rgb(var(--lc, 128 128 128) / 0.34), transparent),
+      radial-gradient(ellipse 150% 260% at var(--lx) var(--ly), rgb(var(--lc, 128 128 128) / 0.25), rgb(var(--lc, 128 128 128) / 0.1) 34%, rgb(var(--lc, 128 128 128) / 0.03) 66%, transparent 100%);
+    mix-blend-mode: var(--lblend); opacity: var(--on, 0); transition: opacity 360ms ease;
+  }
+  ${R} [data-light]::after {
+    content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; corner-shape: inherit; padding: 1px; pointer-events: none;
+    background: radial-gradient(circle 170px at var(--lx) var(--ly), rgb(var(--lc, 128 128 128) / 0.58), rgb(var(--lc, 128 128 128) / 0.17) 42%, transparent 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+    mix-blend-mode: var(--lblend); opacity: var(--on, 0); transition: opacity 360ms ease;
+  }
+`;
 const GLASS_CSS = `
   ha-card[data-glass] {
     --glass-tint: rgb(255 255 255 / 0.06); --glass-edge: rgb(255 255 255 / 0.13); --glass-hi: rgb(255 255 255 / 0.2);
@@ -254,22 +272,7 @@ const GLASS_CSS = `
     background: linear-gradient(155deg, rgb(255 255 255 / 0.62), var(--glass-tint) 60%, rgb(255 255 255 / 0.3));
     box-shadow: inset 0 1px 0 var(--glass-hi), 0 10px 28px rgb(40 50 90 / 0.14);
   }
-  ha-card[data-glass] [data-lit] { --lx: 28px; --ly: 50%; position: relative; isolation: isolate; background: var(--glass-tile); box-shadow: inset 0 0 0 1px var(--glass-tile-edge); }
-  :host(:not([dark])) ha-card[data-glass] [data-lit] { box-shadow: inset 0 0 0 1px var(--glass-tile-edge), 0 1px 3px rgb(40 50 90 / 0.08); }
-  ha-card[data-glass] [data-lit]::before {
-    content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; corner-shape: inherit; pointer-events: none;
-    background:
-      radial-gradient(circle 34px at var(--lx) var(--ly), rgb(var(--lc, 128 128 128) / 0.34), transparent),
-      radial-gradient(ellipse 150% 260% at var(--lx) var(--ly), rgb(var(--lc, 128 128 128) / 0.25), rgb(var(--lc, 128 128 128) / 0.1) 34%, rgb(var(--lc, 128 128 128) / 0.03) 66%, transparent 100%);
-    mix-blend-mode: var(--lblend); opacity: var(--on, 0); transition: opacity 360ms ease;
-  }
-  ha-card[data-glass] [data-lit]::after {
-    content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; corner-shape: inherit; padding: 1px; pointer-events: none;
-    background: radial-gradient(circle 170px at var(--lx) var(--ly), rgb(var(--lc, 128 128 128) / 0.58), rgb(var(--lc, 128 128 128) / 0.17) 42%, transparent 100%);
-    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
-    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-    mix-blend-mode: var(--lblend); opacity: var(--on, 0); transition: opacity 360ms ease;
-  }
+  ${GLASS_LIT('ha-card[data-glass]')}
   @media (prefers-reduced-transparency: reduce) {
     ha-card[data-glass] { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--ha-card-background, var(--card-background-color)); }
   }
@@ -1822,7 +1825,7 @@ if (!customElements.get("savvy-state-icon")) customElements.define("savvy-state-
 // state attributes whose flip changes colours (layout flags such as data-open stay out)
 const TINT_ATTRS = new Set(["data-on", "data-off", "data-sel", "data-level", "data-live", "data-alert", "data-warn",
   "data-critical", "data-armed", "data-playing", "data-running", "data-unavailable", "data-missing", "data-triggered",
-  "data-active", "data-lit", "data-dim", "data-bad", "data-kind", "data-mode", "data-c", "data-k", "data-soft", "data-solo",
+  "data-active", "data-light", "data-dim", "data-bad", "data-kind", "data-mode", "data-c", "data-k", "data-soft", "data-solo",
   "data-pick", "data-busy", "data-flash", "data-filled", "data-nostate"]);
 const TINT_PROPS = ["color", "background-color", "border-top-color", "fill", "stroke"];
 const COLOR_FN = /^(rgb|rgba|color|oklab|oklch|lab|lch|hsl|hwb)\(/i;
@@ -2188,9 +2191,14 @@ function tickParts(a, b) {
 // A tile that throws light (design: glass): the colour, and how strongly 0..1; no colour is dark.
 const lit = (el, rgb, level = 1) => {
   if (!el) return;
-  el.toggleAttribute("data-lit", true);
+  el.toggleAttribute("data-light", true);
   if (rgb) el.style.setProperty("--lc", rgb.map((v) => Math.round(Number(v))).join(" "));
   el.style.setProperty("--on", rgb ? Math.max(0, Math.min(1, level)).toFixed(2) : "0");
+};
+// ...in the colour another element (the icon) is showing right now; dark when it is not on screen yet or not active.
+const litFrom = (el, src, level = 1, active = true) => {
+  const c = active && src?.isConnected && getComputedStyle(src).color.match(/[\d.]+/g);
+  lit(el, c ? c.slice(0, 3) : null, level);
 };
 const stateGlow = (config, el, rgb, level = 1) => Motion.glow(el, config && config.state_glow === false ? null : rgb, level);
 
@@ -2479,6 +2487,21 @@ const SHEET_CSS = `
   /* a sheet that carries a state glow of its own (the health list): the same corner wash as a card, under the title too */
   .sv-sheet::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; corner-shape: inherit; pointer-events: none;
     background: radial-gradient(140% 110% at 0% 0%, rgb(var(--glow-rgb, var(--accent)) / calc(var(--glow, 0) * 0.1)), transparent 66%); }
+  /* design: glass, in a popup: the same frosted surface, rows lit like the card's */
+  .sv-sheet[data-glass] {
+    --glass-edge: rgb(255 255 255 / 0.14); --glass-hi: rgb(255 255 255 / 0.2); --glass-tile: rgb(255 255 255 / 0.05); --glass-tile-edge: rgb(255 255 255 / 0.07); --lblend: plus-lighter;
+    background: linear-gradient(155deg, rgb(58 58 66 / 0.6), rgb(22 22 26 / 0.62));
+    -webkit-backdrop-filter: blur(30px) saturate(1.6); backdrop-filter: blur(30px) saturate(1.6);
+    box-shadow: inset 0 1px 0 var(--glass-hi), 0 0 0 1px var(--glass-edge), 0 18px 50px rgb(0 0 0 / 0.4);
+  }
+  .sv-sheet[data-glass]:not([dark]) {
+    --glass-edge: rgb(255 255 255 / 0.8); --glass-hi: rgb(255 255 255 / 0.95); --glass-tile: rgb(255 255 255 / 0.5); --glass-tile-edge: rgb(255 255 255 / 0.7); --lblend: normal;
+    background: linear-gradient(155deg, rgb(255 255 255 / 0.72), rgb(255 255 255 / 0.5));
+  }
+  ${GLASS_LIT('.sv-sheet[data-glass]', '.sv-sheet[data-glass]:not([dark])')}
+  .sv-sheet[data-glass] .sv-rows, ha-card[data-glass] .sv-rows { gap: 6px; }
+  .sv-sheet[data-glass] .sv-row[data-light], ha-card[data-glass] .sv-row[data-light] { padding: 2px 6px; border-radius: 16px; --lx: 28px; --ly: 25px; }
+  @media (prefers-reduced-transparency: reduce) { .sv-sheet[data-glass] { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--ha-card-background, var(--card-background-color, #fff)); } }
   .sv-sheet[data-wide] { width: min(560px, calc(100vw - 32px)); max-height: min(720px, calc(100vh - 48px)); }
   @supports (corner-shape: squircle) { .sv-sheet { corner-shape: squircle; border-radius: 36px; } }
   .sv-sheet[data-bottom] { left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: 85vh;
@@ -2601,6 +2624,8 @@ class Sheet {
   open(returnTo) {
     this.returnTo = returnTo || this.host.shadowRoot?.activeElement || null;
     portalRoot().append(this.scrim, this.el);
+    this.el.toggleAttribute("data-glass", this.host._config?.design === "glass");
+    this.el.toggleAttribute("dark", this.host.hasAttribute?.("dark") || false);
     this.place = () => this.el.toggleAttribute("data-bottom", window.innerWidth < 600);
     this.place();
     this.onKey = (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); this.close(); } };
@@ -2872,6 +2897,16 @@ class EntityListSheet {
   render(hass) {
     if (!this.open) return;
     Motion.flip(this.rows, () => this.renderNow(hass));
+    this.glassRows();
+  }
+
+  // design: glass: an active row throws the colour of its icon (read once the rows are in the page)
+  glassRows() {
+    if (this.host._config?.design !== "glass") return;
+    for (const row of this.rows.__rows?.values() || []) {
+      const c = row.isConnected && getComputedStyle(row.__ic).color.match(/[\d.]+/g);
+      lit(row, (row.hasAttribute("data-on") || row.hasAttribute("data-alert")) && c ? c.slice(0, 3) : null, 1);
+    }
   }
 
   renderNow(hass) {
@@ -10549,6 +10584,7 @@ const legacyAction = (a, entity) => {
 
 const STYLE = `${BASE_CSS}
   ha-card { --pad: 12px; display: flex; flex-direction: column; gap: 10px; padding: var(--pad); overflow: hidden; }
+  ha-card[data-glass] .main { padding: 8px; border-radius: 18px; --lx: 30px; }
   .main { --on: 0; --away: 0; display: flex; align-items: center; gap: 11px; min-width: 0;
     border-radius: 14px; margin: -4px; padding: 4px; cursor: pointer; transform-origin: 30% 50%; }
   .av { position: relative; flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--well);
@@ -10775,6 +10811,10 @@ class SavvyEntityCard extends SavvyCard {
     // the glow: its colour while it is on, nothing otherwise (people at home, a switch on, a sensor reading on)
     const mainCss = c.color ? colorOf(c.color) : "";
     stateGlow(c, el.card, active && !person ? toRgb(mainCss && !mainCss.startsWith("var(") ? mainCss : "#588EE9") : null, 0.8);
+    if (c.design === "glass") {      // glass: the main entity is a lit tile; its own spring is the strength
+      el.main.toggleAttribute("data-light", true);
+      el.main.style.setProperty("--lc", (person ? [76, 175, 80] : toRgb(mainCss && !mainCss.startsWith("var(") ? mainCss : "#588EE9")).map(Math.round).join(" "));
+    }
     this._mainAway.to(away, MOTION.ui);
     el.main.__st = st;
     this._mainWord = word;
@@ -13946,6 +13986,8 @@ const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_SLIDE_CSS}
   .btn ha-icon { display: flex; }
   .btn[data-on] { color: rgb(var(--lk)); background: rgb(var(--lk) / 0.12); }
   .locks { display: flex; flex-direction: column; gap: 12px; }
+  /* glass: each lock is a lit tile, the light at its disc */
+  ha-card[data-glass] .lk { padding: 8px; border-radius: 22px; --lx: 30px; --ly: 30px; }
   .lk { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
   .top { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 4px 8px 4px 4px; border-radius: 32px; }
   .who { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; text-align: start; border-radius: 12px; cursor: pointer; }
@@ -14286,6 +14328,7 @@ class SavvyLockCard extends SavvyCard {
     if (!this._pulsing) put(el.card, "--pulse", "0");
     clearTimeout(this._timer);
     if (Number.isFinite(nextCheck)) this._timer = setTimeout(() => this._update(), nextCheck + 40);
+    if (c.design === "glass") for (const lk of el.locks.querySelectorAll(".lk")) litFrom(lk, lk.querySelector(".disc"), 1);
     if (this._first) { this._first = false; requestAnimationFrame(() => this._paintAll(null)); }
     this._wake();
   }
@@ -17541,6 +17584,7 @@ const STYLE = `${BASE_CSS}
   .grid { display: grid; grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); gap: 8px; min-width: 0; }
   @container (min-width: 300px) { .grid:not([data-cols]) { --cols: 3; } }
   @container (min-width: 460px) { .grid:not([data-cols]) { --cols: 4; } }
+  ha-card[data-glass] .tile { --lx: 22px; }
   .tile { --on: 0; --tc: var(--c); display: flex; align-items: center; gap: 9px; min-width: 0; box-sizing: border-box; height: 46px; padding: 0 12px 0 8px;
     border-radius: 13px; cursor: pointer; transform-origin: 50% 50%;
     background: color-mix(in oklab, var(--tc) calc(7% + var(--on) * 17%), transparent);
@@ -17768,6 +17812,12 @@ class SavvySceneCard extends SavvyCard {
     if (!items.length) text(el.empty, c.areas.length || c.entities.length ? "No scenes found in this area." : "Pick an area to list its scenes.");
     el.grid.hidden = !items.length;
     this._fitRow(el.grid);
+    // glass: a scene that just ran throws its colour (its own spring is the strength)
+    if (c.design === "glass") for (const node of this._tiles.values()) {
+      const col = node.__ic.isConnected && getComputedStyle(node.__ic).color.match(/[\d.]+/g);
+      node.toggleAttribute("data-light", true);
+      if (col) node.style.setProperty("--lc", col.slice(0, 3).join(" "));
+    }
     clearTimeout(this._litTimer);
     if (nextLit > 0) this._litTimer = setTimeout(() => this._update(), nextLit + 40);
   }

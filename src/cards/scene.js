@@ -33,6 +33,7 @@ const STYLE = `${BASE_CSS}
   .grid { display: grid; grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); gap: 8px; min-width: 0; }
   @container (min-width: 300px) { .grid:not([data-cols]) { --cols: 3; } }
   @container (min-width: 460px) { .grid:not([data-cols]) { --cols: 4; } }
+  ha-card[data-glass] .tile { --lx: 22px; }
   .tile { --on: 0; --tc: var(--c); display: flex; align-items: center; gap: 9px; min-width: 0; box-sizing: border-box; height: 46px; padding: 0 12px 0 8px;
     border-radius: 13px; cursor: pointer; transform-origin: 50% 50%;
     background: color-mix(in oklab, var(--tc) calc(7% + var(--on) * 17%), transparent);
@@ -260,6 +261,12 @@ class SavvySceneCard extends SavvyCard {
     if (!items.length) text(el.empty, c.areas.length || c.entities.length ? "No scenes found in this area." : "Pick an area to list its scenes.");
     el.grid.hidden = !items.length;
     this._fitRow(el.grid);
+    // glass: a scene that just ran throws its colour (its own spring is the strength)
+    if (c.design === "glass") for (const node of this._tiles.values()) {
+      const col = node.__ic.isConnected && getComputedStyle(node.__ic).color.match(/[\d.]+/g);
+      node.toggleAttribute("data-light", true);
+      if (col) node.style.setProperty("--lc", col.slice(0, 3).join(" "));
+    }
     clearTimeout(this._litTimer);
     if (nextLit > 0) this._litTimer = setTimeout(() => this._update(), nextLit + 40);
   }
