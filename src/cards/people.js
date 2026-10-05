@@ -11,7 +11,8 @@
 //   eta: sensor.x                         (for everyone; or `eta` on a person. Minutes, or a time)
 //   exclude: [person.guest]               (the Savvy settings' ignore list is added to it)
 //   layout: full | compact                (compact: a row of avatars)
-//   direction: vertical | horizontal      (full layout: one under the other, or side by side and wrapping)
+//   direction: vertical | horizontal      (full layout: one under the other, or side by side)
+//   columns: 2                            (side by side: how many; default two, three on a wide card)
 //
 // Home first, then the others by name. An ETA only shows while the person is away.
 
@@ -46,10 +47,15 @@ const STYLE = `${BASE_CSS}
   .chp[data-level="warn"] { color: rgb(var(--warn-rgb)); background: color-mix(in oklab, rgb(var(--warn-rgb)) var(--mix-alert), transparent); }
   .chp[data-level="bad"] { color: rgb(var(--bad-rgb)); background: color-mix(in oklab, rgb(var(--bad-rgb)) var(--mix-alert), transparent); }
   .chp.eta { color: rgb(var(--accent)); background: color-mix(in oklab, rgb(var(--accent)) var(--mix-on), transparent); }
-  /* side by side: tiles that wrap, each with its chips under its text when it is narrow */
-  :host([data-dir="horizontal"]:not([data-compact])) .list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: 4px 8px; }
-  :host([data-dir="horizontal"]:not([data-compact])) .p { flex-wrap: wrap; row-gap: 4px; }
-  :host([data-dir="horizontal"]:not([data-compact])) .chipz { flex: 1 0 100%; padding-inline-start: 54px; }
+  /* side by side: two columns whatever the width (more on a wide card, or set by columns), a long place wraps under its name */
+  :host([data-dir="horizontal"]:not([data-compact])) .list { display: grid; grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); gap: 4px 8px; }
+  @container (min-width: 640px) { :host([data-dir="horizontal"]:not([data-compact])) .list:not([data-cols]) { --cols: 3; } }
+  :host([data-dir="horizontal"]:not([data-compact])) .p { flex-wrap: wrap; row-gap: 4px; align-items: flex-start; }
+  :host([data-dir="horizontal"]:not([data-compact])) .tx { flex: 1 1 0; }
+  :host([data-dir="horizontal"]:not([data-compact])) .st { align-items: flex-start; }
+  :host([data-dir="horizontal"]:not([data-compact])) .st .stt { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  :host([data-dir="horizontal"]:not([data-compact])) .st ha-icon { margin-top: 1px; }
+  :host([data-dir="horizontal"]:not([data-compact])) .chipz { flex: 1 0 100%; padding-inline-start: 54px; flex-wrap: wrap; }
   :host([data-dir="horizontal"]:not([data-compact])) .chipz:empty { display: none; }
   /* compact: a row of avatars with a first name under each */
   :host([data-compact]) .list { flex-direction: row; gap: 4px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; touch-action: pan-x pan-y; padding: 2px; margin: -2px; }
@@ -188,6 +194,9 @@ class SavvyPeopleCard extends SavvyCard {
     this.toggleAttribute("data-compact", this._compact);
     if (this._horizontal) this.setAttribute("data-dir", "horizontal"); else this.removeAttribute("data-dir");
     const c = this._config, el = this._el;
+    const cols = Math.round(Number(this._config.columns));
+    attr(el.list, "data-cols", cols >= 1 ? String(cols) : null);
+    put(el.list, "--cols", cols >= 1 ? String(Math.min(6, cols)) : "");
     const items = this._items();
     const home = items.filter((i) => h.states[i.entity].state === "home").length;
     text(el.title, c.title ?? "People");
@@ -318,6 +327,7 @@ const EDITOR = defineEditor("savvy-people-card", () => [
   { name: "exclude", label: "Never show", selector: { entity: { domain: "person", multiple: true } } },
   S.grid(S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (avatars)" }]),
     S.select("direction", "Direction", [{ value: "vertical", label: "One under the other" }, { value: "horizontal", label: "Side by side" }])),
+  { name: "columns", label: "Columns", helper: "Side by side only. Empty: two, three on a wide card.", selector: { number: { min: 1, max: 6, step: 1, mode: "box" } } },
 ]);
 
 registerCard("savvy-people-card", SavvyPeopleCard, "People",

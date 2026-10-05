@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.17.1
+
+- **People, side by side:** two columns whatever the width (it fell back to one column on a phone), three on a
+  wide card, or `columns` to choose. A long place name wraps under the name instead of being cut.
+
 ## 0.17.0
 
 - **People:** `direction: horizontal` puts people side by side (wrapping on narrow cards). The icon of the

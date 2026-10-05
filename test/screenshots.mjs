@@ -162,9 +162,9 @@ const FAMILY = `(() => {
   add("person.alex", "home", { friendly_name: "Alex", source: "device_tracker.alex_phone", entity_picture: pic("#5a8fd6") }, { changed: ago(190) });
   add("device_tracker.alex_phone", "home", {}, { device: "d_alex" });
   add("sensor.alex_phone_battery", "78", { device_class: "battery", unit_of_measurement: "%" }, { device: "d_alex" });
-  add("person.sam", "Work", { friendly_name: "Sam", source: "device_tracker.sam_phone", entity_picture: pic("#c98bd9") }, { changed: ago(40) });
+  add("person.sam", "Work Campus Building", { friendly_name: "Sam", source: "device_tracker.sam_phone", entity_picture: pic("#c98bd9") }, { changed: ago(40) });
   add("device_tracker.sam_phone", "Work", { battery_level: 14 });
-  add("zone.work", "0", { friendly_name: "Work", icon: "mdi:briefcase" });
+  add("zone.work", "0", { friendly_name: "Work Campus Building", icon: "mdi:briefcase" });
   add("person.jo", "not_home", { friendly_name: "Jo", source: "device_tracker.jo_phone" }, { changed: ago(25) });
   add("device_tracker.jo_phone", "not_home", { battery_level: 56 });
   add("sensor.jo_travel", "12", { unit_of_measurement: "min" });
@@ -260,7 +260,7 @@ const SHOTS = [
   ["cover-sliders", "savvy-cover-card", { area: "living_room", controls: "slider" }, 420, COVERS],
   ["cover-compact", "savvy-cover-card", { area: "living_room", layout: "compact" }, 420, COVERS],
   ["people", "savvy-people-card", { title: "Family", people: ["person.alex", "person.sam", { entity: "person.jo", eta: "sensor.jo_travel" }] }, 420, FAMILY],
-  ["people-horizontal", "savvy-people-card", { title: "Family", direction: "horizontal", people: ["person.alex", "person.sam", { entity: "person.jo", eta: "sensor.jo_travel" }] }, 640, FAMILY],
+  ["people-horizontal", "savvy-people-card", { title: "Family", direction: "horizontal", people: ["person.alex", "person.sam", { entity: "person.jo", eta: "sensor.jo_travel" }] }, 400, FAMILY],
   ["people-compact", "savvy-people-card", { layout: "compact", title: "Family" }, 420, FAMILY],
   ["fan", "savvy-fan-card", { area: "bedroom" }, 420, AIR],
   ["fan-compact", "savvy-fan-card", { area: "bedroom", layout: "compact" }, 420, AIR],

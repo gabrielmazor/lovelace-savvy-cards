@@ -33,6 +33,7 @@ export default async function ({ browser, base, check }) {
       window.mount("savvy-people-card", { people: [{ entity: "person.sam", name: "Samuel", eta: "sensor.jo_travel" }, "person.alex"], battery: false, title: "Family" }, width);  // 1
       window.mount("savvy-people-card", { layout: "compact", exclude: ["person.jo"] }, width);                               // 2
       window.mount("savvy-people-card", { direction: "horizontal", eta: "sensor.jo_travel" }, width);                        // 3
+      window.mount("savvy-people-card", { direction: "horizontal", columns: 1 }, width);                                      // 4
     }, width);
     await page.waitForTimeout(900);
     const read = (i) => page.evaluate((i) => {
@@ -56,8 +57,10 @@ export default async function ({ browser, base, check }) {
     check(`${tag} the place's icon: home, a pin for away, the zone's own`, JSON.stringify(icons) === JSON.stringify([["Alex", "mdi:home"], ["Jo", "mdi:map-marker-off"], ["Sam", "mdi:briefcase"]]), JSON.stringify(icons));
     // side by side
     const lay = await page.evaluate(() => { const R = window.cards[3].shadowRoot, ps = [...R.querySelectorAll(".p")].map((p) => { const b = p.getBoundingClientRect(); return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width) }; }); const card = R.querySelector("ha-card").getBoundingClientRect(); return { ps, right: Math.round(card.right), over: ps.some((p) => p.x + p.w > card.right + 1) }; });
-    const sameRow = lay.ps[0].y === lay.ps[1].y;
-    check(`${tag} horizontal: side by side when there is room, wrapping when there is not, never out of the card`, !lay.over && (width >= 700 ? sameRow && lay.ps[1].x > lay.ps[0].x : lay.ps[1].y >= lay.ps[0].y), JSON.stringify(lay));
+    const rows = [...new Set(lay.ps.map((p) => p.y))].length;
+    check(`${tag} horizontal: two columns even on a phone (three on a wide card), never out of the card`, !lay.over && lay.ps[0].y === lay.ps[1].y && lay.ps[1].x > lay.ps[0].x && (width >= 700 ? rows === 1 : rows === 2) && lay.ps[0].w < (width / 2) + 4 + (width >= 700 ? -width / 6 : 0), JSON.stringify(lay));
+    const one = await page.evaluate(() => [...window.cards[4].shadowRoot.querySelectorAll(".p")].map((p) => Math.round(p.getBoundingClientRect().y)));
+    check(`${tag} columns: 1 stacks them`, new Set(one).size === one.length, JSON.stringify(one));
     const tap = await page.evaluate(() => { const p = window.cards[0].shadowRoot.querySelectorAll(".p")[2]; p.scrollIntoView({ block: "center" }); const r = p.getBoundingClientRect(); return { x: r.x + 60, y: r.y + r.height / 2 }; });
     await page.mouse.click(tap.x, tap.y);
     await page.waitForTimeout(300);

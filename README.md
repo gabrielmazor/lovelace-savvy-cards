@@ -1122,7 +1122,7 @@ The way home needs a sensor from you (a travel time sensor): minutes, or a time.
 others by name. The icon of the place they are at (the zone's own) sits beside the words. Tap a person for
 their details; the map is there.
 
-<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/people-horizontal-light.png"><img src="docs/images/people-horizontal-dark.png" width="640" alt="People, side by side"></picture>
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/people-horizontal-light.png"><img src="docs/images/people-horizontal-dark.png" width="400" alt="People, side by side"></picture>
 
 <picture><source media="(prefers-color-scheme: light)" srcset="docs/images/people-compact-light.png"><img src="docs/images/people-compact-dark.png" width="420" alt="People, compact"></picture>
 
