@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.18.0
+
+- **Glass design (optional):** `design: glass` on a card, or `design: { style: glass }` in the settings card for
+  all of them. A frosted surface where every lit thing is a light source: the icon of a lit light, a person at home, a
+  playing player, a running thermostat throws its colour into its own tile (an ambient bleed with falloff, a
+  core at the icon, a rim light on the nearest edge), stronger the brighter the lamp. Shows on a black
+  dashboard; the blur needs a wallpaper or gradient behind the cards. Popups follow their card. Off for reduced
+  transparency. Plain stays the default and looks as before.
+- **Every design:** the thermostat's target and its plus and minus buttons are one tile, and each media player's
+  icon, name and buttons are one tile with its volume below it.
+- **Entity:** in glass the whole card is the lit tile, at the card's own size.
+- **Lights:** `include` (Also show) names lights that discovery skips, such as one an integration files under settings or diagnostics.
+- **Section title:** stays clear in glass unless it is `filled`.
+
 ## 0.17.3
 
 - **Vacuum:** the routine buttons are as wide as each other and sit on the same columns as the tiles below them

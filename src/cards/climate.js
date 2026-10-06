@@ -167,7 +167,8 @@ const STYLE = `
   /* ---- target temperature ---- */
   .hero { display: flex; align-items: flex-end; gap: 12px; margin-top: 14px; }
   /* glass: the target and its buttons are one tile, lit in the mode's colour */
-  ha-card[data-glass] .hero { padding: 10px 12px; border-radius: 18px; --lx: 46px; --ly: 55%; }
+  ha-card:not([data-compact]) .hero { padding: 10px 12px; border-radius: 18px; background: color-mix(in oklab, var(--primary-text-color) 4%, transparent); }
+  ha-card[data-glass] .hero { --lx: 46px; --ly: 55%; }
   .readout { flex: 1; min-width: 0; display: flex; align-items: flex-start; }
   .value {
     font-size: 52px; line-height: 0.92; font-weight: 600; letter-spacing: -0.035em;
@@ -1014,7 +1015,7 @@ class ClimateCard extends HTMLElement {
     // the glow: the mode's colour, fuller while it is actually heating or cooling
     const busy = ["heating", "cooling", "drying", "fan"].includes(a.hvac_action);
     stateGlow(c, el.card, on ? accent : null, busy ? 0.85 : 0.45);
-    lit(el.hero, on ? accent : null, busy ? 1 : 0.55);
+    if (this._compact) el.hero.removeAttribute("data-light"); else lit(el.hero, on ? accent : null, busy ? 1 : 0.55);
 
     text(el.name, c.name || c.title || a.friendly_name || title(c.entity.split(".")[1]));
     el.power.hidden = this._compact && this._modes.some((m) => m === "off");

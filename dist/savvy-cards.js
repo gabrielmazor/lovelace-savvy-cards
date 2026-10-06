@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.17.3 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.18.0 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.17.3";
+const SAVVY_VERSION = "0.18.0";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -242,14 +242,15 @@ const GLOW_CSS = `
 const GLASS_LIT = (R, L = ':host(:not([dark])) ' + R) => `
   ${R} [data-light] { --lx: 28px; --ly: 50%; position: relative; isolation: isolate; background: var(--glass-tile); box-shadow: inset 0 0 0 1px var(--glass-tile-edge); }
   ${L} [data-light] { box-shadow: inset 0 0 0 1px var(--glass-tile-edge), 0 1px 3px rgb(40 50 90 / 0.08); }
-  ${R} [data-light]::before {
+  ${R} [data-light]::before, ${R}[data-light]::before {
     content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; corner-shape: inherit; pointer-events: none;
     background:
       radial-gradient(circle 34px at var(--lx) var(--ly), rgb(var(--lc, 128 128 128) / 0.34), transparent),
       radial-gradient(ellipse 150% 260% at var(--lx) var(--ly), rgb(var(--lc, 128 128 128) / 0.25), rgb(var(--lc, 128 128 128) / 0.1) 34%, rgb(var(--lc, 128 128 128) / 0.03) 66%, transparent 100%);
     mix-blend-mode: var(--lblend); opacity: var(--on, 0); transition: opacity 360ms ease;
   }
-  ${R} [data-light]::after {
+  ${R}[data-light] { --lx: 28px; --ly: 50%; }
+  ${R} [data-light]::after, ${R}[data-light]::after {
     content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; corner-shape: inherit; padding: 1px; pointer-events: none;
     background: radial-gradient(circle 170px at var(--lx) var(--ly), rgb(var(--lc, 128 128 128) / 0.58), rgb(var(--lc, 128 128 128) / 0.17) 42%, transparent 100%);
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
@@ -259,17 +260,17 @@ const GLASS_LIT = (R, L = ':host(:not([dark])) ' + R) => `
 `;
 const GLASS_CSS = `
   ha-card[data-glass] {
-    --glass-tint: rgb(255 255 255 / 0.06); --glass-edge: rgb(255 255 255 / 0.13); --glass-hi: rgb(255 255 255 / 0.2);
-    --glass-tile: rgb(255 255 255 / 0.045); --glass-tile-edge: rgb(255 255 255 / 0.06); --lblend: plus-lighter;
-    background: linear-gradient(155deg, rgb(255 255 255 / 0.1), var(--glass-tint) 55%, rgb(255 255 255 / 0.03));
+    --glass-tint: rgb(255 255 255 / 0.03); --glass-edge: rgb(255 255 255 / 0.12); --glass-hi: rgb(255 255 255 / 0.18);
+    --glass-tile: rgb(255 255 255 / 0.075); --glass-tile-edge: rgb(255 255 255 / 0.09); --lblend: plus-lighter;
+    background: linear-gradient(155deg, rgb(255 255 255 / 0.07), var(--glass-tint) 55%, rgb(255 255 255 / 0.01)), linear-gradient(rgb(0 0 0 / 0.26), rgb(0 0 0 / 0.26));
     -webkit-backdrop-filter: blur(26px) saturate(1.6); backdrop-filter: blur(26px) saturate(1.6);
     border-color: var(--glass-edge);
     box-shadow: inset 0 1px 0 var(--glass-hi), 0 12px 32px rgb(0 0 0 / 0.28);
   }
   :host(:not([dark])) ha-card[data-glass] {
-    --glass-tint: rgb(255 255 255 / 0.4); --glass-edge: rgb(255 255 255 / 0.75); --glass-hi: rgb(255 255 255 / 0.95);
-    --glass-tile: rgb(255 255 255 / 0.5); --glass-tile-edge: rgb(255 255 255 / 0.7); --lblend: normal;
-    background: linear-gradient(155deg, rgb(255 255 255 / 0.62), var(--glass-tint) 60%, rgb(255 255 255 / 0.3));
+    --glass-tint: rgb(255 255 255 / 0.28); --glass-edge: rgb(255 255 255 / 0.75); --glass-hi: rgb(255 255 255 / 0.95);
+    --glass-tile: rgb(255 255 255 / 0.72); --glass-tile-edge: rgb(255 255 255 / 0.85); --lblend: normal;
+    background: linear-gradient(155deg, rgb(255 255 255 / 0.48), var(--glass-tint) 60%, rgb(255 255 255 / 0.2));
     box-shadow: inset 0 1px 0 var(--glass-hi), 0 10px 28px rgb(40 50 90 / 0.14);
   }
   ${GLASS_LIT('ha-card[data-glass]')}
@@ -2489,13 +2490,13 @@ const SHEET_CSS = `
     background: radial-gradient(140% 110% at 0% 0%, rgb(var(--glow-rgb, var(--accent)) / calc(var(--glow, 0) * 0.1)), transparent 66%); }
   /* design: glass, in a popup: the same frosted surface, rows lit like the card's */
   .sv-sheet[data-glass] {
-    --glass-edge: rgb(255 255 255 / 0.14); --glass-hi: rgb(255 255 255 / 0.2); --glass-tile: rgb(255 255 255 / 0.05); --glass-tile-edge: rgb(255 255 255 / 0.07); --lblend: plus-lighter;
-    background: linear-gradient(155deg, rgb(58 58 66 / 0.6), rgb(22 22 26 / 0.62));
+    --glass-edge: rgb(255 255 255 / 0.14); --glass-hi: rgb(255 255 255 / 0.2); --glass-tile: rgb(255 255 255 / 0.075); --glass-tile-edge: rgb(255 255 255 / 0.09); --lblend: plus-lighter;
+    background: linear-gradient(155deg, rgb(46 46 54 / 0.64), rgb(14 14 18 / 0.7));
     -webkit-backdrop-filter: blur(30px) saturate(1.6); backdrop-filter: blur(30px) saturate(1.6);
     box-shadow: inset 0 1px 0 var(--glass-hi), 0 0 0 1px var(--glass-edge), 0 18px 50px rgb(0 0 0 / 0.4);
   }
   .sv-sheet[data-glass]:not([dark]) {
-    --glass-edge: rgb(255 255 255 / 0.8); --glass-hi: rgb(255 255 255 / 0.95); --glass-tile: rgb(255 255 255 / 0.5); --glass-tile-edge: rgb(255 255 255 / 0.7); --lblend: normal;
+    --glass-edge: rgb(255 255 255 / 0.8); --glass-hi: rgb(255 255 255 / 0.95); --glass-tile: rgb(255 255 255 / 0.72); --glass-tile-edge: rgb(255 255 255 / 0.85); --lblend: normal;
     background: linear-gradient(155deg, rgb(255 255 255 / 0.72), rgb(255 255 255 / 0.5));
   }
   ${GLASS_LIT('.sv-sheet[data-glass]', '.sv-sheet[data-glass]:not([dark])')}
@@ -4398,6 +4399,17 @@ const PICKER_CSS = `
     font-family: var(--savvy-font-family, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", Roboto, sans-serif);
     -webkit-font-smoothing: antialiased; user-select: none; -webkit-user-select: none;
   }
+  /* design: glass: the same frosted surface as the cards, but fuller, so a menu reads clearly over whatever is behind it */
+  .sv-pick[data-glass] {
+    background: linear-gradient(155deg, rgb(54 54 62 / 0.86), rgb(20 20 24 / 0.9));
+    -webkit-backdrop-filter: blur(24px) saturate(1.5); backdrop-filter: blur(24px) saturate(1.5);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.16), 0 0 0 1px rgb(255 255 255 / 0.12), 0 14px 38px rgb(0 0 0 / 0.38);
+  }
+  .sv-pick[data-glass]:not([dark]) {
+    background: linear-gradient(155deg, rgb(255 255 255 / 0.9), rgb(246 247 252 / 0.84));
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.95), 0 0 0 1px rgb(255 255 255 / 0.8), 0 12px 30px rgb(40 50 90 / 0.2);
+  }
+  @media (prefers-reduced-transparency: reduce) { .sv-pick[data-glass] { -webkit-backdrop-filter: none; backdrop-filter: none; } }
   .sv-pick[data-wide] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .sv-pick[data-wider] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .sv-pick[data-up] { transform-origin: var(--ox, 50%) 100%; }
@@ -4438,6 +4450,8 @@ class ModePicker {
     if (this.isOpen || !info) return;
     this.isOpen = true;
     this.anchor = anchor;
+    this.el.toggleAttribute("data-glass", this.host?._config?.design === "glass");
+    this.el.toggleAttribute("dark", !!this.host?.hasAttribute?.("dark"));
     portalRoot().append(this.scrim, this.el);
     this.render(info, caption);
     this.place(anchor, bounds);
@@ -6184,6 +6198,7 @@ ha-card {
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
   pointer-events: none;
 }
+${GLASS_CSS}
 
 /* ---------- stage: pager (one camera) or grid (all cameras) ---------- */
 .stage { position: relative; user-select: none; -webkit-user-select: none; }
@@ -8249,7 +8264,8 @@ const STYLE = `
   /* ---- target temperature ---- */
   .hero { display: flex; align-items: flex-end; gap: 12px; margin-top: 14px; }
   /* glass: the target and its buttons are one tile, lit in the mode's colour */
-  ha-card[data-glass] .hero { padding: 10px 12px; border-radius: 18px; --lx: 46px; --ly: 55%; }
+  ha-card:not([data-compact]) .hero { padding: 10px 12px; border-radius: 18px; background: color-mix(in oklab, var(--primary-text-color) 4%, transparent); }
+  ha-card[data-glass] .hero { --lx: 46px; --ly: 55%; }
   .readout { flex: 1; min-width: 0; display: flex; align-items: flex-start; }
   .value {
     font-size: 52px; line-height: 0.92; font-weight: 600; letter-spacing: -0.035em;
@@ -9096,7 +9112,7 @@ class ClimateCard extends HTMLElement {
     // the glow: the mode's colour, fuller while it is actually heating or cooling
     const busy = ["heating", "cooling", "drying", "fan"].includes(a.hvac_action);
     stateGlow(c, el.card, on ? accent : null, busy ? 0.85 : 0.45);
-    lit(el.hero, on ? accent : null, busy ? 1 : 0.55);
+    if (this._compact) el.hero.removeAttribute("data-light"); else lit(el.hero, on ? accent : null, busy ? 1 : 0.55);
 
     text(el.name, c.name || c.title || a.friendly_name || title(c.entity.split(".")[1]));
     el.power.hidden = this._compact && this._modes.some((m) => m === "off");
@@ -10584,9 +10600,8 @@ const legacyAction = (a, entity) => {
 
 const STYLE = `${BASE_CSS}
   ha-card { --pad: 12px; display: flex; flex-direction: column; gap: 10px; padding: var(--pad); overflow: hidden; }
-  /* glass: no card in a card: the lit tile is the glass, the card around it clear */
-  :host(:not([hidden])) ha-card[data-glass] { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; border-color: transparent; box-shadow: none; }
-  ha-card[data-glass] .main { padding: 8px; border-radius: 18px; --lx: 30px; }
+  /* glass: one card, lit from the avatar: no tile inside it */
+  ha-card[data-glass] { --lx: calc(var(--pad) + 22px); --ly: calc(var(--pad) + 22px); }
   .main { --on: 0; --away: 0; display: flex; align-items: center; gap: 11px; min-width: 0;
     border-radius: 14px; margin: -4px; padding: 4px; cursor: pointer; transform-origin: 30% 50%; }
   .av { position: relative; flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--well);
@@ -10814,8 +10829,7 @@ class SavvyEntityCard extends SavvyCard {
     const mainCss = c.color ? colorOf(c.color) : "";
     stateGlow(c, el.card, active && !person ? toRgb(mainCss && !mainCss.startsWith("var(") ? mainCss : "#588EE9") : null, 0.8);
     if (c.design === "glass") {      // glass: the main entity is a lit tile; its own spring is the strength
-      el.main.toggleAttribute("data-light", true);
-      el.main.style.setProperty("--lc", (person ? [76, 175, 80] : toRgb(mainCss && !mainCss.startsWith("var(") ? mainCss : "#588EE9")).map(Math.round).join(" "));
+      lit(el.card, person ? (away ? [190, 196, 208] : [76, 175, 80]) : active ? toRgb(mainCss && !mainCss.startsWith("var(") ? mainCss : "#588EE9") : null, person && away ? 0.3 : 1);
     }
     this._mainAway.to(away, MOTION.ui);
     el.main.__st = st;
@@ -11269,6 +11283,7 @@ const STYLE = `${BASE_CSS}
   .tile { position: relative; container-type: inline-size; box-sizing: border-box; display: flex; flex-direction: column; gap: 5px; min-width: 0;
     padding: 10px; border-radius: calc(var(--radius) * 0.6); background: var(--well); text-align: start; transform-origin: 50% 50%; cursor: pointer; }
   .tile[data-missing], .tile[data-unavailable] { opacity: 0.55; }
+  ha-card[data-glass] .tile { --lx: 18px; --ly: 18px; }
   .tile .top { display: flex; align-items: center; gap: 6px; min-width: 0; }
   .tile .top ha-icon, .tile .top savvy-state-icon { --mdc-icon-size: 16px; display: flex; flex: none; color: var(--tile-lvl, var(--secondary-text-color)); }
   .tile .cap { min-width: 0; flex: 1; font-size: 13px; line-height: 16px; font-weight: 600; letter-spacing: -0.006em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -11481,6 +11496,11 @@ class SavvyGraphCard extends SavvyCard {
     if (!h || !this._el) return;
     this.toggleAttribute("dark", !!h.themes?.darkMode);
     this._renderTiles();
+    // glass: a tile throws the colour of its icon (its level colour; neutral and quiet without one)
+    if (this._config.design === "glass") for (const node of this._tiles.values()) {
+      const ic = node.querySelector(".top ha-icon, .top savvy-state-icon");
+      litFrom(node, ic, node.style.getPropertyValue("--tile-lvl") ? 0.9 : 0.4);
+    }
     if (this._first) { this._first = false; requestAnimationFrame(() => this._paintAll(null)); }
     this._wake();
   }
@@ -11975,7 +11995,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
     const { navigation_path, tap_action, hold_action, popup_button, popup_label, ...opts } = this._healthCfg() || {};
     this._healthSheet.setFooter(pageButton(this._healthCfg() || {}, "system health"));
     // the card's own corner glow would be cut by the title bar: the sheet draws it instead
-    card.setConfig({ ...opts, source: "all", max_rows: 30, title: " ", columns: 1, state_glow: false });
+    card.setConfig({ ...opts, source: "all", max_rows: 30, title: " ", columns: 1, state_glow: false, design: "plain" });
     this._healthSheet.body.replaceChildren(card);
     card.hass = this._hass;
     this._healthCard = card;
@@ -12714,7 +12734,7 @@ registerCard("savvy-last-check-card", SavvyLastCheckCard, "Last check",
 //   type: custom:savvy-lights-card
 //   area: living_room               (or areas: [...], or lights: [...])
 //   toggle: { entity: input_boolean.room_lights }   show_toggle: true
-//   featured: [light.ceiling]   order: [...]   exclude: [...]   chips: [...]
+//   featured: [light.ceiling]   order: [...]   include: [...]   exclude: [...]   chips: [...]
 //   order: with none of its own, a card takes the order of the first lights card for the same room that has one
 //   (read from the dashboard); sync_order: false keeps a card independent
 
@@ -13076,7 +13096,9 @@ class LightsCard extends HTMLElement {
     if (!c.areas.length || !h.entities) return [];
     this._found = c.areas.flatMap((a) => pick(h, areaEntities(h, a), { domains: "light" }));
     const exclude = new Set([].concat(c.exclude || []));
-    return this._found.filter((id) => !exclude.has(id) && h.states[id]);
+    // lights the registry hides from discovery (an integration's setting or diagnostic light) can be named
+    const also = [].concat(c.include || []).map((l) => (typeof l === "string" ? l : l.entity)).filter((id) => id && !this._found.includes(id));
+    return [...this._found, ...also].filter((id) => !exclude.has(id) && h.states[id]);
   }
 
   // An explicit order leads; then featured lights; then the rest by name. Anything the
@@ -13911,7 +13933,8 @@ const lightsOf = (hass, c) => {
   const areas = [].concat(c.area || c.areas || []).filter(Boolean);
   if (c.lights?.length) return [].concat(c.lights).map((l) => (typeof l === "string" ? l : l.entity));
   const skip = new Set([].concat(c.exclude || []));
-  const ids = areas.flatMap((a) => pick(hass, areaEntities(hass, a), { domains: "light" })).filter((id) => !skip.has(id));
+  const also = [].concat(c.include || []).map((l) => (typeof l === "string" ? l : l.entity)).filter((id) => id && hass.states[id]);
+  const ids = [...new Set([...areas.flatMap((a) => pick(hass, areaEntities(hass, a), { domains: "light" })), ...also])].filter((id) => !skip.has(id));
   return ids.sort((a, b) => (hass.states[a]?.attributes.friendly_name || a).localeCompare(hass.states[b]?.attributes.friendly_name || b));
 };
 
@@ -13931,6 +13954,7 @@ const EDITOR = defineEditor("savvy-lights-card", (hass, c) => [
     initial: (h, cfg) => (h ? lightsOf(h, cfg) : []), add: { selector: { entity: { domain: "light" } }, label: "Add a light" } },
   S.bool("sync_order", "Follow other cards", "Take the order from the first lights card for this room that has one, when this card has none.", true),
   { name: "featured", label: "Wide tiles", selector: { entity: { domain: "light", multiple: true } } },
+  { name: "include", label: "Also show", helper: "Lights that are not found by themselves, such as one an integration files under settings.", selector: { entity: { domain: "light", multiple: true } } },
   { name: "exclude", label: "Leave out", selector: { entity: { domain: "light", multiple: true } } },
   S.grid(S.number("columns", "Columns", 1, 6), S.bool("power_button", "Power buttons", null, false)),
   S.grid(S.bool("state_detail", "Brightness text", null, true), S.bool("color_background", "Tinted tiles", null, false)),
@@ -14685,7 +14709,8 @@ const STYLE = `${BASE_CSS}
   .tb[disabled] { opacity: 0.3; cursor: default; }
   .tb ha-icon { --mdc-icon-size: 20px; display: flex; }
   /* glass: a player's icon, name and buttons are one lit tile; its volume stays outside */
-  ha-card[data-glass] .row { padding: 8px 10px; border-radius: 15px; --lx: 28px; }
+  ha-card:not([data-compact]) .row { padding: 8px 10px; border-radius: 15px; background: color-mix(in oklab, var(--primary-text-color) 4%, transparent); }
+  ha-card[data-glass] .row { --lx: 28px; }
   .vol { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
   .vol .bar { position: absolute; left: 0; right: 0; top: 50%; height: 9px; margin-top: -4.5px; border-radius: 99px; background: var(--well); overflow: hidden; transform-origin: 50% 50%; }
   .vol .mute { flex: none; display: grid; place-items: center; width: 34px; height: 32px; border-radius: 10px; color: var(--secondary-text-color); }
@@ -15138,7 +15163,7 @@ class SavvyMediaCard extends SavvyCard {
     const accent = getComputedStyle(el.card).getPropertyValue("--accent").trim().split(/\s+/).map(Number);
     for (const r of this.shadowRoot.querySelectorAll(".row")) {
       const live = r.querySelector(".icon[data-live]") || r.querySelector("[data-on]");
-      lit(r, live ? accent : null, playing ? 1 : 0.55);
+      if (this._compact) r.removeAttribute("data-light"); else lit(r, live ? accent : null, playing ? 1 : 0.55);
     }
     const labels = c.labels || {};
     for (const [key, node] of [["video", el.videoCap], ["audio", el.audioCap]]) {

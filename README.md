@@ -133,6 +133,22 @@ lit colour light, like the room tile), and shows nothing when it is idle. Turn t
 them with `design: { state_glow: false }` in the settings card. The cards also have smooth, tactile
 animations, light and dark themes, and honour reduced motion.
 
+### Glass
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/glass-light.png"><img src="docs/images/glass-dark.png" width="760" alt="The Savvy cards in the glass design"></picture>
+
+An optional second design. Cards get a frosted surface, and everything that is on is a light source: the
+icon of a lit light, a person at home, a playing speaker, a cooling thermostat throws its colour into its
+own tile, brightest at the icon and fading with distance, with a thin rim light on the tile's nearest edge.
+The light is the tile's own layer, so it shows on a plain black dashboard too; the frosted blur needs a
+background behind the cards (a wallpaper or a soft gradient) to show. A lamp throws more light the
+brighter it is.
+
+Turn it on for every card with `design: { style: glass }` in the [settings card](#savvy-settings), or for
+one card with `design: glass` (`design: plain` on a card keeps it plain when the dashboard is glass). It
+switches itself off for people who ask their device for reduced transparency. Without it, nothing changes:
+`plain` is the default.
+
 ## Cards
 
 | Card | What it shows | Type |
@@ -192,7 +208,7 @@ it is too wide.
 | `admin_only` | list or boolean | from the settings | Kept from people who are not administrators: `health_cog` (the cog, its count and its popup) and `health_badges` (the count on the cog; the cog stays). `true` is both, `false` hides nothing even when the settings list something. Nothing is hidden unless it is listed here or in the settings. |
 | `lights`, `climate`, `media`, `security` | object or `false` | on | The four counting chips, see below. |
 | `room_order` | list of areas | by name | Order of rooms in the popups. A chip's own `room_order` wins. |
-| `design` | object | none | `state_glow: false` turns the corner glow off on every card; a card's own `state_glow` still wins. |
+| `design` | object | none | `style: glass` turns on the [glass design](#glass) for every card (a card's own `design` wins); `state_glow: false` turns the corner glow off on every card; a card's own `state_glow` still wins. |
 | `aggregate` | `true` or list of kinds | off | Show each room's presence sensors once. See [Aggregate sensors](#aggregate-sensors). |
 | `chips` | chips | none | Your own chips after the four. |
 | `title` | string | none | A line at the top of the card. |
@@ -497,6 +513,7 @@ for warmth and colour. The pill at the top switches the room, or an entity of yo
 | `order` | list of lights | by name | Listed lights come first, in this order. With none, the card takes the `order` of the first lights card for the same room that has one, wherever it is on the dashboard (the editor says which, with an **Unlink** button). |
 | `sync_order` | boolean | `true` | `false`: never take another card's order. |
 | `featured` | list of lights | none | Lights that get a wide tile. |
+| `include` | list of lights | none | Lights to show besides the area's, such as one an integration files as a setting or diagnostic entity, which discovery skips. |
 | `exclude` | list of lights | none | Lights left out. |
 | `show_header` | boolean | `true` | The title row. |
 | `show_toggle` | boolean | `true` | The on/off pill. |
@@ -1585,6 +1602,10 @@ rooms:
 ---
 
 ## Shared options
+
+### Design
+
+Every card takes `design: glass` or `design: plain`. Empty follows the dashboard's `design.style` in the [settings card](#savvy-settings); plain is the default. See [Glass](#glass).
 
 ### Chips
 

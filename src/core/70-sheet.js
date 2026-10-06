@@ -49,13 +49,13 @@ const SHEET_CSS = `
     background: radial-gradient(140% 110% at 0% 0%, rgb(var(--glow-rgb, var(--accent)) / calc(var(--glow, 0) * 0.1)), transparent 66%); }
   /* design: glass, in a popup: the same frosted surface, rows lit like the card's */
   .sv-sheet[data-glass] {
-    --glass-edge: rgb(255 255 255 / 0.14); --glass-hi: rgb(255 255 255 / 0.2); --glass-tile: rgb(255 255 255 / 0.05); --glass-tile-edge: rgb(255 255 255 / 0.07); --lblend: plus-lighter;
-    background: linear-gradient(155deg, rgb(58 58 66 / 0.6), rgb(22 22 26 / 0.62));
+    --glass-edge: rgb(255 255 255 / 0.14); --glass-hi: rgb(255 255 255 / 0.2); --glass-tile: rgb(255 255 255 / 0.075); --glass-tile-edge: rgb(255 255 255 / 0.09); --lblend: plus-lighter;
+    background: linear-gradient(155deg, rgb(46 46 54 / 0.64), rgb(14 14 18 / 0.7));
     -webkit-backdrop-filter: blur(30px) saturate(1.6); backdrop-filter: blur(30px) saturate(1.6);
     box-shadow: inset 0 1px 0 var(--glass-hi), 0 0 0 1px var(--glass-edge), 0 18px 50px rgb(0 0 0 / 0.4);
   }
   .sv-sheet[data-glass]:not([dark]) {
-    --glass-edge: rgb(255 255 255 / 0.8); --glass-hi: rgb(255 255 255 / 0.95); --glass-tile: rgb(255 255 255 / 0.5); --glass-tile-edge: rgb(255 255 255 / 0.7); --lblend: normal;
+    --glass-edge: rgb(255 255 255 / 0.8); --glass-hi: rgb(255 255 255 / 0.95); --glass-tile: rgb(255 255 255 / 0.72); --glass-tile-edge: rgb(255 255 255 / 0.85); --lblend: normal;
     background: linear-gradient(155deg, rgb(255 255 255 / 0.72), rgb(255 255 255 / 0.5));
   }
   ${GLASS_LIT('.sv-sheet[data-glass]', '.sv-sheet[data-glass]:not([dark])')}

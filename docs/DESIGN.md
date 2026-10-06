@@ -256,6 +256,14 @@ defined once (`DESIGN_TOKENS` in `core/00-base.js`, repeated on the popup sheet)
 spec `design-language` fails a card that draws a badge or control outside them.
 The room tile's liquid drop is a badge of its own (L, 44) and keeps its look.
 
+**Glass (optional).** `design: glass` is one attribute on the card surface (`data-glass`) and one idea:
+anything marked `data-light` is a light source, `lit(el, rgb, level)` sets its colour (`--lc`) and strength
+(`--on`), and `--lx --ly` is where the source sits (the icon's centre). Three layers per tile: a wide ambient
+bleed that falls off with distance, a tight core, and a rim light masked to the border, all blended
+additively (`plus-lighter`, `normal` on a light theme) so the light shows on pure black. A card whose own
+surface is the tile (the entity card) lights the card itself. Popups carry the same surface and light.
+Glass adds a material and a little tile padding; the tiles it lights (the thermostat target, a player row) are also tiles in plain.
+
 **Tones.** A badge or control is the well (6% of the text colour) when idle, 16% of its
 state colour when on (`--mix-on`), 18% of amber or red when it is an alert
 (`--mix-alert`). No card picks its own percentages.

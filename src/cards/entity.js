@@ -25,9 +25,8 @@ const legacyAction = (a, entity) => {
 
 const STYLE = `${BASE_CSS}
   ha-card { --pad: 12px; display: flex; flex-direction: column; gap: 10px; padding: var(--pad); overflow: hidden; }
-  /* glass: no card in a card: the lit tile is the glass, the card around it clear */
-  :host(:not([hidden])) ha-card[data-glass] { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; border-color: transparent; box-shadow: none; }
-  ha-card[data-glass] .main { padding: 8px; border-radius: 18px; --lx: 30px; }
+  /* glass: one card, lit from the avatar: no tile inside it */
+  ha-card[data-glass] { --lx: calc(var(--pad) + 22px); --ly: calc(var(--pad) + 22px); }
   .main { --on: 0; --away: 0; display: flex; align-items: center; gap: 11px; min-width: 0;
     border-radius: 14px; margin: -4px; padding: 4px; cursor: pointer; transform-origin: 30% 50%; }
   .av { position: relative; flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--well);
@@ -255,8 +254,7 @@ class SavvyEntityCard extends SavvyCard {
     const mainCss = c.color ? colorOf(c.color) : "";
     stateGlow(c, el.card, active && !person ? toRgb(mainCss && !mainCss.startsWith("var(") ? mainCss : "#588EE9") : null, 0.8);
     if (c.design === "glass") {      // glass: the main entity is a lit tile; its own spring is the strength
-      el.main.toggleAttribute("data-light", true);
-      el.main.style.setProperty("--lc", (person ? [76, 175, 80] : toRgb(mainCss && !mainCss.startsWith("var(") ? mainCss : "#588EE9")).map(Math.round).join(" "));
+      lit(el.card, person ? (away ? [190, 196, 208] : [76, 175, 80]) : active ? toRgb(mainCss && !mainCss.startsWith("var(") ? mainCss : "#588EE9") : null, person && away ? 0.3 : 1);
     }
     this._mainAway.to(away, MOTION.ui);
     el.main.__st = st;

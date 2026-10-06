@@ -236,14 +236,15 @@ const GLOW_CSS = `
 const GLASS_LIT = (R, L = ':host(:not([dark])) ' + R) => `
   ${R} [data-light] { --lx: 28px; --ly: 50%; position: relative; isolation: isolate; background: var(--glass-tile); box-shadow: inset 0 0 0 1px var(--glass-tile-edge); }
   ${L} [data-light] { box-shadow: inset 0 0 0 1px var(--glass-tile-edge), 0 1px 3px rgb(40 50 90 / 0.08); }
-  ${R} [data-light]::before {
+  ${R} [data-light]::before, ${R}[data-light]::before {
     content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; corner-shape: inherit; pointer-events: none;
     background:
       radial-gradient(circle 34px at var(--lx) var(--ly), rgb(var(--lc, 128 128 128) / 0.34), transparent),
       radial-gradient(ellipse 150% 260% at var(--lx) var(--ly), rgb(var(--lc, 128 128 128) / 0.25), rgb(var(--lc, 128 128 128) / 0.1) 34%, rgb(var(--lc, 128 128 128) / 0.03) 66%, transparent 100%);
     mix-blend-mode: var(--lblend); opacity: var(--on, 0); transition: opacity 360ms ease;
   }
-  ${R} [data-light]::after {
+  ${R}[data-light] { --lx: 28px; --ly: 50%; }
+  ${R} [data-light]::after, ${R}[data-light]::after {
     content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; corner-shape: inherit; padding: 1px; pointer-events: none;
     background: radial-gradient(circle 170px at var(--lx) var(--ly), rgb(var(--lc, 128 128 128) / 0.58), rgb(var(--lc, 128 128 128) / 0.17) 42%, transparent 100%);
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
@@ -253,17 +254,17 @@ const GLASS_LIT = (R, L = ':host(:not([dark])) ' + R) => `
 `;
 const GLASS_CSS = `
   ha-card[data-glass] {
-    --glass-tint: rgb(255 255 255 / 0.06); --glass-edge: rgb(255 255 255 / 0.13); --glass-hi: rgb(255 255 255 / 0.2);
-    --glass-tile: rgb(255 255 255 / 0.045); --glass-tile-edge: rgb(255 255 255 / 0.06); --lblend: plus-lighter;
-    background: linear-gradient(155deg, rgb(255 255 255 / 0.1), var(--glass-tint) 55%, rgb(255 255 255 / 0.03));
+    --glass-tint: rgb(255 255 255 / 0.03); --glass-edge: rgb(255 255 255 / 0.12); --glass-hi: rgb(255 255 255 / 0.18);
+    --glass-tile: rgb(255 255 255 / 0.075); --glass-tile-edge: rgb(255 255 255 / 0.09); --lblend: plus-lighter;
+    background: linear-gradient(155deg, rgb(255 255 255 / 0.07), var(--glass-tint) 55%, rgb(255 255 255 / 0.01)), linear-gradient(rgb(0 0 0 / 0.26), rgb(0 0 0 / 0.26));
     -webkit-backdrop-filter: blur(26px) saturate(1.6); backdrop-filter: blur(26px) saturate(1.6);
     border-color: var(--glass-edge);
     box-shadow: inset 0 1px 0 var(--glass-hi), 0 12px 32px rgb(0 0 0 / 0.28);
   }
   :host(:not([dark])) ha-card[data-glass] {
-    --glass-tint: rgb(255 255 255 / 0.4); --glass-edge: rgb(255 255 255 / 0.75); --glass-hi: rgb(255 255 255 / 0.95);
-    --glass-tile: rgb(255 255 255 / 0.5); --glass-tile-edge: rgb(255 255 255 / 0.7); --lblend: normal;
-    background: linear-gradient(155deg, rgb(255 255 255 / 0.62), var(--glass-tint) 60%, rgb(255 255 255 / 0.3));
+    --glass-tint: rgb(255 255 255 / 0.28); --glass-edge: rgb(255 255 255 / 0.75); --glass-hi: rgb(255 255 255 / 0.95);
+    --glass-tile: rgb(255 255 255 / 0.72); --glass-tile-edge: rgb(255 255 255 / 0.85); --lblend: normal;
+    background: linear-gradient(155deg, rgb(255 255 255 / 0.48), var(--glass-tint) 60%, rgb(255 255 255 / 0.2));
     box-shadow: inset 0 1px 0 var(--glass-hi), 0 10px 28px rgb(40 50 90 / 0.14);
   }
   ${GLASS_LIT('ha-card[data-glass]')}

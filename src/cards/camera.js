@@ -131,6 +131,7 @@ ha-card {
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
   pointer-events: none;
 }
+${GLASS_CSS}
 
 /* ---------- stage: pager (one camera) or grid (all cameras) ---------- */
 .stage { position: relative; user-select: none; -webkit-user-select: none; }

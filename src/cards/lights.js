@@ -6,7 +6,7 @@
 //   type: custom:savvy-lights-card
 //   area: living_room               (or areas: [...], or lights: [...])
 //   toggle: { entity: input_boolean.room_lights }   show_toggle: true
-//   featured: [light.ceiling]   order: [...]   exclude: [...]   chips: [...]
+//   featured: [light.ceiling]   order: [...]   include: [...]   exclude: [...]   chips: [...]
 //   order: with none of its own, a card takes the order of the first lights card for the same room that has one
 //   (read from the dashboard); sync_order: false keeps a card independent
 
@@ -368,7 +368,9 @@ class LightsCard extends HTMLElement {
     if (!c.areas.length || !h.entities) return [];
     this._found = c.areas.flatMap((a) => pick(h, areaEntities(h, a), { domains: "light" }));
     const exclude = new Set([].concat(c.exclude || []));
-    return this._found.filter((id) => !exclude.has(id) && h.states[id]);
+    // lights the registry hides from discovery (an integration's setting or diagnostic light) can be named
+    const also = [].concat(c.include || []).map((l) => (typeof l === "string" ? l : l.entity)).filter((id) => id && !this._found.includes(id));
+    return [...this._found, ...also].filter((id) => !exclude.has(id) && h.states[id]);
   }
 
   // An explicit order leads; then featured lights; then the rest by name. Anything the
@@ -1203,7 +1205,8 @@ const lightsOf = (hass, c) => {
   const areas = [].concat(c.area || c.areas || []).filter(Boolean);
   if (c.lights?.length) return [].concat(c.lights).map((l) => (typeof l === "string" ? l : l.entity));
   const skip = new Set([].concat(c.exclude || []));
-  const ids = areas.flatMap((a) => pick(hass, areaEntities(hass, a), { domains: "light" })).filter((id) => !skip.has(id));
+  const also = [].concat(c.include || []).map((l) => (typeof l === "string" ? l : l.entity)).filter((id) => id && hass.states[id]);
+  const ids = [...new Set([...areas.flatMap((a) => pick(hass, areaEntities(hass, a), { domains: "light" })), ...also])].filter((id) => !skip.has(id));
   return ids.sort((a, b) => (hass.states[a]?.attributes.friendly_name || a).localeCompare(hass.states[b]?.attributes.friendly_name || b));
 };
 
@@ -1223,6 +1226,7 @@ const EDITOR = defineEditor("savvy-lights-card", (hass, c) => [
     initial: (h, cfg) => (h ? lightsOf(h, cfg) : []), add: { selector: { entity: { domain: "light" } }, label: "Add a light" } },
   S.bool("sync_order", "Follow other cards", "Take the order from the first lights card for this room that has one, when this card has none.", true),
   { name: "featured", label: "Wide tiles", selector: { entity: { domain: "light", multiple: true } } },
+  { name: "include", label: "Also show", helper: "Lights that are not found by themselves, such as one an integration files under settings.", selector: { entity: { domain: "light", multiple: true } } },
   { name: "exclude", label: "Leave out", selector: { entity: { domain: "light", multiple: true } } },
   S.grid(S.number("columns", "Columns", 1, 6), S.bool("power_button", "Power buttons", null, false)),
   S.grid(S.bool("state_detail", "Brightness text", null, true), S.bool("color_background", "Tinted tiles", null, false)),

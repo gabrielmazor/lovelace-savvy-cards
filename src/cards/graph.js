@@ -91,6 +91,7 @@ const STYLE = `${BASE_CSS}
   .tile { position: relative; container-type: inline-size; box-sizing: border-box; display: flex; flex-direction: column; gap: 5px; min-width: 0;
     padding: 10px; border-radius: calc(var(--radius) * 0.6); background: var(--well); text-align: start; transform-origin: 50% 50%; cursor: pointer; }
   .tile[data-missing], .tile[data-unavailable] { opacity: 0.55; }
+  ha-card[data-glass] .tile { --lx: 18px; --ly: 18px; }
   .tile .top { display: flex; align-items: center; gap: 6px; min-width: 0; }
   .tile .top ha-icon, .tile .top savvy-state-icon { --mdc-icon-size: 16px; display: flex; flex: none; color: var(--tile-lvl, var(--secondary-text-color)); }
   .tile .cap { min-width: 0; flex: 1; font-size: 13px; line-height: 16px; font-weight: 600; letter-spacing: -0.006em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -303,6 +304,11 @@ class SavvyGraphCard extends SavvyCard {
     if (!h || !this._el) return;
     this.toggleAttribute("dark", !!h.themes?.darkMode);
     this._renderTiles();
+    // glass: a tile throws the colour of its icon (its level colour; neutral and quiet without one)
+    if (this._config.design === "glass") for (const node of this._tiles.values()) {
+      const ic = node.querySelector(".top ha-icon, .top savvy-state-icon");
+      litFrom(node, ic, node.style.getPropertyValue("--tile-lvl") ? 0.9 : 0.4);
+    }
     if (this._first) { this._first = false; requestAnimationFrame(() => this._paintAll(null)); }
     this._wake();
   }

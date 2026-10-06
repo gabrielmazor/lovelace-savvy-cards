@@ -162,7 +162,7 @@ class SavvyHomeHeaderCard extends SavvyCard {
     const { navigation_path, tap_action, hold_action, popup_button, popup_label, ...opts } = this._healthCfg() || {};
     this._healthSheet.setFooter(pageButton(this._healthCfg() || {}, "system health"));
     // the card's own corner glow would be cut by the title bar: the sheet draws it instead
-    card.setConfig({ ...opts, source: "all", max_rows: 30, title: " ", columns: 1, state_glow: false });
+    card.setConfig({ ...opts, source: "all", max_rows: 30, title: " ", columns: 1, state_glow: false, design: "plain" });
     this._healthSheet.body.replaceChildren(card);
     card.hass = this._hass;
     this._healthCard = card;
