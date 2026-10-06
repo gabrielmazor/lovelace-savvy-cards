@@ -198,8 +198,9 @@ header { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .power ha-icon { --mdc-icon-size: 18px; display: flex; }
 
 
+ha-card[data-glass] .light { --lx: 28px; --ly: 28px; }   /* the middle of the icon: tile padding 10 + half the 36 orb */
 /* ---- compact: the light, its name and its state, and nothing else ---- */
-ha-card[data-compact] .light { padding: 8px 10px; border-radius: 13px; --lx: 24px; }
+ha-card[data-compact] .light { padding: 8px 10px; border-radius: 13px; --lx: 24px; --ly: 50%; }
 ha-card[data-compact] .orb { width: var(--b-s); height: var(--b-s); }
 ha-card[data-compact] .orb ha-icon, ha-card[data-compact] .orb savvy-state-icon { --mdc-icon-size: 16px; }
 ha-card[data-compact] .meta .n { font-size: 13px; line-height: 16px; }

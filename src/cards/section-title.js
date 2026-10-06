@@ -20,6 +20,8 @@ const STYLE = `${BASE_CSS}
   ha-card { --mode: var(--secondary-text-color); display: block; background: none; border: 0; box-shadow: none;
     padding: 6px 4px 2px; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
   ha-card::after { display: none; }
+  /* glass: a plain title stays clear, with no surface (a filled one keeps its glass) */
+  :host ha-card[data-glass]:not([data-filled]) { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; border: 0; box-shadow: none; }
   ha-card[data-filled] { padding: 12px 14px; border-radius: var(--radius);
     border: var(--ha-card-border-width, 1px) solid var(--ha-card-border-color, var(--line));
     background: var(--ha-card-background, var(--card-background-color)); box-shadow: var(--ha-card-box-shadow, none); }
@@ -163,6 +165,7 @@ class SavvySectionTitleCard extends SavvyCard {
   _update() {
     const h = this._hass, c = this._config, el = this._el;
     if (!h || !el) return;
+    this.toggleAttribute("dark", !!h.themes?.darkMode);
     const area = c.area ? areaInfo(h, c.area) : null;
     text(el.name, c.name || area?.name || "");
     const icon = c.icon ?? area?.icon;

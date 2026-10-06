@@ -43,6 +43,7 @@ const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_SLIDE_CSS}
   .locks { display: flex; flex-direction: column; gap: 12px; }
   /* glass: each lock is a lit tile, the light at its disc */
   ha-card[data-glass] .lk { padding: 8px; border-radius: 22px; --lx: 30px; --ly: 30px; }
+  :host([data-solo]) ha-card[data-glass] .lk { --lx: 34px; --ly: 34px; }
   .lk { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
   .top { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 4px 8px 4px 4px; border-radius: 32px; }
   .who { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; text-align: start; border-radius: 12px; cursor: pointer; }

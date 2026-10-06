@@ -25,6 +25,8 @@ const legacyAction = (a, entity) => {
 
 const STYLE = `${BASE_CSS}
   ha-card { --pad: 12px; display: flex; flex-direction: column; gap: 10px; padding: var(--pad); overflow: hidden; }
+  /* glass: no card in a card: the lit tile is the glass, the card around it clear */
+  :host(:not([hidden])) ha-card[data-glass] { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; border-color: transparent; box-shadow: none; }
   ha-card[data-glass] .main { padding: 8px; border-radius: 18px; --lx: 30px; }
   .main { --on: 0; --away: 0; display: flex; align-items: center; gap: 11px; min-width: 0;
     border-radius: 14px; margin: -4px; padding: 4px; cursor: pointer; transform-origin: 30% 50%; }

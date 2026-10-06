@@ -60,6 +60,7 @@ const STYLE = `${BASE_CSS}
   /* glass: every person is a lit tile, the content a little smaller */
   ha-card[data-glass] .list { gap: 6px; }
   ha-card[data-glass] .p { padding: 6px 10px 6px 6px; border-radius: 16px; min-height: 0; --lx: 28px; }
+  :host([data-dir="horizontal"]:not([data-compact])) ha-card[data-glass] .p { --ly: 26px; }
   ha-card[data-glass] .av { width: 40px; height: 40px; font-size: 15px; }
   :host([data-dir="horizontal"]:not([data-compact])) ha-card[data-glass] .chipz { padding-inline-start: 50px; }
   :host([data-compact]) ha-card[data-glass] .p { padding: 6px 8px; --lx: 50%; --ly: 26px; }

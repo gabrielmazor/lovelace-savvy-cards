@@ -2500,7 +2500,7 @@ const SHEET_CSS = `
   }
   ${GLASS_LIT('.sv-sheet[data-glass]', '.sv-sheet[data-glass]:not([dark])')}
   .sv-sheet[data-glass] .sv-rows, ha-card[data-glass] .sv-rows { gap: 6px; }
-  .sv-sheet[data-glass] .sv-row[data-light], ha-card[data-glass] .sv-row[data-light] { padding: 2px 6px; border-radius: 16px; --lx: 28px; --ly: 25px; }
+  .sv-sheet[data-glass] .sv-row[data-light], ha-card[data-glass] .sv-row[data-light] { padding: 2px 6px; border-radius: 16px; --lx: 28px; --ly: 24px; }
   @media (prefers-reduced-transparency: reduce) { .sv-sheet[data-glass] { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--ha-card-background, var(--card-background-color, #fff)); } }
   .sv-sheet[data-wide] { width: min(560px, calc(100vw - 32px)); max-height: min(720px, calc(100vh - 48px)); }
   @supports (corner-shape: squircle) { .sv-sheet { corner-shape: squircle; border-radius: 36px; } }
@@ -10584,6 +10584,8 @@ const legacyAction = (a, entity) => {
 
 const STYLE = `${BASE_CSS}
   ha-card { --pad: 12px; display: flex; flex-direction: column; gap: 10px; padding: var(--pad); overflow: hidden; }
+  /* glass: no card in a card: the lit tile is the glass, the card around it clear */
+  :host(:not([hidden])) ha-card[data-glass] { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; border-color: transparent; box-shadow: none; }
   ha-card[data-glass] .main { padding: 8px; border-radius: 18px; --lx: 30px; }
   .main { --on: 0; --away: 0; display: flex; align-items: center; gap: 11px; min-width: 0;
     border-radius: 14px; margin: -4px; padding: 4px; cursor: pointer; transform-origin: 30% 50%; }
@@ -12904,8 +12906,9 @@ header { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .power ha-icon { --mdc-icon-size: 18px; display: flex; }
 
 
+ha-card[data-glass] .light { --lx: 28px; --ly: 28px; }   /* the middle of the icon: tile padding 10 + half the 36 orb */
 /* ---- compact: the light, its name and its state, and nothing else ---- */
-ha-card[data-compact] .light { padding: 8px 10px; border-radius: 13px; --lx: 24px; }
+ha-card[data-compact] .light { padding: 8px 10px; border-radius: 13px; --lx: 24px; --ly: 50%; }
 ha-card[data-compact] .orb { width: var(--b-s); height: var(--b-s); }
 ha-card[data-compact] .orb ha-icon, ha-card[data-compact] .orb savvy-state-icon { --mdc-icon-size: 16px; }
 ha-card[data-compact] .meta .n { font-size: 13px; line-height: 16px; }
@@ -13988,6 +13991,7 @@ const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_SLIDE_CSS}
   .locks { display: flex; flex-direction: column; gap: 12px; }
   /* glass: each lock is a lit tile, the light at its disc */
   ha-card[data-glass] .lk { padding: 8px; border-radius: 22px; --lx: 30px; --ly: 30px; }
+  :host([data-solo]) ha-card[data-glass] .lk { --lx: 34px; --ly: 34px; }
   .lk { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
   .top { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 4px 8px 4px 4px; border-radius: 32px; }
   .who { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; text-align: start; border-radius: 12px; cursor: pointer; }
@@ -15643,6 +15647,7 @@ const STYLE = `${BASE_CSS}
   /* glass: every person is a lit tile, the content a little smaller */
   ha-card[data-glass] .list { gap: 6px; }
   ha-card[data-glass] .p { padding: 6px 10px 6px 6px; border-radius: 16px; min-height: 0; --lx: 28px; }
+  :host([data-dir="horizontal"]:not([data-compact])) ha-card[data-glass] .p { --ly: 26px; }
   ha-card[data-glass] .av { width: 40px; height: 40px; font-size: 15px; }
   :host([data-dir="horizontal"]:not([data-compact])) ha-card[data-glass] .chipz { padding-inline-start: 50px; }
   :host([data-compact]) ha-card[data-glass] .p { padding: 6px 8px; --lx: 50%; --ly: 26px; }
@@ -17895,6 +17900,8 @@ const STYLE = `${BASE_CSS}
   ha-card { --mode: var(--secondary-text-color); display: block; background: none; border: 0; box-shadow: none;
     padding: 6px 4px 2px; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
   ha-card::after { display: none; }
+  /* glass: a plain title stays clear, with no surface (a filled one keeps its glass) */
+  :host ha-card[data-glass]:not([data-filled]) { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; border: 0; box-shadow: none; }
   ha-card[data-filled] { padding: 12px 14px; border-radius: var(--radius);
     border: var(--ha-card-border-width, 1px) solid var(--ha-card-border-color, var(--line));
     background: var(--ha-card-background, var(--card-background-color)); box-shadow: var(--ha-card-box-shadow, none); }
@@ -18038,6 +18045,7 @@ class SavvySectionTitleCard extends SavvyCard {
   _update() {
     const h = this._hass, c = this._config, el = this._el;
     if (!h || !el) return;
+    this.toggleAttribute("dark", !!h.themes?.darkMode);
     const area = c.area ? areaInfo(h, c.area) : null;
     text(el.name, c.name || area?.name || "");
     const icon = c.icon ?? area?.icon;
