@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.17.3
+
+- **Vacuum:** the routine buttons are as wide as each other and sit on the same columns as the tiles below them
+  (they were sized by their words, so they came out different widths and off the grid).
+
 ## 0.17.2
 
 - **Entity:** a tap on the main entity now does what the entity does: toggles a light, switch, fan or
