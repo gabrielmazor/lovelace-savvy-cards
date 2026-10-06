@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.18.1 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.18.2 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.18.1";
+const SAVVY_VERSION = "0.18.2";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -239,9 +239,42 @@ const GLOW_CSS = `
 // --lc, --on). The source sits at --lx --ly (the icon). A broad ambient bleed falls off with distance, a tighter
 // core gives depth, and a rim light brightens the edge nearest the source. The colour mixes additively
 // (plus-lighter) so it shows on pure black too: a lit tile is a faintly lifted matte surface for it to land on.
-const GLASS_LIT = (R, L = ':host(:not([dark])) ' + R) => `
-  ${R} [data-light] { --lx: 28px; --ly: 50%; position: relative; isolation: isolate; background: var(--glass-tile); box-shadow: inset 0 0 0 1px var(--glass-tile-edge); }
-  ${L} [data-light] { box-shadow: inset 0 0 0 1px var(--glass-tile-edge), 0 1px 3px rgb(40 50 90 / 0.08); }
+// The glass material, after the way Apple's liquid glass reads: a tinted body (so it never melts into what is behind
+// it), a bright specular sheen from the top-left, a rim lit at the top-left and the bottom-right and dim between,
+// an inner glow towards the edges, saturated and slightly brightened backdrop, deep soft shadows, and a soft
+// highlight that follows the pointer. The body, the rim and the pointer highlight are one layered background
+// (`--g-bg`), so every glass surface (a card, a popup, a menu) takes the same variables.
+const glassVars = (dark, d = 0) => dark ? `
+    --g-spec: radial-gradient(240px circle at var(--px, 50%) var(--py, 0%), rgb(255 255 255 / calc(var(--pa, 0) * 0.16)), transparent 70%);
+    --g-bg: var(--g-spec) padding-box,
+      linear-gradient(135deg, rgb(255 255 255 / 0.17), rgb(255 255 255 / 0.05) 36%, rgb(255 255 255 / 0) 62%) padding-box,
+      radial-gradient(ellipse 110% 80% at 100% 100%, rgb(255 255 255 / 0.07), transparent 62%) padding-box,
+      linear-gradient(180deg, rgb(30 34 52 / ${0.5 + d}), rgb(14 17 28 / ${0.58 + d})) padding-box,
+      linear-gradient(135deg, rgb(255 255 255 / 0.62), rgb(255 255 255 / 0.1) 26%, rgb(255 255 255 / 0.03) 52%, rgb(255 255 255 / 0.24)) border-box;
+    --g-shadow: inset 0 1px 0 rgb(255 255 255 / 0.3), inset 0 -1px 0 rgb(255 255 255 / 0.05), inset 0 0 26px rgb(255 255 255 / 0.05), 0 22px 44px -14px rgb(0 0 0 / 0.6), 0 3px 8px rgb(0 0 0 / 0.28);
+    --g-filter: saturate(1.9) brightness(1.06) blur(22px);
+    --glass-tile: linear-gradient(180deg, rgb(255 255 255 / 0.13), rgb(255 255 255 / 0.05));
+    --glass-tile-shadow: inset 0 1px 0 rgb(255 255 255 / 0.24), inset 0 0 0 1px rgb(255 255 255 / 0.07), inset 0 -10px 16px -10px rgb(255 255 255 / 0.06), 0 6px 12px -6px rgb(0 0 0 / 0.4);
+    --lblend: plus-lighter;` : `
+    --g-spec: radial-gradient(240px circle at var(--px, 50%) var(--py, 0%), rgb(255 255 255 / calc(var(--pa, 0) * 0.5)), transparent 70%);
+    --g-bg: var(--g-spec) padding-box,
+      linear-gradient(135deg, rgb(255 255 255 / 0.8), rgb(255 255 255 / 0.2) 38%, rgb(255 255 255 / 0) 64%) padding-box,
+      linear-gradient(180deg, rgb(255 255 255 / ${0.5 + d}), rgb(236 241 252 / ${0.42 + d})) padding-box,
+      linear-gradient(135deg, #fff, rgb(255 255 255 / 0.3) 30%, rgb(255 255 255 / 0.12) 56%, rgb(255 255 255 / 0.85)) border-box;
+    --g-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 rgb(255 255 255 / 0.5), inset 0 0 24px rgb(255 255 255 / 0.35), 0 20px 40px -14px rgb(50 60 110 / 0.3), 0 2px 6px rgb(50 60 110 / 0.1);
+    --g-filter: saturate(1.8) brightness(1.04) blur(22px);
+    --glass-tile: linear-gradient(180deg, rgb(255 255 255 / 0.86), rgb(255 255 255 / 0.56));
+    --glass-tile-shadow: inset 0 1px 0 #fff, inset 0 0 0 1px rgb(255 255 255 / 0.75), 0 6px 14px -6px rgb(50 60 110 / 0.24);
+    --lblend: normal;`;
+const glassSurface = (R, darkSel, lightSel, d = 0) => `
+  ${R} { ${glassVars(true, d)}
+    background: var(--g-bg); border: 1px solid transparent;
+    -webkit-backdrop-filter: var(--g-filter); backdrop-filter: var(--g-filter); box-shadow: var(--g-shadow); }
+  ${lightSel} { ${glassVars(false, d)} }
+  @media (prefers-reduced-transparency: reduce) { ${R} { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--ha-card-background, var(--card-background-color, #fff)); } }
+`;
+const GLASS_LIT = (R) => `
+  ${R} [data-light] { --lx: 28px; --ly: 50%; position: relative; isolation: isolate; background: var(--glass-tile); box-shadow: var(--glass-tile-shadow); }
   ${R} [data-light]::before, ${R}[data-light]::before {
     content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; corner-shape: inherit; pointer-events: none;
     background:
@@ -258,25 +291,8 @@ const GLASS_LIT = (R, L = ':host(:not([dark])) ' + R) => `
     mix-blend-mode: var(--lblend); opacity: var(--on, 0); transition: opacity 360ms ease;
   }
 `;
-const GLASS_CSS = `
-  ha-card[data-glass] {
-    --glass-tint: rgb(255 255 255 / 0.03); --glass-edge: rgb(255 255 255 / 0.12); --glass-hi: rgb(255 255 255 / 0.18);
-    --glass-tile: rgb(255 255 255 / 0.075); --glass-tile-edge: rgb(255 255 255 / 0.09); --lblend: plus-lighter;
-    background: linear-gradient(155deg, rgb(255 255 255 / 0.07), var(--glass-tint) 55%, rgb(255 255 255 / 0.01)), linear-gradient(rgb(0 0 0 / 0.26), rgb(0 0 0 / 0.26));
-    -webkit-backdrop-filter: blur(26px) saturate(1.6); backdrop-filter: blur(26px) saturate(1.6);
-    border-color: var(--glass-edge);
-    box-shadow: inset 0 1px 0 var(--glass-hi), 0 12px 32px rgb(0 0 0 / 0.28);
-  }
-  :host(:not([dark])) ha-card[data-glass] {
-    --glass-tint: rgb(255 255 255 / 0.28); --glass-edge: rgb(255 255 255 / 0.75); --glass-hi: rgb(255 255 255 / 0.95);
-    --glass-tile: rgb(255 255 255 / 0.72); --glass-tile-edge: rgb(255 255 255 / 0.85); --lblend: normal;
-    background: linear-gradient(155deg, rgb(255 255 255 / 0.48), var(--glass-tint) 60%, rgb(255 255 255 / 0.2));
-    box-shadow: inset 0 1px 0 var(--glass-hi), 0 10px 28px rgb(40 50 90 / 0.14);
-  }
+const GLASS_CSS = `${glassSurface('ha-card[data-glass]', '', ':host(:not([dark])) ha-card[data-glass]')}
   ${GLASS_LIT('ha-card[data-glass]')}
-  @media (prefers-reduced-transparency: reduce) {
-    ha-card[data-glass] { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--ha-card-background, var(--card-background-color)); }
-  }
 `;
 
 // The CSS every card shares: host basics, the card surface, focus rings.
@@ -599,6 +615,13 @@ const LIGHT_COLOR = "#F5B83D";
 // a pinned entity's colour when active, by domain (a kind's colour wins when it matches)
 const DOMAIN_COLOR = { light: LIGHT_COLOR, switch: LIGHT_COLOR, input_boolean: LIGHT_COLOR, media_player: "#C98BD9",
   lock: "#E6C48F", climate: "#7FC4E8", fan: "#7FC4E8", alarm_control_panel: "#E6C48F" };
+
+// The colour an entity shows when it is on, as a CSS colour (or ""): a light's own colour, a kind's or domain's colour.
+const entityTint = (hass, id) => {
+  const st = hass.states[id], rgb = st?.attributes.rgb_color;
+  if (domainOf(id) === "light" && Array.isArray(rgb) && rgb.length === 3) return `rgb(${rgb.map(Math.round).join(" ")})`;
+  return badgeLook({ entity: id, cfg: {}, kind: kindOf(hass, id) }).color || "";
+};
 
 const kindOf = (hass, id) => {
   const d = domainOf(id), dc = hass.states[id]?.attributes.device_class;
@@ -2488,21 +2511,11 @@ const SHEET_CSS = `
   /* a sheet that carries a state glow of its own (the health list): the same corner wash as a card, under the title too */
   .sv-sheet::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; corner-shape: inherit; pointer-events: none;
     background: radial-gradient(140% 110% at 0% 0%, rgb(var(--glow-rgb, var(--accent)) / calc(var(--glow, 0) * 0.1)), transparent 66%); }
-  /* design: glass, in a popup: the same frosted surface, rows lit like the card's */
-  .sv-sheet[data-glass] {
-    --glass-edge: rgb(255 255 255 / 0.14); --glass-hi: rgb(255 255 255 / 0.2); --glass-tile: rgb(255 255 255 / 0.075); --glass-tile-edge: rgb(255 255 255 / 0.09); --lblend: plus-lighter;
-    background: linear-gradient(155deg, rgb(46 46 54 / 0.64), rgb(14 14 18 / 0.7));
-    -webkit-backdrop-filter: blur(30px) saturate(1.6); backdrop-filter: blur(30px) saturate(1.6);
-    box-shadow: inset 0 1px 0 var(--glass-hi), 0 0 0 1px var(--glass-edge), 0 18px 50px rgb(0 0 0 / 0.4);
-  }
-  .sv-sheet[data-glass]:not([dark]) {
-    --glass-edge: rgb(255 255 255 / 0.8); --glass-hi: rgb(255 255 255 / 0.95); --glass-tile: rgb(255 255 255 / 0.72); --glass-tile-edge: rgb(255 255 255 / 0.85); --lblend: normal;
-    background: linear-gradient(155deg, rgb(255 255 255 / 0.72), rgb(255 255 255 / 0.5));
-  }
-  ${GLASS_LIT('.sv-sheet[data-glass]', '.sv-sheet[data-glass]:not([dark])')}
+  /* design: glass, in a popup: the same material as the cards, denser, rows lit like the card's */
+  ${glassSurface('.sv-sheet[data-glass]', '', '.sv-sheet[data-glass]:not([dark])', 0.2)}
+  ${GLASS_LIT('.sv-sheet[data-glass]')}
   .sv-sheet[data-glass] .sv-rows, ha-card[data-glass] .sv-rows { gap: 6px; }
   .sv-sheet[data-glass] .sv-row[data-light], ha-card[data-glass] .sv-row[data-light] { padding: 2px 6px; border-radius: 16px; --lx: 28px; --ly: 24px; }
-  @media (prefers-reduced-transparency: reduce) { .sv-sheet[data-glass] { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--ha-card-background, var(--card-background-color, #fff)); } }
   .sv-sheet[data-wide] { width: min(560px, calc(100vw - 32px)); max-height: min(720px, calc(100vh - 48px)); }
   @supports (corner-shape: squircle) { .sv-sheet { corner-shape: squircle; border-radius: 36px; } }
   .sv-sheet[data-bottom] { left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: 85vh;
@@ -4399,17 +4412,8 @@ const PICKER_CSS = `
     font-family: var(--savvy-font-family, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", Roboto, sans-serif);
     -webkit-font-smoothing: antialiased; user-select: none; -webkit-user-select: none;
   }
-  /* design: glass: the same frosted surface as the cards, but fuller, so a menu reads clearly over whatever is behind it */
-  .sv-pick[data-glass] {
-    background: linear-gradient(155deg, rgb(54 54 62 / 0.86), rgb(20 20 24 / 0.9));
-    -webkit-backdrop-filter: blur(24px) saturate(1.5); backdrop-filter: blur(24px) saturate(1.5);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.16), 0 0 0 1px rgb(255 255 255 / 0.12), 0 14px 38px rgb(0 0 0 / 0.38);
-  }
-  .sv-pick[data-glass]:not([dark]) {
-    background: linear-gradient(155deg, rgb(255 255 255 / 0.9), rgb(246 247 252 / 0.84));
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.95), 0 0 0 1px rgb(255 255 255 / 0.8), 0 12px 30px rgb(40 50 90 / 0.2);
-  }
-  @media (prefers-reduced-transparency: reduce) { .sv-pick[data-glass] { -webkit-backdrop-filter: none; backdrop-filter: none; } }
+  /* design: glass: the same material as the cards, but denser, so a menu reads clearly over whatever is behind it */
+  ${glassSurface('.sv-pick[data-glass]', '', '.sv-pick[data-glass]:not([dark])', 0.3)}
   .sv-pick[data-wide] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .sv-pick[data-wider] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .sv-pick[data-up] { transform-origin: var(--ox, 50%) 100%; }
@@ -4574,10 +4578,32 @@ class ModePicker {
 //   _paint(dirty, all)                        the card's own painting, after the shared part
 // ---------------------------------------------------------------------------------------
 
+// glass: a soft highlight follows the pointer over the surface (--px --py, strength --pa), eased out on leaving
+function bindSpecular(el) {
+  if (el.__spec) return;
+  el.__spec = { a: 0, to: 0, raf: 0 };
+  const s = el.__spec, tick = () => {
+    s.raf = 0;
+    s.a += (s.to - s.a) * 0.22;
+    if (Math.abs(s.to - s.a) < 0.01) s.a = s.to; else s.raf = requestAnimationFrame(tick);
+    el.style.setProperty("--pa", s.a.toFixed(3));
+  };
+  const go = () => { if (!s.raf) s.raf = requestAnimationFrame(tick); };
+  el.addEventListener("pointermove", (e) => {
+    if (MQ.reduced.matches) return;
+    const b = el.getBoundingClientRect();
+    el.style.setProperty("--px", `${(e.clientX - b.left).toFixed(0)}px`);
+    el.style.setProperty("--py", `${(e.clientY - b.top).toFixed(0)}px`);
+    s.to = 1; go();
+  });
+  el.addEventListener("pointerleave", () => { s.to = 0; go(); });
+}
+
 // design: glass (the card's own, else the dashboard's) is one attribute on the card surface
 function syncDesign(card) {
   const root = card.shadowRoot || card._root;
   const el = card._glassEl?.isConnected ? card._glassEl : (card._glassEl = root?.querySelector("ha-card"));
+  if (el && card._config?.design === "glass") bindSpecular(el);
   if (el) el.toggleAttribute("data-glass", card._config?.design === "glass");
 }
 
@@ -10749,6 +10775,18 @@ class SavvyEntityCard extends SavvyCard {
     return null;
   }
 
+  // a CSS colour (a name, a variable, hex) as [r, g, b]; neutral when there is none
+  _cssRgb(css) {
+    const neutral = [190, 196, 208];
+    if (!css) return neutral;
+    const p = this._probe || (this._probe = document.createElement("span"));
+    if (!p.isConnected) { p.style.display = "none"; this.shadowRoot.appendChild(p); }
+    p.style.color = "";
+    p.style.color = css;
+    const m = getComputedStyle(p).color.match(/[\d.]+/g);
+    return m && m.length >= 3 ? m.slice(0, 3).map(Number) : neutral;
+  }
+
   _mainAct(kind) {
     const c = this._config, h = this._hass, a = this._mainAction(kind);
     if (!a || a.action === "none") return;
@@ -10786,7 +10824,9 @@ class SavvyEntityCard extends SavvyCard {
     const name = c.name || c.title || st?.attributes.friendly_name || title(c.entity.split(".")[1] || c.entity);
     text(el.name, name);
     attr(el.main, "data-off", !st || isOff(st));
-    if (c.color) put(el.main, "--main-c", colorOf(c.color));
+    // the colour of the icon and its glow: the card's own, else the entity's natural one (a light's own colour, a kind's)
+    const tint = person ? "" : (c.color ? colorOf(c.color) : (st ? entityTint(h, c.entity) : ""));
+    put(el.main, "--main-c", tint);
     let word, active, away = 0;
     if (person) {
       const w = this._where(st);
@@ -10829,12 +10869,10 @@ class SavvyEntityCard extends SavvyCard {
     text(el.st, word);
     el.st.hidden = c.show_state === false && !fired;
     this._mainOn.to(active ? 1 : 0, MOTION.ui);
-    // the glow: its colour while it is on, nothing otherwise (people at home, a switch on, a sensor reading on)
-    const mainCss = c.color ? colorOf(c.color) : "";
-    stateGlow(c, el.card, active && !person ? toRgb(mainCss && !mainCss.startsWith("var(") ? mainCss : "#588EE9") : null, 0.8);
-    if (c.design === "glass") {      // glass: the main entity is a lit tile; its own spring is the strength
-      lit(el.card, person ? (away ? [190, 196, 208] : [76, 175, 80]) : active ? toRgb(mainCss && !mainCss.startsWith("var(") ? mainCss : "#588EE9") : null, person && away ? 0.3 : 1);
-    }
+    // the glow: the icon's colour while it is on, nothing otherwise (a person at home glows green)
+    const tintRgb = active && !person ? this._cssRgb(tint) : null;
+    stateGlow(c, el.card, tintRgb, 0.8);
+    if (c.design === "glass") lit(el.card, person ? (away ? [190, 196, 208] : [76, 175, 80]) : tintRgb, person && away ? 0.3 : 1);   // glass: the card is the lit tile
     this._mainAway.to(away, MOTION.ui);
     el.main.__st = st;
     this._mainWord = word;

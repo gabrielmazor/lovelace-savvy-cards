@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.18.2
+
+- **Glass, rethought:** after Apple's liquid glass. A tinted, saturated pane that stays distinct from what is behind it
+  (it used to melt into the background, most of all at the right edge): a bright specular sheen from the top-left, a rim
+  lit at the top-left and bottom-right and dim between, an inner glow towards the edges, deeper soft shadows, and a highlight
+  that follows the pointer. Tiles are raised glass of their own. Popups and menus use the same material, denser.
+- **Entity:** the card's glow and icon take the entity's own colour (a light's own colour, a kind's colour) instead of
+  always blue. `color` on the card overrides it, and now works with colour names and variables too (they used to fall
+  back to blue).
+
 ## 0.18.1
 
 - **Room tile:** all of its animations can be turned off, `animations: false` on a tile, or `design: { animations: false }` in

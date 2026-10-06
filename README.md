@@ -137,7 +137,7 @@ animations, light and dark themes, and honour reduced motion.
 
 <picture><source media="(prefers-color-scheme: light)" srcset="docs/images/glass-light.png"><img src="docs/images/glass-dark.png" width="760" alt="The Savvy cards in the glass design"></picture>
 
-An optional second design. Cards get a frosted surface, and everything that is on is a light source: the
+An optional second design, after Apple's liquid glass: a tinted, saturated pane with a bright specular rim and sheen, a highlight that follows the pointer, and everything that is on is a light source: the
 icon of a lit light, a person at home, a playing speaker, a cooling thermostat throws its colour into its
 own tile, brightest at the icon and fading with distance, with a thin rim light on the tile's nearest edge.
 The light is the tile's own layer, so it shows on a plain black dashboard too; the frosted blur needs a
@@ -1384,7 +1384,8 @@ anything else its icon, state and how long. Chips underneath toggle, press or sh
 | Option | Type | Default | What it does |
 |---|---|---|---|
 | `entity` | entity | **required** | The main entity. |
-| `name`, `icon`, `color` | string | the entity's | Its look. |
+| `name`, `icon` | string | the entity's | Its look. |
+| `color` | colour | the entity's own | The colour of the icon and of the card's glow while it is on: a colour name or hex. Empty: the entity's own (a light's colour, a kind's), else a neutral glow. |
 | `picture` | string | the person's | A picture URL, instead of the person's own. |
 | `show_state` | boolean | `true` | The state. |
 | `show_since` | boolean | `true` | How long it has been so. |
