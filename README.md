@@ -137,7 +137,7 @@ animations, light and dark themes, and honour reduced motion.
 
 <picture><source media="(prefers-color-scheme: light)" srcset="docs/images/glass-light.png"><img src="docs/images/glass-dark.png" width="760" alt="The Savvy cards in the glass design"></picture>
 
-An optional second design. Cards get a frosted surface, and everything that is on is a light source: the
+An optional second design, after Apple's liquid glass: a tinted, saturated pane with a bright specular rim and sheen, a highlight that follows the pointer, and everything that is on is a light source: the
 icon of a lit light, a person at home, a playing speaker, a cooling thermostat throws its colour into its
 own tile, brightest at the icon and fading with distance, with a thin rim light on the tile's nearest edge.
 The light is the tile's own layer, so it shows on a plain black dashboard too; the frosted blur needs a
@@ -208,7 +208,7 @@ it is too wide.
 | `admin_only` | list or boolean | from the settings | Kept from people who are not administrators: `health_cog` (the cog, its count and its popup) and `health_badges` (the count on the cog; the cog stays). `true` is both, `false` hides nothing even when the settings list something. Nothing is hidden unless it is listed here or in the settings. |
 | `lights`, `climate`, `media`, `security` | object or `false` | on | The four counting chips, see below. |
 | `room_order` | list of areas | by name | Order of rooms in the popups. A chip's own `room_order` wins. |
-| `design` | object | none | `style: glass` turns on the [glass design](#glass) for every card (a card's own `design` wins); `state_glow: false` turns the corner glow off on every card; a card's own `state_glow` still wins. |
+| `design` | object | none | `style: glass` turns on the [glass design](#glass) for every card (a card's own `design` wins); `state_glow: false` turns the corner glow off on every card; a card's own `state_glow` still wins. `animations: false` keeps every room tile still; a tile's own `animations` wins. |
 | `aggregate` | `true` or list of kinds | off | Show each room's presence sensors once. See [Aggregate sensors](#aggregate-sensors). |
 | `chips` | chips | none | Your own chips after the four. |
 | `title` | string | none | A line at the top of the card. |
@@ -402,6 +402,7 @@ A room at a glance. Its icon sits in a small drop that fills with the room's lig
 | `entities`, `auto_discover`, `exclude_kinds`, `include`, `exclude` | | discovered | The badges, see [Badges](#badges). |
 | `aggregate` | `true` or list | off | See [Aggregate sensors](#aggregate-sensors). |
 | `tap_action`, `double_tap_action`, `hold_action` | action | as above | Replace any gesture. |
+| `animations` | boolean | `true` | The drop's movement and glow, badges popping in, text rolling. `false` keeps the tile still. In the settings card, `design: { animations: false }` does it for every room tile; a tile's own setting wins. |
 | `state_glow` | boolean | `true` | A soft glow in the card's corner in what it is doing (a lit light, a locked door, music playing). `false` keeps the card plain. |
 
 Minimum:
@@ -1383,7 +1384,8 @@ anything else its icon, state and how long. Chips underneath toggle, press or sh
 | Option | Type | Default | What it does |
 |---|---|---|---|
 | `entity` | entity | **required** | The main entity. |
-| `name`, `icon`, `color` | string | the entity's | Its look. |
+| `name`, `icon` | string | the entity's | Its look. |
+| `color` | colour | the entity's own | The colour of the icon and of the card's glow while it is on: a colour name or hex. Empty: the entity's own (a light's colour, a kind's), else a neutral glow. |
 | `picture` | string | the person's | A picture URL, instead of the person's own. |
 | `show_state` | boolean | `true` | The state. |
 | `show_since` | boolean | `true` | How long it has been so. |

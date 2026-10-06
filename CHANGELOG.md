@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.18.2
+
+- **Glass, rethought:** after Apple's liquid glass. A tinted, saturated pane that stays distinct from what is behind it
+  (it used to melt into the background, most of all at the right edge): a bright specular sheen from the top-left, a rim
+  lit at the top-left and bottom-right and dim between, an inner glow towards the edges, deeper soft shadows, and a highlight
+  that follows the pointer. Tiles are raised glass of their own. Popups and menus use the same material, denser.
+- **Entity:** the card's glow and icon take the entity's own colour (a light's own colour, a kind's colour) instead of
+  always blue. `color` on the card overrides it, and now works with colour names and variables too (they used to fall
+  back to blue).
+
+## 0.18.1
+
+- **Room tile:** all of its animations can be turned off, `animations: false` on a tile, or `design: { animations: false }` in
+  the settings card for every room tile (on by default). A badge's halo is no longer cut by the row's edge.
+- **Room light badge:** it takes the entity's own icon instead of a fixed light switch; a badge you configure still
+  picks its own.
+- **Media (compact):** the player's icon, name and buttons sit in the same tile as in the full layout.
+
 ## 0.18.0
 
 - **Glass design (optional):** `design: glass` on a card, or `design: { style: glass }` in the settings card for

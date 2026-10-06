@@ -15,10 +15,32 @@
 // glass or matte: any design that lights tiles from their icons
 function designOn(config) { const d = config?.design; return d === "glass" || d === "matte"; }
 
+// glass: a soft highlight follows the pointer over the surface (--px --py, strength --pa), eased out on leaving
+function bindSpecular(el) {
+  if (el.__spec) return;
+  el.__spec = { a: 0, to: 0, raf: 0 };
+  const s = el.__spec, tick = () => {
+    s.raf = 0;
+    s.a += (s.to - s.a) * 0.22;
+    if (Math.abs(s.to - s.a) < 0.01) s.a = s.to; else s.raf = requestAnimationFrame(tick);
+    el.style.setProperty("--pa", s.a.toFixed(3));
+  };
+  const go = () => { if (!s.raf) s.raf = requestAnimationFrame(tick); };
+  el.addEventListener("pointermove", (e) => {
+    if (MQ.reduced.matches) return;
+    const b = el.getBoundingClientRect();
+    el.style.setProperty("--px", `${(e.clientX - b.left).toFixed(0)}px`);
+    el.style.setProperty("--py", `${(e.clientY - b.top).toFixed(0)}px`);
+    s.to = 1; go();
+  });
+  el.addEventListener("pointerleave", () => { s.to = 0; go(); });
+}
+
 // design: glass or matte (the card's own, else the dashboard's) is one attribute on the card surface
 function syncDesign(card) {
   const root = card.shadowRoot || card._root;
   const el = card._glassEl?.isConnected ? card._glassEl : (card._glassEl = root?.querySelector("ha-card"));
+  if (el && card._config?.design === "glass") bindSpecular(el);
   if (el) { el.toggleAttribute("data-glass", card._config?.design === "glass"); el.toggleAttribute("data-matte", card._config?.design === "matte"); }
 }
 
@@ -93,8 +115,11 @@ class SavvyCard extends HTMLElement {
     this._ro?.disconnect();
   }
 
+  // reduced motion, or the card (or the settings card) turned its animations off
+  _noMotion() { return MQ.reduced.matches || this._config?.animations === false; }
+
   _frame(now, dt) {
-    const dirty = new Set(), red = MQ.reduced.matches;
+    const dirty = new Set(), red = this._noMotion();
     for (const s of this._springs) {
       if (s.idle) continue;
       if (red) s.snap(); else s.step(dt);
@@ -111,7 +136,7 @@ class SavvyCard extends HTMLElement {
   }
 
   _paintAll(dirty) {
-    const all = !dirty, red = MQ.reduced.matches;
+    const all = !dirty, red = this._noMotion();
     for (const node of this._pressNodes) {
       const s = node.__spring;
       if (!s || (!all && !dirty.has(s.group))) continue;

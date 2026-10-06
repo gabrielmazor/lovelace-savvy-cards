@@ -102,17 +102,8 @@ const PICKER_CSS = `
     font-family: var(--savvy-font-family, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", Roboto, sans-serif);
     -webkit-font-smoothing: antialiased; user-select: none; -webkit-user-select: none;
   }
-  /* design: glass: the same frosted surface as the cards, but fuller, so a menu reads clearly over whatever is behind it */
-  .sv-pick[data-glass] {
-    background: linear-gradient(155deg, rgb(54 54 62 / 0.86), rgb(20 20 24 / 0.9));
-    -webkit-backdrop-filter: blur(24px) saturate(1.5); backdrop-filter: blur(24px) saturate(1.5);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.16), 0 0 0 1px rgb(255 255 255 / 0.12), 0 14px 38px rgb(0 0 0 / 0.38);
-  }
-  .sv-pick[data-glass]:not([dark]) {
-    background: linear-gradient(155deg, rgb(255 255 255 / 0.9), rgb(246 247 252 / 0.84));
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.95), 0 0 0 1px rgb(255 255 255 / 0.8), 0 12px 30px rgb(40 50 90 / 0.2);
-  }
-  @media (prefers-reduced-transparency: reduce) { .sv-pick[data-glass] { -webkit-backdrop-filter: none; backdrop-filter: none; } }
+  /* design: glass: the same material as the cards, but denser, so a menu reads clearly over whatever is behind it */
+  ${glassSurface('.sv-pick[data-glass]', '', '.sv-pick[data-glass]:not([dark])', 0.3)}
   .sv-pick[data-wide] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .sv-pick[data-wider] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .sv-pick[data-up] { transform-origin: var(--ox, 50%) 100%; }

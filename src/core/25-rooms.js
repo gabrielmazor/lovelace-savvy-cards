@@ -28,6 +28,13 @@ const LIGHT_COLOR = "#F5B83D";
 const DOMAIN_COLOR = { light: LIGHT_COLOR, switch: LIGHT_COLOR, input_boolean: LIGHT_COLOR, media_player: "#C98BD9",
   lock: "#E6C48F", climate: "#7FC4E8", fan: "#7FC4E8", alarm_control_panel: "#E6C48F" };
 
+// The colour an entity shows when it is on, as a CSS colour (or ""): a light's own colour, a kind's or domain's colour.
+const entityTint = (hass, id) => {
+  const st = hass.states[id], rgb = st?.attributes.rgb_color;
+  if (domainOf(id) === "light" && Array.isArray(rgb) && rgb.length === 3) return `rgb(${rgb.map(Math.round).join(" ")})`;
+  return badgeLook({ entity: id, cfg: {}, kind: kindOf(hass, id) }).color || "";
+};
+
 const kindOf = (hass, id) => {
   const d = domainOf(id), dc = hass.states[id]?.attributes.device_class;
   return BADGE_KINDS.find((k) => k.domain === d && (!k.dc || k.dc.includes(dc))) || null;
@@ -224,7 +231,7 @@ function legacyBadges(c) {
     }
   }
   if (include.length) out.include = [...new Set(include)];
-  if (c.light_state && c.entities === undefined) out.entities = [{ entity: c.light_state, name: "Light", icon: "mdi:light-switch" }];
+  if (c.light_state && c.entities === undefined) out.entities = [{ entity: c.light_state, name: "Light" }];
   if (c.ignore_sensors && c.exclude_kinds === undefined) out.exclude_kinds = c.ignore_sensors;
   return out;
 }

@@ -88,9 +88,10 @@ const STYLE = `${BASE_CSS}
   .temp { flex: none; color: var(--secondary-text-color); letter-spacing: 0; }
 
   /* breathing room so halos aren't cut off */
-  .badges { position: relative; z-index: 1; display: flex; align-items: center; height: var(--chip); padding: 8px; margin: -8px; margin-inline-start: -13px; overflow: hidden; }
+  .badges { position: relative; z-index: 1; display: flex; align-items: center; height: var(--chip); padding: 16px; margin: -16px; margin-inline-start: -21px; overflow: hidden; pointer-events: none; }
+  .badge { pointer-events: auto; }
   .badges[data-overflow] { -webkit-mask-image: linear-gradient(to left, transparent 8px, #000 40px); mask-image: linear-gradient(to left, transparent 8px, #000 40px); }
-  @container (min-width: 300px) { .badges { padding-inline-start: calc(8px + var(--well-size) + var(--gap)); } }
+  @container (min-width: 300px) { .badges { padding-inline-start: calc(16px + var(--well-size) + var(--gap)); } }
   .badge { position: relative; flex: none; width: 0; height: var(--chip); outline: none; }
   .chip { position: absolute; top: 0; inset-inline-start: 0; width: var(--chip); height: var(--chip); border-radius: 50%;
     display: grid; place-items: center; color: var(--secondary-text-color); opacity: 0; }
@@ -318,7 +319,7 @@ class SavvyRoomTile extends SavvyCard {
   _update() {
     const h = this._hass, c = this._config, el = this._el;
     if (!h || !el) return;
-    this._reduced = MQ.reduced.matches;
+    this._reduced = this._noMotion();
     this._dark = !!h.themes?.darkMode;
     this.toggleAttribute("dark", this._dark);
     const area = c.area ? areaInfo(h, c.area) : null;
@@ -600,6 +601,7 @@ const EDITOR = defineEditor("savvy-room-tile", (hass, c) => [
     S.color("tint", "White tint"),
   ]),
   ...badgeSchema(),
+  S.bool("animations", "Animations", "The drop's movement and glow, badges popping in, text rolling. Off keeps the tile still. The settings card can turn them off for every room tile.", true),
   S.section("Actions", [S.action("tap_action", "Tap action"), S.action("double_tap_action", "Double tap action"), S.action("hold_action", "Hold action")]),
 ]);
 

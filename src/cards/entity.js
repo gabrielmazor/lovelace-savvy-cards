@@ -170,6 +170,18 @@ class SavvyEntityCard extends SavvyCard {
     return null;
   }
 
+  // a CSS colour (a name, a variable, hex) as [r, g, b]; neutral when there is none
+  _cssRgb(css) {
+    const neutral = [190, 196, 208];
+    if (!css) return neutral;
+    const p = this._probe || (this._probe = document.createElement("span"));
+    if (!p.isConnected) { p.style.display = "none"; this.shadowRoot.appendChild(p); }
+    p.style.color = "";
+    p.style.color = css;
+    const m = getComputedStyle(p).color.match(/[\d.]+/g);
+    return m && m.length >= 3 ? m.slice(0, 3).map(Number) : neutral;
+  }
+
   _mainAct(kind) {
     const c = this._config, h = this._hass, a = this._mainAction(kind);
     if (!a || a.action === "none") return;
@@ -207,7 +219,9 @@ class SavvyEntityCard extends SavvyCard {
     const name = c.name || c.title || st?.attributes.friendly_name || title(c.entity.split(".")[1] || c.entity);
     text(el.name, name);
     attr(el.main, "data-off", !st || isOff(st));
-    if (c.color) put(el.main, "--main-c", colorOf(c.color));
+    // the colour of the icon and its glow: the card's own, else the entity's natural one (a light's own colour, a kind's)
+    const tint = person ? "" : (c.color ? colorOf(c.color) : (st ? entityTint(h, c.entity) : ""));
+    put(el.main, "--main-c", tint);
     let word, active, away = 0;
     if (person) {
       const w = this._where(st);
@@ -250,12 +264,10 @@ class SavvyEntityCard extends SavvyCard {
     text(el.st, word);
     el.st.hidden = c.show_state === false && !fired;
     this._mainOn.to(active ? 1 : 0, MOTION.ui);
-    // the glow: its colour while it is on, nothing otherwise (people at home, a switch on, a sensor reading on)
-    const mainCss = c.color ? colorOf(c.color) : "";
-    stateGlow(c, el.card, active && !person ? toRgb(mainCss && !mainCss.startsWith("var(") ? mainCss : "#588EE9") : null, 0.8);
-    if (designOn(c)) {      // glass or matte: the main entity is a lit tile; its own spring is the strength
-      lit(el.card, person ? (away ? [190, 196, 208] : [76, 175, 80]) : active ? toRgb(mainCss && !mainCss.startsWith("var(") ? mainCss : "#588EE9") : null, person && away ? 0.3 : 1);
-    }
+    // the glow: the icon's colour while it is on, nothing otherwise (a person at home glows green)
+    const tintRgb = active && !person ? this._cssRgb(tint) : null;
+    stateGlow(c, el.card, tintRgb, 0.8);
+    if (designOn(c)) lit(el.card, person ? (away ? [190, 196, 208] : [76, 175, 80]) : tintRgb, person && away ? 0.3 : 1);   // glass or matte: the card is the lit tile
     this._mainAway.to(away, MOTION.ui);
     el.main.__st = st;
     this._mainWord = word;

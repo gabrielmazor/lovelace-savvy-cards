@@ -233,9 +233,42 @@ const GLOW_CSS = `
 // --lc, --on). The source sits at --lx --ly (the icon). A broad ambient bleed falls off with distance, a tighter
 // core gives depth, and a rim light brightens the edge nearest the source. The colour mixes additively
 // (plus-lighter) so it shows on pure black too: a lit tile is a faintly lifted matte surface for it to land on.
-const GLASS_LIT = (R, L = ':host(:not([dark])) ' + R) => `
-  ${R} [data-light] { --lx: 28px; --ly: 50%; position: relative; isolation: isolate; background: var(--glass-tile); box-shadow: inset 0 0 0 1px var(--glass-tile-edge); }
-  ${L} [data-light] { box-shadow: inset 0 0 0 1px var(--glass-tile-edge), 0 1px 3px rgb(40 50 90 / 0.08); }
+// The glass material, after the way Apple's liquid glass reads: a tinted body (so it never melts into what is behind
+// it), a bright specular sheen from the top-left, a rim lit at the top-left and the bottom-right and dim between,
+// an inner glow towards the edges, saturated and slightly brightened backdrop, deep soft shadows, and a soft
+// highlight that follows the pointer. The body, the rim and the pointer highlight are one layered background
+// (`--g-bg`), so every glass surface (a card, a popup, a menu) takes the same variables.
+const glassVars = (dark, d = 0) => dark ? `
+    --g-spec: radial-gradient(240px circle at var(--px, 50%) var(--py, 0%), rgb(255 255 255 / calc(var(--pa, 0) * 0.16)), transparent 70%);
+    --g-bg: var(--g-spec) padding-box,
+      linear-gradient(135deg, rgb(255 255 255 / 0.17), rgb(255 255 255 / 0.05) 36%, rgb(255 255 255 / 0) 62%) padding-box,
+      radial-gradient(ellipse 110% 80% at 100% 100%, rgb(255 255 255 / 0.07), transparent 62%) padding-box,
+      linear-gradient(180deg, rgb(30 34 52 / ${0.5 + d}), rgb(14 17 28 / ${0.58 + d})) padding-box,
+      linear-gradient(135deg, rgb(255 255 255 / 0.62), rgb(255 255 255 / 0.1) 26%, rgb(255 255 255 / 0.03) 52%, rgb(255 255 255 / 0.24)) border-box;
+    --g-shadow: inset 0 1px 0 rgb(255 255 255 / 0.3), inset 0 -1px 0 rgb(255 255 255 / 0.05), inset 0 0 26px rgb(255 255 255 / 0.05), 0 22px 44px -14px rgb(0 0 0 / 0.6), 0 3px 8px rgb(0 0 0 / 0.28);
+    --g-filter: saturate(1.9) brightness(1.06) blur(22px);
+    --glass-tile: linear-gradient(180deg, rgb(255 255 255 / 0.13), rgb(255 255 255 / 0.05));
+    --glass-tile-shadow: inset 0 1px 0 rgb(255 255 255 / 0.24), inset 0 0 0 1px rgb(255 255 255 / 0.07), inset 0 -10px 16px -10px rgb(255 255 255 / 0.06), 0 6px 12px -6px rgb(0 0 0 / 0.4);
+    --lblend: plus-lighter;` : `
+    --g-spec: radial-gradient(240px circle at var(--px, 50%) var(--py, 0%), rgb(255 255 255 / calc(var(--pa, 0) * 0.5)), transparent 70%);
+    --g-bg: var(--g-spec) padding-box,
+      linear-gradient(135deg, rgb(255 255 255 / 0.8), rgb(255 255 255 / 0.2) 38%, rgb(255 255 255 / 0) 64%) padding-box,
+      linear-gradient(180deg, rgb(255 255 255 / ${0.5 + d}), rgb(236 241 252 / ${0.42 + d})) padding-box,
+      linear-gradient(135deg, #fff, rgb(255 255 255 / 0.3) 30%, rgb(255 255 255 / 0.12) 56%, rgb(255 255 255 / 0.85)) border-box;
+    --g-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 rgb(255 255 255 / 0.5), inset 0 0 24px rgb(255 255 255 / 0.35), 0 20px 40px -14px rgb(50 60 110 / 0.3), 0 2px 6px rgb(50 60 110 / 0.1);
+    --g-filter: saturate(1.8) brightness(1.04) blur(22px);
+    --glass-tile: linear-gradient(180deg, rgb(255 255 255 / 0.86), rgb(255 255 255 / 0.56));
+    --glass-tile-shadow: inset 0 1px 0 #fff, inset 0 0 0 1px rgb(255 255 255 / 0.75), 0 6px 14px -6px rgb(50 60 110 / 0.24);
+    --lblend: normal;`;
+const glassSurface = (R, darkSel, lightSel, d = 0) => `
+  ${R} { ${glassVars(true, d)}
+    background: var(--g-bg); border: 1px solid transparent;
+    -webkit-backdrop-filter: var(--g-filter); backdrop-filter: var(--g-filter); box-shadow: var(--g-shadow); }
+  ${lightSel} { ${glassVars(false, d)} }
+  @media (prefers-reduced-transparency: reduce) { ${R} { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--ha-card-background, var(--card-background-color, #fff)); } }
+`;
+const GLASS_LIT = (R) => `
+  ${R} [data-light] { --lx: 28px; --ly: 50%; position: relative; isolation: isolate; background: var(--glass-tile); box-shadow: var(--glass-tile-shadow); }
   ${R} [data-light]::before, ${R}[data-light]::before {
     content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; corner-shape: inherit; pointer-events: none;
     background:
@@ -252,25 +285,8 @@ const GLASS_LIT = (R, L = ':host(:not([dark])) ' + R) => `
     mix-blend-mode: var(--lblend); opacity: var(--on, 0); transition: opacity 360ms ease;
   }
 `;
-const GLASS_CSS = `
-  ha-card[data-glass] {
-    --glass-tint: rgb(255 255 255 / 0.03); --glass-edge: rgb(255 255 255 / 0.12); --glass-hi: rgb(255 255 255 / 0.18);
-    --glass-tile: rgb(255 255 255 / 0.075); --glass-tile-edge: rgb(255 255 255 / 0.09); --lblend: plus-lighter;
-    background: linear-gradient(155deg, rgb(255 255 255 / 0.07), var(--glass-tint) 55%, rgb(255 255 255 / 0.01)), linear-gradient(rgb(0 0 0 / 0.26), rgb(0 0 0 / 0.26));
-    -webkit-backdrop-filter: blur(26px) saturate(1.6); backdrop-filter: blur(26px) saturate(1.6);
-    border-color: var(--glass-edge);
-    box-shadow: inset 0 1px 0 var(--glass-hi), 0 12px 32px rgb(0 0 0 / 0.28);
-  }
-  :host(:not([dark])) ha-card[data-glass] {
-    --glass-tint: rgb(255 255 255 / 0.28); --glass-edge: rgb(255 255 255 / 0.75); --glass-hi: rgb(255 255 255 / 0.95);
-    --glass-tile: rgb(255 255 255 / 0.72); --glass-tile-edge: rgb(255 255 255 / 0.85); --lblend: normal;
-    background: linear-gradient(155deg, rgb(255 255 255 / 0.48), var(--glass-tint) 60%, rgb(255 255 255 / 0.2));
-    box-shadow: inset 0 1px 0 var(--glass-hi), 0 10px 28px rgb(40 50 90 / 0.14);
-  }
+const GLASS_CSS = `${glassSurface('ha-card[data-glass]', '', ':host(:not([dark])) ha-card[data-glass]')}
   ${GLASS_LIT('ha-card[data-glass]')}
-  @media (prefers-reduced-transparency: reduce) {
-    ha-card[data-glass] { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--ha-card-background, var(--card-background-color)); }
-  }
 `;
 
 // design: matte. The same tiles and lights as glass, in a solid, tactile material: opaque surfaces derived from
