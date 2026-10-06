@@ -185,6 +185,7 @@ class Sheet {
     this.returnTo = returnTo || this.host.shadowRoot?.activeElement || null;
     portalRoot().append(this.scrim, this.el);
     this.el.toggleAttribute("data-glass", this.host._config?.design === "glass");
+    this.el.toggleAttribute("data-matte", this.host._config?.design === "matte");
     this.el.toggleAttribute("dark", this.host.hasAttribute?.("dark") || false);
     this.place = () => this.el.toggleAttribute("data-bottom", window.innerWidth < 600);
     this.place();
@@ -462,7 +463,7 @@ class EntityListSheet {
 
   // design: glass: an active row throws the colour of its icon (read once the rows are in the page)
   glassRows() {
-    if (this.host._config?.design !== "glass") return;
+    if (!designOn(this.host._config)) return;
     for (const row of this.rows.__rows?.values() || []) {
       const c = row.isConnected && getComputedStyle(row.__ic).color.match(/[\d.]+/g);
       lit(row, (row.hasAttribute("data-on") || row.hasAttribute("data-alert")) && c ? c.slice(0, 3) : null, 1);

@@ -89,7 +89,7 @@ const knownRules = (prefix = "") => ["entities", "devices"].map((k) => ({ path: 
   get: (s) => (Array.isArray(s.health?.ignore) ? s.health.ignore.filter((x) => (k === "entities") === String(x).includes(".")) : s.health?.ignore?.[k]) }));
 
 // the state glow is on unless the settings turn it off for every card
-const styleRule = { path: "design", label: "Design", get: (s) => (s.design?.style === "glass" ? "glass" : undefined), src: "design" };
+const styleRule = { path: "design", label: "Design", get: (s) => (["glass", "matte"].includes(s.design?.style) ? s.design.style : undefined), src: "design" };
 const glowRule = { path: "state_glow", label: "State glow", get: (s) => (s.design?.state_glow === false ? false : undefined), src: "design" };
 
 const HOME_CHIPS = ["lights", "climate", "media", "security"];

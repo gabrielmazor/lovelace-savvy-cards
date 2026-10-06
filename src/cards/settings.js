@@ -202,7 +202,7 @@ class SettingsEditor extends SavvyEditor {
         { name: "areas", label: "Ignored rooms", selector: { area: { multiple: true } } },
       ] },
       { type: "expandable", name: "design", title: "Design", schema: [
-        S.select("style", "Style", [{ value: "plain", label: "Plain" }, { value: "glass", label: "Glass" }]),
+        S.select("style", "Style", [{ value: "plain", label: "Plain" }, { value: "glass", label: "Glass" }, { value: "matte", label: "Matte" }]),
         S.bool("state_glow", "State glow", "A soft glow in a corner of a card in what it is doing: a lit light, a locked door, music playing. Off here turns it off on every card; a card can still set its own.", true),
       ] },
       { name: "admin_only", label: "Admin only", helper: "Kept from people who are not administrators; everyone sees everything unless it is listed. A card can only hide itself: it does not lock a page. In YAML, true means both.",

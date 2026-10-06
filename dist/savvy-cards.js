@@ -279,8 +279,63 @@ const GLASS_CSS = `
   }
 `;
 
+// design: matte. The same tiles and lights as glass, in a solid, tactile material: opaque surfaces derived from
+// the theme's card colour, raised tiles with a top highlight and a soft neutral shadow, controls that sit pressed
+// in while on. A lit tile is painted, not lit: the state colour (chroma capped, so amber, green and blue sit in one
+// family) is a wash strongest at the icon, with a thin coloured edge on the icon's side. No blur, no glow, no
+// transparency.
+const MATTE_VARS_DARK = `
+    --m-base: var(--card-background-color, #1c1c1e); --m-tile-hi: 7%; --m-wash: 1;
+    --m-tile-bg: linear-gradient(180deg, color-mix(in oklab, var(--m-base) 91%, #fff), color-mix(in oklab, var(--m-base) 94%, #fff));
+    --m-tile-shadow: inset 0 1px 0 rgb(255 255 255 / 0.07), inset 0 -1px 0 rgb(0 0 0 / 0.28), 0 5px 10px -5px rgb(0 0 0 / 0.6);
+    --m-disc: inset 0 1px 0 rgb(255 255 255 / 0.09), inset 0 -1px 2px rgb(0 0 0 / 0.3);
+    --m-ctl: inset 0 1px 0 rgb(255 255 255 / 0.07), 0 2px 4px -1px rgb(0 0 0 / 0.4);
+    --m-press: inset 0 2px 4px rgb(0 0 0 / 0.38);`;
+const MATTE_VARS_LIGHT = `
+    --m-base: var(--card-background-color, #fff);
+    --m-tile-bg: linear-gradient(180deg, #fff, #fbfaf8);
+    --m-tile-shadow: inset 0 1px 0 #fff, 0 0 0 1px rgb(60 50 30 / 0.06), 0 4px 10px -4px rgb(60 50 30 / 0.18);
+    --m-disc: inset 0 1px 0 #fff, inset 0 -1px 2px rgb(60 50 30 / 0.12);
+    --m-ctl: inset 0 1px 0 #fff, 0 1px 3px rgb(60 50 30 / 0.16);
+    --m-press: inset 0 2px 4px rgb(60 50 30 / 0.18);`;
+const MATTE_LIT = (R, L = ':host(:not([dark])) ' + R) => `
+  ${R} [data-light], ${R}[data-light] { --lx: 28px; --ly: 50%; --mc: color-mix(in oklab, rgb(var(--lc, 128 128 128)) 72%, #8a8a8a); }
+  ${R} [data-light] { position: relative; isolation: isolate; background: var(--m-tile-bg); box-shadow: var(--m-tile-shadow); }
+  ${R} [data-light]::before, ${R}[data-light]::before {
+    content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; corner-shape: inherit; pointer-events: none;
+    background: radial-gradient(ellipse 150% 260% at var(--lx) var(--ly), color-mix(in srgb, var(--mc) 30%, transparent), color-mix(in srgb, var(--mc) 12%, transparent) 40%, color-mix(in srgb, var(--mc) 3%, transparent) 78%, transparent 100%);
+    opacity: var(--on, 0); transition: opacity 360ms ease;
+  }
+  ${R} [data-light]::after, ${R}[data-light]::after {
+    content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; corner-shape: inherit; padding: 1px; pointer-events: none;
+    background: radial-gradient(circle 170px at var(--lx) var(--ly), color-mix(in srgb, var(--mc) 55%, transparent), color-mix(in srgb, var(--mc) 14%, transparent) 50%, transparent 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+    opacity: var(--on, 0); transition: opacity 360ms ease;
+  }
+  ${R} :is(.orb, .av, .disc, .sv-ic, .row .icon, .ic) { box-shadow: var(--m-disc); }
+  ${R} :is(.power, .step, .ctl, .tb.solid, .swatch, .master, .sv-close) { box-shadow: var(--m-ctl); }
+  ${R} :is(.power, .tb, .btn, .master)[data-on] { box-shadow: var(--m-press), inset 0 0 0 1px color-mix(in oklab, currentColor 18%, transparent); }
+`;
+const MATTE_CSS = `
+  ha-card[data-matte] {
+    ${MATTE_VARS_DARK}
+    background: linear-gradient(180deg, color-mix(in oklab, var(--m-base) 95%, #fff), var(--m-base) 72%);
+    border-color: color-mix(in oklab, #fff 6%, transparent);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 12px 26px -12px rgb(0 0 0 / 0.65), 0 1px 2px rgb(0 0 0 / 0.35);
+  }
+  :host(:not([dark])) ha-card[data-matte] {
+    ${MATTE_VARS_LIGHT}
+    background: linear-gradient(180deg, color-mix(in oklab, var(--m-base) 98%, #fff), color-mix(in oklab, var(--m-base) 95%, #e8e0d4));
+    border-color: rgb(60 50 30 / 0.07);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 12px 24px -12px rgb(60 50 30 / 0.22), 0 1px 2px rgb(60 50 30 / 0.1);
+  }
+  ${MATTE_LIT('ha-card[data-matte]')}
+`;
+const DESIGN_CSS = `${GLASS_CSS}${MATTE_CSS}`;
+
 // The CSS every card shares: host basics, the card surface, focus rings.
-const BASE_CSS = `${ROLL_CSS}${GLOW_CSS}${GLASS_CSS}
+const BASE_CSS = `${ROLL_CSS}${GLOW_CSS}${DESIGN_CSS}
   :host { display: block; -webkit-tap-highlight-color: transparent; }
   [hidden] { display: none !important; }
   button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0;
@@ -2626,6 +2681,7 @@ class Sheet {
     this.returnTo = returnTo || this.host.shadowRoot?.activeElement || null;
     portalRoot().append(this.scrim, this.el);
     this.el.toggleAttribute("data-glass", this.host._config?.design === "glass");
+    this.el.toggleAttribute("data-matte", this.host._config?.design === "matte");
     this.el.toggleAttribute("dark", this.host.hasAttribute?.("dark") || false);
     this.place = () => this.el.toggleAttribute("data-bottom", window.innerWidth < 600);
     this.place();
@@ -2903,7 +2959,7 @@ class EntityListSheet {
 
   // design: glass: an active row throws the colour of its icon (read once the rows are in the page)
   glassRows() {
-    if (this.host._config?.design !== "glass") return;
+    if (!designOn(this.host._config)) return;
     for (const row of this.rows.__rows?.values() || []) {
       const c = row.isConnected && getComputedStyle(row.__ic).color.match(/[\d.]+/g);
       lit(row, (row.hasAttribute("data-on") || row.hasAttribute("data-alert")) && c ? c.slice(0, 3) : null, 1);
@@ -4451,6 +4507,7 @@ class ModePicker {
     this.isOpen = true;
     this.anchor = anchor;
     this.el.toggleAttribute("data-glass", this.host?._config?.design === "glass");
+    this.el.toggleAttribute("data-matte", this.host?._config?.design === "matte");
     this.el.toggleAttribute("dark", !!this.host?.hasAttribute?.("dark"));
     portalRoot().append(this.scrim, this.el);
     this.render(info, caption);
@@ -4574,11 +4631,14 @@ class ModePicker {
 //   _paint(dirty, all)                        the card's own painting, after the shared part
 // ---------------------------------------------------------------------------------------
 
-// design: glass (the card's own, else the dashboard's) is one attribute on the card surface
+// glass or matte: any design that lights tiles from their icons
+function designOn(config) { const d = config?.design; return d === "glass" || d === "matte"; }
+
+// design: glass or matte (the card's own, else the dashboard's) is one attribute on the card surface
 function syncDesign(card) {
   const root = card.shadowRoot || card._root;
   const el = card._glassEl?.isConnected ? card._glassEl : (card._glassEl = root?.querySelector("ha-card"));
-  if (el) el.toggleAttribute("data-glass", card._config?.design === "glass");
+  if (el) { el.toggleAttribute("data-glass", card._config?.design === "glass"); el.toggleAttribute("data-matte", card._config?.design === "matte"); }
 }
 
 class SavvyCard extends HTMLElement {
@@ -5338,8 +5398,8 @@ const GLOW_CARDS = new Set(["savvy-lights-card", "savvy-climate-card", "savvy-me
   "savvy-room-tile", "savvy-room-activity-card", "savvy-system-health-card"]);
 const GLOW_FIELD = { name: "state_glow", label: "State glow", helper: "A soft glow in the card's corner in what it is doing. Off keeps the card plain.", selector: { boolean: {} }, default: true };
 
-const DESIGN_FIELD = { name: "design", label: "Design", helper: "Empty: the dashboard's setting (Savvy settings, Design). Glass is a frosted surface where every lit icon throws its light.",
-  selector: { select: { mode: "dropdown", options: [{ value: "glass", label: "Glass" }, { value: "plain", label: "Plain" }] } } };
+const DESIGN_FIELD = { name: "design", label: "Design", helper: "Empty: the dashboard's setting (Savvy settings, Design). Glass is frosted; matte is solid and tactile; both light a tile from its icon.",
+  selector: { select: { mode: "dropdown", options: [{ value: "glass", label: "Glass" }, { value: "matte", label: "Matte" }, { value: "plain", label: "Plain" }] } } };
 
 const defineEditor = (type, schemaFn, tidy) => {
   const name = `${type}-editor`;
@@ -5508,7 +5568,7 @@ const knownRules = (prefix = "") => ["entities", "devices"].map((k) => ({ path: 
   get: (s) => (Array.isArray(s.health?.ignore) ? s.health.ignore.filter((x) => (k === "entities") === String(x).includes(".")) : s.health?.ignore?.[k]) }));
 
 // the state glow is on unless the settings turn it off for every card
-const styleRule = { path: "design", label: "Design", get: (s) => (s.design?.style === "glass" ? "glass" : undefined), src: "design" };
+const styleRule = { path: "design", label: "Design", get: (s) => (["glass", "matte"].includes(s.design?.style) ? s.design.style : undefined), src: "design" };
 const glowRule = { path: "state_glow", label: "State glow", get: (s) => (s.design?.state_glow === false ? false : undefined), src: "design" };
 
 const HOME_CHIPS = ["lights", "climate", "media", "security"];
@@ -6198,7 +6258,7 @@ ha-card {
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
   pointer-events: none;
 }
-${GLASS_CSS}
+${DESIGN_CSS}
 
 /* ---------- stage: pager (one camera) or grid (all cameras) ---------- */
 .stage { position: relative; user-select: none; -webkit-user-select: none; }
@@ -8194,7 +8254,7 @@ const STYLE = `
   [hidden] { display: none !important; }
   button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0;
     cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; }
-  ${GLOW_CSS}${GLASS_CSS}
+  ${GLOW_CSS}${DESIGN_CSS}
   ha-card {
     --radius: var(--ha-card-border-radius, 18px);
     --pad: 16px;
@@ -10828,7 +10888,7 @@ class SavvyEntityCard extends SavvyCard {
     // the glow: its colour while it is on, nothing otherwise (people at home, a switch on, a sensor reading on)
     const mainCss = c.color ? colorOf(c.color) : "";
     stateGlow(c, el.card, active && !person ? toRgb(mainCss && !mainCss.startsWith("var(") ? mainCss : "#588EE9") : null, 0.8);
-    if (c.design === "glass") {      // glass: the main entity is a lit tile; its own spring is the strength
+    if (designOn(c)) {      // glass or matte: the main entity is a lit tile; its own spring is the strength
       lit(el.card, person ? (away ? [190, 196, 208] : [76, 175, 80]) : active ? toRgb(mainCss && !mainCss.startsWith("var(") ? mainCss : "#588EE9") : null, person && away ? 0.3 : 1);
     }
     this._mainAway.to(away, MOTION.ui);
@@ -11497,7 +11557,7 @@ class SavvyGraphCard extends SavvyCard {
     this.toggleAttribute("dark", !!h.themes?.darkMode);
     this._renderTiles();
     // glass: a tile throws the colour of its icon (its level colour; neutral and quiet without one)
-    if (this._config.design === "glass") for (const node of this._tiles.values()) {
+    if (designOn(this._config)) for (const node of this._tiles.values()) {
       const ic = node.querySelector(".top ha-icon, .top savvy-state-icon");
       litFrom(node, ic, node.style.getPropertyValue("--tile-lvl") ? 0.9 : 0.4);
     }
@@ -12818,7 +12878,7 @@ const STYLE = `
 [hidden] { display: none !important; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0;
   cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; }
-${GLOW_CSS}${GLASS_CSS}
+${GLOW_CSS}${DESIGN_CSS}
 
 ha-card {
   --radius: var(--ha-card-border-radius, 18px);
@@ -14356,7 +14416,7 @@ class SavvyLockCard extends SavvyCard {
     if (!this._pulsing) put(el.card, "--pulse", "0");
     clearTimeout(this._timer);
     if (Number.isFinite(nextCheck)) this._timer = setTimeout(() => this._update(), nextCheck + 40);
-    if (c.design === "glass") for (const lk of el.locks.querySelectorAll(".lk")) litFrom(lk, lk.querySelector(".disc"), 1);
+    if (designOn(c)) for (const lk of el.locks.querySelectorAll(".lk")) litFrom(lk, lk.querySelector(".disc"), 1);
     if (this._first) { this._first = false; requestAnimationFrame(() => this._paintAll(null)); }
     this._wake();
   }
@@ -17843,7 +17903,7 @@ class SavvySceneCard extends SavvyCard {
     el.grid.hidden = !items.length;
     this._fitRow(el.grid);
     // glass: a scene that just ran throws its colour (its own spring is the strength)
-    if (c.design === "glass") for (const node of this._tiles.values()) {
+    if (designOn(c)) for (const node of this._tiles.values()) {
       const col = node.__ic.isConnected && getComputedStyle(node.__ic).color.match(/[\d.]+/g);
       node.toggleAttribute("data-light", true);
       if (col) node.style.setProperty("--lc", col.slice(0, 3).join(" "));
@@ -18433,7 +18493,7 @@ class SettingsEditor extends SavvyEditor {
         { name: "areas", label: "Ignored rooms", selector: { area: { multiple: true } } },
       ] },
       { type: "expandable", name: "design", title: "Design", schema: [
-        S.select("style", "Style", [{ value: "plain", label: "Plain" }, { value: "glass", label: "Glass" }]),
+        S.select("style", "Style", [{ value: "plain", label: "Plain" }, { value: "glass", label: "Glass" }, { value: "matte", label: "Matte" }]),
         S.bool("state_glow", "State glow", "A soft glow in a corner of a card in what it is doing: a lit light, a locked door, music playing. Off here turns it off on every card; a card can still set its own.", true),
       ] },
       { name: "admin_only", label: "Admin only", helper: "Kept from people who are not administrators; everyone sees everything unless it is listed. A card can only hide itself: it does not lock a page. In YAML, true means both.",
@@ -20474,7 +20534,7 @@ const STYLE = `
 }
 [hidden] { display: none !important; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; }
-${GLOW_CSS}${GLASS_CSS}
+${GLOW_CSS}${DESIGN_CSS}
 
 ha-card {
   --radius: var(--ha-card-border-radius, 18px);

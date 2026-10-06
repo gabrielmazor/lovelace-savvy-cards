@@ -253,7 +253,7 @@ class SavvyEntityCard extends SavvyCard {
     // the glow: its colour while it is on, nothing otherwise (people at home, a switch on, a sensor reading on)
     const mainCss = c.color ? colorOf(c.color) : "";
     stateGlow(c, el.card, active && !person ? toRgb(mainCss && !mainCss.startsWith("var(") ? mainCss : "#588EE9") : null, 0.8);
-    if (c.design === "glass") {      // glass: the main entity is a lit tile; its own spring is the strength
+    if (designOn(c)) {      // glass or matte: the main entity is a lit tile; its own spring is the strength
       lit(el.card, person ? (away ? [190, 196, 208] : [76, 175, 80]) : active ? toRgb(mainCss && !mainCss.startsWith("var(") ? mainCss : "#588EE9") : null, person && away ? 0.3 : 1);
     }
     this._mainAway.to(away, MOTION.ui);

@@ -384,7 +384,7 @@ class SavvyLockCard extends SavvyCard {
     if (!this._pulsing) put(el.card, "--pulse", "0");
     clearTimeout(this._timer);
     if (Number.isFinite(nextCheck)) this._timer = setTimeout(() => this._update(), nextCheck + 40);
-    if (c.design === "glass") for (const lk of el.locks.querySelectorAll(".lk")) litFrom(lk, lk.querySelector(".disc"), 1);
+    if (designOn(c)) for (const lk of el.locks.querySelectorAll(".lk")) litFrom(lk, lk.querySelector(".disc"), 1);
     if (this._first) { this._first = false; requestAnimationFrame(() => this._paintAll(null)); }
     this._wake();
   }

@@ -97,7 +97,7 @@ const STYLE = `
   [hidden] { display: none !important; }
   button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0;
     cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; }
-  ${GLOW_CSS}${GLASS_CSS}
+  ${GLOW_CSS}${DESIGN_CSS}
   ha-card {
     --radius: var(--ha-card-border-radius, 18px);
     --pad: 16px;

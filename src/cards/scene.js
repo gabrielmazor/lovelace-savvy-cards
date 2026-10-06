@@ -262,7 +262,7 @@ class SavvySceneCard extends SavvyCard {
     el.grid.hidden = !items.length;
     this._fitRow(el.grid);
     // glass: a scene that just ran throws its colour (its own spring is the strength)
-    if (c.design === "glass") for (const node of this._tiles.values()) {
+    if (designOn(c)) for (const node of this._tiles.values()) {
       const col = node.__ic.isConnected && getComputedStyle(node.__ic).color.match(/[\d.]+/g);
       node.toggleAttribute("data-light", true);
       if (col) node.style.setProperty("--lc", col.slice(0, 3).join(" "));

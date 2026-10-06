@@ -154,6 +154,7 @@ class ModePicker {
     this.isOpen = true;
     this.anchor = anchor;
     this.el.toggleAttribute("data-glass", this.host?._config?.design === "glass");
+    this.el.toggleAttribute("data-matte", this.host?._config?.design === "matte");
     this.el.toggleAttribute("dark", !!this.host?.hasAttribute?.("dark"));
     portalRoot().append(this.scrim, this.el);
     this.render(info, caption);

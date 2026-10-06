@@ -12,11 +12,14 @@
 //   _paint(dirty, all)                        the card's own painting, after the shared part
 // ---------------------------------------------------------------------------------------
 
-// design: glass (the card's own, else the dashboard's) is one attribute on the card surface
+// glass or matte: any design that lights tiles from their icons
+function designOn(config) { const d = config?.design; return d === "glass" || d === "matte"; }
+
+// design: glass or matte (the card's own, else the dashboard's) is one attribute on the card surface
 function syncDesign(card) {
   const root = card.shadowRoot || card._root;
   const el = card._glassEl?.isConnected ? card._glassEl : (card._glassEl = root?.querySelector("ha-card"));
-  if (el) el.toggleAttribute("data-glass", card._config?.design === "glass");
+  if (el) { el.toggleAttribute("data-glass", card._config?.design === "glass"); el.toggleAttribute("data-matte", card._config?.design === "matte"); }
 }
 
 class SavvyCard extends HTMLElement {

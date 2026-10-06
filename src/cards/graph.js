@@ -305,7 +305,7 @@ class SavvyGraphCard extends SavvyCard {
     this.toggleAttribute("dark", !!h.themes?.darkMode);
     this._renderTiles();
     // glass: a tile throws the colour of its icon (its level colour; neutral and quiet without one)
-    if (this._config.design === "glass") for (const node of this._tiles.values()) {
+    if (designOn(this._config)) for (const node of this._tiles.values()) {
       const ic = node.querySelector(".top ha-icon, .top savvy-state-icon");
       litFrom(node, ic, node.style.getPropertyValue("--tile-lvl") ? 0.9 : 0.4);
     }

@@ -398,8 +398,8 @@ const GLOW_CARDS = new Set(["savvy-lights-card", "savvy-climate-card", "savvy-me
   "savvy-room-tile", "savvy-room-activity-card", "savvy-system-health-card"]);
 const GLOW_FIELD = { name: "state_glow", label: "State glow", helper: "A soft glow in the card's corner in what it is doing. Off keeps the card plain.", selector: { boolean: {} }, default: true };
 
-const DESIGN_FIELD = { name: "design", label: "Design", helper: "Empty: the dashboard's setting (Savvy settings, Design). Glass is a frosted surface where every lit icon throws its light.",
-  selector: { select: { mode: "dropdown", options: [{ value: "glass", label: "Glass" }, { value: "plain", label: "Plain" }] } } };
+const DESIGN_FIELD = { name: "design", label: "Design", helper: "Empty: the dashboard's setting (Savvy settings, Design). Glass is frosted; matte is solid and tactile; both light a tile from its icon.",
+  selector: { select: { mode: "dropdown", options: [{ value: "glass", label: "Glass" }, { value: "matte", label: "Matte" }, { value: "plain", label: "Plain" }] } } };
 
 const defineEditor = (type, schemaFn, tidy) => {
   const name = `${type}-editor`;
