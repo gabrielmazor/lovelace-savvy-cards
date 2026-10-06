@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.18.1
+
+- **Room tile:** all of its animations can be turned off, `animations: false` on a tile, or `design: { animations: false }` in
+  the settings card for every room tile (on by default). A badge's halo is no longer cut by the row's edge.
+- **Room light badge:** it takes the entity's own icon instead of a fixed light switch; a badge you configure still
+  picks its own.
+- **Media (compact):** the player's icon, name and buttons sit in the same tile as in the full layout.
+
 ## 0.18.0
 
 - **Glass design (optional):** `design: glass` on a card, or `design: { style: glass }` in the settings card for

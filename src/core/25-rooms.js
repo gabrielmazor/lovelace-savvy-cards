@@ -224,7 +224,7 @@ function legacyBadges(c) {
     }
   }
   if (include.length) out.include = [...new Set(include)];
-  if (c.light_state && c.entities === undefined) out.entities = [{ entity: c.light_state, name: "Light", icon: "mdi:light-switch" }];
+  if (c.light_state && c.entities === undefined) out.entities = [{ entity: c.light_state, name: "Light" }];
   if (c.ignore_sensors && c.exclude_kinds === undefined) out.exclude_kinds = c.ignore_sensors;
   return out;
 }

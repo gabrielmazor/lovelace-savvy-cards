@@ -90,8 +90,11 @@ class SavvyCard extends HTMLElement {
     this._ro?.disconnect();
   }
 
+  // reduced motion, or the card (or the settings card) turned its animations off
+  _noMotion() { return MQ.reduced.matches || this._config?.animations === false; }
+
   _frame(now, dt) {
-    const dirty = new Set(), red = MQ.reduced.matches;
+    const dirty = new Set(), red = this._noMotion();
     for (const s of this._springs) {
       if (s.idle) continue;
       if (red) s.snap(); else s.step(dt);
@@ -108,7 +111,7 @@ class SavvyCard extends HTMLElement {
   }
 
   _paintAll(dirty) {
-    const all = !dirty, red = MQ.reduced.matches;
+    const all = !dirty, red = this._noMotion();
     for (const node of this._pressNodes) {
       const s = node.__spring;
       if (!s || (!all && !dirty.has(s.group))) continue;

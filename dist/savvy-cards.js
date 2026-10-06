@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.18.0 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.18.1 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.18.0";
+const SAVVY_VERSION = "0.18.1";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -796,7 +796,7 @@ function legacyBadges(c) {
     }
   }
   if (include.length) out.include = [...new Set(include)];
-  if (c.light_state && c.entities === undefined) out.entities = [{ entity: c.light_state, name: "Light", icon: "mdi:light-switch" }];
+  if (c.light_state && c.entities === undefined) out.entities = [{ entity: c.light_state, name: "Light" }];
   if (c.ignore_sensors && c.exclude_kinds === undefined) out.exclude_kinds = c.ignore_sensors;
   return out;
 }
@@ -4652,8 +4652,11 @@ class SavvyCard extends HTMLElement {
     this._ro?.disconnect();
   }
 
+  // reduced motion, or the card (or the settings card) turned its animations off
+  _noMotion() { return MQ.reduced.matches || this._config?.animations === false; }
+
   _frame(now, dt) {
-    const dirty = new Set(), red = MQ.reduced.matches;
+    const dirty = new Set(), red = this._noMotion();
     for (const s of this._springs) {
       if (s.idle) continue;
       if (red) s.snap(); else s.step(dt);
@@ -4670,7 +4673,7 @@ class SavvyCard extends HTMLElement {
   }
 
   _paintAll(dirty) {
-    const all = !dirty, red = MQ.reduced.matches;
+    const all = !dirty, red = this._noMotion();
     for (const node of this._pressNodes) {
       const s = node.__spring;
       if (!s || (!all && !dirty.has(s.group))) continue;
@@ -5564,6 +5567,7 @@ const SETTINGS_RULES = {
   ],
   "savvy-room-tile": [
     glowRule,
+    { path: "animations", label: "Animations", get: (s) => (s.design?.animations === false ? false : undefined), src: "design" },
     { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
     { path: "name", label: "Name", get: room("name") },
     { path: "icon", label: "Icon", get: room("icon") },
@@ -5714,7 +5718,7 @@ function resolveSettings(type, cfg, settings) {
       if (own === false) continue;
       const have = asList(own);
       if (have.some((e) => (e && e.entity) === v || e === v)) continue;
-      out = setPath(out, r.path, [{ entity: v, name: "Light", icon: "mdi:light-switch" }, ...have]);
+      out = setPath(out, r.path, [{ entity: v, name: "Light" }, ...have]);
     } else {
       if (own !== undefined && own !== null) continue;
       out = setPath(out, r.path, v);
@@ -14709,7 +14713,7 @@ const STYLE = `${BASE_CSS}
   .tb[disabled] { opacity: 0.3; cursor: default; }
   .tb ha-icon { --mdc-icon-size: 20px; display: flex; }
   /* glass: a player's icon, name and buttons are one lit tile; its volume stays outside */
-  ha-card:not([data-compact]) .row { padding: 8px 10px; border-radius: 15px; background: color-mix(in oklab, var(--primary-text-color) 4%, transparent); }
+  ha-card .row { padding: 8px 10px; border-radius: 15px; background: color-mix(in oklab, var(--primary-text-color) 4%, transparent); }
   ha-card[data-glass] .row { --lx: 28px; }
   .vol { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
   .vol .bar { position: absolute; left: 0; right: 0; top: 50%; height: 9px; margin-top: -4.5px; border-radius: 99px; background: var(--well); overflow: hidden; transform-origin: 50% 50%; }
@@ -15163,7 +15167,7 @@ class SavvyMediaCard extends SavvyCard {
     const accent = getComputedStyle(el.card).getPropertyValue("--accent").trim().split(/\s+/).map(Number);
     for (const r of this.shadowRoot.querySelectorAll(".row")) {
       const live = r.querySelector(".icon[data-live]") || r.querySelector("[data-on]");
-      if (this._compact) r.removeAttribute("data-light"); else lit(r, live ? accent : null, playing ? 1 : 0.55);
+      lit(r, live ? accent : null, playing ? 1 : 0.55);
     }
     const labels = c.labels || {};
     for (const [key, node] of [["video", el.videoCap], ["audio", el.audioCap]]) {
@@ -18434,6 +18438,7 @@ class SettingsEditor extends SavvyEditor {
       ] },
       { type: "expandable", name: "design", title: "Design", schema: [
         S.select("style", "Style", [{ value: "plain", label: "Plain" }, { value: "glass", label: "Glass" }]),
+        S.bool("animations", "Room tile animations", "The room tile's liquid drop, glow, badges and text moving. Off keeps every room tile still; a tile can still set its own.", true),
         S.bool("state_glow", "State glow", "A soft glow in a corner of a card in what it is doing: a lit light, a locked door, music playing. Off here turns it off on every card; a card can still set its own.", true),
       ] },
       { name: "admin_only", label: "Admin only", helper: "Kept from people who are not administrators; everyone sees everything unless it is listed. A card can only hide itself: it does not lock a page. In YAML, true means both.",
@@ -19811,9 +19816,10 @@ const STYLE = `${BASE_CSS}
   .temp { flex: none; color: var(--secondary-text-color); letter-spacing: 0; }
 
   /* breathing room so halos aren't cut off */
-  .badges { position: relative; z-index: 1; display: flex; align-items: center; height: var(--chip); padding: 8px; margin: -8px; margin-inline-start: -13px; overflow: hidden; }
+  .badges { position: relative; z-index: 1; display: flex; align-items: center; height: var(--chip); padding: 16px; margin: -16px; margin-inline-start: -21px; overflow: hidden; pointer-events: none; }
+  .badge { pointer-events: auto; }
   .badges[data-overflow] { -webkit-mask-image: linear-gradient(to left, transparent 8px, #000 40px); mask-image: linear-gradient(to left, transparent 8px, #000 40px); }
-  @container (min-width: 300px) { .badges { padding-inline-start: calc(8px + var(--well-size) + var(--gap)); } }
+  @container (min-width: 300px) { .badges { padding-inline-start: calc(16px + var(--well-size) + var(--gap)); } }
   .badge { position: relative; flex: none; width: 0; height: var(--chip); outline: none; }
   .chip { position: absolute; top: 0; inset-inline-start: 0; width: var(--chip); height: var(--chip); border-radius: 50%;
     display: grid; place-items: center; color: var(--secondary-text-color); opacity: 0; }
@@ -20041,7 +20047,7 @@ class SavvyRoomTile extends SavvyCard {
   _update() {
     const h = this._hass, c = this._config, el = this._el;
     if (!h || !el) return;
-    this._reduced = MQ.reduced.matches;
+    this._reduced = this._noMotion();
     this._dark = !!h.themes?.darkMode;
     this.toggleAttribute("dark", this._dark);
     const area = c.area ? areaInfo(h, c.area) : null;
@@ -20323,6 +20329,7 @@ const EDITOR = defineEditor("savvy-room-tile", (hass, c) => [
     S.color("tint", "White tint"),
   ]),
   ...badgeSchema(),
+  S.bool("animations", "Animations", "The drop's movement and glow, badges popping in, text rolling. Off keeps the tile still. The settings card can turn them off for every room tile.", true),
   S.section("Actions", [S.action("tap_action", "Tap action"), S.action("double_tap_action", "Double tap action"), S.action("hold_action", "Hold action")]),
 ]);
 

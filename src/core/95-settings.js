@@ -145,6 +145,7 @@ const SETTINGS_RULES = {
   ],
   "savvy-room-tile": [
     glowRule,
+    { path: "animations", label: "Animations", get: (s) => (s.design?.animations === false ? false : undefined), src: "design" },
     { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
     { path: "name", label: "Name", get: room("name") },
     { path: "icon", label: "Icon", get: room("icon") },
@@ -295,7 +296,7 @@ function resolveSettings(type, cfg, settings) {
       if (own === false) continue;
       const have = asList(own);
       if (have.some((e) => (e && e.entity) === v || e === v)) continue;
-      out = setPath(out, r.path, [{ entity: v, name: "Light", icon: "mdi:light-switch" }, ...have]);
+      out = setPath(out, r.path, [{ entity: v, name: "Light" }, ...have]);
     } else {
       if (own !== undefined && own !== null) continue;
       out = setPath(out, r.path, v);
