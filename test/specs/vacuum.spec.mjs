@@ -20,9 +20,14 @@ export default async function ({ browser, base, check }) {
       await new Promise((res) => setTimeout(res, 700));
       const txt = (el) => el.shadowRoot.textContent.replace(/\s+/g, " ");
       return { full: txt(full), compactH: compact.getBoundingClientRect().height, fullH: full.getBoundingClientRect().height,
-        legacyH: legacy.getBoundingClientRect().height, routines: [...full.shadowRoot.querySelectorAll(".routine, .rt, [data-routine]")].length };
+        legacyH: legacy.getBoundingClientRect().height,
+        // the routine buttons are as wide as each other and sit on the tiles' columns below
+        rt: [...full.shadowRoot.querySelectorAll(".rt")].map((n) => { const b = n.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.width)]; }),
+        hub: [...full.shadowRoot.querySelectorAll(".hub .tile")].slice(0, 2).map((n) => { const b = n.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.width)]; }),
+        routines: [...full.shadowRoot.querySelectorAll(".routine, .rt, [data-routine]")].length };
     }, width);
     check(`${tag} full card: name, status, routines discovered`, /Robot/.test(r.full) && /Charging complete|Charging_complete|Charging Complete/i.test(r.full) && /Vacuum/.test(r.full) && /Mop/.test(r.full), r.full.slice(0, 200));
+    check(`${tag} routines: equal widths, on the same columns as the tiles below`, r.rt.length === 2 && Math.abs(r.rt[0][1] - r.rt[1][1]) <= 1 && r.hub.length === 2 && r.rt.every((x, i) => Math.abs(x[0] - r.hub[i][0]) <= 1 && Math.abs(x[1] - r.hub[i][1]) <= 1), JSON.stringify([r.rt, r.hub]));
     check(`${tag} layout: compact is one row; legacy compact: true still works`, r.compactH < 110 && r.legacyH < 110 && r.fullH > 200, JSON.stringify(r));
 
     await page.evaluate(() => { window.log.length = 0; });

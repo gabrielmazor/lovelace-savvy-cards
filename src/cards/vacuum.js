@@ -294,14 +294,14 @@ ha-icon, savvy-state-icon { display: flex; align-items: center; justify-content:
 
 /* ---------- routines: one row, masked when it overflows ---------- */
 .routines {
-  display: flex; gap: 6px; min-width: 0; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain;
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(max-content, 1fr); gap: 6px; min-width: 0; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain;
   padding: 3px; margin: -3px;
 }
 .routines::-webkit-scrollbar { display: none; }
 .routines[data-overflow] { mask-image: linear-gradient(to left, transparent 0, #000 26px); -webkit-mask-image: linear-gradient(to left, transparent 0, #000 26px); }
 .rt {
   --on: 0;
-  flex: 1 0 auto; display: flex; align-items: center; justify-content: center; gap: 7px; height: 38px; padding: 0 13px 0 10px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center; gap: 7px; height: 38px; padding: 0 13px 0 10px; border-radius: 12px;
   background: color-mix(in oklab, var(--acc) calc(var(--on) * 18%), var(--well)); white-space: nowrap; transform-origin: 50% 50%;
   font-size: 13px; line-height: 16px; font-weight: 600; letter-spacing: -0.006em; --mdc-icon-size: 18px;
 }
