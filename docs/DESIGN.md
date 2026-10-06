@@ -265,11 +265,11 @@ surface is the tile (the entity card) lights the card itself. Popups carry the s
 Glass adds a material and a little tile padding; the tiles it lights (the thermostat target, a player row) are also tiles in plain.
 
 **Matte (optional).** `design: matte` is `data-matte` on the card surface and the same lit tiles (`data-light`, `lit()`),
-in an opaque material derived from the theme's card colour (`color-mix` against white or a warm paper): a raised tile
-has a top highlight and a soft neutral shadow, an icon disc is embossed, a control is raised when idle and pressed
-(inset shadow) when on. A lit tile is painted: its state colour, chroma-capped by mixing 28% neutral grey in, as a
-wash strongest at the icon plus a thin masked edge on the icon's side, scaled by brightness. Shadows are always
-neutral; there is no blur and no additive blending.
+in a flat, opaque material derived from the theme's card colour (`color-mix` against white or a warm paper): a tile
+is a plane a few percent lighter than the card (white on a warm card in a light theme) with a hairline edge, and no
+bevel, emboss or stacked shadow; a card or popup has one quiet neutral lift. A lit tile is painted: its state colour,
+chroma-capped by mixing 28% neutral grey in, as a wash strongest at the icon plus a thin masked edge on the icon's
+side, scaled by brightness. A control that is on gets a hairline ring in its colour. There is no blur and no additive blending.
 
 **Tones.** A badge or control is the well (6% of the text colour) when idle, 16% of its
 state colour when on (`--mix-on`), 18% of amber or red when it is an alert

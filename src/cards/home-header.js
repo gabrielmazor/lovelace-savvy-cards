@@ -221,6 +221,18 @@ class SavvyHomeHeaderCard extends SavvyCard {
       this._sumEntries = entryStore.map;
       this._sum = healthSummary(h, hc);
     }
+    // Home Assistant or an integration is still coming up: a loading ring instead of the cog, no count, no alert
+    const boot = startupInfo(h, hc), glyph = el.health.querySelector("ha-icon");
+    this.toggleAttribute("data-still", this._noMotion());
+    attr(el.health, "data-loading", boot ? "" : null);
+    if (boot) {
+      attr(glyph, "icon", this._noMotion() ? "mdi:timer-sand" : "mdi:loading");
+      attr(el.health, "data-alert", false);
+      el.count.hidden = true;
+      attr(el.health, "aria-label", `System health, ${boot.text.replace("…", "")}`);
+      return;
+    }
+    attr(glyph, "icon", "mdi:cog");
     // when the count is kept from this person the cog looks like any other: no colour, no alert
     const total = this._sum.total, warn = hc.warn_above ?? 6;
     const showCount = !!total && !hiddenFromUser(h, this._config, "health_badges");
@@ -342,6 +354,7 @@ const EDITOR = defineEditor("savvy-home-header-card", (hass, c) => [
       { value: "hub", label: "Device, and the hub behind it" }, { value: "device", label: "Device" }, { value: "none", label: "Nothing: one row per entity" },
     ]),
     S.number("group_min", "Hub threshold", 2, 50),
+    S.bool("startup_wait", "Wait for startup", "While Home Assistant or an integration is still starting, show a loading state instead of offline devices.", true),
     { type: "expandable", name: "ignore", title: "Known problems", schema: [
       { name: "devices", label: "Devices", helper: "Dead and waiting for a replacement? Listed here they leave the count and wait under Known.", selector: { device: { multiple: true } } },
       { name: "entities", label: "Entities", selector: { entity: { multiple: true } } },

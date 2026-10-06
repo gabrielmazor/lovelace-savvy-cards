@@ -104,6 +104,9 @@ const PICKER_CSS = `
   }
   /* design: glass: the same material as the cards, but denser, so a menu reads clearly over whatever is behind it */
   ${glassSurface('.sv-pick[data-glass]', '', '.sv-pick[data-glass]:not([dark])', 0.3)}
+  ${matteSurface('.sv-pick[data-matte]', '.sv-pick[data-matte]:not([dark])')}
+  .sv-pick[data-matte] { box-shadow: 0 16px 40px -18px rgb(0 0 0 / 0.65); }
+  .sv-pick[data-matte]:not([dark]) { box-shadow: 0 14px 34px -18px rgb(60 50 30 / 0.35); }
   .sv-pick[data-wide] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .sv-pick[data-wider] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .sv-pick[data-up] { transform-origin: var(--ox, 50%) 100%; }

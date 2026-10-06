@@ -191,6 +191,7 @@ class SettingsEditor extends SavvyEditor {
         { name: "exclude_platforms", label: "Ignored integrations", selector: { select: { multiple: true, custom_value: true, options: ["mobile_app"] } } },
         S.select("group_by", "Grouping", [{ value: "hub", label: "Device, and the hub behind it" }, { value: "device", label: "Device" }, { value: "none", label: "Nothing: one row per entity" }]),
         S.number("group_min", "Hub threshold", 2, 50),
+        S.bool("startup_wait", "Wait for startup", "While Home Assistant or an integration is still starting, health cards show a loading state instead of offline devices.", true),
         S.entity("watchman_last_run", "Watchman last run", "sensor"),
         { type: "expandable", name: "ignore", title: "Known problems", schema: [
           { name: "devices", label: "Devices", helper: "Dead and waiting for a replacement? Listed here they leave the count and wait under Known.", selector: { device: { multiple: true } } },

@@ -4,7 +4,7 @@ import { openPage } from "./_util.mjs";
 
 const EDITORS = {
   "savvy-section-title-card": { config: { area: "living_room", control: "input_select.living_room_scene" },
-    want: ["area", "name", "icon", "navigation_path", "heading_style", "filled", "control", "mode_label", "control_tap_action", "control_hold_action", "control_double_tap_action", "temperature", "auto_discover", "exclude_kinds", "include", "exclude", "tap_action", "hold_action",
+    want: ["area", "name", "icon", "navigation_path", "heading_style", "background", "control", "mode_label", "control_tap_action", "control_hold_action", "control_double_tap_action", "temperature", "auto_discover", "exclude_kinds", "include", "exclude", "tap_action", "hold_action",
       "Auto", "Relax", "Party"], lists: ["entities"] },
   "savvy-room-tile": { config: { area: "kitchen" },
     want: ["area", "name", "icon", "navigation_path", "control", "mode_label", "temperature", "toggle", "lights", "count", "color_lights", "tint", "auto_discover", "exclude_kinds", "include", "exclude", "tap_action", "double_tap_action", "hold_action"], lists: ["entities"] },

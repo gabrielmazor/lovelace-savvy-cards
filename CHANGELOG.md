@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.19.1
+
+- **Loading, not offline:** while Home Assistant or one of its integrations is still coming up, the home header's cog
+  is a loading ring with no count, and the health card (and its popup) says "Home Assistant is starting…",
+  "Reconnecting…" or "Loading integrations: Zigbee, MQTT" instead of a wall of offline devices, with Show anyway.
+  It follows the connection, the core's own state and the integrations whose setup is in progress, not a timer
+  (`startup_wait: false` turns it off).
+- **Popup titles lead to the page:** when a popup has a page to go to, tapping its title goes there too, with or
+  without the button at the bottom.
+- **Matte, flatter:** no bevels, embossing or stacked shadows; flat planes told apart by tone and a hairline edge,
+  a quiet lift only under cards and popups. Popups and menus are matte too. The lit wash stays.
+- **Section title:** `filled` is now `background` (the old name still works), and in matte a title without one is clear,
+  as in plain and glass.
+
 ## 0.19.0
 
 - **Matte design (optional):** `design: matte` on a card, or `design: { style: matte }` in the settings card for all of

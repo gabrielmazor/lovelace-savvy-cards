@@ -50,8 +50,13 @@ const SHEET_CSS = `
   /* design: glass, in a popup: the same material as the cards, denser, rows lit like the card's */
   ${glassSurface('.sv-sheet[data-glass]', '', '.sv-sheet[data-glass]:not([dark])', 0.2)}
   ${GLASS_LIT('.sv-sheet[data-glass]')}
-  .sv-sheet[data-glass] .sv-rows, ha-card[data-glass] .sv-rows { gap: 6px; }
-  .sv-sheet[data-glass] .sv-row[data-light], ha-card[data-glass] .sv-row[data-light] { padding: 2px 6px; border-radius: 16px; --lx: 28px; --ly: 24px; }
+  /* design: matte, in a popup: the same flat material as the cards, lifted a little more */
+  ${matteSurface('.sv-sheet[data-matte]', '.sv-sheet[data-matte]:not([dark])')}
+  .sv-sheet[data-matte] { box-shadow: 0 28px 64px -28px rgb(0 0 0 / 0.7); }
+  .sv-sheet[data-matte]:not([dark]) { box-shadow: 0 24px 56px -24px rgb(60 50 30 / 0.35); }
+  ${MATTE_LIT('.sv-sheet[data-matte]')}
+  .sv-sheet[data-glass] .sv-rows, ha-card[data-glass] .sv-rows, .sv-sheet[data-matte] .sv-rows, ha-card[data-matte] .sv-rows { gap: 6px; }
+  .sv-sheet[data-glass] .sv-row[data-light], ha-card[data-glass] .sv-row[data-light], .sv-sheet[data-matte] .sv-row[data-light], ha-card[data-matte] .sv-row[data-light] { padding: 2px 6px; border-radius: 16px; --lx: 28px; --ly: 24px; }
   .sv-sheet[data-wide] { width: min(560px, calc(100vw - 32px)); max-height: min(720px, calc(100vh - 48px)); }
   @supports (corner-shape: squircle) { .sv-sheet { corner-shape: squircle; border-radius: 36px; } }
   .sv-sheet[data-bottom] { left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: 85vh;
@@ -60,6 +65,9 @@ const SHEET_CSS = `
     background: color-mix(in oklab, var(--primary-text-color) 20%, transparent); }
   .sv-sheet:not([data-bottom]) .sv-grab { display: none; }
   .sv-head { display: flex; align-items: center; gap: 8px; padding: 14px 12px 8px 18px; }
+  .sv-title[data-link] { cursor: pointer; border-radius: 8px; }
+  .sv-title[data-link]::after { content: "\\203A"; margin-inline-start: 6px; opacity: 0.45; font-weight: 500; }
+  @media (hover: hover) { .sv-title[data-link]:hover { opacity: 0.8; } }
   .sv-title { flex: 1; min-width: 0; font-size: 18px; line-height: 23px; font-weight: 650; letter-spacing: -0.022em;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sv-close { width: var(--c-s); height: var(--c-s); border-radius: 11px; display: grid; place-items: center;
@@ -150,11 +158,21 @@ class Sheet {
 
   // A button pinned under the body: { label, onTap, icon?, color? }, or null for none. A tap
   // closes the popup first, then runs onTap (a page change, say).
+  // the title takes you to the page too, when there is one (closer to the thumb than the button at the bottom)
+  setTitleLink(onTap) {
+    const el = this.el.querySelector(".sv-title");
+    el.toggleAttribute("data-link", !!onTap);
+    if (onTap) { el.setAttribute("role", "link"); el.tabIndex = 0; } else { el.removeAttribute("role"); el.removeAttribute("tabindex"); }
+    el.onclick = onTap ? () => { this.close(); onTap(); } : null;
+    el.onkeydown = onTap ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); this.close(); onTap(); } } : null;
+  }
+
   setFooter(spec) {
     this.foot?.remove();
     this.foot = null;
     this.footSpring = null;
-    if (!spec) return;
+    this.setTitleLink(spec ? spec.onTap : null);
+    if (!spec || spec.noButton) return;
     const foot = document.createElement("div");
     foot.className = "sv-foot";
     const go = document.createElement("button");

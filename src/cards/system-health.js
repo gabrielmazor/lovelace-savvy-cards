@@ -72,6 +72,15 @@ const STYLE = `${BASE_CSS}
   .row[data-depth="1"] { margin-inline-start: 16px; }
   .row[data-depth="2"] { margin-inline-start: 32px; }
   .row[data-depth="3"] { margin-inline-start: 48px; }
+  .boot { display: flex; align-items: center; gap: 12px; padding: 12px 2px 6px; }
+  .ring { flex: none; width: 22px; height: 22px; box-sizing: border-box; border-radius: 50%; border: 3px solid color-mix(in oklab, var(--primary-text-color) 14%, transparent);
+    border-top-color: rgb(var(--accent)); animation: sv-spin 0.9s linear infinite; }
+  :host([data-still]) .ring { animation: none; border-color: color-mix(in oklab, rgb(var(--accent)) 50%, transparent); }
+  @keyframes sv-spin { to { transform: rotate(360deg); } }
+  .btxt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .btxt b { font-size: 14px; line-height: 18px; font-weight: 650; letter-spacing: -0.01em; }
+  .btxt span { font-size: 12.5px; line-height: 16px; color: var(--secondary-text-color); }
+  .bany { flex: none; height: 28px; padding: 0 11px; border-radius: 10px; background: var(--well); font-size: 12px; font-weight: 600; color: var(--secondary-text-color); }
   .report { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 9px 0 6px; border-radius: 11px; margin-inline-start: 6px;
     background: color-mix(in oklab, rgb(var(--accent)) 16%, transparent); color: rgb(var(--accent));
     font-size: 11px; line-height: 14px; font-weight: 650; letter-spacing: 0; text-transform: none; white-space: nowrap; transform-origin: 50% 50%; }
@@ -193,15 +202,17 @@ class SavvySystemHealthCard extends HTMLElement {
     this._root.innerHTML = `<style>${STYLE}</style>
       <ha-card>
         <div class="head" id="head"><span class="titles"><span class="name" id="name"></span><span class="when" id="when" hidden></span></span><span class="pill" id="pill"></span></div>
+        <div class="boot" id="boot" hidden><span class="ring" aria-hidden="true"></span><span class="btxt"><b id="bt"></b><span id="bd"></span></span><button class="bany" id="bany">Show anyway</button></div>
         <div class="cols" id="cols"></div>
         <button class="action" id="action" hidden></button>
         <button class="report" id="report" hidden><ha-icon icon="mdi:refresh"></ha-icon><span>Run report</span></button>
       </ha-card>`;
     const $ = (id) => this._root.getElementById(id);
-    this._el = { card: this._root.querySelector("ha-card"), head: $("head"), name: $("name"), when: $("when"), pill: $("pill"), cols: $("cols"), action: $("action"), report: $("report") };
+    this._el = { card: this._root.querySelector("ha-card"), head: $("head"), name: $("name"), when: $("when"), pill: $("pill"), cols: $("cols"), boot: $("boot"), bt: $("bt"), bd: $("bd"), bany: $("bany"), action: $("action"), report: $("report") };
     this._boxes = new Map();
     this._el.report.remove();
     this._pressable(this._el.report, () => this._runReport());
+    this._pressable(this._el.bany, () => { this._any = true; this._update(); });
     this._angle = 0;
     const c = this._config;
     put(this._el.cols, "--max-rows", c.max_rows);
@@ -452,15 +463,22 @@ class SavvySystemHealthCard extends HTMLElement {
     this._lastRun = c.source === "all" || c.source === "watchman" ? watchmanLastRun(h, c) : null;
     if (c.source === "all" || c.source === "unavailable") refreshConfigEntries(h);
     this._checkReport();
+    const boot = startupInfo(h, c);
+    if (!boot) this._any = false;
+    const hold = !!boot && !this._any;        // still starting: a loading state instead of the lists
+    this.toggleAttribute("data-still", this._reduced || c.animations === false);
+    this._el.boot.hidden = !hold;
+    this._el.cols.hidden = hold;
+    if (hold) { text(this._el.bt, boot.text); text(this._el.bd, boot.detail); }
     const { total, sections } = this._compute();
     const label = SOURCES[c.source];
-    const lvl = total === 0 ? "var(--lvl-good)" : total < c.warn_above ? "var(--lvl-warn)" : "var(--lvl-bad)";
+    const lvl = hold ? "var(--secondary-text-color)" : total === 0 ? "var(--lvl-good)" : total < c.warn_above ? "var(--lvl-warn)" : "var(--lvl-bad)";
     Motion.tintVar(this._el.card, "--lvl", lvl);
     // the corner glow: amber while a few things need a look, red when it is a lot; nothing when all is well
-    this._glowRgb = total === 0 ? null : total < c.warn_above ? [232, 163, 61] : [224, 102, 102];
+    this._glowRgb = hold || total === 0 ? null : total < c.warn_above ? [232, 163, 61] : [224, 102, 102];
     stateGlow(c, this._el.card, this._glowRgb, 0.8);
-    text(this._el.pill, total === 0 ? "All good" : `${total} ${total === 1 ? label.noun : label.nouns}`);
-    attr(this._el.card, "aria-label", `${c.title || label.title}, ${total === 0 ? "all good" : `${total} ${label.nouns}`}`);
+    text(this._el.pill, hold ? "Starting…" : total === 0 ? "All good" : `${total} ${total === 1 ? label.noun : label.nouns}`);
+    attr(this._el.card, "aria-label", `${c.title || label.title}, ${hold ? boot.text.replace("…", "") : total === 0 ? "all good" : `${total} ${label.nouns}`}`);
     this._renderRows(sections);
     this._placeReport();
     this._tickWhen();
@@ -712,6 +730,7 @@ const EDITOR = defineEditor("savvy-system-health-card", (hass, c) => [
     { value: "hub", label: "Device, and the hub behind it" }, { value: "device", label: "Device" }, { value: "none", label: "Nothing: one row per entity" },
   ]),
   S.number("group_min", "Hub threshold", 2, 50),
+  S.bool("startup_wait", "Wait for startup", "While Home Assistant or an integration is still starting, show a loading state instead of offline devices.", true),
   { type: "expandable", name: "ignore", title: "Known problems", schema: [
     { name: "devices", label: "Devices", helper: "Dead and waiting for a replacement? Listed here they leave the count and wait under Known.", selector: { device: { multiple: true } } },
     { name: "entities", label: "Entities", selector: { entity: { multiple: true } } },

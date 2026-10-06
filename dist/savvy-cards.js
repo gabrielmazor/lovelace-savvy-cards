@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.19.0 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.19.1 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.19.0";
+const SAVVY_VERSION = "0.19.1";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -295,26 +295,28 @@ const GLASS_CSS = `${glassSurface('ha-card[data-glass]', '', ':host(:not([dark])
   ${GLASS_LIT('ha-card[data-glass]')}
 `;
 
-// design: matte. The same tiles and lights as glass, in a solid, tactile material: opaque surfaces derived from
-// the theme's card colour, raised tiles with a top highlight and a soft neutral shadow, controls that sit pressed
-// in while on. A lit tile is painted, not lit: the state colour (chroma capped, so amber, green and blue sit in one
-// family) is a wash strongest at the icon, with a thin coloured edge on the icon's side. No blur, no glow, no
-// transparency.
-const MATTE_VARS_DARK = `
-    --m-base: var(--card-background-color, #1c1c1e); --m-tile-hi: 7%; --m-wash: 1;
-    --m-tile-bg: linear-gradient(180deg, color-mix(in oklab, var(--m-base) 91%, #fff), color-mix(in oklab, var(--m-base) 94%, #fff));
-    --m-tile-shadow: inset 0 1px 0 rgb(255 255 255 / 0.07), inset 0 -1px 0 rgb(0 0 0 / 0.28), 0 5px 10px -5px rgb(0 0 0 / 0.6);
-    --m-disc: inset 0 1px 0 rgb(255 255 255 / 0.09), inset 0 -1px 2px rgb(0 0 0 / 0.3);
-    --m-ctl: inset 0 1px 0 rgb(255 255 255 / 0.07), 0 2px 4px -1px rgb(0 0 0 / 0.4);
-    --m-press: inset 0 2px 4px rgb(0 0 0 / 0.38);`;
-const MATTE_VARS_LIGHT = `
+// design: matte. The same tiles and lights as glass, in a flat, solid material: opaque planes derived from the theme's
+// card colour, told apart by tone and a hairline edge, almost no shadow, no bevels. A lit tile is painted, not lit: the
+// state colour (chroma capped, so amber, green and blue sit in one family) is a wash strongest at the icon, with a thin
+// coloured edge on the icon's side. No blur, no glow, no transparency.
+const matteVars = (dark) => dark ? `
+    --m-base: var(--card-background-color, #1c1c1e);
+    --m-card: color-mix(in oklab, var(--m-base) 97%, #fff);
+    --m-tile-bg: color-mix(in oklab, var(--m-base) 91%, #fff);
+    --m-tile-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.05);
+    --m-edge: rgb(255 255 255 / 0.07);
+    --m-lift: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 24px -16px rgb(0 0 0 / 0.55);` : `
     --m-base: var(--card-background-color, #fff);
-    --m-tile-bg: linear-gradient(180deg, #fff, #fbfaf8);
-    --m-tile-shadow: inset 0 1px 0 #fff, 0 0 0 1px rgb(60 50 30 / 0.06), 0 4px 10px -4px rgb(60 50 30 / 0.18);
-    --m-disc: inset 0 1px 0 #fff, inset 0 -1px 2px rgb(60 50 30 / 0.12);
-    --m-ctl: inset 0 1px 0 #fff, 0 1px 3px rgb(60 50 30 / 0.16);
-    --m-press: inset 0 2px 4px rgb(60 50 30 / 0.18);`;
-const MATTE_LIT = (R, L = ':host(:not([dark])) ' + R) => `
+    --m-card: color-mix(in oklab, var(--m-base) 96%, #e6dfd2);
+    --m-tile-bg: color-mix(in oklab, var(--m-base) 40%, #fff);
+    --m-tile-shadow: inset 0 0 0 1px rgb(60 50 30 / 0.07);
+    --m-edge: rgb(60 50 30 / 0.09);
+    --m-lift: 0 1px 2px rgb(60 50 30 / 0.08), 0 8px 20px -14px rgb(60 50 30 / 0.28);`;
+const matteSurface = (R, lightSel) => `
+  ${R} { ${matteVars(true)} background: var(--m-card); border: 1px solid var(--m-edge); box-shadow: var(--m-lift); }
+  ${lightSel} { ${matteVars(false)} }
+`;
+const MATTE_LIT = (R) => `
   ${R} [data-light], ${R}[data-light] { --lx: 28px; --ly: 50%; --mc: color-mix(in oklab, rgb(var(--lc, 128 128 128)) 72%, #8a8a8a); }
   ${R} [data-light] { position: relative; isolation: isolate; background: var(--m-tile-bg); box-shadow: var(--m-tile-shadow); }
   ${R} [data-light]::before, ${R}[data-light]::before {
@@ -329,23 +331,9 @@ const MATTE_LIT = (R, L = ':host(:not([dark])) ' + R) => `
     mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
     opacity: var(--on, 0); transition: opacity 360ms ease;
   }
-  ${R} :is(.orb, .av, .disc, .sv-ic, .row .icon, .ic) { box-shadow: var(--m-disc); }
-  ${R} :is(.power, .step, .ctl, .tb.solid, .swatch, .master, .sv-close) { box-shadow: var(--m-ctl); }
-  ${R} :is(.power, .tb, .btn, .master)[data-on] { box-shadow: var(--m-press), inset 0 0 0 1px color-mix(in oklab, currentColor 18%, transparent); }
+  ${R} :is(.power, .tb, .btn, .master)[data-on] { box-shadow: inset 0 0 0 1px color-mix(in oklab, currentColor 28%, transparent); }
 `;
-const MATTE_CSS = `
-  ha-card[data-matte] {
-    ${MATTE_VARS_DARK}
-    background: linear-gradient(180deg, color-mix(in oklab, var(--m-base) 95%, #fff), var(--m-base) 72%);
-    border-color: color-mix(in oklab, #fff 6%, transparent);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 12px 26px -12px rgb(0 0 0 / 0.65), 0 1px 2px rgb(0 0 0 / 0.35);
-  }
-  :host(:not([dark])) ha-card[data-matte] {
-    ${MATTE_VARS_LIGHT}
-    background: linear-gradient(180deg, color-mix(in oklab, var(--m-base) 98%, #fff), color-mix(in oklab, var(--m-base) 95%, #e8e0d4));
-    border-color: rgb(60 50 30 / 0.07);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 12px 24px -12px rgb(60 50 30 / 0.22), 0 1px 2px rgb(60 50 30 / 0.1);
-  }
+const MATTE_CSS = `${matteSurface('ha-card[data-matte]', ':host(:not([dark])) ha-card[data-matte]')}
   ${MATTE_LIT('ha-card[data-matte]')}
 `;
 const DESIGN_CSS = `${GLASS_CSS}${MATTE_CSS}`;
@@ -1126,7 +1114,7 @@ const integrationName = (platform) => (platform ? INTEGRATION_NAMES[platform] ||
 // minute, a refusal is not asked again for ten, and without it the integration rows are inferred
 // from the devices alone.
 const CONFIG_ENTRY_FAILED = { setup_error: "failed to set up", setup_retry: "retrying setup", failed_unload: "failed to unload", migration_error: "migration failed" };
-const entryStore = { map: new Map(), next: 0, pending: false, listeners: new Set() };
+const entryStore = { map: new Map(), next: 0, pending: false, listeners: new Set(), fast: false };
 function refreshConfigEntries(hass, force = false) {
   if (!hass?.callWS || entryStore.pending || (!force && Date.now() < entryStore.next)) return;
   entryStore.pending = true;
@@ -1135,9 +1123,25 @@ function refreshConfigEntries(hass, force = false) {
     for (const e of Array.isArray(list) ? list : []) map.set(e.entry_id, { domain: e.domain, title: e.title, state: e.state, disabled: !!e.disabled_by });
     const changed = JSON.stringify([...map]) !== JSON.stringify([...entryStore.map]);
     entryStore.map = map;
-    entryStore.next = Date.now() + 60000;
+    entryStore.next = Date.now() + (entryStore.fast ? 4000 : 60000);   // asked often while something is still starting
     if (changed) entryStore.listeners.forEach((fn) => fn());
-  }).catch(() => { entryStore.next = Date.now() + 600000; }).finally(() => { entryStore.pending = false; });
+  }).catch(() => { entryStore.next = Date.now() + (entryStore.fast ? 4000 : 600000); }).finally(() => { entryStore.pending = false; });
+}
+// Is Home Assistant, or one of its integrations, still coming up? Real signals, not a timer: the connection
+// itself, the core's own state (the one behind the "Home Assistant is starting" notice), and any integration
+// whose setup is still in progress. Null when everything is up, or `startup_wait: false`.
+function startupInfo(hass, cfg = {}) {
+  entryStore.fast = false;
+  if (!hass || cfg.startup_wait === false) return null;
+  let info = null;
+  if (hass.connected === false) info = { phase: "connecting", text: "Reconnecting to Home Assistant…", detail: "The connection dropped. Offline devices are not counted until it is back." };
+  else if (hass.config?.state && hass.config.state !== "RUNNING") info = { phase: "starting", text: "Home Assistant is starting…", detail: "Not everything is available yet. Offline devices are not counted while it starts." };
+  else {
+    const loading = [...new Set([...entryStore.map.values()].filter((e) => e.state === "setup_in_progress" && !e.disabled).map((e) => integrationName(e.domain) || e.title))];
+    if (loading.length) info = { phase: "integrations", text: "Loading integrations…", detail: `${loading.slice(0, 6).join(", ")}${loading.length > 6 ? ` and ${loading.length - 6} more` : ""}` };
+  }
+  entryStore.fast = !!info;
+  return info;
 }
 const resetConfigEntries = () => { entryStore.map = new Map(); entryStore.next = 0; entryStore.pending = false; };
 
@@ -2394,9 +2398,10 @@ function pageTarget(cfg = {}) {
 // would show it only when popup_button is true.
 function pageButton(cfg = {}, noun = "", { byDefault = true } = {}) {
   const on = cfg.popup_button === undefined ? byDefault : cfg.popup_button !== false;
-  const path = on ? pageTarget(cfg) : null;
+  const path = pageTarget(cfg);
   if (!path) return null;
-  return { label: cfg.popup_label || `Open ${String(noun).toLowerCase()}`.trim(), onTap: () => navigate(path) };
+  // `noButton`: the popup has no button at the bottom, but its title still leads to the page
+  return { label: cfg.popup_label || `Open ${String(noun).toLowerCase()}`.trim(), onTap: () => navigate(path), noButton: !on };
 }
 
 // Toggle the way each domain actually toggles.
@@ -2569,8 +2574,13 @@ const SHEET_CSS = `
   /* design: glass, in a popup: the same material as the cards, denser, rows lit like the card's */
   ${glassSurface('.sv-sheet[data-glass]', '', '.sv-sheet[data-glass]:not([dark])', 0.2)}
   ${GLASS_LIT('.sv-sheet[data-glass]')}
-  .sv-sheet[data-glass] .sv-rows, ha-card[data-glass] .sv-rows { gap: 6px; }
-  .sv-sheet[data-glass] .sv-row[data-light], ha-card[data-glass] .sv-row[data-light] { padding: 2px 6px; border-radius: 16px; --lx: 28px; --ly: 24px; }
+  /* design: matte, in a popup: the same flat material as the cards, lifted a little more */
+  ${matteSurface('.sv-sheet[data-matte]', '.sv-sheet[data-matte]:not([dark])')}
+  .sv-sheet[data-matte] { box-shadow: 0 28px 64px -28px rgb(0 0 0 / 0.7); }
+  .sv-sheet[data-matte]:not([dark]) { box-shadow: 0 24px 56px -24px rgb(60 50 30 / 0.35); }
+  ${MATTE_LIT('.sv-sheet[data-matte]')}
+  .sv-sheet[data-glass] .sv-rows, ha-card[data-glass] .sv-rows, .sv-sheet[data-matte] .sv-rows, ha-card[data-matte] .sv-rows { gap: 6px; }
+  .sv-sheet[data-glass] .sv-row[data-light], ha-card[data-glass] .sv-row[data-light], .sv-sheet[data-matte] .sv-row[data-light], ha-card[data-matte] .sv-row[data-light] { padding: 2px 6px; border-radius: 16px; --lx: 28px; --ly: 24px; }
   .sv-sheet[data-wide] { width: min(560px, calc(100vw - 32px)); max-height: min(720px, calc(100vh - 48px)); }
   @supports (corner-shape: squircle) { .sv-sheet { corner-shape: squircle; border-radius: 36px; } }
   .sv-sheet[data-bottom] { left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: 85vh;
@@ -2579,6 +2589,9 @@ const SHEET_CSS = `
     background: color-mix(in oklab, var(--primary-text-color) 20%, transparent); }
   .sv-sheet:not([data-bottom]) .sv-grab { display: none; }
   .sv-head { display: flex; align-items: center; gap: 8px; padding: 14px 12px 8px 18px; }
+  .sv-title[data-link] { cursor: pointer; border-radius: 8px; }
+  .sv-title[data-link]::after { content: "\\203A"; margin-inline-start: 6px; opacity: 0.45; font-weight: 500; }
+  @media (hover: hover) { .sv-title[data-link]:hover { opacity: 0.8; } }
   .sv-title { flex: 1; min-width: 0; font-size: 18px; line-height: 23px; font-weight: 650; letter-spacing: -0.022em;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sv-close { width: var(--c-s); height: var(--c-s); border-radius: 11px; display: grid; place-items: center;
@@ -2669,11 +2682,21 @@ class Sheet {
 
   // A button pinned under the body: { label, onTap, icon?, color? }, or null for none. A tap
   // closes the popup first, then runs onTap (a page change, say).
+  // the title takes you to the page too, when there is one (closer to the thumb than the button at the bottom)
+  setTitleLink(onTap) {
+    const el = this.el.querySelector(".sv-title");
+    el.toggleAttribute("data-link", !!onTap);
+    if (onTap) { el.setAttribute("role", "link"); el.tabIndex = 0; } else { el.removeAttribute("role"); el.removeAttribute("tabindex"); }
+    el.onclick = onTap ? () => { this.close(); onTap(); } : null;
+    el.onkeydown = onTap ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); this.close(); onTap(); } } : null;
+  }
+
   setFooter(spec) {
     this.foot?.remove();
     this.foot = null;
     this.footSpring = null;
-    if (!spec) return;
+    this.setTitleLink(spec ? spec.onTap : null);
+    if (!spec || spec.noButton) return;
     const foot = document.createElement("div");
     foot.className = "sv-foot";
     const go = document.createElement("button");
@@ -4470,6 +4493,9 @@ const PICKER_CSS = `
   }
   /* design: glass: the same material as the cards, but denser, so a menu reads clearly over whatever is behind it */
   ${glassSurface('.sv-pick[data-glass]', '', '.sv-pick[data-glass]:not([dark])', 0.3)}
+  ${matteSurface('.sv-pick[data-matte]', '.sv-pick[data-matte]:not([dark])')}
+  .sv-pick[data-matte] { box-shadow: 0 16px 40px -18px rgb(0 0 0 / 0.65); }
+  .sv-pick[data-matte]:not([dark]) { box-shadow: 0 14px 34px -18px rgb(60 50 30 / 0.35); }
   .sv-pick[data-wide] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .sv-pick[data-wider] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .sv-pick[data-up] { transform-origin: var(--ox, 50%) 100%; }
@@ -4811,6 +4837,9 @@ const HEADER_CSS = `
   .glyph { flex: none; position: relative; display: grid; place-items: center; width: var(--c-l); height: var(--c-l); border-radius: 13px;
     background: var(--well); color: var(--secondary-text-color); }
   .glyph ha-icon { --mdc-icon-size: 19px; display: flex; }
+  .glyph[data-loading] ha-icon { animation: sv-spin 1s linear infinite; transform-origin: 50% 50%; }
+  :host([data-still]) .glyph[data-loading] ha-icon { animation: none; }
+  @keyframes sv-spin { to { transform: rotate(360deg); } }
   .glyph[data-alert] { background: color-mix(in oklab, var(--ac) var(--mix-alert), transparent); color: var(--ac); }
   .count { position: absolute; top: -4px; inset-inline-end: -4px; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box;
     border-radius: 8px; background: var(--ac); color: #fff; font-size: 10.5px; line-height: 16px; font-weight: 700; text-align: center;
@@ -5589,7 +5618,7 @@ const roomExclude = (s, c, x) => {
 
 const HEALTH_KEYS = [
   ["watchman", "Watchman sensors"], ["battery_threshold", "Battery alert"], ["warn_above", "Red threshold"],
-  ["exclude_platforms", "Ignored integrations"], ["group_by", "Grouping"], ["group_min", "Hub threshold"], ["watchman_last_run", "Watchman last run"],
+  ["exclude_platforms", "Ignored integrations"], ["group_by", "Grouping"], ["group_min", "Hub threshold"], ["watchman_last_run", "Watchman last run"], ["startup_wait", "Wait for startup"],
 ];
 const healthRules = (prefix = "") => HEALTH_KEYS.map(([k, label]) => ({ path: `${prefix}${k}`, label, get: glob("health", k), src: "health" }));
 // known problems: the settings' list adds to the card's own (devices by id, entities by id)
@@ -5598,6 +5627,7 @@ const knownRules = (prefix = "") => ["entities", "devices"].map((k) => ({ path: 
 
 // the state glow is on unless the settings turn it off for every card
 const styleRule = { path: "design", label: "Design", get: (s) => (["glass", "matte"].includes(s.design?.style) ? s.design.style : undefined), src: "design" };
+const animRule = { path: "animations", label: "Animations", get: (s) => (s.design?.animations === false ? false : undefined), src: "design" };
 const glowRule = { path: "state_glow", label: "State glow", get: (s) => (s.design?.state_glow === false ? false : undefined), src: "design" };
 
 const HOME_CHIPS = ["lights", "climate", "media", "security"];
@@ -5607,6 +5637,7 @@ const HOME_CHIPS = ["lights", "climate", "media", "security"];
 //   kind "pin":   the room's light helper is pinned first in the badge row
 const SETTINGS_RULES = {
   "savvy-home-header-card": [
+    animRule,
     { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
     { path: "admin_only", label: "Admin only", get: (s) => s.admin_only, src: "admin_only" },
     { path: "control", label: "Control", get: glob("house", "control"), src: "house" },
@@ -5653,7 +5684,7 @@ const SETTINGS_RULES = {
   ],
   "savvy-room-tile": [
     glowRule,
-    { path: "animations", label: "Animations", get: (s) => (s.design?.animations === false ? false : undefined), src: "design" },
+    animRule,
     { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
     { path: "name", label: "Name", get: room("name") },
     { path: "icon", label: "Icon", get: room("icon") },
@@ -6144,7 +6175,7 @@ function wireSettings(type, cls) {
 if (window.__SAVVY_TEST__) {
   window.__savvy = {
     Spring, Clock, MOTION, Motion, attr, text, put, place, norm, title, modeLook, MODE_DICTIONARY, colorOf,
-    healthSummary, healthOptions, dismissStore, ensureDismissed, resetDismissed, dismissAdd, dismissRestore, isAdminUser, adminOnlyItems, hiddenFromUser, refreshConfigEntries, resetConfigEntries, areaEntities, houseEntities, pick, rankBy, entityArea, shortName, asItems,
+    healthSummary, healthOptions, startupInfo, entryStore, dismissStore, ensureDismissed, resetDismissed, dismissAdd, dismissRestore, isAdminUser, adminOnlyItems, hiddenFromUser, refreshConfigEntries, resetConfigEntries, areaEntities, houseEntities, pick, rankBy, entityArea, shortName, asItems,
     isActive, isOff, runAction, defaultTapAction, toggleEntity, bindPress, bindActions,
     duration, since, relativeTime, axisLabel, momentLabel, fmtNumber, withUnit, isTimestamp,
     fetchHistory, fetchRange, fetchAttributeHistory, resample, seriesStats, stateRuns, numericPoints, linePath,
@@ -12156,6 +12187,18 @@ class SavvyHomeHeaderCard extends SavvyCard {
       this._sumEntries = entryStore.map;
       this._sum = healthSummary(h, hc);
     }
+    // Home Assistant or an integration is still coming up: a loading ring instead of the cog, no count, no alert
+    const boot = startupInfo(h, hc), glyph = el.health.querySelector("ha-icon");
+    this.toggleAttribute("data-still", this._noMotion());
+    attr(el.health, "data-loading", boot ? "" : null);
+    if (boot) {
+      attr(glyph, "icon", this._noMotion() ? "mdi:timer-sand" : "mdi:loading");
+      attr(el.health, "data-alert", false);
+      el.count.hidden = true;
+      attr(el.health, "aria-label", `System health, ${boot.text.replace("…", "")}`);
+      return;
+    }
+    attr(glyph, "icon", "mdi:cog");
     // when the count is kept from this person the cog looks like any other: no colour, no alert
     const total = this._sum.total, warn = hc.warn_above ?? 6;
     const showCount = !!total && !hiddenFromUser(h, this._config, "health_badges");
@@ -12277,6 +12320,7 @@ const EDITOR = defineEditor("savvy-home-header-card", (hass, c) => [
       { value: "hub", label: "Device, and the hub behind it" }, { value: "device", label: "Device" }, { value: "none", label: "Nothing: one row per entity" },
     ]),
     S.number("group_min", "Hub threshold", 2, 50),
+    S.bool("startup_wait", "Wait for startup", "While Home Assistant or an integration is still starting, show a loading state instead of offline devices.", true),
     { type: "expandable", name: "ignore", title: "Known problems", schema: [
       { name: "devices", label: "Devices", helper: "Dead and waiting for a replacement? Listed here they leave the count and wait under Known.", selector: { device: { multiple: true } } },
       { name: "entities", label: "Entities", selector: { entity: { multiple: true } } },
@@ -18008,7 +18052,7 @@ registerCard("savvy-scene-card", SavvySceneCard, "Scenes",
 // savvy-section-title-card: the first card in a room's section. The room's name and icon (from
 // the area), its control, its temperature, and a row of badges for what's going on in it:
 // pinned entities first, then what is active, then doors and windows, presence and the
-// temperature, which are always there. A heading, not a panel: no plate unless `filled: true`.
+// temperature, which are always there. A heading, not a panel: no plate unless `background: true`.
 //
 //   type: custom:savvy-section-title-card
 //   area: living_room            name / icon: from the area
@@ -18027,9 +18071,10 @@ const STYLE = `${BASE_CSS}
   ha-card { --mode: var(--secondary-text-color); display: block; background: none; border: 0; box-shadow: none;
     padding: 6px 4px 2px; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
   ha-card::after { display: none; }
-  /* glass: a plain title stays clear, with no surface (a filled one keeps its glass) */
-  :host ha-card[data-glass]:not([data-filled]) { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; border: 0; box-shadow: none; }
-  ha-card[data-filled] { padding: 12px 14px; border-radius: var(--radius);
+  /* glass and matte: a plain title stays clear, with no surface (a filled one keeps its material) */
+  :host ha-card:is([data-glass], [data-matte]):not([data-filled]) { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; border: 0; box-shadow: none; }
+  ha-card[data-filled] { padding: 12px 14px; border-radius: var(--radius); }
+  ha-card[data-filled]:not([data-glass]):not([data-matte]) {
     border: var(--ha-card-border-width, 1px) solid var(--ha-card-border-color, var(--line));
     background: var(--ha-card-background, var(--card-background-color)); box-shadow: var(--ha-card-box-shadow, none); }
   @supports (corner-shape: squircle) { ha-card[data-filled] { corner-shape: squircle; border-radius: calc(var(--radius) * 1.7); } }
@@ -18140,7 +18185,7 @@ class SavvySectionTitleCard extends SavvyCard {
       modeSwap: $("modeSwap"), modeIcon: $("modeIcon"), modeText: $("modeText"), badges: $("badges"), temp: $("temp"), tempText: $("tempText") };
     const c = this._config, el = this._el;
     attr(el.card, "data-style", c.heading_style === "subtitle" ? "subtitle" : "title");
-    attr(el.card, "data-filled", !!c.filled);
+    attr(el.card, "data-filled", !!(c.background ?? c.filled));      // `filled` is the old name
 
     // the title: navigates (navigation_path) or whatever tap_action says
     const tap = c.tap_action || (c.navigation_path ? { action: "navigate", navigation_path: c.navigation_path } : null);
@@ -18317,7 +18362,7 @@ const EDITOR = defineEditor("savvy-section-title-card", (hass, c) => [
   S.grid(S.text("name", "Name"), S.icon("icon", "Icon")),
   S.nav("navigation_path", "Target page", "Where tapping the name goes. Or set a tap action below."),
   S.grid(S.select("heading_style", "Style", [{ value: "title", label: "Title" }, { value: "subtitle", label: "Subtitle" }]),
-    S.bool("filled", "Filled", null, false)),
+    S.bool("background", "Background", "Sit on a card of its own. Off: a plain heading with nothing behind it.", false)),
   ...modeSchema(hass, c),
   { name: "temperature", label: "Temperature", helper: "Found from the area (a temperature sensor, else its climate unit). Pick another to override.",
     selector: { entity: { domain: ["sensor", "climate"] } } },
@@ -18524,6 +18569,7 @@ class SettingsEditor extends SavvyEditor {
         { name: "exclude_platforms", label: "Ignored integrations", selector: { select: { multiple: true, custom_value: true, options: ["mobile_app"] } } },
         S.select("group_by", "Grouping", [{ value: "hub", label: "Device, and the hub behind it" }, { value: "device", label: "Device" }, { value: "none", label: "Nothing: one row per entity" }]),
         S.number("group_min", "Hub threshold", 2, 50),
+        S.bool("startup_wait", "Wait for startup", "While Home Assistant or an integration is still starting, health cards show a loading state instead of offline devices.", true),
         S.entity("watchman_last_run", "Watchman last run", "sensor"),
         { type: "expandable", name: "ignore", title: "Known problems", schema: [
           { name: "devices", label: "Devices", helper: "Dead and waiting for a replacement? Listed here they leave the count and wait under Known.", selector: { device: { multiple: true } } },
@@ -19158,6 +19204,15 @@ const STYLE = `${BASE_CSS}
   .row[data-depth="1"] { margin-inline-start: 16px; }
   .row[data-depth="2"] { margin-inline-start: 32px; }
   .row[data-depth="3"] { margin-inline-start: 48px; }
+  .boot { display: flex; align-items: center; gap: 12px; padding: 12px 2px 6px; }
+  .ring { flex: none; width: 22px; height: 22px; box-sizing: border-box; border-radius: 50%; border: 3px solid color-mix(in oklab, var(--primary-text-color) 14%, transparent);
+    border-top-color: rgb(var(--accent)); animation: sv-spin 0.9s linear infinite; }
+  :host([data-still]) .ring { animation: none; border-color: color-mix(in oklab, rgb(var(--accent)) 50%, transparent); }
+  @keyframes sv-spin { to { transform: rotate(360deg); } }
+  .btxt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .btxt b { font-size: 14px; line-height: 18px; font-weight: 650; letter-spacing: -0.01em; }
+  .btxt span { font-size: 12.5px; line-height: 16px; color: var(--secondary-text-color); }
+  .bany { flex: none; height: 28px; padding: 0 11px; border-radius: 10px; background: var(--well); font-size: 12px; font-weight: 600; color: var(--secondary-text-color); }
   .report { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 9px 0 6px; border-radius: 11px; margin-inline-start: 6px;
     background: color-mix(in oklab, rgb(var(--accent)) 16%, transparent); color: rgb(var(--accent));
     font-size: 11px; line-height: 14px; font-weight: 650; letter-spacing: 0; text-transform: none; white-space: nowrap; transform-origin: 50% 50%; }
@@ -19279,15 +19334,17 @@ class SavvySystemHealthCard extends HTMLElement {
     this._root.innerHTML = `<style>${STYLE}</style>
       <ha-card>
         <div class="head" id="head"><span class="titles"><span class="name" id="name"></span><span class="when" id="when" hidden></span></span><span class="pill" id="pill"></span></div>
+        <div class="boot" id="boot" hidden><span class="ring" aria-hidden="true"></span><span class="btxt"><b id="bt"></b><span id="bd"></span></span><button class="bany" id="bany">Show anyway</button></div>
         <div class="cols" id="cols"></div>
         <button class="action" id="action" hidden></button>
         <button class="report" id="report" hidden><ha-icon icon="mdi:refresh"></ha-icon><span>Run report</span></button>
       </ha-card>`;
     const $ = (id) => this._root.getElementById(id);
-    this._el = { card: this._root.querySelector("ha-card"), head: $("head"), name: $("name"), when: $("when"), pill: $("pill"), cols: $("cols"), action: $("action"), report: $("report") };
+    this._el = { card: this._root.querySelector("ha-card"), head: $("head"), name: $("name"), when: $("when"), pill: $("pill"), cols: $("cols"), boot: $("boot"), bt: $("bt"), bd: $("bd"), bany: $("bany"), action: $("action"), report: $("report") };
     this._boxes = new Map();
     this._el.report.remove();
     this._pressable(this._el.report, () => this._runReport());
+    this._pressable(this._el.bany, () => { this._any = true; this._update(); });
     this._angle = 0;
     const c = this._config;
     put(this._el.cols, "--max-rows", c.max_rows);
@@ -19538,15 +19595,22 @@ class SavvySystemHealthCard extends HTMLElement {
     this._lastRun = c.source === "all" || c.source === "watchman" ? watchmanLastRun(h, c) : null;
     if (c.source === "all" || c.source === "unavailable") refreshConfigEntries(h);
     this._checkReport();
+    const boot = startupInfo(h, c);
+    if (!boot) this._any = false;
+    const hold = !!boot && !this._any;        // still starting: a loading state instead of the lists
+    this.toggleAttribute("data-still", this._reduced || c.animations === false);
+    this._el.boot.hidden = !hold;
+    this._el.cols.hidden = hold;
+    if (hold) { text(this._el.bt, boot.text); text(this._el.bd, boot.detail); }
     const { total, sections } = this._compute();
     const label = SOURCES[c.source];
-    const lvl = total === 0 ? "var(--lvl-good)" : total < c.warn_above ? "var(--lvl-warn)" : "var(--lvl-bad)";
+    const lvl = hold ? "var(--secondary-text-color)" : total === 0 ? "var(--lvl-good)" : total < c.warn_above ? "var(--lvl-warn)" : "var(--lvl-bad)";
     Motion.tintVar(this._el.card, "--lvl", lvl);
     // the corner glow: amber while a few things need a look, red when it is a lot; nothing when all is well
-    this._glowRgb = total === 0 ? null : total < c.warn_above ? [232, 163, 61] : [224, 102, 102];
+    this._glowRgb = hold || total === 0 ? null : total < c.warn_above ? [232, 163, 61] : [224, 102, 102];
     stateGlow(c, this._el.card, this._glowRgb, 0.8);
-    text(this._el.pill, total === 0 ? "All good" : `${total} ${total === 1 ? label.noun : label.nouns}`);
-    attr(this._el.card, "aria-label", `${c.title || label.title}, ${total === 0 ? "all good" : `${total} ${label.nouns}`}`);
+    text(this._el.pill, hold ? "Starting…" : total === 0 ? "All good" : `${total} ${total === 1 ? label.noun : label.nouns}`);
+    attr(this._el.card, "aria-label", `${c.title || label.title}, ${hold ? boot.text.replace("…", "") : total === 0 ? "all good" : `${total} ${label.nouns}`}`);
     this._renderRows(sections);
     this._placeReport();
     this._tickWhen();
@@ -19798,6 +19862,7 @@ const EDITOR = defineEditor("savvy-system-health-card", (hass, c) => [
     { value: "hub", label: "Device, and the hub behind it" }, { value: "device", label: "Device" }, { value: "none", label: "Nothing: one row per entity" },
   ]),
   S.number("group_min", "Hub threshold", 2, 50),
+  S.bool("startup_wait", "Wait for startup", "While Home Assistant or an integration is still starting, show a loading state instead of offline devices.", true),
   { type: "expandable", name: "ignore", title: "Known problems", schema: [
     { name: "devices", label: "Devices", helper: "Dead and waiting for a replacement? Listed here they leave the count and wait under Known.", selector: { device: { multiple: true } } },
     { name: "entities", label: "Entities", selector: { entity: { multiple: true } } },

@@ -1,7 +1,7 @@
 // savvy-section-title-card: the first card in a room's section. The room's name and icon (from
 // the area), its control, its temperature, and a row of badges for what's going on in it:
 // pinned entities first, then what is active, then doors and windows, presence and the
-// temperature, which are always there. A heading, not a panel: no plate unless `filled: true`.
+// temperature, which are always there. A heading, not a panel: no plate unless `background: true`.
 //
 //   type: custom:savvy-section-title-card
 //   area: living_room            name / icon: from the area
@@ -20,9 +20,10 @@ const STYLE = `${BASE_CSS}
   ha-card { --mode: var(--secondary-text-color); display: block; background: none; border: 0; box-shadow: none;
     padding: 6px 4px 2px; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
   ha-card::after { display: none; }
-  /* glass: a plain title stays clear, with no surface (a filled one keeps its glass) */
-  :host ha-card[data-glass]:not([data-filled]) { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; border: 0; box-shadow: none; }
-  ha-card[data-filled] { padding: 12px 14px; border-radius: var(--radius);
+  /* glass and matte: a plain title stays clear, with no surface (a filled one keeps its material) */
+  :host ha-card:is([data-glass], [data-matte]):not([data-filled]) { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; border: 0; box-shadow: none; }
+  ha-card[data-filled] { padding: 12px 14px; border-radius: var(--radius); }
+  ha-card[data-filled]:not([data-glass]):not([data-matte]) {
     border: var(--ha-card-border-width, 1px) solid var(--ha-card-border-color, var(--line));
     background: var(--ha-card-background, var(--card-background-color)); box-shadow: var(--ha-card-box-shadow, none); }
   @supports (corner-shape: squircle) { ha-card[data-filled] { corner-shape: squircle; border-radius: calc(var(--radius) * 1.7); } }
@@ -133,7 +134,7 @@ class SavvySectionTitleCard extends SavvyCard {
       modeSwap: $("modeSwap"), modeIcon: $("modeIcon"), modeText: $("modeText"), badges: $("badges"), temp: $("temp"), tempText: $("tempText") };
     const c = this._config, el = this._el;
     attr(el.card, "data-style", c.heading_style === "subtitle" ? "subtitle" : "title");
-    attr(el.card, "data-filled", !!c.filled);
+    attr(el.card, "data-filled", !!(c.background ?? c.filled));      // `filled` is the old name
 
     // the title: navigates (navigation_path) or whatever tap_action says
     const tap = c.tap_action || (c.navigation_path ? { action: "navigate", navigation_path: c.navigation_path } : null);
@@ -310,7 +311,7 @@ const EDITOR = defineEditor("savvy-section-title-card", (hass, c) => [
   S.grid(S.text("name", "Name"), S.icon("icon", "Icon")),
   S.nav("navigation_path", "Target page", "Where tapping the name goes. Or set a tap action below."),
   S.grid(S.select("heading_style", "Style", [{ value: "title", label: "Title" }, { value: "subtitle", label: "Subtitle" }]),
-    S.bool("filled", "Filled", null, false)),
+    S.bool("background", "Background", "Sit on a card of its own. Off: a plain heading with nothing behind it.", false)),
   ...modeSchema(hass, c),
   { name: "temperature", label: "Temperature", helper: "Found from the area (a temperature sensor, else its climate unit). Pick another to override.",
     selector: { entity: { domain: ["sensor", "climate"] } } },

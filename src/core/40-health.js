@@ -81,7 +81,7 @@ const integrationName = (platform) => (platform ? INTEGRATION_NAMES[platform] ||
 // minute, a refusal is not asked again for ten, and without it the integration rows are inferred
 // from the devices alone.
 const CONFIG_ENTRY_FAILED = { setup_error: "failed to set up", setup_retry: "retrying setup", failed_unload: "failed to unload", migration_error: "migration failed" };
-const entryStore = { map: new Map(), next: 0, pending: false, listeners: new Set() };
+const entryStore = { map: new Map(), next: 0, pending: false, listeners: new Set(), fast: false };
 function refreshConfigEntries(hass, force = false) {
   if (!hass?.callWS || entryStore.pending || (!force && Date.now() < entryStore.next)) return;
   entryStore.pending = true;
@@ -90,9 +90,25 @@ function refreshConfigEntries(hass, force = false) {
     for (const e of Array.isArray(list) ? list : []) map.set(e.entry_id, { domain: e.domain, title: e.title, state: e.state, disabled: !!e.disabled_by });
     const changed = JSON.stringify([...map]) !== JSON.stringify([...entryStore.map]);
     entryStore.map = map;
-    entryStore.next = Date.now() + 60000;
+    entryStore.next = Date.now() + (entryStore.fast ? 4000 : 60000);   // asked often while something is still starting
     if (changed) entryStore.listeners.forEach((fn) => fn());
-  }).catch(() => { entryStore.next = Date.now() + 600000; }).finally(() => { entryStore.pending = false; });
+  }).catch(() => { entryStore.next = Date.now() + (entryStore.fast ? 4000 : 600000); }).finally(() => { entryStore.pending = false; });
+}
+// Is Home Assistant, or one of its integrations, still coming up? Real signals, not a timer: the connection
+// itself, the core's own state (the one behind the "Home Assistant is starting" notice), and any integration
+// whose setup is still in progress. Null when everything is up, or `startup_wait: false`.
+function startupInfo(hass, cfg = {}) {
+  entryStore.fast = false;
+  if (!hass || cfg.startup_wait === false) return null;
+  let info = null;
+  if (hass.connected === false) info = { phase: "connecting", text: "Reconnecting to Home Assistant…", detail: "The connection dropped. Offline devices are not counted until it is back." };
+  else if (hass.config?.state && hass.config.state !== "RUNNING") info = { phase: "starting", text: "Home Assistant is starting…", detail: "Not everything is available yet. Offline devices are not counted while it starts." };
+  else {
+    const loading = [...new Set([...entryStore.map.values()].filter((e) => e.state === "setup_in_progress" && !e.disabled).map((e) => integrationName(e.domain) || e.title))];
+    if (loading.length) info = { phase: "integrations", text: "Loading integrations…", detail: `${loading.slice(0, 6).join(", ")}${loading.length > 6 ? ` and ${loading.length - 6} more` : ""}` };
+  }
+  entryStore.fast = !!info;
+  return info;
 }
 const resetConfigEntries = () => { entryStore.map = new Map(); entryStore.next = 0; entryStore.pending = false; };
 

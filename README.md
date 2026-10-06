@@ -153,9 +153,9 @@ switches itself off for people who ask their device for reduced transparency. Wi
 
 <picture><source media="(prefers-color-scheme: light)" srcset="docs/images/matte-light.png"><img src="docs/images/matte-dark.png" width="760" alt="The Savvy cards in the matte design"></picture>
 
-The same layout again, in a solid, tactile material, the opposite of glass: opaque surfaces built from your
-theme's own card colour, tiles that sit raised with a top highlight and a soft neutral shadow, icon discs that
-are embossed, and small controls that look pressed in while they are on. A lit tile is painted, not lit: its
+The same layout again, in a flat, solid material, the opposite of glass: opaque surfaces built from your
+theme's own card colour, tiles told apart by tone and a hairline edge instead of bevels and shadows, and a quiet
+lift only under cards and popups. A lit tile is painted, not lit: its
 state colour (desaturated a little, so amber, green and blue sit in one family) washes the tile from the icon
 outwards, with a thin coloured edge on the icon's side, stronger the brighter the lamp. No blur and no
 transparency, so it works on any background and is the lightest style on a tablet.
@@ -229,10 +229,10 @@ it is too wide.
 | `title_path` | string | none | Title link: tapping the title opens this page. Only the words are the link. |
 
 **`health` options.** `navigation_path` (string, none) where the popup's page button leads; `popup_button`
-(boolean, `true`) that button, shown whenever there is a target page; `popup_label` (string, "Open system
+(boolean, `true`) that button, shown whenever there is a target page (the popup's title leads there too, button or not); `popup_label` (string, "Open system
 health"); `tap_action`, `hold_action` (action, open the list); `dismiss` (boolean, `true`) the dismiss
 buttons in the popup; and the [System health](#system-health) options `watchman`, `watchman_button`,
-`watchman_report`, `battery_threshold`, `warn_above`, `exclude_platforms`, `group_by`, `group_min`, `ignore`.
+`watchman_report`, `battery_threshold`, `warn_above`, `exclude_platforms`, `group_by`, `group_min`, `startup_wait`, `ignore`.
 
 **Chip options** for `lights`, `climate`, `media`, `security`:
 
@@ -241,7 +241,7 @@ buttons in the popup; and the [System health](#system-health) options `watchman`
 | `entity` | entity | none | Show this entity's state instead of the count. |
 | `name`, `icon`, `color` | string | per chip | Look. |
 | `navigation_path` | string | none | Target of the popup's page button. It does not change what a tap does. |
-| `popup_button` | boolean | `true` | The page button in the popup. |
+| `popup_button` | boolean | `true` | The page button at the bottom of the popup. The popup's title also leads to the target page, with or without the button. |
 | `popup_label` | string | "Open lights" etc. | Its text. |
 | `exclude` | list of entities | none | Left out of the count and the popup. |
 | `exclude_areas` | list of areas | none | Everything in these rooms is left out. |
@@ -349,7 +349,7 @@ exclude_rooms: [garage]
 <picture><source media="(prefers-color-scheme: light)" srcset="docs/images/section-title-light.png"><img src="docs/images/section-title-dark.png" width="520" alt="Savvy section title"></picture>
 
 A title for a section. With a `name` it is plain text. With an `area` it shows the room's name and icon,
-its mode, temperature and badges. No background unless `filled: true`.
+its mode, temperature and badges. No background unless `background: true`.
 
 | Option | Type | Default | What it does |
 |---|---|---|---|
@@ -362,7 +362,7 @@ its mode, temperature and badges. No background unless `filled: true`.
 | `entities`, `auto_discover`, `exclude_kinds`, `include`, `exclude` | | discovered | The badges, see [Badges](#badges). |
 | `aggregate` | `true` or list | off | See [Aggregate sensors](#aggregate-sensors). |
 | `heading_style` | `title` or `subtitle` | `title` | `subtitle` for a smaller heading. |
-| `filled` | boolean | `false` | Sit on a card background. |
+| `background` | boolean | `false` | Sit on a card background. (`filled`, the old name, still works.) |
 | `title_path` | string | none | The same as `navigation_path`, written like the other cards. `title` is the same as `name`. |
 
 Minimum:
@@ -389,7 +389,7 @@ include: [lock.front_door]
 exclude: [binary_sensor.hallway_motion]
 aggregate: [presence, door]
 heading_style: title
-filled: false
+background: false
 ```
 
 ---
@@ -1337,6 +1337,7 @@ How it counts:
 | `details` | boolean | `false` | A line of facts under each section, and area and integration on the rows. |
 | `group_by` | `hub`, `device`, `none` | `hub` | How offline entities become issues. |
 | `group_min` | number | `3` | How many devices a hub or integration needs before they roll up into it. |
+| `startup_wait` | boolean | `true` | While Home Assistant (or an integration) is still starting, show a loading state instead of every offline device: a loading ring in place of the home header's cog, and "Home Assistant is starting…" in the card, with Show anyway. It follows the connection, the core's own state and the integrations whose setup is in progress, never a timer. |
 | `battery_threshold` | number (%) | `20` | A battery below this is low. |
 | `exclude_platforms` | list | `[mobile_app]` | Integrations to ignore. |
 | `watchman` | list of entities | none | Watchman's summary sensors. |
@@ -1536,7 +1537,7 @@ browser, and follow it live while you edit. With two settings cards the first is
 |---|---|---|---|
 | `pages` | object | found by name | `home`, `lights`, `climate`, `media`, `security`, `health`: the page each home header chip, the cog and the home button lead to. `room`: a pattern for room pages (`/lovelace/{slug}`). `lights`, `climate`, `media`, `security` and each room's page are found by view name when left out; `false` turns one off. |
 | `house` | object | none | `control` (the home header's control chip), `weather`, `security` (an entity for the security chip instead of the alarm), `tap` (`list`: a tap opens the popup; `navigate`: a tap goes to the chip's page and hold opens the popup). |
-| `health` | object | none | `watchman`, `battery_threshold`, `warn_above`, `exclude_platforms`, `group_by`, `group_min`, `watchman_last_run`, and `ignore` (`{ devices, entities }`). Used by the card and the home header's cog. |
+| `health` | object | none | `watchman`, `battery_threshold`, `warn_above`, `exclude_platforms`, `group_by`, `group_min`, `watchman_last_run`, `startup_wait`, and `ignore` (`{ devices, entities }`). Used by the card and the home header's cog. |
 | `ignore` | object | none | `entities`: left out of everything the cards discover (room headers, section titles, tiles, room activity, locks, lights, scenes, vacuums) and the home header counts; `areas`: left out of the home header counts. A card that names an entity still shows it. |
 | `aggregate` | `true` or list of kinds | off | See [Aggregate sensors](#aggregate-sensors). |
 | `admin_only` | list or `true` | none | `health_cog`, `health_badges`: kept from people who are not administrators (the health cog in the home header, and the count on it). Everyone sees everything unless it is listed. A card can only hide itself, not lock a page: someone who types the address still reaches the page. A card's own `admin_only` wins. |

@@ -81,7 +81,7 @@ const roomExclude = (s, c, x) => {
 
 const HEALTH_KEYS = [
   ["watchman", "Watchman sensors"], ["battery_threshold", "Battery alert"], ["warn_above", "Red threshold"],
-  ["exclude_platforms", "Ignored integrations"], ["group_by", "Grouping"], ["group_min", "Hub threshold"], ["watchman_last_run", "Watchman last run"],
+  ["exclude_platforms", "Ignored integrations"], ["group_by", "Grouping"], ["group_min", "Hub threshold"], ["watchman_last_run", "Watchman last run"], ["startup_wait", "Wait for startup"],
 ];
 const healthRules = (prefix = "") => HEALTH_KEYS.map(([k, label]) => ({ path: `${prefix}${k}`, label, get: glob("health", k), src: "health" }));
 // known problems: the settings' list adds to the card's own (devices by id, entities by id)
@@ -90,6 +90,7 @@ const knownRules = (prefix = "") => ["entities", "devices"].map((k) => ({ path: 
 
 // the state glow is on unless the settings turn it off for every card
 const styleRule = { path: "design", label: "Design", get: (s) => (["glass", "matte"].includes(s.design?.style) ? s.design.style : undefined), src: "design" };
+const animRule = { path: "animations", label: "Animations", get: (s) => (s.design?.animations === false ? false : undefined), src: "design" };
 const glowRule = { path: "state_glow", label: "State glow", get: (s) => (s.design?.state_glow === false ? false : undefined), src: "design" };
 
 const HOME_CHIPS = ["lights", "climate", "media", "security"];
@@ -99,6 +100,7 @@ const HOME_CHIPS = ["lights", "climate", "media", "security"];
 //   kind "pin":   the room's light helper is pinned first in the badge row
 const SETTINGS_RULES = {
   "savvy-home-header-card": [
+    animRule,
     { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
     { path: "admin_only", label: "Admin only", get: (s) => s.admin_only, src: "admin_only" },
     { path: "control", label: "Control", get: glob("house", "control"), src: "house" },
@@ -145,7 +147,7 @@ const SETTINGS_RULES = {
   ],
   "savvy-room-tile": [
     glowRule,
-    { path: "animations", label: "Animations", get: (s) => (s.design?.animations === false ? false : undefined), src: "design" },
+    animRule,
     { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
     { path: "name", label: "Name", get: room("name") },
     { path: "icon", label: "Icon", get: room("icon") },

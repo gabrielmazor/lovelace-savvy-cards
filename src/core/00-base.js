@@ -289,26 +289,28 @@ const GLASS_CSS = `${glassSurface('ha-card[data-glass]', '', ':host(:not([dark])
   ${GLASS_LIT('ha-card[data-glass]')}
 `;
 
-// design: matte. The same tiles and lights as glass, in a solid, tactile material: opaque surfaces derived from
-// the theme's card colour, raised tiles with a top highlight and a soft neutral shadow, controls that sit pressed
-// in while on. A lit tile is painted, not lit: the state colour (chroma capped, so amber, green and blue sit in one
-// family) is a wash strongest at the icon, with a thin coloured edge on the icon's side. No blur, no glow, no
-// transparency.
-const MATTE_VARS_DARK = `
-    --m-base: var(--card-background-color, #1c1c1e); --m-tile-hi: 7%; --m-wash: 1;
-    --m-tile-bg: linear-gradient(180deg, color-mix(in oklab, var(--m-base) 91%, #fff), color-mix(in oklab, var(--m-base) 94%, #fff));
-    --m-tile-shadow: inset 0 1px 0 rgb(255 255 255 / 0.07), inset 0 -1px 0 rgb(0 0 0 / 0.28), 0 5px 10px -5px rgb(0 0 0 / 0.6);
-    --m-disc: inset 0 1px 0 rgb(255 255 255 / 0.09), inset 0 -1px 2px rgb(0 0 0 / 0.3);
-    --m-ctl: inset 0 1px 0 rgb(255 255 255 / 0.07), 0 2px 4px -1px rgb(0 0 0 / 0.4);
-    --m-press: inset 0 2px 4px rgb(0 0 0 / 0.38);`;
-const MATTE_VARS_LIGHT = `
+// design: matte. The same tiles and lights as glass, in a flat, solid material: opaque planes derived from the theme's
+// card colour, told apart by tone and a hairline edge, almost no shadow, no bevels. A lit tile is painted, not lit: the
+// state colour (chroma capped, so amber, green and blue sit in one family) is a wash strongest at the icon, with a thin
+// coloured edge on the icon's side. No blur, no glow, no transparency.
+const matteVars = (dark) => dark ? `
+    --m-base: var(--card-background-color, #1c1c1e);
+    --m-card: color-mix(in oklab, var(--m-base) 97%, #fff);
+    --m-tile-bg: color-mix(in oklab, var(--m-base) 91%, #fff);
+    --m-tile-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.05);
+    --m-edge: rgb(255 255 255 / 0.07);
+    --m-lift: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 24px -16px rgb(0 0 0 / 0.55);` : `
     --m-base: var(--card-background-color, #fff);
-    --m-tile-bg: linear-gradient(180deg, #fff, #fbfaf8);
-    --m-tile-shadow: inset 0 1px 0 #fff, 0 0 0 1px rgb(60 50 30 / 0.06), 0 4px 10px -4px rgb(60 50 30 / 0.18);
-    --m-disc: inset 0 1px 0 #fff, inset 0 -1px 2px rgb(60 50 30 / 0.12);
-    --m-ctl: inset 0 1px 0 #fff, 0 1px 3px rgb(60 50 30 / 0.16);
-    --m-press: inset 0 2px 4px rgb(60 50 30 / 0.18);`;
-const MATTE_LIT = (R, L = ':host(:not([dark])) ' + R) => `
+    --m-card: color-mix(in oklab, var(--m-base) 96%, #e6dfd2);
+    --m-tile-bg: color-mix(in oklab, var(--m-base) 40%, #fff);
+    --m-tile-shadow: inset 0 0 0 1px rgb(60 50 30 / 0.07);
+    --m-edge: rgb(60 50 30 / 0.09);
+    --m-lift: 0 1px 2px rgb(60 50 30 / 0.08), 0 8px 20px -14px rgb(60 50 30 / 0.28);`;
+const matteSurface = (R, lightSel) => `
+  ${R} { ${matteVars(true)} background: var(--m-card); border: 1px solid var(--m-edge); box-shadow: var(--m-lift); }
+  ${lightSel} { ${matteVars(false)} }
+`;
+const MATTE_LIT = (R) => `
   ${R} [data-light], ${R}[data-light] { --lx: 28px; --ly: 50%; --mc: color-mix(in oklab, rgb(var(--lc, 128 128 128)) 72%, #8a8a8a); }
   ${R} [data-light] { position: relative; isolation: isolate; background: var(--m-tile-bg); box-shadow: var(--m-tile-shadow); }
   ${R} [data-light]::before, ${R}[data-light]::before {
@@ -323,23 +325,9 @@ const MATTE_LIT = (R, L = ':host(:not([dark])) ' + R) => `
     mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
     opacity: var(--on, 0); transition: opacity 360ms ease;
   }
-  ${R} :is(.orb, .av, .disc, .sv-ic, .row .icon, .ic) { box-shadow: var(--m-disc); }
-  ${R} :is(.power, .step, .ctl, .tb.solid, .swatch, .master, .sv-close) { box-shadow: var(--m-ctl); }
-  ${R} :is(.power, .tb, .btn, .master)[data-on] { box-shadow: var(--m-press), inset 0 0 0 1px color-mix(in oklab, currentColor 18%, transparent); }
+  ${R} :is(.power, .tb, .btn, .master)[data-on] { box-shadow: inset 0 0 0 1px color-mix(in oklab, currentColor 28%, transparent); }
 `;
-const MATTE_CSS = `
-  ha-card[data-matte] {
-    ${MATTE_VARS_DARK}
-    background: linear-gradient(180deg, color-mix(in oklab, var(--m-base) 95%, #fff), var(--m-base) 72%);
-    border-color: color-mix(in oklab, #fff 6%, transparent);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 12px 26px -12px rgb(0 0 0 / 0.65), 0 1px 2px rgb(0 0 0 / 0.35);
-  }
-  :host(:not([dark])) ha-card[data-matte] {
-    ${MATTE_VARS_LIGHT}
-    background: linear-gradient(180deg, color-mix(in oklab, var(--m-base) 98%, #fff), color-mix(in oklab, var(--m-base) 95%, #e8e0d4));
-    border-color: rgb(60 50 30 / 0.07);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 12px 24px -12px rgb(60 50 30 / 0.22), 0 1px 2px rgb(60 50 30 / 0.1);
-  }
+const MATTE_CSS = `${matteSurface('ha-card[data-matte]', ':host(:not([dark])) ha-card[data-matte]')}
   ${MATTE_LIT('ha-card[data-matte]')}
 `;
 const DESIGN_CSS = `${GLASS_CSS}${MATTE_CSS}`;

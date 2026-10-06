@@ -28,6 +28,12 @@ export default async function ({ browser, base, check }) {
       // a lit light throws its colour into its own tile; an off one does not; brighter throws more
       const lights = els[0][1].shadowRoot.querySelectorAll(".light");
       out.lit = [...lights].map((n) => ({ light: n.hasAttribute("data-light"), on: Number(getComputedStyle(n).getPropertyValue("--on")) }));
+      // a section title stays clear unless it asks for a background (`filled` is its old name)
+      const title = (cfg) => { const e = window.mount("savvy-section-title-card", { title: "Room", ...cfg, design: style }, 420); return e; };
+      const clear = title({}), back = title({ background: true }), old = title({ filled: true });
+      await new Promise((res) => setTimeout(res, 300));
+      const bg = (e) => { const cs = getComputedStyle(e.shadowRoot.querySelector("ha-card")); return cs.backgroundImage !== "none" ? "surface" : cs.backgroundColor !== "rgba(0, 0, 0, 0)" ? "surface" : "none"; };
+      out.titles = [bg(clear), bg(back), bg(old)];
       // popups follow their card
       const sheets = [els[0][1], els[0][2]].map((host) => { const sh = new S.Sheet(host, { title: "x" }); sh.open(); const on = sh.el.hasAttribute(`data-${style}`); sh.close(true); return on; });
       out.sheets = sheets;
@@ -39,6 +45,7 @@ export default async function ({ browser, base, check }) {
     check(`${tag} the settings card turns glass on; a card's own design wins; unset stays plain`, r.fromSettings === style && r.cardWins === "plain" && r.plainDefault === null, JSON.stringify([r.fromSettings, r.cardWins, r.plainDefault]));
     const [ceiling, lamp, strip] = r.lit;
     check(`${tag} lit lights throw light by their brightness, an off one none`, ceiling.on > lamp.on && lamp.on > 0 && strip.on === 0, JSON.stringify(r.lit));
+    check(`${tag} a section title is clear unless it has a background (filled still works)`, r.titles[0] === "none" && r.titles[1] !== "none" && r.titles[2] !== "none", JSON.stringify(r.titles));
     check(`${tag} a popup is glass when its card is, plain otherwise`, r.sheets[0] === true && r.sheets[1] === false, JSON.stringify(r.sheets));
     check(`${tag} no errors`, errors.length === 0, errors.join(" | "));
     await page.close();

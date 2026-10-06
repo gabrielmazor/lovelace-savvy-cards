@@ -38,9 +38,10 @@ function pageTarget(cfg = {}) {
 // would show it only when popup_button is true.
 function pageButton(cfg = {}, noun = "", { byDefault = true } = {}) {
   const on = cfg.popup_button === undefined ? byDefault : cfg.popup_button !== false;
-  const path = on ? pageTarget(cfg) : null;
+  const path = pageTarget(cfg);
   if (!path) return null;
-  return { label: cfg.popup_label || `Open ${String(noun).toLowerCase()}`.trim(), onTap: () => navigate(path) };
+  // `noButton`: the popup has no button at the bottom, but its title still leads to the page
+  return { label: cfg.popup_label || `Open ${String(noun).toLowerCase()}`.trim(), onTap: () => navigate(path), noButton: !on };
 }
 
 // Toggle the way each domain actually toggles.

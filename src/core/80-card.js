@@ -188,6 +188,9 @@ const HEADER_CSS = `
   .glyph { flex: none; position: relative; display: grid; place-items: center; width: var(--c-l); height: var(--c-l); border-radius: 13px;
     background: var(--well); color: var(--secondary-text-color); }
   .glyph ha-icon { --mdc-icon-size: 19px; display: flex; }
+  .glyph[data-loading] ha-icon { animation: sv-spin 1s linear infinite; transform-origin: 50% 50%; }
+  :host([data-still]) .glyph[data-loading] ha-icon { animation: none; }
+  @keyframes sv-spin { to { transform: rotate(360deg); } }
   .glyph[data-alert] { background: color-mix(in oklab, var(--ac) var(--mix-alert), transparent); color: var(--ac); }
   .count { position: absolute; top: -4px; inset-inline-end: -4px; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box;
     border-radius: 8px; background: var(--ac); color: #fff; font-size: 10.5px; line-height: 16px; font-weight: 700; text-align: center;
