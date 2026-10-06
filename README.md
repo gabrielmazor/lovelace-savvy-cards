@@ -149,6 +149,20 @@ one card with `design: glass` (`design: plain` on a card keeps it plain when the
 switches itself off for people who ask their device for reduced transparency. Without it, nothing changes:
 `plain` is the default.
 
+### Matte
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/matte-light.png"><img src="docs/images/matte-dark.png" width="760" alt="The Savvy cards in the matte design"></picture>
+
+The same layout again, in a solid, tactile material, the opposite of glass: opaque surfaces built from your
+theme's own card colour, tiles that sit raised with a top highlight and a soft neutral shadow, icon discs that
+are embossed, and small controls that look pressed in while they are on. A lit tile is painted, not lit: its
+state colour (desaturated a little, so amber, green and blue sit in one family) washes the tile from the icon
+outwards, with a thin coloured edge on the icon's side, stronger the brighter the lamp. No blur and no
+transparency, so it works on any background and is the lightest style on a tablet.
+
+Turn it on with `design: { style: matte }` in the [settings card](#savvy-settings), or on one card with
+`design: matte` (`design: plain` keeps a card plain).
+
 ## Cards
 
 | Card | What it shows | Type |
@@ -208,7 +222,7 @@ it is too wide.
 | `admin_only` | list or boolean | from the settings | Kept from people who are not administrators: `health_cog` (the cog, its count and its popup) and `health_badges` (the count on the cog; the cog stays). `true` is both, `false` hides nothing even when the settings list something. Nothing is hidden unless it is listed here or in the settings. |
 | `lights`, `climate`, `media`, `security` | object or `false` | on | The four counting chips, see below. |
 | `room_order` | list of areas | by name | Order of rooms in the popups. A chip's own `room_order` wins. |
-| `design` | object | none | `style: glass` turns on the [glass design](#glass) for every card (a card's own `design` wins); `state_glow: false` turns the corner glow off on every card; a card's own `state_glow` still wins. `animations: false` keeps every room tile still; a tile's own `animations` wins. |
+| `design` | object | none | `style: glass` or `style: matte` turns on the [glass](#glass) or [matte](#matte) design for every card (a card's own `design` wins); `state_glow: false` turns the corner glow off on every card; a card's own `state_glow` still wins. `animations: false` keeps every room tile still; a tile's own `animations` wins. |
 | `aggregate` | `true` or list of kinds | off | Show each room's presence sensors once. See [Aggregate sensors](#aggregate-sensors). |
 | `chips` | chips | none | Your own chips after the four. |
 | `title` | string | none | A line at the top of the card. |
@@ -1607,7 +1621,7 @@ rooms:
 
 ### Design
 
-Every card takes `design: glass` or `design: plain`. Empty follows the dashboard's `design.style` in the [settings card](#savvy-settings); plain is the default. See [Glass](#glass).
+Every card takes `design: glass`, `design: matte` or `design: plain`. Empty follows the dashboard's `design.style` in the [settings card](#savvy-settings); plain is the default. See [Glass](#glass) and [Matte](#matte).
 
 ### Chips
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.19.0
+
+- **Matte design (optional):** `design: matte` on a card, or `design: { style: matte }` in the settings card for all of
+  them. The same layout as plain and glass in a solid, tactile material: opaque surfaces derived from the theme's card
+  colour, raised tiles with a top highlight and a soft neutral shadow, embossed icon discs, controls that look pressed
+  in while on. A lit tile is painted by its state colour (chroma capped so different colours sit in one family), strongest
+  at the icon with a thin coloured edge on its side, and stronger the brighter the lamp. No blur, no transparency.
+  Popups and menus follow. Plain stays the default and is unchanged.
+
 ## 0.18.2
 
 - **Glass, rethought:** after Apple's liquid glass. A tinted, saturated pane that stays distinct from what is behind it
