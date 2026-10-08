@@ -147,14 +147,16 @@ const STYLE = `
   header { display: flex; align-items: flex-start; gap: 12px; }
   .titles { flex: 1; min-width: 0; }
   .name {
-    display: block; font-size: 15px; line-height: 20px; font-weight: 600;
-    letter-spacing: -0.014em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    display: block; font-size: 17px; line-height: 22px; font-weight: 620;
+    letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .status {
     display: block; font-size: 13px; line-height: 18px; font-weight: 500; letter-spacing: -0.003em;
     color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .status b { font-weight: 600; color: rgb(var(--accent)); }
+  .status b { font-weight: 600; color: var(--accent-text); }
+  ha-card { --accent-text: rgb(var(--accent)); }
+  :host(:not([dark])) ha-card { --accent-text: color-mix(in oklab, rgb(var(--accent)) 72%, #000); }
 
   .power {
     flex: none; display: grid; place-items: center;
@@ -165,68 +167,75 @@ const STYLE = `
   .power ha-icon { --mdc-icon-size: 21px; display: flex; }
 
   /* ---- target temperature ---- */
-  .hero { display: flex; align-items: flex-end; gap: 12px; margin-top: 14px; }
-  /* glass: the target and its buttons are one tile, lit in the mode's colour */
-  ha-card:not([data-compact]) .hero { padding: 10px 12px; border-radius: 18px; background: color-mix(in oklab, var(--primary-text-color) 4%, transparent); }
-  ha-card[data-glass] .hero { --lx: 46px; --ly: 55%; }
-  .readout { flex: 1; min-width: 0; display: flex; align-items: flex-start; }
+  .hero { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+  /* glass and matte: the target and its buttons are one tile, lit in the mode's colour */
+  ha-card:is([data-glass], [data-matte]):not([data-compact]) .hero { padding: 10px 12px; border-radius: 18px; background: color-mix(in oklab, var(--primary-text-color) 4%, transparent); }
+  ha-card[data-glass] .hero, ha-card[data-matte] .hero { --lx: 50%; --ly: 55%; }   /* the light comes from the number, now in the middle */
+  .readout { flex: 1; min-width: 0; display: flex; align-items: flex-start; justify-content: center; order: 1; }
   .value {
-    font-size: 52px; line-height: 0.92; font-weight: 600; letter-spacing: -0.035em;
-    color: rgb(var(--accent));
+    font-size: 76px; line-height: 1; font-weight: 250; letter-spacing: -0.055em;
+    color: var(--primary-text-color);
   }
   .unit {
-    font-size: 23px; line-height: 1; font-weight: 550; letter-spacing: -0.01em;
-    color: rgb(var(--accent) / 0.55); margin: 2px 0 0 2px;
+    font-size: 26px; line-height: 1; font-weight: 400; letter-spacing: -0.01em;
+    color: var(--accent-text); margin: 10px 0 0 3px;
   }
-  .steppers { flex: none; display: flex; gap: 8px; padding-bottom: 3px; }
+  .steppers { display: contents; }
+  #minus { order: 0; } #plus { order: 2; }
   .step { display: grid; place-items: center; width: var(--c-l); height: var(--c-l); border-radius: 13px; background: var(--well); }
   .step ha-icon { --mdc-icon-size: 22px; display: flex; }
   .step[disabled] { opacity: 0.34; cursor: default; }
 
   /* the bar is the control: grab it anywhere, it thickens under the finger */
-  .slider { position: relative; height: 34px; margin: 12px -2px 0; padding: 0 2px; touch-action: pan-y; cursor: grab; }
+  .slider { position: relative; height: 34px; margin: 6px 7px 0; padding: 0 2px; touch-action: pan-y; cursor: grab; }
   .slider:active { cursor: grabbing; }
   .bar {
-    position: absolute; left: 2px; right: 2px; top: 50%; height: 12px; margin-top: -6px;
-    border-radius: 99px; background: var(--well); overflow: hidden;
+    position: absolute; left: 2px; right: 2px; top: 50%; height: 6px; margin-top: -3px;
+    border-radius: 99px; background: color-mix(in oklab, var(--primary-text-color) 9%, transparent); overflow: hidden;
     transform-origin: 50% 50%;
   }
   .fill { position: absolute; inset: 0; transform-origin: 0 50%; border-radius: 99px; }
-  .ticks { position: absolute; left: 2px; right: 2px; top: 50%; height: 12px; margin-top: -6px; pointer-events: none; }
+  .ticks { position: absolute; left: 2px; right: 2px; top: 50%; height: 6px; margin-top: -3px; pointer-events: none; }
   .now {
-    position: absolute; top: 50%; width: 3px; height: 16px; margin: -8px 0 0 -1.5px;
-    border-radius: 2px; background: var(--primary-text-color); opacity: 0.5;
-    box-shadow: 0 0 0 2px var(--ha-card-background, var(--card-background-color));
+    position: absolute; top: 50%; width: 2px; height: 14px; margin: -7px 0 0 -1px;
+    border-radius: 2px; background: var(--primary-text-color); opacity: 0.45;
+  }
+  /* the target sits on the rail as a knob ringed in its colour */
+  .knob {
+    position: absolute; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%;
+    background: var(--ha-card-background, var(--card-background-color));
+    box-shadow: 0 0 0 2px var(--kc, rgb(var(--accent))), 0 2px 6px rgb(0 0 0 / 0.22);
   }
   .bounds {
     display: flex; justify-content: space-between;
-    margin-top: 6px; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.01em;
+    margin: 2px 7px 0; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.01em;
     color: var(--secondary-text-color); opacity: 0.75;
   }
 
   /* ---- readouts ---- */
-  .stats { display: flex; gap: 8px; margin-top: 14px; }
-  .stat {
-    flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
-    padding: 9px 10px; border-radius: 14px; background: var(--well);
-  }
-  .stat ha-icon, .stat savvy-state-icon { --mdc-icon-size: 20px; flex: none; display: flex; color: var(--sc, var(--secondary-text-color)); }
-  .stat .col { min-width: 0; display: flex; flex-direction: column; }
-  .stat .v { font-size: 14px; line-height: 17px; font-weight: 600; letter-spacing: -0.012em;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .stat .k { font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.006em;
-    color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .foot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin-top: 8px; }
+  .foot:empty, .foot:not(:has(:not([hidden]))) { display: none; }
+  .stats { display: contents; }
+  .stat { flex: none; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 4px 0; }
+  .stat ha-icon, .stat savvy-state-icon { --mdc-icon-size: 16px; flex: none; display: flex; color: var(--sc, var(--secondary-text-color)); }
+  .stat .col { min-width: 0; display: flex; align-items: baseline; gap: 4px; }
+  .stat .v { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.012em; white-space: nowrap; }
+  .stat .k { font-size: 13.5px; line-height: 18px; font-weight: 500; letter-spacing: -0.004em;
+    color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: lowercase; }
 
   /* ---- segmented control ---- */
-  /* very narrow cards drop the readout labels: the icons already say what they are */
-  @container (max-width: 300px) {
-    .stat .k { display: none; }
-    .stat { padding: 10px; }
-  }
-
   .segmented {
     position: relative; display: flex; gap: 2px; margin-top: 12px;
     padding: 3px; border-radius: 14px; background: var(--well);
+  }
+  /* the modes: a row of words under a hairline, the chosen one marked by its colour and a dot that slides */
+  .segmented.modes { margin: 14px -4px 0; padding: 6px 0 0; border-radius: 0; background: none; border-top: 1px solid var(--line); gap: 0; }
+  .modes .seg { flex-direction: column; gap: 5px; height: 56px; padding-bottom: 6px; font-size: 13px; }
+  .modes .seg ha-icon { --mdc-icon-size: 20px; }
+  .segmented.modes .pill, .segmented.modes .pill[data-colored] { background: transparent; box-shadow: none; }
+  .segmented.modes .pill[data-colored]::after {
+    content: ""; position: absolute; left: 50%; bottom: 3px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%;
+    background: var(--sc);
   }
   .pill {
     position: absolute; top: 3px; bottom: 3px; left: 0; border-radius: 11px;
@@ -250,20 +259,23 @@ const STYLE = `
   .seg ha-icon { --mdc-icon-size: 18px; display: flex; }
   .seg span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .seg[data-sel] { color: var(--sc, var(--primary-text-color)); }
+  .modes .seg[data-sel] { color: var(--primary-text-color); }
+  .modes .seg[data-sel] ha-icon { color: var(--sc, var(--primary-text-color)); }
   /* narrow cards drop the mode labels and keep the icons; the range labels always stay */
-  @container (max-width: 340px) { .modes .seg span { display: none; } }
+  @container (max-width: 260px) { .modes .seg span { display: none; } .modes .seg { height: 44px; } }
 
   /* ---- action row ---- */
-  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .actions { display: contents; }
   .act {
-    display: inline-flex; align-items: center; gap: 7px; min-width: 0; height: 34px;
-    padding: 0 12px; border-radius: 12px; background: var(--well);
-    font-size: 13px; line-height: 16px; font-weight: 550; letter-spacing: -0.004em;
-    color: var(--secondary-text-color);
+    display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 32px;
+    padding: 0 10px; margin: 0 -10px; border-radius: 11px;
+    font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.012em;
+    color: var(--primary-text-color);
   }
-  .act ha-icon, .act savvy-state-icon { --mdc-icon-size: 18px; flex: none; display: flex; color: var(--ac, inherit); }
+  .act ha-icon, .act savvy-state-icon { --mdc-icon-size: 16px; flex: none; display: flex; color: var(--ac, var(--secondary-text-color)); }
   .act span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .act[data-on] { background: color-mix(in oklab, var(--ac) 16%, transparent); color: var(--ac); }
+  .act[data-on] { background: color-mix(in oklab, var(--ac) 12%, transparent); }
+  @media (hover: hover) { .act:hover { background: var(--well); } }
 
   /* ---- history page ---- */
   .page.history { padding-bottom: 10px; }
@@ -325,6 +337,11 @@ const STYLE = `
   ha-card[data-compact] .now { height: 13px; margin-top: -6.5px; }
   ha-card[data-compact] .segmented { margin-top: 9px; }
   ha-card[data-compact] .seg { height: 30px; font-size: 12.5px; }
+  /* compact keeps the modes on one line: icon and word side by side, the dot under the pair */
+  ha-card[data-compact] .segmented.modes { margin-top: 10px; padding-top: 4px; }
+  ha-card[data-compact] .modes .seg { flex-direction: row; gap: 6px; height: 40px; padding-bottom: 4px; }
+  ha-card[data-compact] .modes .seg ha-icon { --mdc-icon-size: 17px; }
+  @container (max-width: 420px) { ha-card[data-compact] .modes .seg span { display: none; } }
   ha-card[data-compact] .seg ha-icon { --mdc-icon-size: 17px; }
   ha-card[data-compact] .actions { margin-top: 8px; }
   ha-card[data-compact] .act { height: 30px; font-size: 12.5px; padding: 0 10px; }
@@ -495,12 +512,11 @@ class ClimateCard extends HTMLElement {
               </div>
               <div class="slider" id="slider" role="slider" tabindex="0">
                 <div class="bar" id="bar"><span class="fill" id="fill"></span></div>
-                <div class="ticks"><span class="now" id="now" hidden></span></div>
+                <div class="ticks"><span class="now" id="now" hidden></span><span class="knob" id="knob"></span></div>
               </div>
               <div class="bounds"><span id="lo"></span><span id="hi"></span></div>
-              <div class="stats" id="stats"></div>
               ${seg("modes")}
-              <div class="actions" id="actions"></div>
+              <div class="foot"><div class="stats" id="stats"></div><div class="actions" id="actions"></div></div>
             </section>
             <section class="page history" id="p1"${COMPACT_HIDE}>
               <div class="legend" id="legend">
@@ -534,7 +550,7 @@ class ClimateCard extends HTMLElement {
       card: this._root.querySelector("ha-card"), pager: $("pager"), track: $("track"),
       p0: $("p0"), p1: $("p1"), name: $("name"), status: $("status"), power: $("power"),
       readout: $("readout"), hero: $("hero"), value: $("value"), unit: $("unit"), minus: $("minus"), plus: $("plus"),
-      slider: $("slider"), bar: $("bar"), fill: $("fill"), now: $("now"), lo: $("lo"), hi: $("hi"),
+      slider: $("slider"), bar: $("bar"), fill: $("fill"), now: $("now"), knob: $("knob"), lo: $("lo"), hi: $("hi"),
       stats: $("stats"), modes: this._root.querySelector(".modes"), actions: $("actions"),
       legend: $("legend"), ranges: this._root.querySelector(".ranges"), chart: $("chart"),
       svg: $("svg"), cursor: $("cursor"), bubble: $("bubble"), empty: $("empty"),
@@ -1242,7 +1258,8 @@ class ClimateCard extends HTMLElement {
     if (this._config.fan_control && st?.attributes.fan_modes?.length) {
       items.push({
         key: "fan", icon: "mdi:fan", color: "#57B8FF",
-        label: title(st.attributes.fan_mode || "Fan"),
+        // the button sits among readouts, so it says what it is: "Fan auto", not a bare "Auto"
+        label: st.attributes.fan_mode ? `Fan ${String(st.attributes.fan_mode).replace(/[_-]+/g, " ").toLowerCase()}` : "Fan",
         on: false, tap: () => this._cycleFan(), hold: () => this._moreInfo(this._config.entity),
       });
     }
@@ -1567,7 +1584,10 @@ class ClimateCard extends HTMLElement {
     const g = clamp(sp.grab.x);
     put(el.bar, "transform", red ? "" : `scaleY(${(1 + 0.5 * g).toFixed(3)})`);
     put(el.value, "transform", red ? "" : `scale(${(1 + 0.02 * g).toFixed(4)})`);
-    put(el.value, "transformOrigin", "0% 60%");
+    put(el.value, "transformOrigin", "50% 60%");
+    put(el.knob, "left", `${(t * 100).toFixed(2)}%`);
+    put(el.knob, "--kc", rgbStr(c));
+    put(el.knob, "transform", red ? "" : `scale(${(1 + 0.15 * g).toFixed(3)})`);
 
     if (this._roomV != null) {
       const rt = clamp((this._roomV - this._min) / Math.max(1e-6, this._max - this._min));

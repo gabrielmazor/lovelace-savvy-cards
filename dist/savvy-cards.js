@@ -2533,14 +2533,16 @@ function bindActions(host, el, getCtx, { spring, wake, defaults = {} } = {}) {
 const LIST_CSS = `
   /* the entity list: one row per entity, live */
   .sv-rows { display: flex; flex-direction: column; gap: 2px; }
+  /* the icon of a thing stands bare: what is on takes its colour, nothing sits on a disc (an alert keeps one, so it is found) */
   .sv-ic { flex: none; width: var(--b-m); height: var(--b-m); border-radius: 50%; display: grid; place-items: center;
-    background: var(--well); color: var(--secondary-text-color); --mdc-icon-size: 20px; }
-  .sv-row[data-on] .sv-ic { color: var(--row-c, rgb(var(--accent))); background: color-mix(in oklab, var(--row-c, rgb(var(--accent))) var(--mix-on), transparent); }
+    background: transparent; color: var(--secondary-text-color); --mdc-icon-size: 22px; }
+  .sv-row[data-on] .sv-ic { color: var(--row-c, rgb(var(--accent))); }
+  .sv-ic[data-art] { background: var(--well); }
   .sv-row[data-alert] .sv-ic { color: rgb(var(--bad-rgb)); background: color-mix(in oklab, rgb(var(--bad-rgb)) var(--mix-alert), transparent); }
   .sv-row[data-alert] .sv-val { color: rgb(var(--bad-rgb)); }
   .sv-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .sv-name { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .sv-sub { font-size: 12px; line-height: 15px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sv-name { font-size: 15px; line-height: 19px; font-weight: 560; letter-spacing: -0.012em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sv-sub { font-size: 12.5px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sv-sub:empty { display: none; }
   .sv-val { flex: none; font-size: 13px; font-weight: 600; color: var(--secondary-text-color); }
   .sv-val:empty { display: none; }
@@ -2550,8 +2552,8 @@ const LIST_CSS = `
     background: var(--card-background-color, #fff); box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); translate: calc(var(--p, 0) * 16px) 0; }
   .sv-tog[data-on] { background: var(--row-c, rgb(var(--accent))); }
   .sv-empty { padding: 18px 8px; text-align: center; font-size: 13px; color: var(--secondary-text-color); }
-  .sv-group { margin: 8px 6px 2px; font-size: 11.5px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em;
-    text-transform: uppercase; color: var(--secondary-text-color); }
+  .sv-group { margin: 12px 6px 2px; font-size: 13px; line-height: 17px; font-weight: 600; letter-spacing: -0.006em;
+    color: var(--secondary-text-color); }
 `;
 const SHEET_CSS = `
   .sv-scrim { position: fixed; inset: 0; z-index: 998; background: rgb(0 0 0 / 0.45); opacity: 0; }
@@ -2588,11 +2590,11 @@ const SHEET_CSS = `
   .sv-grab { align-self: center; width: 36px; height: 5px; border-radius: 3px; margin: 7px 0 -3px;
     background: color-mix(in oklab, var(--primary-text-color) 20%, transparent); }
   .sv-sheet:not([data-bottom]) .sv-grab { display: none; }
-  .sv-head { display: flex; align-items: center; gap: 8px; padding: 14px 12px 8px 18px; }
+  .sv-head { display: flex; align-items: center; gap: 8px; padding: 16px 14px 10px 20px; }
   .sv-title[data-link] { cursor: pointer; border-radius: 8px; }
   .sv-title[data-link]::after { content: "\\203A"; margin-inline-start: 6px; opacity: 0.45; font-weight: 500; }
   @media (hover: hover) { .sv-title[data-link]:hover { opacity: 0.8; } }
-  .sv-title { flex: 1; min-width: 0; font-size: 18px; line-height: 23px; font-weight: 650; letter-spacing: -0.022em;
+  .sv-title { flex: 1; min-width: 0; font-size: 20px; line-height: 25px; font-weight: 640; letter-spacing: -0.026em;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sv-close { width: var(--c-s); height: var(--c-s); border-radius: 11px; display: grid; place-items: center;
     background: var(--well); --mdc-icon-size: 18px; flex: none; }
@@ -8365,14 +8367,16 @@ const STYLE = `
   header { display: flex; align-items: flex-start; gap: 12px; }
   .titles { flex: 1; min-width: 0; }
   .name {
-    display: block; font-size: 15px; line-height: 20px; font-weight: 600;
-    letter-spacing: -0.014em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    display: block; font-size: 17px; line-height: 22px; font-weight: 620;
+    letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .status {
     display: block; font-size: 13px; line-height: 18px; font-weight: 500; letter-spacing: -0.003em;
     color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .status b { font-weight: 600; color: rgb(var(--accent)); }
+  .status b { font-weight: 600; color: var(--accent-text); }
+  ha-card { --accent-text: rgb(var(--accent)); }
+  :host(:not([dark])) ha-card { --accent-text: color-mix(in oklab, rgb(var(--accent)) 72%, #000); }
 
   .power {
     flex: none; display: grid; place-items: center;
@@ -8383,68 +8387,75 @@ const STYLE = `
   .power ha-icon { --mdc-icon-size: 21px; display: flex; }
 
   /* ---- target temperature ---- */
-  .hero { display: flex; align-items: flex-end; gap: 12px; margin-top: 14px; }
-  /* glass: the target and its buttons are one tile, lit in the mode's colour */
-  ha-card:not([data-compact]) .hero { padding: 10px 12px; border-radius: 18px; background: color-mix(in oklab, var(--primary-text-color) 4%, transparent); }
-  ha-card[data-glass] .hero { --lx: 46px; --ly: 55%; }
-  .readout { flex: 1; min-width: 0; display: flex; align-items: flex-start; }
+  .hero { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+  /* glass and matte: the target and its buttons are one tile, lit in the mode's colour */
+  ha-card:is([data-glass], [data-matte]):not([data-compact]) .hero { padding: 10px 12px; border-radius: 18px; background: color-mix(in oklab, var(--primary-text-color) 4%, transparent); }
+  ha-card[data-glass] .hero, ha-card[data-matte] .hero { --lx: 50%; --ly: 55%; }   /* the light comes from the number, now in the middle */
+  .readout { flex: 1; min-width: 0; display: flex; align-items: flex-start; justify-content: center; order: 1; }
   .value {
-    font-size: 52px; line-height: 0.92; font-weight: 600; letter-spacing: -0.035em;
-    color: rgb(var(--accent));
+    font-size: 76px; line-height: 1; font-weight: 250; letter-spacing: -0.055em;
+    color: var(--primary-text-color);
   }
   .unit {
-    font-size: 23px; line-height: 1; font-weight: 550; letter-spacing: -0.01em;
-    color: rgb(var(--accent) / 0.55); margin: 2px 0 0 2px;
+    font-size: 26px; line-height: 1; font-weight: 400; letter-spacing: -0.01em;
+    color: var(--accent-text); margin: 10px 0 0 3px;
   }
-  .steppers { flex: none; display: flex; gap: 8px; padding-bottom: 3px; }
+  .steppers { display: contents; }
+  #minus { order: 0; } #plus { order: 2; }
   .step { display: grid; place-items: center; width: var(--c-l); height: var(--c-l); border-radius: 13px; background: var(--well); }
   .step ha-icon { --mdc-icon-size: 22px; display: flex; }
   .step[disabled] { opacity: 0.34; cursor: default; }
 
   /* the bar is the control: grab it anywhere, it thickens under the finger */
-  .slider { position: relative; height: 34px; margin: 12px -2px 0; padding: 0 2px; touch-action: pan-y; cursor: grab; }
+  .slider { position: relative; height: 34px; margin: 6px 7px 0; padding: 0 2px; touch-action: pan-y; cursor: grab; }
   .slider:active { cursor: grabbing; }
   .bar {
-    position: absolute; left: 2px; right: 2px; top: 50%; height: 12px; margin-top: -6px;
-    border-radius: 99px; background: var(--well); overflow: hidden;
+    position: absolute; left: 2px; right: 2px; top: 50%; height: 6px; margin-top: -3px;
+    border-radius: 99px; background: color-mix(in oklab, var(--primary-text-color) 9%, transparent); overflow: hidden;
     transform-origin: 50% 50%;
   }
   .fill { position: absolute; inset: 0; transform-origin: 0 50%; border-radius: 99px; }
-  .ticks { position: absolute; left: 2px; right: 2px; top: 50%; height: 12px; margin-top: -6px; pointer-events: none; }
+  .ticks { position: absolute; left: 2px; right: 2px; top: 50%; height: 6px; margin-top: -3px; pointer-events: none; }
   .now {
-    position: absolute; top: 50%; width: 3px; height: 16px; margin: -8px 0 0 -1.5px;
-    border-radius: 2px; background: var(--primary-text-color); opacity: 0.5;
-    box-shadow: 0 0 0 2px var(--ha-card-background, var(--card-background-color));
+    position: absolute; top: 50%; width: 2px; height: 14px; margin: -7px 0 0 -1px;
+    border-radius: 2px; background: var(--primary-text-color); opacity: 0.45;
+  }
+  /* the target sits on the rail as a knob ringed in its colour */
+  .knob {
+    position: absolute; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%;
+    background: var(--ha-card-background, var(--card-background-color));
+    box-shadow: 0 0 0 2px var(--kc, rgb(var(--accent))), 0 2px 6px rgb(0 0 0 / 0.22);
   }
   .bounds {
     display: flex; justify-content: space-between;
-    margin-top: 6px; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.01em;
+    margin: 2px 7px 0; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.01em;
     color: var(--secondary-text-color); opacity: 0.75;
   }
 
   /* ---- readouts ---- */
-  .stats { display: flex; gap: 8px; margin-top: 14px; }
-  .stat {
-    flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
-    padding: 9px 10px; border-radius: 14px; background: var(--well);
-  }
-  .stat ha-icon, .stat savvy-state-icon { --mdc-icon-size: 20px; flex: none; display: flex; color: var(--sc, var(--secondary-text-color)); }
-  .stat .col { min-width: 0; display: flex; flex-direction: column; }
-  .stat .v { font-size: 14px; line-height: 17px; font-weight: 600; letter-spacing: -0.012em;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .stat .k { font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.006em;
-    color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .foot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin-top: 8px; }
+  .foot:empty, .foot:not(:has(:not([hidden]))) { display: none; }
+  .stats { display: contents; }
+  .stat { flex: none; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 4px 0; }
+  .stat ha-icon, .stat savvy-state-icon { --mdc-icon-size: 16px; flex: none; display: flex; color: var(--sc, var(--secondary-text-color)); }
+  .stat .col { min-width: 0; display: flex; align-items: baseline; gap: 4px; }
+  .stat .v { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.012em; white-space: nowrap; }
+  .stat .k { font-size: 13.5px; line-height: 18px; font-weight: 500; letter-spacing: -0.004em;
+    color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: lowercase; }
 
   /* ---- segmented control ---- */
-  /* very narrow cards drop the readout labels: the icons already say what they are */
-  @container (max-width: 300px) {
-    .stat .k { display: none; }
-    .stat { padding: 10px; }
-  }
-
   .segmented {
     position: relative; display: flex; gap: 2px; margin-top: 12px;
     padding: 3px; border-radius: 14px; background: var(--well);
+  }
+  /* the modes: a row of words under a hairline, the chosen one marked by its colour and a dot that slides */
+  .segmented.modes { margin: 14px -4px 0; padding: 6px 0 0; border-radius: 0; background: none; border-top: 1px solid var(--line); gap: 0; }
+  .modes .seg { flex-direction: column; gap: 5px; height: 56px; padding-bottom: 6px; font-size: 13px; }
+  .modes .seg ha-icon { --mdc-icon-size: 20px; }
+  .segmented.modes .pill, .segmented.modes .pill[data-colored] { background: transparent; box-shadow: none; }
+  .segmented.modes .pill[data-colored]::after {
+    content: ""; position: absolute; left: 50%; bottom: 3px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%;
+    background: var(--sc);
   }
   .pill {
     position: absolute; top: 3px; bottom: 3px; left: 0; border-radius: 11px;
@@ -8468,20 +8479,23 @@ const STYLE = `
   .seg ha-icon { --mdc-icon-size: 18px; display: flex; }
   .seg span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .seg[data-sel] { color: var(--sc, var(--primary-text-color)); }
+  .modes .seg[data-sel] { color: var(--primary-text-color); }
+  .modes .seg[data-sel] ha-icon { color: var(--sc, var(--primary-text-color)); }
   /* narrow cards drop the mode labels and keep the icons; the range labels always stay */
-  @container (max-width: 340px) { .modes .seg span { display: none; } }
+  @container (max-width: 260px) { .modes .seg span { display: none; } .modes .seg { height: 44px; } }
 
   /* ---- action row ---- */
-  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .actions { display: contents; }
   .act {
-    display: inline-flex; align-items: center; gap: 7px; min-width: 0; height: 34px;
-    padding: 0 12px; border-radius: 12px; background: var(--well);
-    font-size: 13px; line-height: 16px; font-weight: 550; letter-spacing: -0.004em;
-    color: var(--secondary-text-color);
+    display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 32px;
+    padding: 0 10px; margin: 0 -10px; border-radius: 11px;
+    font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.012em;
+    color: var(--primary-text-color);
   }
-  .act ha-icon, .act savvy-state-icon { --mdc-icon-size: 18px; flex: none; display: flex; color: var(--ac, inherit); }
+  .act ha-icon, .act savvy-state-icon { --mdc-icon-size: 16px; flex: none; display: flex; color: var(--ac, var(--secondary-text-color)); }
   .act span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .act[data-on] { background: color-mix(in oklab, var(--ac) 16%, transparent); color: var(--ac); }
+  .act[data-on] { background: color-mix(in oklab, var(--ac) 12%, transparent); }
+  @media (hover: hover) { .act:hover { background: var(--well); } }
 
   /* ---- history page ---- */
   .page.history { padding-bottom: 10px; }
@@ -8543,6 +8557,11 @@ const STYLE = `
   ha-card[data-compact] .now { height: 13px; margin-top: -6.5px; }
   ha-card[data-compact] .segmented { margin-top: 9px; }
   ha-card[data-compact] .seg { height: 30px; font-size: 12.5px; }
+  /* compact keeps the modes on one line: icon and word side by side, the dot under the pair */
+  ha-card[data-compact] .segmented.modes { margin-top: 10px; padding-top: 4px; }
+  ha-card[data-compact] .modes .seg { flex-direction: row; gap: 6px; height: 40px; padding-bottom: 4px; }
+  ha-card[data-compact] .modes .seg ha-icon { --mdc-icon-size: 17px; }
+  @container (max-width: 420px) { ha-card[data-compact] .modes .seg span { display: none; } }
   ha-card[data-compact] .seg ha-icon { --mdc-icon-size: 17px; }
   ha-card[data-compact] .actions { margin-top: 8px; }
   ha-card[data-compact] .act { height: 30px; font-size: 12.5px; padding: 0 10px; }
@@ -8713,12 +8732,11 @@ class ClimateCard extends HTMLElement {
               </div>
               <div class="slider" id="slider" role="slider" tabindex="0">
                 <div class="bar" id="bar"><span class="fill" id="fill"></span></div>
-                <div class="ticks"><span class="now" id="now" hidden></span></div>
+                <div class="ticks"><span class="now" id="now" hidden></span><span class="knob" id="knob"></span></div>
               </div>
               <div class="bounds"><span id="lo"></span><span id="hi"></span></div>
-              <div class="stats" id="stats"></div>
               ${seg("modes")}
-              <div class="actions" id="actions"></div>
+              <div class="foot"><div class="stats" id="stats"></div><div class="actions" id="actions"></div></div>
             </section>
             <section class="page history" id="p1"${COMPACT_HIDE}>
               <div class="legend" id="legend">
@@ -8752,7 +8770,7 @@ class ClimateCard extends HTMLElement {
       card: this._root.querySelector("ha-card"), pager: $("pager"), track: $("track"),
       p0: $("p0"), p1: $("p1"), name: $("name"), status: $("status"), power: $("power"),
       readout: $("readout"), hero: $("hero"), value: $("value"), unit: $("unit"), minus: $("minus"), plus: $("plus"),
-      slider: $("slider"), bar: $("bar"), fill: $("fill"), now: $("now"), lo: $("lo"), hi: $("hi"),
+      slider: $("slider"), bar: $("bar"), fill: $("fill"), now: $("now"), knob: $("knob"), lo: $("lo"), hi: $("hi"),
       stats: $("stats"), modes: this._root.querySelector(".modes"), actions: $("actions"),
       legend: $("legend"), ranges: this._root.querySelector(".ranges"), chart: $("chart"),
       svg: $("svg"), cursor: $("cursor"), bubble: $("bubble"), empty: $("empty"),
@@ -9460,7 +9478,8 @@ class ClimateCard extends HTMLElement {
     if (this._config.fan_control && st?.attributes.fan_modes?.length) {
       items.push({
         key: "fan", icon: "mdi:fan", color: "#57B8FF",
-        label: title(st.attributes.fan_mode || "Fan"),
+        // the button sits among readouts, so it says what it is: "Fan auto", not a bare "Auto"
+        label: st.attributes.fan_mode ? `Fan ${String(st.attributes.fan_mode).replace(/[_-]+/g, " ").toLowerCase()}` : "Fan",
         on: false, tap: () => this._cycleFan(), hold: () => this._moreInfo(this._config.entity),
       });
     }
@@ -9785,7 +9804,10 @@ class ClimateCard extends HTMLElement {
     const g = clamp(sp.grab.x);
     put(el.bar, "transform", red ? "" : `scaleY(${(1 + 0.5 * g).toFixed(3)})`);
     put(el.value, "transform", red ? "" : `scale(${(1 + 0.02 * g).toFixed(4)})`);
-    put(el.value, "transformOrigin", "0% 60%");
+    put(el.value, "transformOrigin", "50% 60%");
+    put(el.knob, "left", `${(t * 100).toFixed(2)}%`);
+    put(el.knob, "--kc", rgbStr(c));
+    put(el.knob, "transform", red ? "" : `scale(${(1 + 0.15 * g).toFixed(3)})`);
 
     if (this._roomV != null) {
       const rt = clamp((this._roomV - this._min) / Math.max(1e-6, this._max - this._min));
@@ -12968,8 +12990,10 @@ ${GLOW_CSS}${DESIGN_CSS}
 
 ha-card {
   --radius: var(--ha-card-border-radius, 18px);
-  --pad: 14px;
+  --pad: 16px;
   --amber: 245 184 61;
+  --amber-text: rgb(var(--amber));
+  --lvl-a0: 0.04; --lvl-a1: 0.22; --lvl-edge: 0.8; --lvl-blend: plus-lighter;
   ${DESIGN_TOKENS}
   --well: color-mix(in oklab, var(--primary-text-color) 6%, transparent);
   --line: color-mix(in oklab, var(--primary-text-color) 9%, transparent);
@@ -12977,7 +13001,7 @@ ha-card {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   padding: var(--pad);
   border-radius: var(--radius);
   border: var(--ha-card-border-width, 1px) solid var(--ha-card-border-color, var(--line));
@@ -12999,6 +13023,10 @@ ha-card {
 @supports (corner-shape: squircle) {
   ha-card { corner-shape: squircle; border-radius: calc(var(--radius) * 1.7); }
 }
+:host(:not([dark])) ha-card {
+  --amber-text: color-mix(in oklab, rgb(var(--amber)) 62%, #000);
+  --lvl-a0: 0.1; --lvl-a1: 0.3; --lvl-edge: 0.95; --lvl-blend: normal;
+}
 :host([dark]) ha-card::after {
   content: ""; position: absolute; inset: 0; z-index: 9;
   border-radius: inherit; corner-shape: inherit;
@@ -13006,80 +13034,95 @@ ha-card {
   pointer-events: none;
 }
 
-/* ---- header ---- */
-header { display: flex; align-items: center; gap: 10px; min-width: 0; }
+/* ---- header: the room, how many are on, and the room's pill ---- */
+header { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 2px 2px 0; }
 .titles { flex: 1; min-width: 0; }
-.name { display: block; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.014em;
+.name { display: block; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.count { display: block; font-size: 12.5px; line-height: 17px; font-weight: 500;
+.count { display: block; font-size: 13px; line-height: 18px; font-weight: 500; letter-spacing: -0.004em;
   color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .master {
-  flex: none; display: inline-flex; align-items: center; gap: 7px; height: 34px;
-  padding: 0 12px 0 10px; border-radius: 12px; background: var(--well);
+  flex: none; display: inline-flex; align-items: center; gap: 7px; height: var(--c-s);
+  padding: 0 12px 0 10px; border-radius: 11px; background: var(--well);
   color: var(--secondary-text-color);
-  font-size: 13px; line-height: 16px; font-weight: 550; letter-spacing: -0.004em;
+  font-size: 13px; line-height: 16px; font-weight: 600; letter-spacing: -0.006em;
 }
 .master ha-icon { --mdc-icon-size: 18px; display: flex; }
-.master[data-on] { background: rgb(var(--amber) / 0.16); color: rgb(var(--amber)); }
+.master[data-on] { background: rgb(var(--amber) / 0.14); color: var(--amber-text); }
 
-/* ---- the lights ---- */
-.grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
-@container (min-width: 480px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* ---- the lights: one row per lamp, and the row is the control ----
+   tap switches it, a sideways drag dims it (the level fills the row from the left, in the
+   lamp's own colour), hold opens more-info, the dot opens warmth and colour */
+.grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+@container (min-width: 480px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; } .light[data-wide] { grid-column: 1 / -1; } }
 @container (min-width: 900px) { .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 
 .light {
-  position: relative; overflow: hidden;
-  display: flex; flex-direction: column; gap: 8px;
-  padding: 10px; border-radius: 15px;
-  background: var(--well);
+  position: relative; overflow: hidden; isolation: isolate;
+  display: grid; grid-template-columns: var(--b-m) minmax(0, 1fr) auto; align-items: center; column-gap: 10px;
+  min-height: 60px; padding: 0 12px 0 10px; border-radius: 16px;
+  background: var(--well); cursor: pointer; touch-action: pan-y;
+  --lit-text: rgb(var(--lc, var(--amber)));
 }
-/* --lit only rises above 0 when color_background: true is set (see _light()); a tile
-   otherwise looks identical on and off, so a room full of lit lights stays calm */
+:host(:not([dark])) .light { --lit-text: color-mix(in oklab, rgb(var(--lc, var(--amber))) 80%, #000); }
+.light[data-dim] { cursor: ew-resize; }
+.light[data-unavailable] { cursor: default; }
+.light[data-unavailable] > :not(.lvl) { opacity: 0.55; }
+/* --lit only rises above 0 when color_background: true is set (see _light()) */
 .light::before {
-  content: ""; position: absolute; inset: 0; border-radius: inherit;
-  background: rgb(var(--bg, var(--amber)) / 0.14);
+  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit;
+  background: rgb(var(--bg, var(--amber)) / 0.12);
   opacity: var(--lit, 0); pointer-events: none;
 }
-.head { position: relative; display: flex; align-items: center; gap: 10px; min-width: 0; }
+/* the level: a wash from the left edge to the brightness, ending in a fine line of the lamp's colour */
+.lvl {
+  position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(90deg, rgb(var(--lc, var(--amber)) / var(--lvl-a0)), rgb(var(--lc, var(--amber)) / var(--lvl-a1)));
+  box-shadow: inset -2px 0 0 rgb(var(--lc, var(--amber)) / var(--lvl-edge));
+  transform: translateX(calc((var(--v, 0) - 1) * 100%));
+  mix-blend-mode: var(--lvl-blend);   /* on dark the level adds light instead of tinting the grey brown */
+}
 .orb {
   flex: none; display: grid; place-items: center; width: var(--b-m); height: var(--b-m); border-radius: 50%;
-  background: var(--well);
-  color: var(--secondary-text-color);
+  background: transparent; color: var(--secondary-text-color); pointer-events: none;
 }
-.orb[data-on] { background: color-mix(in oklab, rgb(var(--lc, var(--amber))) var(--mix-on), transparent); color: rgb(var(--lc, var(--amber))); }
-.orb ha-icon, .orb savvy-state-icon { --mdc-icon-size: 20px; display: flex; }
-.meta { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.meta .n { font-size: 13.5px; line-height: 17px; font-weight: 600; letter-spacing: -0.01em;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.meta .d { font-size: 11.5px; line-height: 15px; font-weight: 500; color: var(--secondary-text-color);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.orb[data-on] { color: var(--lit-text); }
+.orb ha-icon, .orb savvy-state-icon { --mdc-icon-size: 22px; display: flex; }
+.meta { min-width: 0; display: flex; align-items: center; gap: 4px; text-align: start; pointer-events: none; }
+.meta .n { min-width: 0; font-size: 15px; line-height: 20px; font-weight: 560; letter-spacing: -0.012em;
+  color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.light[data-on] .meta .n { color: var(--primary-text-color); }
+.end { display: flex; align-items: center; gap: 2px; margin-inline-end: -4px; }
+.d { flex: none; min-width: 44px; padding-inline-end: 4px; text-align: end;
+  font-size: 15px; line-height: 20px; font-weight: 500; letter-spacing: -0.01em; color: var(--secondary-text-color);
+  white-space: nowrap; pointer-events: none; }
+.light[data-on] .d { color: var(--primary-text-color); }
+.light[data-on] .d[data-num] { font-size: 19px; font-weight: 400; letter-spacing: -0.03em; }
 .swatch {
   flex: none; display: grid; place-items: center; width: var(--c-s); height: var(--c-s); border-radius: 11px;
-  background: var(--well);
+  background: transparent;
 }
 .swatch i {
-  width: 16px; height: 16px; border-radius: 50%;
-  background: var(--sw, rgb(var(--amber)));
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--sw, rgb(var(--amber))); opacity: 0.4;
   box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.14);
 }
+.light[data-on] .swatch i { opacity: 1; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.14), 0 0 0 3px color-mix(in srgb, var(--sw) 22%, transparent); }
 
 .power {
   flex: none; display: grid; place-items: center; width: var(--c-s); height: var(--c-s); border-radius: 11px;
-  background: var(--well);
-  color: var(--secondary-text-color);
+  background: transparent; color: var(--secondary-text-color);
 }
-.power[data-on] { background: color-mix(in oklab, rgb(var(--lc, var(--amber))) var(--mix-on), transparent); color: rgb(var(--lc, var(--amber))); }
+.power[data-on] { color: var(--lit-text); }
 .power ha-icon { --mdc-icon-size: 18px; display: flex; }
-
-
-ha-card[data-glass] .light { --lx: 28px; --ly: 28px; }   /* the middle of the icon: tile padding 10 + half the 36 orb */
+ha-card[data-glass] .light, ha-card[data-matte] .light { --lx: 28px; --ly: 50%; }   /* the middle of the icon: padding 10 + half the 36 orb */
 /* ---- compact: the light, its name and its state, and nothing else ---- */
-ha-card[data-compact] .light { padding: 8px 10px; border-radius: 13px; --lx: 24px; --ly: 50%; }
+ha-card[data-compact] .light { min-height: 46px; padding: 0 10px 0 8px; border-radius: 13px; --lx: 22px; }
 ha-card[data-compact] .orb { width: var(--b-s); height: var(--b-s); }
-ha-card[data-compact] .orb ha-icon, ha-card[data-compact] .orb savvy-state-icon { --mdc-icon-size: 16px; }
-ha-card[data-compact] .meta .n { font-size: 13px; line-height: 16px; }
-ha-card[data-compact] .meta .d { font-size: 11px; line-height: 14px; }
-ha-card[data-compact] .grid { gap: 6px; }
+ha-card[data-compact] .orb ha-icon, ha-card[data-compact] .orb savvy-state-icon { --mdc-icon-size: 18px; }
+ha-card[data-compact] .meta .n { font-size: 14px; line-height: 18px; }
+ha-card[data-compact] .d, ha-card[data-compact] .light[data-on] .d[data-num] { font-size: 13px; font-weight: 500; letter-spacing: -0.004em; min-width: 0; }
+ha-card[data-compact] .grid { gap: 4px; }
 
 /* ---- sliders ---- */
 .slider { position: relative; height: 28px; touch-action: pan-y; cursor: grab; }
@@ -13115,7 +13158,8 @@ ha-card[data-compact] .grid { gap: 6px; }
 }
 .chip ha-icon, .chip savvy-state-icon { --mdc-icon-size: 18px; flex: none; display: flex; color: var(--cc, inherit); }
 .chip span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.chip[data-on] { background: color-mix(in oklab, var(--cc) 16%, transparent); color: var(--cc); }
+.chip[data-on] { background: color-mix(in oklab, var(--cc) 14%, transparent); color: var(--cc); }
+:host(:not([dark])) .chip[data-on] { color: color-mix(in oklab, var(--cc) 62%, #000); }
 
 .empty { padding: 6px 2px; font-size: 12.5px; font-weight: 500; color: var(--secondary-text-color); }
 
@@ -13460,7 +13504,7 @@ class LightsCard extends HTMLElement {
   }
 
   // A slider that tracks the finger 1:1 and settles onto its own value on release.
-  _bar(key, el, io) {
+  _bar(key, el, io, listen = true) {
     const group = `bar:${key}`;
     const bar = {
       el, io,
@@ -13482,6 +13526,8 @@ class LightsCard extends HTMLElement {
       this._send(bar, v, throttle);
       this._wake();
     };
+    bar.set = set;
+    if (!listen) return bar;
     el.addEventListener("pointerdown", (e) => {
       if (e.button > 0 || el.hasAttribute("disabled")) return;
       e.stopPropagation();
@@ -13516,6 +13562,87 @@ class LightsCard extends HTMLElement {
   }
 
   _sheetBar(key, el, io) { return this._bar(`sheet:${key}`, el, io); }
+
+  // A light's row is its control. Feedback on press; a tap switches the lamp; a hold opens more-info;
+  // a drag that goes sideways past the slop dims it, 1:1 from the level it had (never from where the
+  // finger landed, so a scroll that starts on a row changes nothing); vertical intent stays the page's.
+  _rowGesture(node, id) {
+    const key = slug(id);
+    const spring = this._spring(0, MOTION.press, `p${this._springs.length}`);
+    node.__spring = spring;
+    node.__depth = 0.015;
+    this._pressNodes.push(node);
+    let o = null;
+    const settle = (motion) => { spring.to(0, motion); this._wake(); };
+    const own = (e) => e.composedPath().some((n) => n.classList && (n.classList.contains("swatch") || n.classList.contains("power")));
+    const end = (e, cancel) => {
+      if (!o || e.pointerId !== o.pid) return;
+      clearTimeout(o.timer);
+      const was = o;
+      o = null;
+      if (was.mode === "drag") {
+        was.bar.dragging = false;
+        was.bar.grab.to(0);
+        this._send(was.bar, was.bar.value.x);
+        this._wake();
+        return;
+      }
+      settle(MOTION.release);
+      if (!was.mode && !cancel) this._toggle(id);
+    };
+    node.addEventListener("pointerdown", (e) => {
+      if (e.button > 0 || o || own(e) || node.hasAttribute("data-unavailable")) return;
+      o = { x: e.clientX, y: e.clientY, pid: e.pointerId, mode: null };
+      spring.to(1, MOTION.hold);
+      this._wake();
+      o.timer = setTimeout(() => {
+        if (!o || o.mode) return;
+        o.mode = "held";
+        settle(MOTION.pop);
+        this._haptic("medium");
+        this._moreInfo(id);
+      }, HOLD_MS);
+    });
+    node.addEventListener("pointermove", (e) => {
+      if (!o || e.pointerId !== o.pid) return;
+      if (!o.mode) {
+        const dx = e.clientX - o.x, dy = e.clientY - o.y;
+        if (Math.hypot(dx, dy) < SLOP) return;
+        clearTimeout(o.timer);
+        const bar = this._bars.get(key);
+        if (bar && Math.abs(dx) > Math.abs(dy)) {
+          o.mode = "drag";
+          o.bar = bar;
+          try { node.setPointerCapture(e.pointerId); } catch (err) { /* already released */ }
+          o.w = Math.max(1, node.getBoundingClientRect().width);
+          o.from = e.clientX;
+          o.start = this._isOn(id) ? clamp(bar.value.x) : 0;
+          if (!this._isOn(id)) this._hint([id], true);     // a dark lamp being dragged up is coming on: say so now
+          bar.dragging = true;
+          bar.grab.to(1);
+        } else o.mode = "gone";
+        settle(MOTION.release);
+      }
+      if (o.mode === "drag") o.bar.set(clamp(o.start + (e.clientX - o.from) / o.w, 0.01, 1), true);
+    });
+    node.addEventListener("pointerup", (e) => end(e, false));
+    node.addEventListener("pointercancel", (e) => end(e, true));
+    // a press that became a scroll (or wandered off) ends where the row can no longer see the release
+    node.addEventListener("pointerleave", (e) => { if (o && o.mode !== "drag") end(e, true); });
+    node.addEventListener("contextmenu", (e) => e.preventDefault());
+    // a screen reader's activation arrives as a click with no pointer before it
+    node.addEventListener("click", (e) => { if (e.detail === 0 && !own(e)) this._toggle(id); });
+    node.addEventListener("keydown", (e) => {
+      if (e.target !== node) return;
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); this._toggle(id); return; }
+      if (e.key === "ContextMenu" || (e.key === "Enter" && e.shiftKey)) { e.preventDefault(); this._moreInfo(id); return; }
+      const d = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 }[e.key];
+      const bar = this._bars.get(key);
+      if (!d || !bar) return;
+      e.preventDefault();
+      bar.set(clamp((this._isOn(id) ? bar.value.target : 0) + d * 0.05, 0.01, 1), false);
+    });
+  }
 
   // Writes are throttled while dragging; the release always lands.
   _send(bar, v, throttle = false) {
@@ -13847,24 +13974,19 @@ class LightsCard extends HTMLElement {
       node = document.createElement("div");
       node.className = "light";
       node.__entity = id;
+      node.tabIndex = 0;
       node.innerHTML = `
-        <div class="head">
-          <button class="orb"><savvy-state-icon></savvy-state-icon></button>
-          <button class="meta" style="text-align:start"><span class="n"></span><span class="d"></span></button>
+        <span class="lvl" aria-hidden="true"></span>
+        <span class="orb"><savvy-state-icon></savvy-state-icon></span>
+        <span class="meta"><span class="n"></span></span>
+        <span class="end">
+          <span class="d"></span>
           <button class="swatch" hidden><i></i></button>
           <button class="power" hidden><ha-icon icon="mdi:power"></ha-icon></button>
-        </div>
-        <div class="row bright" hidden>
-          <div class="slider" role="slider" tabindex="0" aria-label="Brightness">
-            <div class="track"><span class="fill"></span></div><span class="knob"></span>
-          </div>
-          <span class="pct"></span>
-        </div>`;
+        </span>`;
       cache.set(key, node);
       el.grid.appendChild(node);
-      const orb = node.querySelector(".orb");
-      this._press(orb, () => this._toggle(id), () => this._moreInfo(id));
-      this._press(node.querySelector(".meta"), () => this._moreInfo(id));
+      this._rowGesture(node, id);
       const swatch = node.querySelector(".swatch");
       this._press(swatch, () => this._openSheet(id, swatch));
       this._press(node.querySelector(".power"), () => this._toggle(id));
@@ -13884,8 +14006,18 @@ class LightsCard extends HTMLElement {
     lit(node, on && !dead ? this._lightRgb(st) || [245, 184, 61] : null, 0.35 + 0.65 * level);
     const icon = node.querySelector("savvy-state-icon");
     if (icon.stateObj !== st) { icon.hass = h; icon.stateObj = st; }
-    text(node.querySelector(".n"), this._stripRoomPrefix(st?.attributes.friendly_name || title(id.split(".")[1]), id));
-    text(node.querySelector(".d"), this._subtitle(st, { dead, on }));
+    const name = this._stripRoomPrefix(st?.attributes.friendly_name || title(id.split(".")[1]), id);
+    text(node.querySelector(".n"), name);
+    // a dimmable lamp that is on shows its level live (the frame loop writes it, so it follows a drag);
+    // everything else says what the lamp is doing
+    node.__live = dim && !dead && on && st?.state === "on" && this._config.state_detail !== false;
+    const d = node.querySelector(".d");
+    if (!node.__live) text(d, this._subtitle(st, { dead, on }));
+    attr(d, "data-num", node.__live || /^\d+%$/.test(d.textContent) ? "" : null);
+    attr(node, "data-dim", dim && !dead ? "" : null);
+    attr(node, "role", dim ? "slider" : "switch");
+    attr(node, "aria-label", `${name}, ${this._subtitle(st, { dead, on })}. Tap to switch${dim ? ", drag sideways to dim" : ""}, hold for details.`);
+    if (!dim) attr(node, "aria-checked", on ? "true" : "false");
 
     const rgb = this._lightRgb(st);
     put(node, "--lc", rgb ? rgb.map(Math.round).join(" ") : "var(--amber)");
@@ -13910,29 +14042,28 @@ class LightsCard extends HTMLElement {
       attr(swatch, "aria-label", "Colour and warmth");
     }
 
-    const row = node.querySelector(".bright");
-    row.hidden = !dim || dead;
-    if (!row.hidden) {
+    if (dim && !dead) {
       let bar = this._bars.get(key);
       if (!bar) {
-        bar = this._bar(key, node.querySelector(".slider"), {
+        bar = this._bar(key, node, {
           read: () => this._level(this._hass.states[id]),
           // dragging a dark lamp is how you turn it on, at the level you chose
           write: (v) => this._service("turn_on", { brightness_pct: Math.max(1, Math.round(v * 100)) }, id),
-        });
+        }, false);
+        bar.row = true;
       }
+      // a lamp asked to go dark empties its row at once; Home Assistant's answer only confirms it
+      const shown = on ? level : 0;
       if (bar.pending != null && Math.abs(bar.pending - level) < 0.03) bar.pending = null;
       if (!bar.dragging && bar.pending == null) {
-        if (this._first) bar.value.snap(level);
-        else bar.value.to(level);
+        if (this._first) bar.value.snap(shown);
+        else bar.value.to(shown);
       }
-      const slider = node.querySelector(".slider");
-      attr(slider, "aria-valuenow", Math.round(level * 100));
-      attr(slider, "aria-valuemin", "0");
-      attr(slider, "aria-valuemax", "100");
-      // the subtitle already says the brightness now; showing it a second
-      // time next to the slider would be redundant
-      row.querySelector(".pct").hidden = true;
+      attr(node, "aria-valuenow", Math.round(level * 100));
+      attr(node, "aria-valuemin", "0");
+      attr(node, "aria-valuemax", "100");
+    } else if (this._bars.has(key)) {
+      this._bars.get(key).value.to(0);
     }
     // featured lights get the wider tile: the ones you reach for
     const wide = !this._compact && Number(this._config.columns) !== 1 && this._config.featured.includes(id);
@@ -14039,7 +14170,7 @@ class LightsCard extends HTMLElement {
       const s = node.__spring;
       if (!s || (!all && !dirty.has(s.group))) continue;
       const p = s.x;
-      put(node, "transform", red || Math.abs(p) < 1e-4 ? "" : `scale(${(1 - 0.06 * p).toFixed(4)})`);
+      put(node, "transform", red || Math.abs(p) < 1e-4 ? "" : `scale(${(1 - (node.__depth ?? 0.06) * p).toFixed(4)})`);
       put(node, "opacity", Math.abs(p) > 1e-3 ? (1 - (red ? 0.25 : 0.12) * clamp(p)).toFixed(3) : "");
     }
 
@@ -14052,6 +14183,16 @@ class LightsCard extends HTMLElement {
     for (const [, bar] of this._bars) {
       if (!all && !dirty.has(bar.value.group)) continue;
       const v = clamp(bar.value.x), g = clamp(bar.grab.x);
+      if (bar.row) {
+        put(bar.el, "--v", v.toFixed(4));
+        const d = bar.el.querySelector(".d");
+        // while the frame loop moves the level, the number moves with it (a plain write: a roll per frame would stutter)
+        if (bar.el.__live || bar.dragging) {
+          const val = `${Math.max(1, Math.round(v * 100))}%`;
+          if (d.__text !== val) { d.__text = val; d.textContent = val; }
+        }
+        continue;
+      }
       const track = bar.el.querySelector(".track");
       const fill = bar.el.querySelector(".fill");
       const knob = bar.el.querySelector(".knob");

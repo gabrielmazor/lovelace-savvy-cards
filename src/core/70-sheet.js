@@ -9,14 +9,16 @@
 const LIST_CSS = `
   /* the entity list: one row per entity, live */
   .sv-rows { display: flex; flex-direction: column; gap: 2px; }
+  /* the icon of a thing stands bare: what is on takes its colour, nothing sits on a disc (an alert keeps one, so it is found) */
   .sv-ic { flex: none; width: var(--b-m); height: var(--b-m); border-radius: 50%; display: grid; place-items: center;
-    background: var(--well); color: var(--secondary-text-color); --mdc-icon-size: 20px; }
-  .sv-row[data-on] .sv-ic { color: var(--row-c, rgb(var(--accent))); background: color-mix(in oklab, var(--row-c, rgb(var(--accent))) var(--mix-on), transparent); }
+    background: transparent; color: var(--secondary-text-color); --mdc-icon-size: 22px; }
+  .sv-row[data-on] .sv-ic { color: var(--row-c, rgb(var(--accent))); }
+  .sv-ic[data-art] { background: var(--well); }
   .sv-row[data-alert] .sv-ic { color: rgb(var(--bad-rgb)); background: color-mix(in oklab, rgb(var(--bad-rgb)) var(--mix-alert), transparent); }
   .sv-row[data-alert] .sv-val { color: rgb(var(--bad-rgb)); }
   .sv-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .sv-name { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .sv-sub { font-size: 12px; line-height: 15px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sv-name { font-size: 15px; line-height: 19px; font-weight: 560; letter-spacing: -0.012em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sv-sub { font-size: 12.5px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sv-sub:empty { display: none; }
   .sv-val { flex: none; font-size: 13px; font-weight: 600; color: var(--secondary-text-color); }
   .sv-val:empty { display: none; }
@@ -26,8 +28,8 @@ const LIST_CSS = `
     background: var(--card-background-color, #fff); box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); translate: calc(var(--p, 0) * 16px) 0; }
   .sv-tog[data-on] { background: var(--row-c, rgb(var(--accent))); }
   .sv-empty { padding: 18px 8px; text-align: center; font-size: 13px; color: var(--secondary-text-color); }
-  .sv-group { margin: 8px 6px 2px; font-size: 11.5px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em;
-    text-transform: uppercase; color: var(--secondary-text-color); }
+  .sv-group { margin: 12px 6px 2px; font-size: 13px; line-height: 17px; font-weight: 600; letter-spacing: -0.006em;
+    color: var(--secondary-text-color); }
 `;
 const SHEET_CSS = `
   .sv-scrim { position: fixed; inset: 0; z-index: 998; background: rgb(0 0 0 / 0.45); opacity: 0; }
@@ -64,11 +66,11 @@ const SHEET_CSS = `
   .sv-grab { align-self: center; width: 36px; height: 5px; border-radius: 3px; margin: 7px 0 -3px;
     background: color-mix(in oklab, var(--primary-text-color) 20%, transparent); }
   .sv-sheet:not([data-bottom]) .sv-grab { display: none; }
-  .sv-head { display: flex; align-items: center; gap: 8px; padding: 14px 12px 8px 18px; }
+  .sv-head { display: flex; align-items: center; gap: 8px; padding: 16px 14px 10px 20px; }
   .sv-title[data-link] { cursor: pointer; border-radius: 8px; }
   .sv-title[data-link]::after { content: "\\203A"; margin-inline-start: 6px; opacity: 0.45; font-weight: 500; }
   @media (hover: hover) { .sv-title[data-link]:hover { opacity: 0.8; } }
-  .sv-title { flex: 1; min-width: 0; font-size: 18px; line-height: 23px; font-weight: 650; letter-spacing: -0.022em;
+  .sv-title { flex: 1; min-width: 0; font-size: 20px; line-height: 25px; font-weight: 640; letter-spacing: -0.026em;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sv-close { width: var(--c-s); height: var(--c-s); border-radius: 11px; display: grid; place-items: center;
     background: var(--well); --mdc-icon-size: 18px; flex: none; }
