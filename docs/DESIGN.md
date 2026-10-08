@@ -211,6 +211,27 @@ so the card answers first.
 
 ## 5. Visual language
 
+### 5.0 The Quiet language
+
+The default design since the redesign. One surface per card, and inside it rows, not boxes in
+boxes. Type and space make the hierarchy; colour appears only on what is on, running or wrong.
+
+- **No disc behind an icon.** The icon of a thing stands bare: grey when idle, in its state colour
+  when on. Only an alert keeps a tinted disc, so it is found at a glance. Badge sizes (28 / 36 / 44)
+  still set the icon's box, so rows line up and the hit areas stay.
+- **A row is the control when it can be.** A light's row is its switch (tap) and its dimmer
+  (sideways drag, relative to the level it had; vertical drags stay the page's); hold opens
+  more-info. The level fills the row from the left in the lamp's own colour.
+- **One solid key per card at most**, in the text colour: play while a player is playing, a
+  vacuum's Start. Everything else is bare until hovered or pressed.
+- **Readouts are words.** Value then label on one line that wraps (`48% humidity`), never a box
+  per reading, never truncated.
+- **Labels in sentence case.** Group and section names are 13 px, weight 600, secondary colour;
+  no small capitals (a badge such as LIVE is the exception).
+- **Large numbers are light.** The climate target is 76 px at weight 250; the degree sign carries
+  the mode's colour.
+- **Fewer surfaces, never fewer functions.** A popup or card loses plates, not controls.
+
 ### 5.1 Type
 
 System font stack, overridable per card with a CSS variable
@@ -221,7 +242,7 @@ everywhere so digits do not jitter. Tracking is size-specific:
 | --- | --- | --- | --- |
 | Hero numeral | 52 / 0.92 | 600 | -0.035em |
 | Hero numeral (compact) | 25 / 1 | 600 | -0.022em |
-| Card title | 15 / 20 | 600 | -0.014em to -0.016em |
+| Card title | 17 / 22 | 620 | -0.021em |
 | Card title (large layouts) | 18–20 / 23–26 | 650 | -0.022em to -0.024em |
 | Status / secondary line | 12–13 / 16–18 | 500 | -0.003em to -0.008em |
 | Control label (segment, chip, pill) | 12–13 / 16 | 550–600 | -0.004em to -0.008em |
@@ -271,7 +292,7 @@ bevel, emboss or stacked shadow; a card or popup has one quiet neutral lift. A l
 chroma-capped by mixing 28% neutral grey in, as a wash strongest at the icon plus a thin masked edge on the icon's
 side, scaled by brightness. A control that is on gets a hairline ring in its colour. There is no blur and no additive blending.
 
-**Tones.** A badge or control is the well (6% of the text colour) when idle, 16% of its
+**Tones** (glass, matte and alert discs; the Quiet default leaves badges bare, see 5.0). A badge or control is the well (6% of the text colour) when idle, 16% of its
 state colour when on (`--mix-on`), 18% of amber or red when it is an alert
 (`--mix-alert`). No card picks its own percentages.
 

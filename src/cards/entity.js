@@ -43,7 +43,7 @@ const STYLE = `${BASE_CSS}
   .av > ha-icon, .av > savvy-state-icon, .av .zone ha-icon { display: flex; align-items: center; justify-content: center;
     width: var(--mdc-icon-size); height: var(--mdc-icon-size); line-height: 0; }
   .txt { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-  .name { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .name { font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .sub { display: flex; flex-wrap: wrap; column-gap: 4px; min-width: 0; font-size: 12.5px; line-height: 16px; font-weight: 500; letter-spacing: -0.005em;
     color: var(--secondary-text-color); }
   /* a long state wraps inside the card instead of running out of it; the time goes under it when there is no room */

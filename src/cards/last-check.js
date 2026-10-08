@@ -55,16 +55,16 @@ const STYLE = `${BASE_CSS}
   :host([data-compact]) ha-card { --pad: 12px; gap: 8px; }
   ha-card > * { position: relative; }
   .head { display: flex; align-items: center; gap: 10px; min-height: 28px; }
-  .head .t { flex: 1; min-width: 0; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .head .t { flex: 1; min-width: 0; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pill { flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 12px; white-space: nowrap;
     font-size: 12px; font-weight: 650; color: rgb(var(--tone)); background: color-mix(in oklab, rgb(var(--tone)) var(--mix-on), transparent); }
   .list { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .area { margin: 8px 4px 2px; font-size: 11px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--secondary-text-color); }
+  .area { margin: 10px 4px 2px; font-size: 13px; line-height: 17px; font-weight: 600; letter-spacing: -0.006em; color: var(--secondary-text-color); }
   .area:first-child { margin-top: 0; }
   .row { --rt: var(--warn-rgb); --tk: 1; --dn: 0; display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 44px; padding: 4px 4px 4px 2px; border-radius: 14px; }
   .row[data-kind="block"] { --rt: var(--bad-rgb); }
   .row .ic { flex: none; display: grid; place-items: center; width: var(--b-m); height: var(--b-m); border-radius: 50%; --mdc-icon-size: 20px;
-    color: rgb(var(--rt)); background: color-mix(in oklab, rgb(var(--rt)) calc(var(--mix-on) * (1 - var(--dn))), color-mix(in oklab, rgb(var(--good-rgb)) calc(var(--mix-on) * var(--dn)), transparent)); }
+    color: color-mix(in oklab, rgb(var(--good-rgb)) calc(var(--dn) * 100%), rgb(var(--rt))); background: transparent; --mdc-icon-size: 22px; }
   .row .ic > * { display: flex; align-items: center; justify-content: center; line-height: 0; }
   .row[data-st="done"] .ic { color: rgb(var(--good-rgb)); }
   .row .who { flex: 1; min-width: 0; display: flex; flex-direction: column; text-align: start; border-radius: 10px; cursor: pointer; }

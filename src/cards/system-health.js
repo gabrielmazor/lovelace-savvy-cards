@@ -38,7 +38,7 @@ const joinAnd = (parts) => (parts.length < 2 ? parts.join("") : `${parts.slice(0
 const STYLE = `${BASE_CSS}
   ha-card { display: flex; flex-direction: column; gap: 10px; padding: var(--pad); overflow: hidden; --lvl: var(--secondary-text-color); container-name: card; }
   .head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-  .name { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .name { font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pill { flex: none; display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 11px;
     background: color-mix(in oklab, var(--lvl) 16%, transparent); color: color-mix(in oklab, var(--lvl) 78%, var(--primary-text-color));
     font-size: 11px; line-height: 14px; font-weight: 650; letter-spacing: 0.02em; white-space: nowrap; text-transform: uppercase; }
@@ -56,15 +56,14 @@ const STYLE = `${BASE_CSS}
   .group { display: flex; align-items: center; gap: 6px; }
   .rows .empty.ok { flex: none; padding: 4px 4px 2px; }
   .group .gw { margin-inline-start: auto; font-weight: 500; letter-spacing: 0; text-transform: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-  .group { flex: none; margin: 8px 4px 2px; font-size: 11px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em;
-    text-transform: uppercase; color: var(--secondary-text-color); }
+  .group { flex: none; margin: 10px 4px 2px; font-size: 13px; line-height: 17px; font-weight: 600; letter-spacing: -0.006em; color: var(--secondary-text-color); }
   .group:first-child { margin-top: 0; }
   .row { flex: none; display: flex; align-items: center; gap: 9px; min-height: 38px; padding: 3px 4px; border-radius: 10px; text-align: start; transform-origin: 0 50%; }
   .row[role="button"] { cursor: pointer; }
   .row[data-group-start] { border-top: 1px solid var(--line); margin-top: 2px; padding-top: 5px; }
   .row[data-dim] { opacity: 0.55; }
-  .row .disc { flex: none; display: grid; place-items: center; width: var(--b-s); height: var(--b-s); border-radius: 50%; background: var(--well); color: var(--secondary-text-color); }
-  .row .disc ha-icon { --mdc-icon-size: 15px; display: flex; }
+  .row .disc { flex: none; display: grid; place-items: center; width: var(--b-s); height: var(--b-s); border-radius: 50%; background: transparent; color: var(--secondary-text-color); }
+  .row .disc ha-icon { --mdc-icon-size: 18px; display: flex; }
   .row[data-alert] .disc { background: color-mix(in oklab, var(--lvl-bad) var(--mix-alert), transparent); color: var(--lvl-bad); }
   .row .col { min-width: 0; flex: 1; display: flex; flex-direction: column; }
   .row .n { font-size: 12.5px; line-height: 16px; font-weight: 600; letter-spacing: -0.006em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

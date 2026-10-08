@@ -33,7 +33,7 @@ const STYLE = `${BASE_CSS}
   :host([data-compact]) ha-card { --pad: 12px; gap: 8px; }
   ha-card > * { position: relative; }
   .head { display: flex; align-items: center; gap: 10px; min-height: 28px; }
-  .head .t { flex: 1; min-width: 0; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .head .t { flex: 1; min-width: 0; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sub { font-size: 12.5px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); margin-top: -6px; }
   .filters { display: flex; gap: 6px; overflow-x: auto; overscroll-behavior-x: contain; touch-action: pan-x pan-y; scrollbar-width: none; padding: 3px; margin: -3px; }
   .filters::-webkit-scrollbar { display: none; }
@@ -43,14 +43,14 @@ const STYLE = `${BASE_CSS}
   .f[data-on] { color: rgb(var(--accent)); background: color-mix(in oklab, rgb(var(--accent)) var(--mix-on), transparent); }
   .f.range { margin-inline-start: auto; }
   .list { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .part { margin: 10px 4px 2px; font-size: 11px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--secondary-text-color); }
+  .part { margin: 12px 4px 2px; font-size: 13px; line-height: 17px; font-weight: 600; letter-spacing: -0.006em; color: var(--secondary-text-color); }
   .part:first-child { margin-top: 0; }
   .ev { --rt: var(--accent); display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 44px; padding: 4px 4px 4px 2px; border-radius: 14px; cursor: pointer; text-align: start; }
   .ev[data-tone="warn"] { --rt: var(--warn-rgb); }
   .ev[data-tone="bad"] { --rt: var(--bad-rgb); }
   .ev[data-tone="good"] { --rt: var(--good-rgb); }
   .ev .ic { flex: none; display: grid; place-items: center; width: var(--b-m); height: var(--b-m); border-radius: 50%; --mdc-icon-size: 20px;
-    color: rgb(var(--rt)); background: color-mix(in oklab, rgb(var(--rt)) var(--mix-on), transparent); }
+    color: rgb(var(--rt)); background: transparent; --mdc-icon-size: 22px; }
   .ev .ic ha-icon { display: flex; }
   .ev .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .ev .nm { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.01em; }

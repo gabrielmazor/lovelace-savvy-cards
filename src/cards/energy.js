@@ -30,7 +30,7 @@ const STYLE = `${BASE_CSS}
   :host([data-compact]) ha-card { --pad: 12px; gap: 8px; }
   ha-card > * { position: relative; }
   .head { display: flex; align-items: center; gap: 10px; min-height: 28px; }
-  .head .t { flex: 1; min-width: 0; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .head .t { flex: 1; min-width: 0; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .live { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 10px 0 7px; border-radius: 12px; white-space: nowrap; --mdc-icon-size: 15px;
     font-size: 12px; font-weight: 650; color: rgb(var(--warn-rgb)); background: color-mix(in oklab, rgb(var(--warn-rgb)) var(--mix-on), transparent); }
   .live ha-icon { display: flex; }
@@ -56,7 +56,7 @@ const STYLE = `${BASE_CSS}
   .axis { display: flex; justify-content: space-between; margin-top: -4px; font-size: 10.5px; line-height: 13px; font-weight: 550; color: var(--secondary-text-color); }
   .rank { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .rank #rows { display: flex; flex-direction: column; gap: 2px; }
-  .rank .cap { margin: 4px 4px 2px; font-size: 11px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--secondary-text-color); }
+  .rank .cap { margin: 4px 4px 2px; font-size: 13px; line-height: 17px; font-weight: 600; letter-spacing: -0.006em; color: var(--secondary-text-color); }
   .row { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 44px; padding: 3px 4px 3px 2px; border-radius: 14px; cursor: pointer; text-align: start; }
   .row .ic { flex: none; display: grid; place-items: center; width: var(--b-m); height: var(--b-m); border-radius: 50%; --mdc-icon-size: 20px;
     color: rgb(var(--accent)); background: color-mix(in oklab, rgb(var(--accent)) var(--mix-on), transparent); }

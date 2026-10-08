@@ -10067,7 +10067,7 @@ const STYLE = `${BASE_CSS}${LIST_CSS}${ROWS_CSS}
   :host([data-compact]) ha-card { --pad: 12px; }
   ha-card > * { position: relative; }
   .head { display: flex; align-items: center; gap: 8px; min-height: 32px; }
-  .head .t { flex: 1; min-width: 0; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .head .t { flex: 1; min-width: 0; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pill { flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 12px; white-space: nowrap;
     font-size: 12px; font-weight: 650; color: rgb(var(--tone)); background: color-mix(in oklab, rgb(var(--tone)) var(--mix-on), transparent); }
   .ctl { flex: none; display: grid; place-items: center; width: var(--c-s); height: var(--c-s); border-radius: 11px; background: var(--well); --mdc-icon-size: 18px; }
@@ -10257,7 +10257,7 @@ const STYLE = `${BASE_CSS}
   :host([data-compact]) ha-card { --pad: 12px; gap: 8px; }
   ha-card > * { position: relative; }
   .head { display: flex; align-items: center; gap: 10px; min-height: 28px; }
-  .head .t { flex: 1; min-width: 0; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .head .t { flex: 1; min-width: 0; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .live { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 10px 0 7px; border-radius: 12px; white-space: nowrap; --mdc-icon-size: 15px;
     font-size: 12px; font-weight: 650; color: rgb(var(--warn-rgb)); background: color-mix(in oklab, rgb(var(--warn-rgb)) var(--mix-on), transparent); }
   .live ha-icon { display: flex; }
@@ -10283,7 +10283,7 @@ const STYLE = `${BASE_CSS}
   .axis { display: flex; justify-content: space-between; margin-top: -4px; font-size: 10.5px; line-height: 13px; font-weight: 550; color: var(--secondary-text-color); }
   .rank { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .rank #rows { display: flex; flex-direction: column; gap: 2px; }
-  .rank .cap { margin: 4px 4px 2px; font-size: 11px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--secondary-text-color); }
+  .rank .cap { margin: 4px 4px 2px; font-size: 13px; line-height: 17px; font-weight: 600; letter-spacing: -0.006em; color: var(--secondary-text-color); }
   .row { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 44px; padding: 3px 4px 3px 2px; border-radius: 14px; cursor: pointer; text-align: start; }
   .row .ic { flex: none; display: grid; place-items: center; width: var(--b-m); height: var(--b-m); border-radius: 50%; --mdc-icon-size: 20px;
     color: rgb(var(--accent)); background: color-mix(in oklab, rgb(var(--accent)) var(--mix-on), transparent); }
@@ -10764,7 +10764,7 @@ const STYLE = `${BASE_CSS}
   .av > ha-icon, .av > savvy-state-icon, .av .zone ha-icon { display: flex; align-items: center; justify-content: center;
     width: var(--mdc-icon-size); height: var(--mdc-icon-size); line-height: 0; }
   .txt { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-  .name { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .name { font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .sub { display: flex; flex-wrap: wrap; column-gap: 4px; min-width: 0; font-size: 12.5px; line-height: 16px; font-weight: 500; letter-spacing: -0.005em;
     color: var(--secondary-text-color); }
   /* a long state wraps inside the card instead of running out of it; the time goes under it when there is no room */
@@ -11215,7 +11215,7 @@ const STYLE = `${BASE_CSS}${LIST_CSS}${ROWS_CSS}
   :host([data-compact]) ha-card { --pad: 12px; }
   ha-card > * { position: relative; }
   .head { display: flex; align-items: center; gap: 8px; min-height: 32px; }
-  .head .t { flex: 1; min-width: 0; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .head .t { flex: 1; min-width: 0; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pill { flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 12px; white-space: nowrap;
     font-size: 12px; font-weight: 650; color: rgb(var(--tone)); background: color-mix(in oklab, rgb(var(--tone)) var(--mix-on), transparent); }
   .pill[data-off] { color: var(--secondary-text-color); background: var(--well); }
@@ -11428,7 +11428,7 @@ function scaleColor(scale, v) {
 const STYLE = `${BASE_CSS}
   ha-card { display: flex; flex-direction: column; gap: 10px; padding: var(--pad); }
   .head { display: flex; align-items: center; gap: 8px; min-width: 0; }
-  .head .ht { flex: 1; min-width: 0; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .head .ht { flex: 1; min-width: 0; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ranges { position: relative; flex: none; display: flex; gap: 2px; padding: 3px; border-radius: 11px; background: var(--well); }
   .ranges .sel { position: absolute; top: 3px; bottom: 3px; left: 0; border-radius: 8px; pointer-events: none;
     background: var(--ha-card-background, var(--card-background-color)); box-shadow: 0 1px 3px rgb(0 0 0 / 0.14), 0 0 0 0.5px rgb(0 0 0 / 0.04); }
@@ -12424,16 +12424,16 @@ const STYLE = `${BASE_CSS}
   :host([data-compact]) ha-card { --pad: 12px; gap: 8px; }
   ha-card > * { position: relative; }
   .head { display: flex; align-items: center; gap: 10px; min-height: 28px; }
-  .head .t { flex: 1; min-width: 0; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .head .t { flex: 1; min-width: 0; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pill { flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 12px; white-space: nowrap;
     font-size: 12px; font-weight: 650; color: rgb(var(--tone)); background: color-mix(in oklab, rgb(var(--tone)) var(--mix-on), transparent); }
   .list { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .area { margin: 8px 4px 2px; font-size: 11px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--secondary-text-color); }
+  .area { margin: 10px 4px 2px; font-size: 13px; line-height: 17px; font-weight: 600; letter-spacing: -0.006em; color: var(--secondary-text-color); }
   .area:first-child { margin-top: 0; }
   .row { --rt: var(--warn-rgb); --tk: 1; --dn: 0; display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 44px; padding: 4px 4px 4px 2px; border-radius: 14px; }
   .row[data-kind="block"] { --rt: var(--bad-rgb); }
   .row .ic { flex: none; display: grid; place-items: center; width: var(--b-m); height: var(--b-m); border-radius: 50%; --mdc-icon-size: 20px;
-    color: rgb(var(--rt)); background: color-mix(in oklab, rgb(var(--rt)) calc(var(--mix-on) * (1 - var(--dn))), color-mix(in oklab, rgb(var(--good-rgb)) calc(var(--mix-on) * var(--dn)), transparent)); }
+    color: color-mix(in oklab, rgb(var(--good-rgb)) calc(var(--dn) * 100%), rgb(var(--rt))); background: transparent; --mdc-icon-size: 22px; }
   .row .ic > * { display: flex; align-items: center; justify-content: center; line-height: 0; }
   .row[data-st="done"] .ic { color: rgb(var(--good-rgb)); }
   .row .who { flex: 1; min-width: 0; display: flex; flex-direction: column; text-align: start; border-radius: 10px; cursor: pointer; }
@@ -14295,7 +14295,7 @@ const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_SLIDE_CSS}
   :host([data-compact]) ha-card { --pad: 12px; gap: 8px; }
   ha-card > * { position: relative; }
   .head { display: flex; align-items: center; gap: 10px; min-height: 30px; }
-  .head .t { flex: 1; min-width: 0; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .head .t { flex: 1; min-width: 0; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sum { flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 12px; font-size: 12px; font-weight: 650;
     color: rgb(var(--lk)); background: rgb(var(--lk) / 0.12); white-space: nowrap; }
   .btn { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 11px; background: var(--well);
@@ -14309,7 +14309,7 @@ const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_SLIDE_CSS}
   .lk { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
   .top { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 4px 8px 4px 4px; border-radius: 32px; }
   .who { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; text-align: start; border-radius: 12px; cursor: pointer; }
-  .disc { flex: none; display: grid; place-items: center; width: var(--b-m); height: var(--b-m); border-radius: 50%; color: var(--tone); background: color-mix(in oklab, var(--tone) var(--mix-on), transparent); --mdc-icon-size: 20px; }
+  .disc { flex: none; display: grid; place-items: center; width: var(--b-m); height: var(--b-m); border-radius: 50%; color: var(--tone); background: transparent; --mdc-icon-size: 24px; }
   .disc > .dicon { display: flex; align-items: center; justify-content: center; line-height: 0; }
   .disc > .dicon > * { display: flex; }
   .col { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 5px; }
@@ -15929,7 +15929,7 @@ const STYLE = `${BASE_CSS}
   :host([data-compact]) ha-card { --pad: 12px; }
   ha-card > * { position: relative; }
   .head { display: flex; align-items: center; gap: 10px; min-height: 28px; }
-  .head .t { flex: 1; min-width: 0; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .head .t { flex: 1; min-width: 0; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pill { flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 12px; white-space: nowrap;
     font-size: 12px; font-weight: 650; color: rgb(var(--tone)); background: color-mix(in oklab, rgb(var(--tone)) var(--mix-on), transparent); }
   .list { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -17903,7 +17903,7 @@ const escRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const STYLE = `${BASE_CSS}
   ha-card { --pad: 12px; --c: #588ee9; display: flex; flex-direction: column; gap: 10px; padding: var(--pad); }
   .head { display: flex; align-items: center; gap: 4px; min-width: 0; align-self: flex-start; margin: -3px -6px; padding: 3px 6px; border-radius: 10px;
-    font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; }
+    font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; }
   .head[role="button"] { cursor: pointer; }
   .head .t { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .head ha-icon { --mdc-icon-size: 18px; display: flex; color: var(--secondary-text-color); }
@@ -17914,12 +17914,12 @@ const STYLE = `${BASE_CSS}
   ha-card[data-glass] .tile { --lx: 22px; }
   .tile { --on: 0; --tc: var(--c); display: flex; align-items: center; gap: 9px; min-width: 0; box-sizing: border-box; height: 46px; padding: 0 12px 0 8px;
     border-radius: 13px; cursor: pointer; transform-origin: 50% 50%;
-    background: color-mix(in oklab, var(--tc) calc(7% + var(--on) * 17%), transparent);
+    background: color-mix(in oklab, var(--tc) calc(var(--on) * 16%), var(--well));
     color: color-mix(in oklab, var(--primary-text-color) calc(78% + var(--on) * 22%), transparent); }
-  .tile .ic { flex: none; display: grid; place-items: center; width: var(--b-s); height: var(--b-s); border-radius: 50%; --mdc-icon-size: 16px;
-    background: color-mix(in oklab, var(--tc) calc(6% + var(--on) * 10%), transparent); color: var(--tc); }
+  .tile .ic { flex: none; display: grid; place-items: center; width: var(--b-s); height: var(--b-s); border-radius: 50%; --mdc-icon-size: 18px;
+    background: transparent; color: var(--tc); }
   .tile .ic > * { display: flex; align-items: center; justify-content: center; width: var(--mdc-icon-size); height: var(--mdc-icon-size); line-height: 0; }
-  .tile .nm { min-width: 0; font-size: 13px; line-height: 17px; font-weight: 600; letter-spacing: -0.008em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile .nm { min-width: 0; font-size: 14px; line-height: 18px; font-weight: 580; letter-spacing: -0.008em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tile[data-off] { opacity: 0.5; }
   .grid[data-noicon] .tile { padding-left: 12px; }
   .grid[data-noicon] .tile .ic { display: none; }
@@ -18552,7 +18552,7 @@ const STYLE = `${BASE_CSS}
   :host([compact]) .disc ha-icon { --mdc-icon-size: 16px; }
   .disc[data-warn] { background: color-mix(in oklab, var(--lvl-warn) var(--mix-alert), transparent); color: var(--lvl-warn); }
   .col { min-width: 0; display: flex; flex-direction: column; }
-  .name { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .name { font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sub { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); overflow-wrap: anywhere; }
   .sub[data-warn] { color: var(--lvl-warn, #E0A030); }
   :host([compact]) .col { flex-direction: row; align-items: baseline; gap: 10px; flex: 1; }
@@ -18808,7 +18808,7 @@ const STYLE = `${BASE_CSS}
   :host([data-compact]) ha-card { --pad: 12px; gap: 8px; }
   ha-card > * { position: relative; }
   .head { display: flex; align-items: center; gap: 10px; min-height: 28px; }
-  .head .t { flex: 1; min-width: 0; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .head .t { flex: 1; min-width: 0; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sub { font-size: 12.5px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); margin-top: -6px; }
   .filters { display: flex; gap: 6px; overflow-x: auto; overscroll-behavior-x: contain; touch-action: pan-x pan-y; scrollbar-width: none; padding: 3px; margin: -3px; }
   .filters::-webkit-scrollbar { display: none; }
@@ -18818,14 +18818,14 @@ const STYLE = `${BASE_CSS}
   .f[data-on] { color: rgb(var(--accent)); background: color-mix(in oklab, rgb(var(--accent)) var(--mix-on), transparent); }
   .f.range { margin-inline-start: auto; }
   .list { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .part { margin: 10px 4px 2px; font-size: 11px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--secondary-text-color); }
+  .part { margin: 12px 4px 2px; font-size: 13px; line-height: 17px; font-weight: 600; letter-spacing: -0.006em; color: var(--secondary-text-color); }
   .part:first-child { margin-top: 0; }
   .ev { --rt: var(--accent); display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 44px; padding: 4px 4px 4px 2px; border-radius: 14px; cursor: pointer; text-align: start; }
   .ev[data-tone="warn"] { --rt: var(--warn-rgb); }
   .ev[data-tone="bad"] { --rt: var(--bad-rgb); }
   .ev[data-tone="good"] { --rt: var(--good-rgb); }
   .ev .ic { flex: none; display: grid; place-items: center; width: var(--b-m); height: var(--b-m); border-radius: 50%; --mdc-icon-size: 20px;
-    color: rgb(var(--rt)); background: color-mix(in oklab, rgb(var(--rt)) var(--mix-on), transparent); }
+    color: rgb(var(--rt)); background: transparent; --mdc-icon-size: 22px; }
   .ev .ic ha-icon { display: flex; }
   .ev .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .ev .nm { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.01em; }
@@ -19321,7 +19321,7 @@ const joinAnd = (parts) => (parts.length < 2 ? parts.join("") : `${parts.slice(0
 const STYLE = `${BASE_CSS}
   ha-card { display: flex; flex-direction: column; gap: 10px; padding: var(--pad); overflow: hidden; --lvl: var(--secondary-text-color); container-name: card; }
   .head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-  .name { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .name { font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pill { flex: none; display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 11px;
     background: color-mix(in oklab, var(--lvl) 16%, transparent); color: color-mix(in oklab, var(--lvl) 78%, var(--primary-text-color));
     font-size: 11px; line-height: 14px; font-weight: 650; letter-spacing: 0.02em; white-space: nowrap; text-transform: uppercase; }
@@ -19339,15 +19339,14 @@ const STYLE = `${BASE_CSS}
   .group { display: flex; align-items: center; gap: 6px; }
   .rows .empty.ok { flex: none; padding: 4px 4px 2px; }
   .group .gw { margin-inline-start: auto; font-weight: 500; letter-spacing: 0; text-transform: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-  .group { flex: none; margin: 8px 4px 2px; font-size: 11px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em;
-    text-transform: uppercase; color: var(--secondary-text-color); }
+  .group { flex: none; margin: 10px 4px 2px; font-size: 13px; line-height: 17px; font-weight: 600; letter-spacing: -0.006em; color: var(--secondary-text-color); }
   .group:first-child { margin-top: 0; }
   .row { flex: none; display: flex; align-items: center; gap: 9px; min-height: 38px; padding: 3px 4px; border-radius: 10px; text-align: start; transform-origin: 0 50%; }
   .row[role="button"] { cursor: pointer; }
   .row[data-group-start] { border-top: 1px solid var(--line); margin-top: 2px; padding-top: 5px; }
   .row[data-dim] { opacity: 0.55; }
-  .row .disc { flex: none; display: grid; place-items: center; width: var(--b-s); height: var(--b-s); border-radius: 50%; background: var(--well); color: var(--secondary-text-color); }
-  .row .disc ha-icon { --mdc-icon-size: 15px; display: flex; }
+  .row .disc { flex: none; display: grid; place-items: center; width: var(--b-s); height: var(--b-s); border-radius: 50%; background: transparent; color: var(--secondary-text-color); }
+  .row .disc ha-icon { --mdc-icon-size: 18px; display: flex; }
   .row[data-alert] .disc { background: color-mix(in oklab, var(--lvl-bad) var(--mix-alert), transparent); color: var(--lvl-bad); }
   .row .col { min-width: 0; flex: 1; display: flex; flex-direction: column; }
   .row .n { font-size: 12.5px; line-height: 16px; font-weight: 600; letter-spacing: -0.006em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -20833,7 +20832,7 @@ ha-card {
 }
 ha-icon, savvy-state-icon { display: flex; align-items: center; justify-content: center; line-height: 0; }
 
-.cap { font-size: 11px; line-height: 13px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); }
+.cap { font-size: 13px; line-height: 17px; font-weight: 600; letter-spacing: -0.006em; color: var(--secondary-text-color); }
 .sec { display: flex; flex-direction: column; gap: 8px; }
 .sec-head { display: flex; align-items: center; gap: 8px; min-height: 16px; }
 .sec-head .cap { flex: 1; }
@@ -20899,11 +20898,12 @@ ha-icon, savvy-state-icon { display: flex; align-items: center; justify-content:
   --hold: 0;
   position: relative; overflow: hidden; flex: none; height: 38px; padding: 0 16px 0 12px; border-radius: 12px;
   display: flex; align-items: center; justify-content: center; gap: 7px;
-  background: var(--acc); color: #fff; --mdc-icon-size: 19px;
-  font-size: 13.5px; line-height: 16px; font-weight: 650; letter-spacing: -0.008em; white-space: nowrap;
+  /* the one solid key of the card, in the text colour like the media card's play: the robot's colour stays on its icon */
+  background: var(--primary-text-color); color: var(--ha-card-background, var(--card-background-color, #fff)); --mdc-icon-size: 19px;
+  font-size: 14px; line-height: 16px; font-weight: 620; letter-spacing: -0.01em; white-space: nowrap;
   transform-origin: 50% 50%;
 }
-.primary::before { content: ""; position: absolute; inset: 0; background: rgb(255 255 255 / 0.22); transform-origin: 0 50%; transform: scaleX(var(--hold)); pointer-events: none; }
+.primary::before { content: ""; position: absolute; inset: 0; background: color-mix(in oklab, var(--ha-card-background, var(--card-background-color, #fff)) 28%, transparent); transform-origin: 0 50%; transform: scaleX(var(--hold)); pointer-events: none; }
 .primary > * { position: relative; }
 .primary[data-kind="quiet"] { background: var(--well); color: var(--primary-text-color); }
 .primary[data-kind="quiet"]::before { background: color-mix(in oklab, var(--primary-text-color) 10%, transparent); }

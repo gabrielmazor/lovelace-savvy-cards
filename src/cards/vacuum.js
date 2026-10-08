@@ -178,7 +178,7 @@ ha-card {
 }
 ha-icon, savvy-state-icon { display: flex; align-items: center; justify-content: center; line-height: 0; }
 
-.cap { font-size: 11px; line-height: 13px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); }
+.cap { font-size: 13px; line-height: 17px; font-weight: 600; letter-spacing: -0.006em; color: var(--secondary-text-color); }
 .sec { display: flex; flex-direction: column; gap: 8px; }
 .sec-head { display: flex; align-items: center; gap: 8px; min-height: 16px; }
 .sec-head .cap { flex: 1; }
@@ -244,11 +244,12 @@ ha-icon, savvy-state-icon { display: flex; align-items: center; justify-content:
   --hold: 0;
   position: relative; overflow: hidden; flex: none; height: 38px; padding: 0 16px 0 12px; border-radius: 12px;
   display: flex; align-items: center; justify-content: center; gap: 7px;
-  background: var(--acc); color: #fff; --mdc-icon-size: 19px;
-  font-size: 13.5px; line-height: 16px; font-weight: 650; letter-spacing: -0.008em; white-space: nowrap;
+  /* the one solid key of the card, in the text colour like the media card's play: the robot's colour stays on its icon */
+  background: var(--primary-text-color); color: var(--ha-card-background, var(--card-background-color, #fff)); --mdc-icon-size: 19px;
+  font-size: 14px; line-height: 16px; font-weight: 620; letter-spacing: -0.01em; white-space: nowrap;
   transform-origin: 50% 50%;
 }
-.primary::before { content: ""; position: absolute; inset: 0; background: rgb(255 255 255 / 0.22); transform-origin: 0 50%; transform: scaleX(var(--hold)); pointer-events: none; }
+.primary::before { content: ""; position: absolute; inset: 0; background: color-mix(in oklab, var(--ha-card-background, var(--card-background-color, #fff)) 28%, transparent); transform-origin: 0 50%; transform: scaleX(var(--hold)); pointer-events: none; }
 .primary > * { position: relative; }
 .primary[data-kind="quiet"] { background: var(--well); color: var(--primary-text-color); }
 .primary[data-kind="quiet"]::before { background: color-mix(in oklab, var(--primary-text-color) 10%, transparent); }

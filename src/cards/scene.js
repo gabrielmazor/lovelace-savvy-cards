@@ -25,7 +25,7 @@ const escRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const STYLE = `${BASE_CSS}
   ha-card { --pad: 12px; --c: #588ee9; display: flex; flex-direction: column; gap: 10px; padding: var(--pad); }
   .head { display: flex; align-items: center; gap: 4px; min-width: 0; align-self: flex-start; margin: -3px -6px; padding: 3px 6px; border-radius: 10px;
-    font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; }
+    font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; }
   .head[role="button"] { cursor: pointer; }
   .head .t { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .head ha-icon { --mdc-icon-size: 18px; display: flex; color: var(--secondary-text-color); }
@@ -36,12 +36,12 @@ const STYLE = `${BASE_CSS}
   ha-card[data-glass] .tile { --lx: 22px; }
   .tile { --on: 0; --tc: var(--c); display: flex; align-items: center; gap: 9px; min-width: 0; box-sizing: border-box; height: 46px; padding: 0 12px 0 8px;
     border-radius: 13px; cursor: pointer; transform-origin: 50% 50%;
-    background: color-mix(in oklab, var(--tc) calc(7% + var(--on) * 17%), transparent);
+    background: color-mix(in oklab, var(--tc) calc(var(--on) * 16%), var(--well));
     color: color-mix(in oklab, var(--primary-text-color) calc(78% + var(--on) * 22%), transparent); }
-  .tile .ic { flex: none; display: grid; place-items: center; width: var(--b-s); height: var(--b-s); border-radius: 50%; --mdc-icon-size: 16px;
-    background: color-mix(in oklab, var(--tc) calc(6% + var(--on) * 10%), transparent); color: var(--tc); }
+  .tile .ic { flex: none; display: grid; place-items: center; width: var(--b-s); height: var(--b-s); border-radius: 50%; --mdc-icon-size: 18px;
+    background: transparent; color: var(--tc); }
   .tile .ic > * { display: flex; align-items: center; justify-content: center; width: var(--mdc-icon-size); height: var(--mdc-icon-size); line-height: 0; }
-  .tile .nm { min-width: 0; font-size: 13px; line-height: 17px; font-weight: 600; letter-spacing: -0.008em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile .nm { min-width: 0; font-size: 14px; line-height: 18px; font-weight: 580; letter-spacing: -0.008em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tile[data-off] { opacity: 0.5; }
   .grid[data-noicon] .tile { padding-left: 12px; }
   .grid[data-noicon] .tile .ic { display: none; }
