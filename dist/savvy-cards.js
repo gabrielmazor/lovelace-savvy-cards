@@ -14958,18 +14958,18 @@ const STYLE = `${BASE_CSS}
   .progress { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: rgb(255 255 255 / 0.2); }
   .progress i { display: block; height: 100%; background: #fff; transform-origin: 0 50%; }
   header { padding: var(--pad) var(--pad) 10px; }
-  .name { display: block; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.014em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .name { display: block; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .body { display: flex; flex-direction: column; padding: var(--pad); gap: 10px; }
   .band { display: flex; flex-direction: column; gap: 9px; }
   .band + .band { padding-top: 10px; border-top: 1px solid var(--line); }
   /* the first visible band never gets a divider, even with a hidden one before it */
   .band[data-first] { padding-top: 0; border-top: 0; }
-  .cap { font-size: 10.5px; line-height: 13px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); opacity: 0.75; margin-bottom: -2px; }
+  .cap { font-size: 13px; line-height: 17px; font-weight: 600; letter-spacing: -0.006em; color: var(--secondary-text-color); margin-bottom: -2px; }
   .row .when { flex: none; font-size: 15px; line-height: 19px; font-weight: 650; letter-spacing: -0.016em; }
   .row .when[data-off] { color: var(--secondary-text-color); }
   /* the alarm isn't media: its own colour, so it never reads as a player */
   #alarmBand { --alarm: 232 163 61; }
-  #alarmBand .icon[data-live] { background: rgb(var(--alarm) / 0.16); color: rgb(var(--alarm)); }
+  #alarmBand .icon[data-live] { color: rgb(var(--alarm)); }
   #alarmBand .tb[data-on] { background: rgb(var(--alarm) / 0.18); color: rgb(var(--alarm)); }
   #alarmBand .meta { text-align: start; }
   .segmented { position: relative; display: flex; gap: 2px; padding: 3px; border-radius: 14px; background: var(--well); }
@@ -14986,29 +14986,33 @@ const STYLE = `${BASE_CSS}
   /* a narrow row keeps play and power; the stage still has the full transport */
   @container (max-width: 330px) { .row .tb[data-k="prev"], .row .tb[data-k="next"] { display: none; } .vol[data-steps] .pct { display: none; } }
   .row { display: flex; align-items: center; gap: 10px; min-width: 0; }
-  .row .icon { flex: none; display: grid; place-items: center; width: var(--b-m); height: var(--b-m); border-radius: 50%; background: var(--well); color: var(--secondary-text-color); }
-  .row .icon[data-live] { background: color-mix(in oklab, rgb(var(--accent)) var(--mix-on), transparent); color: rgb(var(--accent)); }
-  .row .icon ha-icon { --mdc-icon-size: 19px; display: flex; }
+  .row .icon { flex: none; display: grid; place-items: center; width: var(--b-m); height: var(--b-m); border-radius: 50%; background: transparent; color: var(--secondary-text-color); }
+  .row .icon[data-live] { color: rgb(var(--accent)); }
+  .row .icon ha-icon { --mdc-icon-size: 22px; display: flex; }
   .row .meta { flex: 1; min-width: 0; }
-  .row .n { display: block; font-size: 13.5px; line-height: 17px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .row .d { display: block; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .n { display: block; font-size: 15px; line-height: 19px; font-weight: 580; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .d { display: block; font-size: 13px; line-height: 17px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .transport { flex: none; display: flex; align-items: center; gap: 4px; }
   .tb { display: grid; place-items: center; width: var(--c-s); height: var(--c-s); border-radius: 11px; color: var(--secondary-text-color); }
-  .tb.solid { background: var(--well); color: var(--primary-text-color); }
-  .tb[data-on] { background: color-mix(in oklab, rgb(var(--accent)) var(--mix-on), transparent); color: rgb(var(--accent)); }
+  /* play/pause is the key you reach for: a plain plate, solid while the player is actually playing */
+  .tb.solid { width: var(--c-l); height: var(--c-l); border-radius: 13px; background: var(--well); color: var(--primary-text-color); }
+  .row:has(.icon[data-live]) .tb.solid { background: var(--primary-text-color); color: var(--ha-card-background, var(--card-background-color, #fff)); }
+  .tb[data-on] { color: rgb(var(--accent)); }
   .tb[disabled] { opacity: 0.3; cursor: default; }
   .tb ha-icon { --mdc-icon-size: 20px; display: flex; }
   /* glass: a player's icon, name and buttons are one lit tile; its volume stays outside */
-  ha-card .row { padding: 8px 10px; border-radius: 15px; background: color-mix(in oklab, var(--primary-text-color) 4%, transparent); }
-  ha-card[data-glass] .row { --lx: 28px; }
+  ha-card .row { padding: 2px 0; }
+  ha-card:is([data-glass], [data-matte]) .row { padding: 8px 10px; border-radius: 15px; background: color-mix(in oklab, var(--primary-text-color) 4%, transparent); }
+  ha-card[data-glass] .row, ha-card[data-matte] .row { --lx: 28px; }
   .vol { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
-  .vol .bar { position: absolute; left: 0; right: 0; top: 50%; height: 9px; margin-top: -4.5px; border-radius: 99px; background: var(--well); overflow: hidden; transform-origin: 50% 50%; }
+  .vol .bar { position: absolute; left: 0; right: 0; top: 50%; height: 5px; margin-top: -2.5px; border-radius: 99px; background: color-mix(in oklab, var(--primary-text-color) 10%, transparent); overflow: hidden; transform-origin: 50% 50%; }
   .vol .mute { flex: none; display: grid; place-items: center; width: 34px; height: 32px; border-radius: 10px; color: var(--secondary-text-color); }
   .vol .mute ha-icon { --mdc-icon-size: 19px; display: flex; }
   .vol .mute[data-on] { color: #E8844F; background: rgb(232 132 79 / 0.16); }
   /* − / + as one pair at the end, the climate card's steppers at the transport's size */
   .vol .vsteps { flex: none; display: flex; gap: 4px; }
-  .vol .vstep { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: var(--well); color: var(--primary-text-color); transform-origin: 50% 50%; }
+  .vol .vstep { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: transparent; color: var(--secondary-text-color); transform-origin: 50% 50%; }
+  @media (hover: hover) { .vol .vstep:hover, .tb:hover { background: var(--well); } }
   .vol .vstep ha-icon { --mdc-icon-size: 18px; display: flex; }
   .vol .vstep[disabled] { opacity: 0.35; cursor: default; }
   .slider { position: relative; flex: 1; height: 30px; touch-action: pan-y; cursor: grab; }
