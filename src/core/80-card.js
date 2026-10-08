@@ -186,7 +186,8 @@ const HEADER_CSS = `
     user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
   .top { display: flex; align-items: center; gap: 8px; }
   .glyph { flex: none; position: relative; display: grid; place-items: center; width: var(--c-l); height: var(--c-l); border-radius: 13px;
-    background: var(--well); color: var(--secondary-text-color); }
+    background: transparent; color: var(--secondary-text-color); }
+  @media (hover: hover) { .glyph:hover, .wx:hover { background: var(--well); } }
   .glyph ha-icon { --mdc-icon-size: 19px; display: flex; }
   .glyph[data-loading] ha-icon { animation: sv-spin 1s linear infinite; transform-origin: 50% 50%; }
   :host([data-still]) .glyph[data-loading] ha-icon { animation: none; }
@@ -195,20 +196,21 @@ const HEADER_CSS = `
   .count { position: absolute; top: -4px; inset-inline-end: -4px; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box;
     border-radius: 8px; background: var(--ac); color: #fff; font-size: 10.5px; line-height: 16px; font-weight: 700; text-align: center;
     box-shadow: 0 0 0 2px var(--ha-card-background, var(--card-background-color)); }
-  .pill { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: flex-start; gap: 9px; height: var(--c-l); padding: 0 13px; border-radius: 13px;
-    background: color-mix(in oklab, var(--mode) 14%, transparent); color: color-mix(in oklab, var(--mode) 72%, var(--primary-text-color));
+  .pill { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: flex-start; gap: 9px; min-height: var(--c-l); padding: 2px 10px 2px 6px; margin-inline-start: -6px; border-radius: 13px;
+    background: transparent; color: var(--primary-text-color);
     font-size: 13.5px; line-height: 17px; font-weight: 600; letter-spacing: -0.008em; }
-  .pill ha-icon { --mdc-icon-size: 18px; flex: none; display: flex; }
+  @media (hover: hover) { .pill:hover { background: var(--well); } }
+  .pill ha-icon { --mdc-icon-size: 22px; flex: none; display: flex; color: color-mix(in oklab, var(--mode) 85%, var(--primary-text-color)); }
   .pill .col { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; }
-  .pill .pre { font-size: 10.5px; line-height: 13px; font-weight: 500; letter-spacing: 0.012em; color: var(--secondary-text-color); white-space: nowrap; }
-  .pill .swap { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
-  .pill .val { font-size: 15px; line-height: 19px; font-weight: 650; letter-spacing: -0.012em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pill .pre { font-size: 12.5px; line-height: 16px; font-weight: 500; letter-spacing: -0.004em; color: var(--secondary-text-color); white-space: nowrap; }
+  .pill .swap { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+  .pill .val { font-size: 22px; line-height: 27px; font-weight: 650; letter-spacing: -0.03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .spacer { flex: 1; }
   /* a readout, not a panel */
-  .wx { flex: none; display: flex; align-items: center; gap: 5px; height: var(--c-l); padding: 0 12px 0 10px; border-radius: 13px;
-    background: var(--well); color: var(--secondary-text-color); }
+  .wx { flex: none; display: flex; align-items: center; gap: 5px; height: var(--c-l); padding: 0 10px 0 8px; border-radius: 13px;
+    background: transparent; color: var(--secondary-text-color); }
   .wx ha-icon, .wx savvy-state-icon { --mdc-icon-size: 19px; display: flex; }
-  .wx .deg { font-size: 13.5px; line-height: 17px; font-weight: 650; letter-spacing: -0.012em; color: var(--primary-text-color); }
+  .wx .deg { font-size: 15px; line-height: 19px; font-weight: 600; letter-spacing: -0.012em; color: var(--primary-text-color); }
   :host([kbd]) :focus-visible { outline-color: color-mix(in oklab, var(--mode) 80%, var(--primary-text-color)); }
 `;
 
@@ -221,13 +223,14 @@ const CHIP_ROW_CSS = `
   /* no plate: the disc carries the colour, the text sits beside it. The dim lives on .body,
      so a state's opacity and the press feedback's never fight over one node. */
   .chip { flex: none; scroll-snap-align: start; padding: 2px 4px; border-radius: 13px; text-align: start; }
-  .chip .body { display: flex; align-items: center; gap: 9px; }
+  .chip .body { display: flex; align-items: center; gap: 6px; }
   .chip .disc { flex: none; display: grid; place-items: center; width: var(--b-s); height: var(--b-s); border-radius: 50%;
-    background: color-mix(in oklab, var(--tc) var(--mix-on), transparent); color: var(--tc); }
-  .chip .disc ha-icon, .chip .disc savvy-state-icon { --mdc-icon-size: 16px; display: flex; }
+    background: transparent; color: var(--tc); }
+  .chip .disc ha-icon, .chip .disc savvy-state-icon { --mdc-icon-size: 20px; display: flex; }
   .chip .col { display: flex; flex-direction: column; }
-  .chip .v { font-size: 12.5px; line-height: 16px; font-weight: 650; letter-spacing: -0.01em; white-space: nowrap; }
-  .chip .k { font-size: 10.5px; line-height: 13px; font-weight: 500; letter-spacing: 0.012em; color: var(--secondary-text-color); white-space: nowrap; }
+  .chip .v { font-size: 15px; line-height: 19px; font-weight: 600; letter-spacing: -0.014em; white-space: nowrap; }
+  .chip .k { font-size: 12px; line-height: 15px; font-weight: 500; letter-spacing: -0.002em; color: var(--secondary-text-color); white-space: nowrap; }
+  @media (hover: hover) { .chips:not(.nav) .chip:hover { background: var(--well); } }
   .chips[data-icon-only] { gap: 4px; }
   .chips[data-icon-only] .chip { padding: 2px; }
   /* navigation chips: a plate per room, no colour disc */

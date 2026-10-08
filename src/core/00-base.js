@@ -340,7 +340,7 @@ const BASE_CSS = `${ROLL_CSS}${GLOW_CSS}${DESIGN_CSS}
     cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; }
   ha-card {
     --radius: var(--ha-card-border-radius, 18px);
-    --pad: 14px;
+    --pad: 16px;
     --well: color-mix(in oklab, var(--primary-text-color) 6%, transparent);
     --line: color-mix(in oklab, var(--primary-text-color) 9%, transparent);
     --accent: 88 142 233;
