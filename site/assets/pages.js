@@ -73,7 +73,7 @@
     right.push(["savvy-section-title-card", { title: "Activity" }]);
     right.push(["savvy-room-activity-card", { area: id }]);
     if (r.lock) right.push(["savvy-lock-card", { entity: r.lock, alarm: false, camera: false }]);
-    if (r.cameras) right.push(["savvy-camera-card", { entities: r.cameras }]);
+    if (r.cameras) right.push(["savvy-camera-card", { cameras: r.cameras }]);
     if (r.vacuum) right.push(["savvy-vacuum-card", { entity: "vacuum.robot", start: "button.robot_vacuum" }]);
     return {
       id: slug(id), area: id, title: name, nav: name, group: "rooms",
@@ -162,7 +162,7 @@
           ["savvy-people-card", { title: "Family", people: ["person.alex", "person.sam", { entity: "person.jo", eta: "sensor.jo_travel_time" }] }],
         ] },
         { cards: [
-          ["savvy-camera-card", { entities: ["camera.front_door", "camera.living_room", "camera.kitchen", "camera.garden"] }],
+          ["savvy-camera-card", { cameras: ["camera.front_door", "camera.living_room", "camera.kitchen", "camera.garden"] }],
           ["savvy-last-check-card", { mode: "leave", area: ROOMS.map((r) => r.id), max_rows: 6 }],
         ] },
         { cards: [

@@ -10,6 +10,9 @@
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const ids = (target, data) => [].concat(target?.entity_id ?? data?.entity_id ?? []).filter(Boolean);
   const domainOf = (id) => id.split(".")[0];
+  // the few states Home Assistant words differently from their raw value
+  const WORDS = { partlycloudy: "Partly cloudy", "clear-night": "Clear night", lightning: "Lightning", "lightning-rainy": "Thunderstorm", snowy: "Snowy", pouring: "Pouring",
+    not_home: "Away", armed_home: "Armed home", armed_away: "Armed away", armed_night: "Armed night", fan_only: "Fan only", heat_cool: "Heat/cool" };
   const title = (v) => String(v ?? "").replace(/_/g, " ").replace(/(^|\s)\S/g, (c) => c.toUpperCase());
 
   function createLive({ dark = true, dashboard = {}, onMoreInfo = () => {} } = {}) {
@@ -49,7 +52,7 @@
         language: "en",
         locale: { language: "en", number_format: "language", time_format: "language" },
         config: { unit_system: { temperature: "°C", length: "km" }, time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone, currency: "EUR" },
-        formatEntityState: (st, state) => title(state ?? st.state),
+        formatEntityState: (st, state) => { const v = state ?? st.state; return WORDS[v] || title(v); },
         callService,
         callWS,
         callApi: async () => { throw new Error("Not available in the demo"); },
@@ -108,18 +111,37 @@
       }, 120);
     };
 
-    const PLAYLIST = {
-      "media_player.kitchen_speaker": [["So What", "Miles Davis"], ["Blue in Green", "Miles Davis"], ["Freddie Freeloader", "Miles Davis"]],
-      "media_player.kids_room_speaker": [["Twinkle Twinkle", "Bedtime Songs"], ["Brahms' Lullaby", "Bedtime Songs"]],
-      "media_player.living_room_tv": [["Slow Horses", "Season 4 · Episode 2"], ["Slow Horses", "Season 4 · Episode 3"]],
+    // ---- the players: a playlist each, a position that moves while playing, the next track when one ends
+    const PL = D.PLAYLISTS, at = {};
+    for (const [id, list] of Object.entries(PL)) at[id] = Math.max(0, list.findIndex((t) => t.title === get(id)?.attributes.media_title));
+    // where a player is now, in seconds
+    const positionOf = (id) => {
+      const a = get(id).attributes;
+      if (a.media_position == null) return 0;
+      const run = get(id).state === "playing" ? (Date.now() - Date.parse(a.media_position_updated_at)) / 1000 : 0;
+      return Math.min(a.media_duration || Infinity, a.media_position + run);
     };
+    const hold = (id) => ({ media_position: Math.round(positionOf(id)), media_position_updated_at: now() });
     const skip = (id, dir) => {
-      const list = PLAYLIST[id];
+      const list = PL[id];
       if (!list) return;
-      const i = list.findIndex(([t, a]) => t === get(id).attributes.media_title && a === get(id).attributes.media_artist);
-      const [t, a] = list[(i + dir + list.length) % list.length];
-      later(250, () => patch(id, { attributes: { media_title: t, media_artist: a } }));
+      // back to the start of this track first, the way players do, unless it has only just begun
+      if (dir < 0 && positionOf(id) > 5) return later(150, () => patch(id, { attributes: { media_position: 0, media_position_updated_at: now() } }));
+      at[id] = (at[id] + dir + list.length) % list.length;
+      later(250, () => patch(id, { attributes: D.nowPlaying(list[at[id]], 0) }));
     };
+    const play = (id) => {
+      const list = PL[id], cur = get(id);
+      const fresh = list && (!cur.attributes.media_title || cur.state === "off" || cur.state === "idle");
+      later(200, () => patch(id, { state: "playing", attributes: fresh ? D.nowPlaying(list[at[id]], 0) : { media_position_updated_at: now() } }));
+    };
+    const pause = (id) => later(200, () => patch(id, { state: "paused", attributes: hold(id) }));
+    setInterval(() => {
+      for (const id of Object.keys(PL)) {
+        const st = get(id);
+        if (st?.state === "playing" && st.attributes.media_duration && positionOf(id) >= st.attributes.media_duration - 0.5) skip(id, 1);
+      }
+    }, 1000);
 
     // scenes the demo knows how to show; any other scene just records that it ran
     const SCENES = {
@@ -180,10 +202,11 @@
         toggle: (id) => setClimate(id, { state: get(id).state === "off" ? (get(id).attributes.hvac_modes?.find((m) => m !== "off") || "heat") : "off" }),
       },
       media_player: {
-        media_play_pause: (id) => later(200, () => patch(id, { state: get(id).state === "playing" ? "paused" : "playing" })),
-        media_play: (id) => later(200, () => patch(id, { state: "playing" })),
-        media_pause: (id) => later(200, () => patch(id, { state: "paused" })),
-        media_stop: (id) => later(200, () => patch(id, { state: "idle" })),
+        media_play_pause: (id) => (get(id).state === "playing" ? pause(id) : play(id)),
+        media_play: play,
+        media_pause: pause,
+        media_stop: (id) => later(200, () => patch(id, { state: "idle", attributes: { media_position: 0, media_position_updated_at: now() } })),
+        media_seek: (id, d) => later(120, () => patch(id, { attributes: { media_position: d.seek_position, media_position_updated_at: now() } })),
         media_next_track: (id) => skip(id, 1),
         media_previous_track: (id) => skip(id, -1),
         volume_set: (id, d) => later(120, () => patch(id, { attributes: { volume_level: clamp(d.volume_level, 0, 1) } })),
@@ -191,9 +214,10 @@
         volume_down: (id) => later(120, () => patch(id, { attributes: { volume_level: clamp((get(id).attributes.volume_level ?? 0.3) - 0.05, 0, 1) } })),
         volume_mute: (id, d) => later(120, () => patch(id, { attributes: { is_volume_muted: !!d.is_volume_muted } })),
         select_source: (id, d) => later(200, () => patch(id, { attributes: { source: d.source } })),
-        turn_on: (id) => later(400, () => patch(id, { state: "on" })),
-        turn_off: (id) => later(300, () => patch(id, { state: "off" })),
-        toggle: (id) => later(300, () => patch(id, { state: get(id).state === "off" ? "on" : "off" })),
+        // a TV that comes on starts what was on; a box with nothing queued just wakes
+        turn_on: (id) => (PL[id] && get(id).attributes.device_class === "tv" ? play(id) : later(400, () => patch(id, { state: "on" }))),
+        turn_off: (id) => later(300, () => patch(id, { state: "off", attributes: hold(id) })),
+        toggle: (id) => (get(id).state === "off" ? SERVICES.media_player.turn_on(id) : SERVICES.media_player.turn_off(id)),
       },
       lock: {
         lock: (id) => { later(80, () => patch(id, { state: "locking" })); later(900, () => patch(id, { state: "locked", attributes: { changed_by: "Demo" } })); },

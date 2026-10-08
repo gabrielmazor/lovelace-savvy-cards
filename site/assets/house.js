@@ -26,6 +26,69 @@
   const face = (c) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='88' height='88'><rect width='88' height='88' fill='${c}'/>
 <circle cx='44' cy='34' r='15' fill='#fff' fill-opacity='.85'/><ellipse cx='44' cy='78' rx='26' ry='22' fill='#fff' fill-opacity='.85'/></svg>`)}`;
 
+  // What the players play: real titles, a cover drawn for each album or show, and how long each runs.
+  // Covers are generated (no artwork is copied): a palette and a composition per album, and its name.
+  const hash = (s) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+  const cover = (album, [a, b, c], kind = "music") => {
+    const h = hash(album), shapes = [];
+    for (let i = 0; i < 5; i++) {
+      const x = 40 + ((h >> (i * 3)) % 320), y = 40 + ((h >> (i * 5 + 1)) % 260), r = 30 + ((h >> (i * 2 + 2)) % 90);
+      shapes.push(`<circle cx='${x}' cy='${y}' r='${r}' fill='${i % 2 ? c : b}' fill-opacity='${0.18 + (i % 3) * 0.1}'/>`);
+    }
+    const label = album.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    const type = kind === "tv"
+      ? `<text x='28' y='76' font-family='-apple-system,Segoe UI,Roboto,sans-serif' font-size='40' font-weight='800' letter-spacing='-1.5' fill='#fff'>${label}</text>`
+      : `<text x='28' y='48' font-family='-apple-system,Segoe UI,Roboto,sans-serif' font-size='18' font-weight='600' fill='#fff' fill-opacity='.85'>${label}</text>`;
+    // the name sits at the top: a card draws its own caption along the bottom of the artwork
+    return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400' viewBox='0 0 400 400'><defs>
+<linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='${a}'/><stop offset='1' stop-color='${b}'/></linearGradient>
+<linearGradient id='f' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#000' stop-opacity='.35'/><stop offset='.4' stop-color='#000' stop-opacity='0'/></linearGradient></defs>
+<rect width='400' height='400' fill='url(#g)'/>${shapes.join("")}<rect width='400' height='400' fill='url(#f)'/>${type}</svg>`)}`;
+  };
+  const track = (title, artist, album, dur, palette, extra = {}) => ({ title, artist, album, dur, art: cover(album, palette, extra.kind), ...extra });
+  const KOB = ["#1f4e8c", "#0b1a2e", "#6fa8dc"], TIMEOUT = ["#d9472b", "#2a1a12", "#f2c14e"], GIANT = ["#e8b43a", "#1e1a14", "#c0392b"];
+  const DEBBY = ["#7b5ea7", "#1b1430", "#c9b8e8"], APOLLO = ["#0e1b2c", "#03060c", "#5b7db1"], AIRPORTS = ["#dcd6c8", "#7d7a70", "#ffffff"];
+  const SPACES = ["#2f3e46", "#0f1416", "#84a98c"], BLUE = ["#2b4c7e", "#0d1b2a", "#a9c7e8"], LULL = ["#f5b83d", "#3a2a55", "#ffd9a0"];
+  const PLAYLISTS = {
+    "media_player.living_room_tv": [
+      track("Good News About Hell", "Severance · Season 1, Episode 1", "Severance", 3360, ["#2c6e8f", "#0a1a24", "#bfe3f0"], { kind: "tv", app: "Apple TV+" }),
+      track("Failure's Contagious", "Slow Horses · Season 1, Episode 1", "Slow Horses", 2880, ["#6b705c", "#1c1d18", "#d4a373"], { kind: "tv", app: "Apple TV+" }),
+      track("System", "The Bear · Season 1, Episode 1", "The Bear", 1680, ["#1d3557", "#0b0f19", "#e63946"], { kind: "tv", app: "Hulu" }),
+      track("Anjin", "Shōgun · Episode 1", "Shōgun", 4200, ["#7f1d1d", "#120606", "#f5d0a9"], { kind: "tv", app: "Hulu" }),
+      track("Pilot", "Ted Lasso · Season 1, Episode 1", "Ted Lasso", 1800, ["#f2c14e", "#1f4e8c", "#ffffff"], { kind: "tv", app: "Apple TV+" }),
+    ],
+    "media_player.kitchen_speaker": [
+      track("So What", "Miles Davis", "Kind of Blue", 562, KOB),
+      track("Blue in Green", "Miles Davis", "Kind of Blue", 337, KOB),
+      track("Take Five", "The Dave Brubeck Quartet", "Time Out", 324, TIMEOUT),
+      track("Naima", "John Coltrane", "Giant Steps", 261, GIANT),
+      track("Waltz for Debby", "Bill Evans Trio", "Waltz for Debby", 420, DEBBY),
+      track("Freddie Freeloader", "Miles Davis", "Kind of Blue", 586, KOB),
+    ],
+    "media_player.office_speaker": [
+      track("An Ending (Ascent)", "Brian Eno", "Apollo", 266, APOLLO),
+      track("1/1", "Brian Eno", "Ambient 1: Music for Airports", 1021, AIRPORTS),
+      track("Says", "Nils Frahm", "Spaces", 529, SPACES),
+      track("On the Nature of Daylight", "Max Richter", "The Blue Notebooks", 380, BLUE),
+    ],
+    "media_player.kids_room_speaker": [
+      track("Twinkle Twinkle Little Star", "Lullaby Hour", "Bedtime Songs", 150, LULL),
+      track("Brahms' Lullaby", "Lullaby Hour", "Bedtime Songs", 180, LULL),
+      track("Rock-a-bye Baby", "Lullaby Hour", "Bedtime Songs", 140, LULL),
+      track("Hush Little Baby", "Lullaby Hour", "Bedtime Songs", 160, LULL),
+    ],
+    "media_player.bedroom_tv": [
+      track("The Dundies", "The Office · Season 2, Episode 1", "The Office", 1320, ["#4a6fa5", "#141c2b", "#e0e6ef"], { kind: "tv", app: "Peacock" }),
+      track("Diversity Day", "The Office · Season 1, Episode 2", "The Office", 1320, ["#4a6fa5", "#141c2b", "#e0e6ef"], { kind: "tv", app: "Peacock" }),
+    ],
+  };
+  // the attributes a player shows for a track, at a position (seconds)
+  const nowPlaying = (t, position = 0) => ({
+    media_title: t.title, media_artist: t.artist, media_album_name: t.kind === "tv" ? undefined : t.album, media_series_title: t.kind === "tv" ? t.album : undefined,
+    media_content_type: t.kind === "tv" ? "tvshow" : "music", app_name: t.app, entity_picture: t.art,
+    media_duration: t.dur, media_position: position, media_position_updated_at: new Date().toISOString(),
+  });
+
   function makeHouse() {
     const states = {}, entities = {}, devices = {};
     const areas = {
@@ -68,25 +131,37 @@
     light("light.living_room_tv_backlight", "Living Room TV Backlight", "living_room", ["hs"], true, { pct: 55, hs: [268, 70], icon: "mdi:led-strip-variant" });
     light("light.living_room_bookshelf", "Living Room Bookshelf", "living_room", COLOR, false, { icon: "mdi:bookshelf" });
     light("light.living_room_sconces", "Living Room Sconces", "living_room", DIM, true, { pct: 45, icon: "mdi:wall-sconce-round" });
+    light("light.living_room_reading_lamp", "Living Room Reading Lamp", "living_room", TEMP, false, { icon: "mdi:floor-lamp-torchiere" });
+    light("light.living_room_plant_spot", "Living Room Plant Spot", "living_room", COLOR, true, { pct: 40, hs: [120, 45], icon: "mdi:spotlight-beam" });
     light("light.kitchen_pendants", "Kitchen Pendants", "kitchen", TEMP, true, { pct: 90, k: 3500, icon: "mdi:ceiling-light-multiple" });
     light("light.kitchen_under_cabinet", "Kitchen Under Cabinet", "kitchen", ["hs"], true, { pct: 60, hs: [32, 55], icon: "mdi:led-strip" });
     light("light.kitchen_island", "Kitchen Island", "kitchen", DIM, false, { icon: "mdi:track-light" });
     light("light.kitchen_ceiling", "Kitchen Ceiling", "kitchen", ONOFF, false, { icon: "mdi:ceiling-light" });
+    light("light.kitchen_pantry", "Kitchen Pantry", "kitchen", ONOFF, false, { icon: "mdi:door-sliding" });
+    light("light.kitchen_toe_kick", "Kitchen Toe Kick", "kitchen", ["hs"], true, { pct: 20, hs: [190, 70], icon: "mdi:led-strip" });
     light("light.dining_room_chandelier", "Dining Room Chandelier", "dining_room", TEMP, true, { pct: 62, k: 2700, icon: "mdi:chandelier" });
     light("light.dining_room_sideboard", "Dining Room Sideboard", "dining_room", COLOR, false, { icon: "mdi:lamp" });
     light("light.dining_room_candles", "Dining Room Candles", "dining_room", ["hs"], true, { pct: 30, hs: [22, 85], icon: "mdi:candelabra" });
+    light("light.dining_room_cabinet", "Dining Room Cabinet", "dining_room", COLOR, true, { pct: 35, k: 2700, icon: "mdi:wardrobe-outline" });
     light("light.bedroom_bedside_left", "Bedroom Bedside Left", "bedroom", TEMP, true, { pct: 22, k: 2200, icon: "mdi:lamp" });
     light("light.bedroom_bedside_right", "Bedroom Bedside Right", "bedroom", TEMP, false, { icon: "mdi:lamp" });
     light("light.bedroom_ceiling", "Bedroom Ceiling", "bedroom", DIM, false, { icon: "mdi:ceiling-light" });
     light("light.bedroom_headboard", "Bedroom Headboard", "bedroom", ["hs"], true, { pct: 30, hs: [340, 60], icon: "mdi:led-strip-variant" });
+    light("light.bedroom_closet", "Bedroom Closet", "bedroom", ONOFF, false, { icon: "mdi:wardrobe" });
+    light("light.bedroom_reading_nook", "Bedroom Reading Nook", "bedroom", COLOR, false, { icon: "mdi:book-open-page-variant" });
     light("light.office_desk_lamp", "Office Desk Lamp", "office", TEMP, true, { pct: 100, k: 5000, icon: "mdi:desk-lamp" });
     light("light.office_ceiling", "Office Ceiling", "office", DIM, true, { pct: 70, icon: "mdi:ceiling-light" });
     light("light.office_monitor_bar", "Office Monitor Bar", "office", COLOR, true, { pct: 40, hs: [205, 75], icon: "mdi:monitor-shimmer" });
+    light("light.office_bookshelf", "Office Bookshelf", "office", ["hs"], true, { pct: 50, hs: [32, 60], icon: "mdi:bookshelf" });
+    light("light.office_floor_lamp", "Office Floor Lamp", "office", TEMP, false, { icon: "mdi:floor-lamp" });
     light("light.kids_room_night_light", "Kids Room Night Light", "kids_room", ["hs"], true, { pct: 12, hs: [36, 80], icon: "mdi:weather-night" });
     light("light.kids_room_ceiling", "Kids Room Ceiling", "kids_room", DIM, false, { icon: "mdi:ceiling-light" });
     light("light.kids_room_star_projector", "Kids Room Star Projector", "kids_room", ["hs"], false, { icon: "mdi:star-four-points" });
+    light("light.kids_room_desk_lamp", "Kids Room Desk Lamp", "kids_room", TEMP, false, { icon: "mdi:desk-lamp" });
+    light("light.kids_room_rainbow", "Kids Room Rainbow Strip", "kids_room", ["hs"], true, { pct: 35, hs: [300, 65], icon: "mdi:looks" });
     light("light.garden_string", "Garden String Lights", null, ONOFF, true, { icon: "mdi:string-lights" });
     light("light.porch", "Porch Light", null, DIM, false, { icon: "mdi:outdoor-lamp" });
+    light("light.garden_path", "Garden Path", null, COLOR, true, { pct: 45, k: 2700, icon: "mdi:coach-lamp" });
 
     // ---- switches and helpers
     add("switch.living_room_plug", "on", { friendly_name: "Living Room Plug", icon: "mdi:power-socket-eu" }, { area: "living_room" });
@@ -156,16 +231,19 @@
     add("fan.office_fan", "off", { friendly_name: "Office Fan", percentage: 0, supported_features: 1 }, { area: "office" });
 
     // ---- media
-    const SF = 21437 | 2048;     // the usual set, and sources
-    add("media_player.living_room_tv", "playing", { friendly_name: "Living Room TV", device_class: "tv", media_title: "Slow Horses", media_artist: "Season 4 · Episode 2", app_name: "Apple TV",
-      entity_picture: art("#e98a5e", "#2a2350"), volume_level: 0.3, source: "Apple TV", source_list: ["Apple TV", "PlayStation", "HDMI 3"], supported_features: SF }, { area: "living_room", changed: 35 * MIN });
-    add("media_player.living_room_soundbar", "on", { friendly_name: "Living Room Soundbar", device_class: "receiver", volume_level: 0.34, supported_features: SF }, { area: "living_room", changed: 35 * MIN });
-    add("media_player.kitchen_speaker", "playing", { friendly_name: "Kitchen Speaker", device_class: "speaker", media_title: "So What", media_artist: "Miles Davis", media_album_name: "Kind of Blue",
-      entity_picture: art("#4f8fe0", "#101828"), volume_level: 0.25, supported_features: SF }, { area: "kitchen", changed: 8 * MIN });
+    const SF = 21437 | 2048 | 2;     // the usual set, sources, and seek
+    const P = PLAYLISTS;
+    add("media_player.living_room_tv", "playing", { friendly_name: "Living Room TV", device_class: "tv", ...nowPlaying(P["media_player.living_room_tv"][0], 1260),
+      volume_level: 0.3, source: "Apple TV", source_list: ["Apple TV", "PlayStation 5", "HDMI 3"], supported_features: SF }, { area: "living_room", changed: 35 * MIN });
+    add("media_player.living_room_soundbar", "on", { friendly_name: "Living Room Soundbar", device_class: "receiver", volume_level: 0.34, sound_mode: "Movie", supported_features: SF }, { area: "living_room", changed: 35 * MIN });
+    add("media_player.kitchen_speaker", "playing", { friendly_name: "Kitchen Speaker", device_class: "speaker", ...nowPlaying(P["media_player.kitchen_speaker"][0], 96),
+      volume_level: 0.25, supported_features: SF }, { area: "kitchen", changed: 8 * MIN });
+    add("media_player.dining_room_speaker", "idle", { friendly_name: "Dining Room Speaker", device_class: "speaker", volume_level: 0.2, supported_features: SF }, { area: "dining_room", changed: 6 * HOUR });
     add("media_player.bedroom_tv", "off", { friendly_name: "Bedroom TV", device_class: "tv", supported_features: SF }, { area: "bedroom", changed: 11 * HOUR });
-    add("media_player.office_speaker", "idle", { friendly_name: "Office Speaker", device_class: "speaker", volume_level: 0.2, supported_features: SF }, { area: "office", changed: 3 * HOUR });
-    add("media_player.kids_room_speaker", "paused", { friendly_name: "Kids Room Speaker", device_class: "speaker", media_title: "Twinkle Twinkle", media_artist: "Bedtime Songs",
-      entity_picture: art("#f5b83d", "#3a2a55"), volume_level: 0.15, supported_features: SF }, { area: "kids_room", changed: 50 * MIN });
+    add("media_player.office_speaker", "playing", { friendly_name: "Office Speaker", device_class: "speaker", ...nowPlaying(P["media_player.office_speaker"][0], 40),
+      volume_level: 0.2, supported_features: SF }, { area: "office", changed: 22 * MIN });
+    add("media_player.kids_room_speaker", "paused", { friendly_name: "Kids Room Speaker", device_class: "speaker", ...nowPlaying(P["media_player.kids_room_speaker"][0], 62),
+      volume_level: 0.15, supported_features: SF }, { area: "kids_room", changed: 50 * MIN });
 
     // ---- scenes: a scene's state is when it last ran
     const scene = (id, name, area, icon, changed = 30 * HOUR) => add(id, ago(changed), { friendly_name: name, ...(icon ? { icon } : {}) }, { area });
@@ -272,5 +350,5 @@
     return [f(5), f(3), f(1)];
   };
 
-  window.SavvyDemo = Object.assign(window.SavvyDemo || {}, { makeHouse, hsToRgb, art });
+  window.SavvyDemo = Object.assign(window.SavvyDemo || {}, { makeHouse, hsToRgb, art, PLAYLISTS, nowPlaying });
 })();

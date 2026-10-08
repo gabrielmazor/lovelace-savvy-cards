@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Savvy Cards · Live demo</title>
+<meta name="description" content="Savvy Cards for Home Assistant: dashboard cards that find their own entities. A live demo on a made-up house of six rooms.">
+<meta property="og:title" content="Savvy Cards · Live demo">
+<meta property="og:description" content="Dashboard cards for Home Assistant that find their own entities. Try them on a made-up house.">
+<meta name="theme-color" content="#111113" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f2f1ee" media="(prefers-color-scheme: light)">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<!-- savvy-demo:body -->
+<header class="bar">
+  <div class="bar-in">
+    <a class="brand" href="?p=home" data-page="home" aria-label="Savvy Cards demo, home">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7v9H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="14" r="2.4" fill="currentColor"/></svg>
+      <span>Savvy Cards</span><small id="version"></small>
+    </a>
+    <nav id="nav" aria-label="Pages"></nav>
+    <div class="theme" role="group" aria-label="Theme">
+      <button data-theme-choice="auto" aria-pressed="true">Auto</button><button data-theme-choice="light" aria-pressed="false">Light</button><button data-theme-choice="dark" aria-pressed="false">Dark</button>
+    </div>
+  </div>
+</header>
+<main id="page"></main>
+<footer class="foot">
+  <p>Savvy Cards is free and open source (MIT), for Home Assistant 2024.8 and newer. The house, its people and its devices are made up; titles are shown for illustration and covers are drawn by the demo.</p>
+  <p><a href="https://github.com/gabrielmazor/lovelace-savvy-cards" target="_blank" rel="noopener">GitHub</a> · <a href="https://github.com/gabrielmazor/lovelace-savvy-cards#install" target="_blank" rel="noopener">Install</a></p>
+</footer>
+<div id="info" class="info" hidden>
+  <div class="info-scrim" data-info-close></div>
+  <div class="info-sheet" role="dialog" aria-modal="true" aria-label="Details">
+    <button class="info-close" data-info-close aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    <div class="info-body"></div>
+  </div>
+</div>
+<!-- savvy-demo:scripts -->
+<script src="vendor/icons.js"></script>
+<script src="assets/ha-shim.js"></script>
+<script src="assets/house.js"></script>
+<script src="assets/hass.js"></script>
+<script src="assets/pages.js"></script>
+<script src="vendor/savvy-cards.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,111 @@
+/* The demo site. Dark first, like most Home Assistant dashboards; light when the device or the
+   switch asks for it. The Home Assistant theme variables the cards read are set here too.
+   Layout: a slim bar with the pages, then the page's sections in a grid that becomes one column on a phone. */
+:root {
+  --page: #111113; --bar: rgb(17 17 19 / 0.78); --fg: #ececee; --fg2: #9a9aa0; --fg3: #5e5e64;
+  --hair: rgb(255 255 255 / 0.08); --well: rgb(255 255 255 / 0.05); --accent: #f5b83d;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", Roboto, system-ui, sans-serif;
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --page: #f2f1ee; --bar: rgb(242 241 238 / 0.82); --fg: #1b1b1d; --fg2: #67676d; --fg3: #a3a3a8;
+  --hair: rgb(24 24 28 / 0.09); --well: rgb(24 24 28 / 0.05); --accent: #b07a12;
+  color-scheme: light;
+}
+/* what Home Assistant's theme gives every card */
+body {
+  --primary-text-color: #e8e8ea; --secondary-text-color: #9a9aa0; --disabled-text-color: #6b6b70;
+  --card-background-color: #1c1c1f; --ha-card-background: #1c1c1f; --divider-color: rgb(232 232 234 / 0.12); --primary-color: #7aa2f7;
+  --ha-card-border-radius: 18px; --ha-card-border-color: rgb(255 255 255 / 0.06);
+}
+body.light {
+  --primary-text-color: #1b1b1d; --secondary-text-color: #67676d; --disabled-text-color: #b0b0b5;
+  --card-background-color: #ffffff; --ha-card-background: #ffffff; --divider-color: rgb(0 0 0 / 0.1); --primary-color: #3c6bd6;
+  --ha-card-border-color: rgb(24 24 28 / 0.06); --ha-card-box-shadow: 0 1px 2px rgb(40 36 30 / 0.04), 0 10px 28px -18px rgb(40 36 30 / 0.22);
+}
+
+* { box-sizing: border-box; }
+html { background: var(--page); }
+body { margin: 0; background: var(--page); color: var(--fg); font: 15px/1.5 var(--sans); -webkit-font-smoothing: antialiased; min-height: 100vh;
+  padding-bottom: env(safe-area-inset-bottom, 0px); }
+a { color: inherit; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
+
+/* ---- the bar: brand, pages, theme */
+.bar { position: sticky; top: 0; z-index: 50; background: var(--bar); -webkit-backdrop-filter: saturate(1.6) blur(18px); backdrop-filter: saturate(1.6) blur(18px);
+  border-bottom: 1px solid var(--hair); padding-top: env(safe-area-inset-top, 0px); }
+.bar-in { max-width: 1440px; margin: 0 auto; display: flex; align-items: center; gap: 18px; padding: 10px 20px; }
+.brand { display: flex; align-items: center; gap: 9px; text-decoration: none; font-weight: 680; letter-spacing: -0.02em; font-size: 16px; flex: none; }
+.brand svg { width: 24px; height: 24px; color: var(--accent); }
+.brand small { font-weight: 500; font-size: 12px; color: var(--fg3); letter-spacing: 0; }
+#nav { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; overflow-x: auto; scrollbar-width: none; mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+#nav::-webkit-scrollbar { display: none; }
+.nav-group { display: flex; gap: 2px; flex: none; }
+.nav-sep { width: 1px; height: 18px; background: var(--hair); margin: 0 8px; flex: none; }
+#nav a { position: relative; padding: 7px 11px; border-radius: 10px; text-decoration: none; font-size: 14px; font-weight: 560; color: var(--fg2); white-space: nowrap; letter-spacing: -0.006em; }
+#nav a:hover { color: var(--fg); background: var(--well); }
+#nav a[aria-current] { color: var(--fg); }
+#nav a[aria-current]::after { content: ""; position: absolute; left: 50%; bottom: 1px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--accent); }
+.theme { display: flex; gap: 2px; padding: 3px; border-radius: 11px; background: var(--well); flex: none; }
+.theme button { padding: 4px 10px; border-radius: 8px; font-size: 12.5px; font-weight: 560; color: var(--fg2); }
+.theme button[aria-pressed="true"] { background: var(--page); color: var(--fg); box-shadow: 0 1px 2px rgb(0 0 0 / 0.18); }
+@media (max-width: 720px) {
+  .bar-in { flex-wrap: wrap; gap: 8px 12px; padding: 10px 16px 6px; }
+  #nav { order: 3; flex-basis: 100%; margin: 0 -16px; padding: 0 12px; }
+  .brand { flex: 1; }
+}
+
+/* ---- a page */
+main { max-width: 1440px; margin: 0 auto; padding: 20px 20px 32px; }
+@media (max-width: 720px) { main { padding: 14px 12px 28px; } }
+.intro { display: flex; align-items: center; gap: 14px 24px; flex-wrap: wrap; margin: 0 2px 18px; color: var(--fg2); font-size: 14.5px; }
+.intro p { margin: 0; flex: 1 1 420px; max-width: 78ch; }
+.intro b { color: var(--fg); font-weight: 620; }
+.btn { display: inline-flex; align-items: center; justify-content: center; height: 38px; padding: 0 16px; border-radius: 12px; background: var(--fg); color: var(--page);
+  font-weight: 620; font-size: 14px; text-decoration: none; letter-spacing: -0.01em; white-space: nowrap; }
+.btn:hover { opacity: 0.88; }
+.btn.wide { width: 100%; }
+
+.sections { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: 16px; align-items: start; }
+.section { display: grid; gap: 12px; min-width: 0; align-content: start; }
+.section.wide { grid-column: 1 / -1; }
+.section.tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }                  /* six rooms: 2, 3 or 6 across, never 5 and 1 */
+@media (min-width: 760px) { .section.tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1240px) { .section.tiles { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+.section > * { min-width: 0; }
+.card-error { padding: 14px 16px; border-radius: 16px; background: rgb(224 102 102 / 0.12); color: #e06666; font-size: 13px; }
+
+/* ---- the details panel: a sheet from the bottom on a phone, a dialog in the middle on a wide screen */
+.info { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; }
+.info[hidden], [hidden] { display: none !important; }
+.info-scrim { position: absolute; inset: 0; background: rgb(0 0 0 / 0.5); opacity: 0; transition: opacity 0.22s ease; }
+.info-sheet { position: relative; width: min(440px, calc(100vw - 32px)); max-height: min(640px, calc(100vh - 48px)); overflow: auto; border-radius: 26px; padding: 22px;
+  background: var(--card-background-color); color: var(--primary-text-color); box-shadow: 0 30px 80px -20px rgb(0 0 0 / 0.6);
+  transform: translateY(16px) scale(0.97); opacity: 0; transition: transform 0.34s cubic-bezier(0.2, 1.2, 0.4, 1), opacity 0.2s ease; }
+.info[data-open] .info-scrim { opacity: 1; }
+.info[data-open] .info-sheet { transform: none; opacity: 1; }
+@media (max-width: 600px) {
+  .info { place-items: end stretch; }
+  .info-sheet { width: auto; border-radius: 26px 26px 0 0; max-height: 85vh; padding-bottom: calc(22px + env(safe-area-inset-bottom, 0px)); transform: translateY(40px); }
+}
+@media (prefers-reduced-motion: reduce) { .info-sheet, .info-scrim { transition: none; } }
+.info-close { position: absolute; top: 14px; right: 14px; width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; background: var(--well); color: var(--fg2); }
+.info-close svg { width: 18px; height: 18px; }
+.info-head { display: flex; align-items: center; gap: 12px; margin: 0 40px 16px 0; }
+.info-ic { --mdc-icon-size: 28px; display: grid; place-items: center; width: 44px; height: 44px; color: var(--primary-color); }
+.info-head h2 { margin: 0; font-size: 20px; line-height: 1.2; letter-spacing: -0.025em; font-weight: 650; }
+.info-head p { margin: 2px 0 0; color: var(--secondary-text-color); font-size: 14px; }
+.info-pic { display: block; width: 100%; border-radius: 16px; margin-bottom: 14px; }
+.info .btn { margin-bottom: 14px; }
+.kvs { display: grid; gap: 0; }
+.kv { display: flex; justify-content: space-between; gap: 16px; padding: 9px 2px; border-top: 1px solid var(--divider-color); font-size: 14px; }
+.kv span { color: var(--secondary-text-color); text-transform: capitalize; }
+.kv b { font-weight: 600; text-align: end; overflow-wrap: anywhere; }
+.muted { color: var(--secondary-text-color); }
+.small { font-size: 12.5px; margin: 14px 0 0; }
+
+/* ---- footer */
+.foot { max-width: 1440px; margin: 0 auto; padding: 8px 22px 40px; color: var(--fg3); font-size: 13px; }
+.foot p { margin: 0 0 6px; max-width: 90ch; }
+.foot a { color: var(--fg2); }
