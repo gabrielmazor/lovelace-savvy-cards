@@ -5013,7 +5013,7 @@ const TITLE_CSS = `
     transition: color 160ms ease; }
   @media (hover: hover) { [data-tlink]:hover { color: color-mix(in oklab, rgb(var(--accent, 88 142 233)) 82%, var(--primary-text-color)); } }
   :host([kbd]) [data-tlink]:focus-visible { box-shadow: 0 0 0 2px rgb(var(--accent, 88 142 233)); }
-  .sv-ttl { display: flex; min-width: 0; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; color: var(--primary-text-color); }
+  .sv-ttl { display: flex; min-width: 0; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; color: var(--primary-text-color); }
   .sv-ttl-t { display: block; min-width: 0; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 `;
 
@@ -10286,7 +10286,7 @@ const STYLE = `${BASE_CSS}
   .rank .cap { margin: 4px 4px 2px; font-size: 13px; line-height: 17px; font-weight: 600; letter-spacing: -0.006em; color: var(--secondary-text-color); }
   .row { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 44px; padding: 3px 4px 3px 2px; border-radius: 14px; cursor: pointer; text-align: start; }
   .row .ic { flex: none; display: grid; place-items: center; width: var(--b-m); height: var(--b-m); border-radius: 50%; --mdc-icon-size: 20px;
-    color: rgb(var(--accent)); background: color-mix(in oklab, rgb(var(--accent)) var(--mix-on), transparent); }
+    color: rgb(var(--accent)); background: transparent; --mdc-icon-size: 22px; }
   .row .ic ha-icon { display: flex; }
   .row .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
   .row .nm { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

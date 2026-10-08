@@ -59,7 +59,7 @@ const STYLE = `${BASE_CSS}
   .rank .cap { margin: 4px 4px 2px; font-size: 13px; line-height: 17px; font-weight: 600; letter-spacing: -0.006em; color: var(--secondary-text-color); }
   .row { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 44px; padding: 3px 4px 3px 2px; border-radius: 14px; cursor: pointer; text-align: start; }
   .row .ic { flex: none; display: grid; place-items: center; width: var(--b-m); height: var(--b-m); border-radius: 50%; --mdc-icon-size: 20px;
-    color: rgb(var(--accent)); background: color-mix(in oklab, rgb(var(--accent)) var(--mix-on), transparent); }
+    color: rgb(var(--accent)); background: transparent; --mdc-icon-size: 22px; }
   .row .ic ha-icon { display: flex; }
   .row .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
   .row .nm { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
