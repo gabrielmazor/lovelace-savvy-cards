@@ -181,7 +181,8 @@ export default async function ({ browser, base, check }) {
     const run = await afterChange(page, () => window.setStates({ "light.living_room_ceiling": "off", "light.living_room_floor_lamp": "off", "light.living_room_strip": "off" }),
       () => {
         const R = window.cards[0].shadowRoot;
-        const orbs = [...R.querySelectorAll(".light:not([hidden]) .orb")].map((o) => getComputedStyle(o).backgroundColor);
+        // the orb is a bare icon: the colour that changes is its own (the lamp's colour going to grey)
+        const orbs = [...R.querySelectorAll(".light:not([hidden]) .orb")].map((o) => getComputedStyle(o).color);
         return { orbs, pill: getComputedStyle(R.getElementById("master")).backgroundColor, count: R.getElementById("count").getAttribute("data-rolling"), text: R.getElementById("count").textContent, pillText: R.getElementById("masterText").textContent };
       }, 1200);
     const orbSeen = [0, 1].map((i) => new Set(run.map((s) => s.orbs[i])).size);

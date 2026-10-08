@@ -112,7 +112,8 @@ export default async function ({ browser, base, check }) {
       document.getElementById("stage").replaceChildren();
       window.mount("savvy-lights-card", { lights: ["light.pw_one", "light.pw_two"], power_button: true }, width);
       await new Promise((res) => setTimeout(res, 500));
-      return [...window.cards[0].shadowRoot.querySelectorAll(".light .head")].map((h) => read(h, "button", ".power"));
+      // the row is the light's line: its last control must be the power button
+      return [...window.cards[0].shadowRoot.querySelectorAll(".light")].map((h) => read(h, "button", ".power"));
     }, { READ: READ.toString(), width });
     check(`${tag} lights card: the power button is the last control of each light`, l.length === 2 && l.every((r) => r.powers === 1 && r.last && r.edge), JSON.stringify(l));
     check(`${tag} no errors`, errors.length === 0, errors.join(" | "));
