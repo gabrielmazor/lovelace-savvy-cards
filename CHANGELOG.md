@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- **A new look, the same cards:** the default design is rebuilt around one surface per card. Icons stand bare instead
+  of on tinted discs (an alert keeps its disc), rows replace boxes inside boxes, titles are larger, group names are in
+  sentence case, and readouts are words on one line that wraps instead of truncating. Every option, gesture and popup
+  is kept; glass and matte sit on the new layout.
+- **Lights: the row is the control.** Tap a light's row to switch it, drag sideways to dim it (from the level it had,
+  so a scroll never changes it), hold for its details; the dot opens warmth and colour. The level fills the row in the
+  lamp's own colour. Featured lights now take the full width (the option had no visible effect before).
+- **Climate:** the target alone in the middle, a step either side, a fine rail with a knob, modes as words with a dot
+  that slides between them, and the fan button says what it is ("Fan auto").
+- **Media and vacuum:** one solid key per card, in the text colour: play while a player is playing, the vacuum's Start.
+- **Live demo:** `site/` is a static site with every card on a made-up house of six rooms (`node site/build.mjs --serve`).
+
 ## 0.19.1
 
 - **Loading, not offline:** while Home Assistant or one of its integrations is still coming up, the home header's cog
