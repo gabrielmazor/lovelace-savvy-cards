@@ -598,7 +598,7 @@ the fan. Swipe left for history with the unit's on/off band under the chart.
 | `layout` | `full` or `compact` | `full` | `compact`: target and modes in two rows. |
 | `hvac_modes` | list | the unit's modes | Which modes show, in order. Quote `"off"` in YAML. |
 | `default_hvac_mode` | string | last used | What the power button turns on. |
-| `fan_control` | boolean | `true` | The fan button (tap cycles the speed). |
+| `fan_control` | boolean | `true` | The fan button: a tap lists the unit's fan speeds, the current one marked. |
 | `temperature`, `humidity` | entity | the unit's reading | Sensors to read (and chart) instead. |
 | `weather` | entity | none | An outdoor weather readout. |
 | `temperature_name`, `humidity_name`, `state_name` | string | Temperature, Humidity, A/C | Labels. |
@@ -655,9 +655,17 @@ chips:
 **One card for everything that plays in a room.** Pick the video source (TV, console, streamer, PC) with
 one tap, and the card shows what it is playing and its controls. Each source can send its sound to the
 output you choose: here the TV, console and streamer play through the soundbar, and the PC through the
-speakers. Every output keeps its own volume under it.
+speakers. The volume under the picked source is its sound output's ("Sound from Soundbar"), so you turn the TV
+up where you watch it. The speakers sit under it, each with its own volume; with more than one speaker they
+get a picker of their own, like the sources. A soundbar can be both: the TV's sound output and a speaker you
+play music on. With both kinds on the card, the bands are captioned Watch and Listen.
 
 <picture><source media="(prefers-color-scheme: light)" srcset="docs/images/media-light.png"><img src="docs/images/media-dark.png" width="460" alt="Savvy media card with artwork"></picture>
+
+**Switch where the TV's sound goes.** An LG TV (the webOS integration) shows its sound output under it as a
+button: tap it for TV speaker, HDMI ARC, Optical, Bluetooth and the rest, the current one marked. On its own
+speaker the volume under it is the TV's; on ARC or optical it is the soundbar's. Any other TV whose integration
+has a select entity for its sound output works the same with `sound_select`.
 
 With a player that has artwork, the card also shows what is playing, the way a phone would. It also has
 presets, text to speech and an alarm clock. Volume moves only on a sideways drag, or with minus and plus.
@@ -669,14 +677,14 @@ presets, text to speech and an alarm clock. Volume moves only on a sideways drag
 | `area` | area | **required** (or `video` / `audio`) | Speakers and receivers become outputs; TVs and the rest become sources. |
 | `name` | string | the area's | Title. |
 | `layout` | `full` or `compact` | `full` | `compact`: one row with what is playing, its transport and the volume. |
-| `video` | list | found | The video sources in the picker (TVs, consoles, streamers, PCs): `{ entity, name, icon, power, output, volume, artwork }`. `power`: a switch that turns it on. `output`: the speaker its sound comes out of (leave empty and it plays through itself); it wins over `video_output`. `volume`: a helper that holds its real volume. `artwork`: a binary sensor that says its artwork is worth showing. |
-| `audio` | list | found | The outputs and plain speakers, shown under the picker with their own volume. Same item format as `video`. |
-| `video_output` | entity | none | The one speaker, receiver or soundbar that every video source plays through, unless a source sets its own `output`. Its volume sits under the picked source. |
+| `video` | list | found | The video sources in the picker (TVs, consoles, streamers, PCs): `{ entity, name, icon, power, output, volume, artwork, sound_select, sound_outputs }`. `power`: a switch that turns it on. `output`: the speaker its sound comes out of (leave empty and it plays through itself); it wins over `video_output`. `volume`: a helper that holds its real volume. `artwork`: a binary sensor that says its artwork is worth showing. `sound_select`: a select entity that switches where its sound goes (an LG TV needs none, see below). `sound_outputs`: the LG outputs to list, or `false` for none. |
+| `audio` | list | found | The speakers, under the sources with their own transport and volume; two or more get a picker. Same item format as `video`. |
+| `video_output` | entity | none | The one speaker, receiver or soundbar that every video source plays through, unless a source sets its own `output`. Its volume sits under the picked source, even when it is also listed in `audio`. |
 | `presets` | chips | none | Stations and playlists. |
 | `tts` | object | none | `{ action, data, placeholder }`: a text box. `$MSG` in `data` is where the text goes. |
 | `alarm` | object | none | `{ entity, time, name }`: an alarm clock that rings here. |
 | `chips` | chips | none | The room's other controls. |
-| `labels` | object | none | `{ video, audio }`: small captions over each band. |
+| `labels` | object or `false` | Watch / Listen | `{ video, audio }`: the captions over each band, shown when the card has both. `false` hides them. |
 | `artwork` | boolean | `true` | The artwork stage. |
 | `artwork_max_height` | number (px) | none | Cap the artwork's height. |
 | `volume_buttons` | boolean | `true` | The minus and plus buttons. |

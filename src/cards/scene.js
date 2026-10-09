@@ -25,7 +25,7 @@ const escRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const STYLE = `${BASE_CSS}
   ha-card { --pad: 12px; --c: #588ee9; display: flex; flex-direction: column; gap: 10px; padding: var(--pad); }
   .head { display: flex; align-items: center; gap: 4px; min-width: 0; align-self: flex-start; margin: -3px -6px; padding: 3px 6px; border-radius: 10px;
-    font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; }
+    font-size: 16px; line-height: 21px; font-weight: 620; letter-spacing: -0.021em; }
   .head[role="button"] { cursor: pointer; }
   .head .t { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .head ha-icon { --mdc-icon-size: 18px; display: flex; color: var(--secondary-text-color); }

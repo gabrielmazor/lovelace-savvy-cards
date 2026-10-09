@@ -147,7 +147,7 @@ const STYLE = `
   header { display: flex; align-items: flex-start; gap: 12px; }
   .titles { flex: 1; min-width: 0; }
   .name {
-    display: block; font-size: 17px; line-height: 22px; font-weight: 620;
+    display: block; font-size: 16px; line-height: 21px; font-weight: 620;
     letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .status {
@@ -173,7 +173,7 @@ const STYLE = `
   ha-card[data-glass] .hero, ha-card[data-matte] .hero { --lx: 50%; --ly: 55%; }   /* the light comes from the number, now in the middle */
   .readout { flex: 1; min-width: 0; display: flex; align-items: flex-start; justify-content: center; order: 1; }
   .value {
-    font-size: 76px; line-height: 1; font-weight: 250; letter-spacing: -0.055em;
+    font-size: 66px; line-height: 1; font-weight: 250; letter-spacing: -0.055em;
     color: var(--primary-text-color);
   }
   .unit {
@@ -281,7 +281,7 @@ const STYLE = `
   .page.history { padding-bottom: 10px; }
   .legend { display: flex; gap: 8px; align-items: flex-start; }
   .key { display: flex; flex-direction: column; gap: 1px; min-width: 0; padding: 0 2px; }
-  .key .v { font-size: 17px; line-height: 21px; font-weight: 600; letter-spacing: -0.02em; color: var(--kc); }
+  .key .v { font-size: 16px; line-height: 20px; font-weight: 600; letter-spacing: -0.02em; color: var(--kc); }
   .key .k { display: flex; align-items: center; gap: 5px; font-size: 11px; line-height: 14px;
     font-weight: 550; letter-spacing: 0.008em; color: var(--secondary-text-color);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -378,6 +378,22 @@ const STYLE = `
 const minutesLabel = (m) => (m < 60 ? `${m} min` : m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : m === 60 ? "1 hour" : `${m / 60} hours`);
 const durationText = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}:00`;
 
+// a fan speed as words and an icon: "medium" reads Medium, with the fan's middle speed
+const fanModeLabel = (m) => { const t = String(m).replace(/[_-]+/g, " ").trim(); return t.charAt(0).toUpperCase() + t.slice(1); };
+function fanModeIcon(m) {
+  const k = String(m).toLowerCase();
+  if (k === "off") return "mdi:fan-off";
+  if (k.includes("auto")) return "mdi:fan-auto";
+  if (/quiet|silent|sleep|night|eco/.test(k)) return "mdi:fan-minus";
+  if (/turbo|max|boost|strong|power/.test(k)) return "mdi:fan-plus";
+  if (/med|mid/.test(k)) return "mdi:fan-speed-2";
+  if (/high/.test(k)) return "mdi:fan-speed-3";
+  if (/low|min/.test(k)) return "mdi:fan-speed-1";
+  const n = /(\d+)/.exec(k);
+  if (n) return `mdi:fan-speed-${Math.min(3, Math.max(1, Number(n[1])))}`;
+  return "mdi:fan";
+}
+
 class ClimateCard extends HTMLElement {
   static getConfigElement() { return document.createElement(EDITOR); }
   static getStubConfig(hass) {
@@ -463,6 +479,7 @@ class ClimateCard extends HTMLElement {
     clearInterval(this._tick);
     clearTimeout(this._sendTimer);
     this._timerPicker?.close();
+    this._fanPicker?.close();
   }
 
   getCardSize() { return this._compact ? 2 : 6; }
@@ -948,6 +965,21 @@ class ClimateCard extends HTMLElement {
     this._hass.callService("climate", "set_fan_mode", { fan_mode: next }, { entity_id: this._config.entity });
   }
 
+  // The fan button lists the unit's fan speeds, the current one marked; a pick sets it.
+  _fanMenu() {
+    const st = this._climate, modes = st?.attributes.fan_modes;
+    if (!modes?.length) return;
+    const chip = this._el.actions.__rows?.get("fan");
+    if (!chip) return this._cycleFan();
+    this._fanPicker = this._fanPicker || new ModePicker(this, { onPick: (id, v) => {
+      if (v === this._climate?.attributes.fan_mode) return;
+      this._hass.callService("climate", "set_fan_mode", { fan_mode: v }, { entity_id: id });
+    } });
+    const options = modes.map((m) => ({ value: m, label: fanModeLabel(m), icon: fanModeIcon(m), color: "#57B8FF" }));
+    this._haptic("light");
+    this._fanPicker.open(chip, this._el.card, { entity: this._config.entity, value: st.attributes.fan_mode, options }, "Fan");
+  }
+
   // The timer chip. Idle: a tap lists the durations and starts the timer helper with the one you pick.
   // Running: a tap offers +15 min, pause / resume and cancel. (An old `select` still steps its list.)
   _bumpTimer(t) {
@@ -1260,7 +1292,7 @@ class ClimateCard extends HTMLElement {
         key: "fan", icon: "mdi:fan", color: "#57B8FF",
         // the button sits among readouts, so it says what it is: "Fan auto", not a bare "Auto"
         label: st.attributes.fan_mode ? `Fan ${String(st.attributes.fan_mode).replace(/[_-]+/g, " ").toLowerCase()}` : "Fan",
-        on: false, tap: () => this._cycleFan(), hold: () => this._moreInfo(this._config.entity),
+        on: false, tap: () => this._fanMenu(), hold: () => this._moreInfo(this._config.entity),
       });
     }
     if (timer) {

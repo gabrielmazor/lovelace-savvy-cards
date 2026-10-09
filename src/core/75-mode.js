@@ -151,6 +151,7 @@ class ModePicker {
     this.el.toggleAttribute("data-matte", this.host?._config?.design === "matte");
     this.el.toggleAttribute("dark", !!this.host?.hasAttribute?.("dark"));
     portalRoot().append(this.scrim, this.el);
+    this.maxCols = info.columns || 4;      // longer words ask for fewer columns
     this.render(info, caption);
     this.place(anchor, bounds);
     this.returnTo = anchor;
@@ -187,8 +188,9 @@ class ModePicker {
     put(this.el, "width", `${Math.round(width)}px`);
     put(this.el, "left", `${Math.round(left)}px`);
     put(this.el, "--ox", `${Math.round(a.left + a.width / 2 - left)}px`);
-    this.el.toggleAttribute("data-wide", width >= 330 && width < 450);
-    this.el.toggleAttribute("data-wider", width >= 450);
+    const cols = this.maxCols || 4;
+    this.el.toggleAttribute("data-wide", cols >= 3 && width >= 330 && (width < 450 || cols === 3));
+    this.el.toggleAttribute("data-wider", cols >= 4 && width >= 450);
     const h = this.el.getBoundingClientRect().height;
     const up = a.bottom + 6 + h > window.innerHeight - 8 && a.top - 6 - h > 8;
     this.el.toggleAttribute("data-up", up);

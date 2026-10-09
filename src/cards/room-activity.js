@@ -76,7 +76,7 @@ const STYLE = `${BASE_CSS}
   .name[role="button"] { cursor: pointer; }
   .roomIcon { flex: none; width: var(--b-m); height: var(--b-m); border-radius: 50%; display: grid; place-items: center; background: transparent; --mdc-icon-size: 22px; color: var(--secondary-text-color); }
   .names { display: flex; flex-direction: column; min-width: 0; }
-  .title { font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; overflow-wrap: anywhere; }
+  .title { font-size: 16px; line-height: 21px; font-weight: 620; letter-spacing: -0.021em; overflow-wrap: anywhere; }
   .status { font-size: 13px; line-height: 18px; font-weight: 500; letter-spacing: -0.003em; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .status[data-level="warn"] { color: var(--warn-c); font-weight: 600; }
   .status[data-level="info"] { color: var(--acc-c); font-weight: 600; }
@@ -114,7 +114,7 @@ const STYLE = `${BASE_CSS}
     background: color-mix(in oklab, var(--rd-hue, var(--alert-c)) calc(var(--al) * 16%), transparent); cursor: pointer; transform-origin: 50% 50%; }
   .reads { padding-inline-start: 10px; }
   @media (hover: hover) { .rd:hover { background: color-mix(in oklab, var(--rd-hue, var(--alert-c)) calc(var(--al) * 16%), var(--well)); } }
-  .rd .v { display: flex; align-items: center; gap: 5px; white-space: nowrap; font-size: 15px; line-height: 19px; font-weight: 600; letter-spacing: -0.012em;
+  .rd .v { display: flex; align-items: center; gap: 5px; white-space: nowrap; font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.012em;
     color: color-mix(in oklab, var(--rd-hue, var(--alert-c)) calc(var(--al) * 100%), var(--primary-text-color)); }
   .rd .v ha-icon { --mdc-icon-size: 15px; display: flex; flex: none; color: color-mix(in oklab, var(--rd-hue, var(--alert-c)) calc(var(--al) * 100%), var(--secondary-text-color)); }
   .rd .c { font-size: 12px; line-height: 15px; font-weight: 500; letter-spacing: -0.002em; color: var(--secondary-text-color); white-space: nowrap; }

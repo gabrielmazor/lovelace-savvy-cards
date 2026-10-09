@@ -33,7 +33,7 @@ const STYLE = `${BASE_CSS}
   :host([data-compact]) ha-card { --pad: 12px; gap: 8px; }
   ha-card > * { position: relative; }
   .head { display: flex; align-items: center; gap: 10px; min-height: 28px; }
-  .head .t { flex: 1; min-width: 0; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .head .t { flex: 1; min-width: 0; font-size: 16px; line-height: 21px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sub { font-size: 12.5px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); margin-top: -6px; }
   .filters { display: flex; gap: 6px; overflow-x: auto; overscroll-behavior-x: contain; touch-action: pan-x pan-y; scrollbar-width: none; padding: 3px; margin: -3px; }
   .filters::-webkit-scrollbar { display: none; }

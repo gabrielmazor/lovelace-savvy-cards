@@ -23,7 +23,7 @@ const STYLE = `${BASE_CSS}
   :host([compact]) .disc ha-icon { --mdc-icon-size: 16px; }
   .disc[data-warn] { background: color-mix(in oklab, var(--lvl-warn) var(--mix-alert), transparent); color: var(--lvl-warn); }
   .col { min-width: 0; display: flex; flex-direction: column; }
-  .name { font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .name { font-size: 16px; line-height: 21px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sub { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); overflow-wrap: anywhere; }
   .sub[data-warn] { color: var(--lvl-warn, #E0A030); }
   :host([compact]) .col { flex-direction: row; align-items: baseline; gap: 10px; flex: 1; }

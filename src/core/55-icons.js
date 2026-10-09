@@ -140,13 +140,55 @@ function fallbackIcon(domain, dc, state, st) {
   }
 }
 
+// An icon someone chose is usually one half of a pair: a switch named mdi:light-switch still says
+// "on" when it is off. Their icon stays, only its state flips to match. [on or open, off or closed];
+// the first pair for an icon is the one it turns into.
+const ICON_PAIRS = [
+  ["lightbulb", "lightbulb-off"], ["lightbulb-outline", "lightbulb-off-outline"], ["lightbulb-on", "lightbulb-off"],
+  ["lightbulb-on-outline", "lightbulb-off-outline"], ["lightbulb-group", "lightbulb-group-off"], ["lightbulb-group-outline", "lightbulb-group-off-outline"],
+  ["light-switch", "light-switch-off"], ["toggle-switch", "toggle-switch-off"], ["toggle-switch-outline", "toggle-switch-off-outline"],
+  ["toggle-switch-variant", "toggle-switch-variant-off"], ["power-plug", "power-plug-off"], ["power-plug-outline", "power-plug-off-outline"],
+  ["spotlight-beam", "spotlight"], ["string-lights", "string-lights-off"], ["led-strip-variant", "led-strip-variant-off"],
+  ["fan", "fan-off"], ["television", "television-off"], ["speaker", "speaker-off"], ["audio-video", "audio-video-off"], ["cast", "cast-off"],
+  ["cast-connected", "cast-off"], ["monitor", "monitor-off"], ["bell", "bell-off"], ["bell-outline", "bell-off-outline"], ["bell-ring", "bell-off"],
+  ["alarm", "alarm-off"], ["motion-sensor", "motion-sensor-off"], ["radiator", "radiator-off"], ["fire", "fire-off"], ["water", "water-off"],
+  ["water-pump", "water-pump-off"], ["water-boiler", "water-boiler-off"], ["air-humidifier", "air-humidifier-off"], ["wifi", "wifi-off"],
+  ["microphone", "microphone-off"], ["volume-high", "volume-off"], ["music-note", "music-note-off"], ["video", "video-off"], ["camera", "camera-off"],
+  ["robot", "robot-off"], ["sync", "sync-off"], ["flash", "flash-off"], ["eye", "eye-off"], ["leak", "leak-off"], ["shield", "shield-off"],
+  ["lock-open", "lock"], ["lock-open-variant", "lock"], ["lock-open-outline", "lock-outline"], ["lock-open-variant-outline", "lock-outline"],
+  ["door-open", "door-closed"], ["garage-open", "garage"], ["garage-open-variant", "garage-variant"], ["gate-open", "gate"],
+  ["window-open", "window-closed"], ["window-open-variant", "window-closed-variant"], ["blinds-open", "blinds"], ["curtains", "curtains-closed"],
+  ["window-shutter-open", "window-shutter"], ["valve-open", "valve-closed"],
+];
+const ICON_TO_OFF = new Map(), ICON_TO_ON = new Map();
+for (const [on, off] of ICON_PAIRS) {
+  if (!ICON_TO_OFF.has(`mdi:${on}`)) ICON_TO_OFF.set(`mdi:${on}`, `mdi:${off}`);
+  if (!ICON_TO_ON.has(`mdi:${off}`)) ICON_TO_ON.set(`mdi:${off}`, `mdi:${on}`);
+}
+const OPEN_DOMAINS = new Set(["cover", "valve", "lock"]);
+// true when the entity is on (or open, or unlocked), false when off (closed, locked), null when it is neither
+function iconSide(st) {
+  if (!st) return null;
+  const s = st.state, domain = domainOf(st.entity_id || "");
+  if (s === "unavailable" || s === "unknown") return null;
+  if (domain === "lock") return s === "locked" ? false : ["unlocked", "open", "opening", "unlocking"].includes(s) ? true : null;
+  if (OPEN_DOMAINS.has(domain)) return ["open", "opening"].includes(s) ? true : ["closed", "closing"].includes(s) ? false : null;
+  if (domain === "media_player") return !["off", "standby"].includes(s);
+  return s === "on" ? true : s === "off" ? false : null;
+}
+function iconForState(icon, st) {
+  const side = iconSide(st);
+  if (side == null || typeof icon !== "string") return icon;
+  return (side ? ICON_TO_ON : ICON_TO_OFF).get(icon) || icon;
+}
+
 // The icon for an entity, by id and state.
 function entityIcon(hass, id, st) {
   st = st || hass?.states?.[id];
   const own = st?.attributes?.icon;
-  if (own) return own;
+  if (own) return iconForState(own, st);
   const reg = hass?.entities?.[id]?.icon;
-  if (reg) return reg;
+  if (reg) return iconForState(reg, st);
   return fallbackIcon(domainOf(id), st?.attributes?.device_class, st?.state, st);
 }
 

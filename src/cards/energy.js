@@ -30,7 +30,7 @@ const STYLE = `${BASE_CSS}
   :host([data-compact]) ha-card { --pad: 12px; gap: 8px; }
   ha-card > * { position: relative; }
   .head { display: flex; align-items: center; gap: 10px; min-height: 28px; }
-  .head .t { flex: 1; min-width: 0; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .head .t { flex: 1; min-width: 0; font-size: 16px; line-height: 21px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .live { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 10px 0 7px; border-radius: 12px; white-space: nowrap; --mdc-icon-size: 15px;
     font-size: 12px; font-weight: 650; color: rgb(var(--warn-rgb)); background: color-mix(in oklab, rgb(var(--warn-rgb)) var(--mix-on), transparent); }
   .live ha-icon { display: flex; }
@@ -41,7 +41,7 @@ const STYLE = `${BASE_CSS}
   .big { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; min-width: 0; }
   .big .kwh { font-size: 30px; line-height: 34px; font-weight: 650; letter-spacing: -0.03em; }
   .big .kwh small { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: var(--secondary-text-color); margin-inline-start: 3px; }
-  .big .cost { font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -0.015em; color: var(--secondary-text-color); }
+  .big .cost { font-size: 16px; line-height: 21px; font-weight: 600; letter-spacing: -0.015em; color: var(--secondary-text-color); }
   .delta { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 12px; font-size: 12px; font-weight: 650; white-space: nowrap;
     color: var(--secondary-text-color); background: var(--well); }
   .delta[data-dir="up"] { color: rgb(var(--warn-rgb)); background: color-mix(in oklab, rgb(var(--warn-rgb)) var(--mix-on), transparent); }

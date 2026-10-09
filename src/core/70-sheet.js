@@ -17,7 +17,7 @@ const LIST_CSS = `
   .sv-row[data-alert] .sv-ic { color: rgb(var(--bad-rgb)); background: color-mix(in oklab, rgb(var(--bad-rgb)) var(--mix-alert), transparent); }
   .sv-row[data-alert] .sv-val { color: rgb(var(--bad-rgb)); }
   .sv-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .sv-name { font-size: 15px; line-height: 19px; font-weight: 560; letter-spacing: -0.012em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sv-name { font-size: 14px; line-height: 18px; font-weight: 560; letter-spacing: -0.012em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sv-sub { font-size: 12.5px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sv-sub:empty { display: none; }
   .sv-val { flex: none; font-size: 13px; font-weight: 600; color: var(--secondary-text-color); }
@@ -70,7 +70,7 @@ const SHEET_CSS = `
   .sv-title[data-link] { cursor: pointer; border-radius: 8px; }
   .sv-title[data-link]::after { content: "\\203A"; margin-inline-start: 6px; opacity: 0.45; font-weight: 500; }
   @media (hover: hover) { .sv-title[data-link]:hover { opacity: 0.8; } }
-  .sv-title { flex: 1; min-width: 0; font-size: 20px; line-height: 25px; font-weight: 640; letter-spacing: -0.026em;
+  .sv-title { flex: 1; min-width: 0; font-size: 18px; line-height: 23px; font-weight: 640; letter-spacing: -0.026em;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sv-close { width: var(--c-s); height: var(--c-s); border-radius: 11px; display: grid; place-items: center;
     background: var(--well); --mdc-icon-size: 18px; flex: none; }

@@ -6,7 +6,7 @@ if (window.__SAVVY_TEST__) {
   window.__savvy = {
     Spring, Clock, MOTION, Motion, attr, text, put, place, norm, title, modeLook, MODE_DICTIONARY, colorOf,
     healthSummary, healthOptions, startupInfo, entryStore, dismissStore, ensureDismissed, resetDismissed, dismissAdd, dismissRestore, isAdminUser, adminOnlyItems, hiddenFromUser, refreshConfigEntries, resetConfigEntries, areaEntities, houseEntities, pick, rankBy, entityArea, shortName, asItems,
-    isActive, isOff, runAction, defaultTapAction, toggleEntity, bindPress, bindActions,
+    isActive, isOff, iconForState, runAction, defaultTapAction, toggleEntity, bindPress, bindActions,
     duration, since, relativeTime, axisLabel, momentLabel, fmtNumber, withUnit, isTimestamp,
     fetchHistory, fetchRange, fetchAttributeHistory, resample, seriesStats, stateRuns, numericPoints, linePath,
     entityIcon, fallbackIcon, NEUTRAL_ICON, offLast, Sheet, EntityListSheet, SavvyEditor, defineEditor, S, version: SAVVY_VERSION,

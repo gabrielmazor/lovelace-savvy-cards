@@ -219,6 +219,8 @@
         turn_off: (id) => later(300, () => patch(id, { state: "off", attributes: hold(id) })),
         toggle: (id) => (get(id).state === "off" ? SERVICES.media_player.turn_on(id) : SERVICES.media_player.turn_off(id)),
       },
+      // an LG TV switches where its sound goes
+      webostv: { select_sound_output: (id, d) => later(250, () => patch(id, { attributes: { sound_output: d.sound_output } })) },
       lock: {
         lock: (id) => { later(80, () => patch(id, { state: "locking" })); later(900, () => patch(id, { state: "locked", attributes: { changed_by: "Demo" } })); },
         unlock: (id) => { later(80, () => patch(id, { state: "unlocking" })); later(900, () => patch(id, { state: "unlocked", attributes: { changed_by: "Demo" } })); },

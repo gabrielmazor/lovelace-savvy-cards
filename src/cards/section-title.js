@@ -33,9 +33,9 @@ const STYLE = `${BASE_CSS}
     padding: 2px 4px; margin: -2px -4px; border-radius: 9px; transform-origin: 0 50%; cursor: default; }
   .title[data-act] { cursor: pointer; }
   .title ha-icon { --mdc-icon-size: 20px; flex: none; display: flex; color: var(--secondary-text-color); }
-  .title .n { min-width: 0; font-size: 20px; line-height: 26px; font-weight: 650; letter-spacing: -0.022em;
+  .title .n { min-width: 0; font-size: 18px; line-height: 24px; font-weight: 650; letter-spacing: -0.022em;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  ha-card[data-style="subtitle"] .title .n { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.014em; }
+  ha-card[data-style="subtitle"] .title .n { font-size: 14px; line-height: 19px; font-weight: 600; letter-spacing: -0.014em; }
   ha-card[data-style="subtitle"] .title ha-icon { --mdc-icon-size: 17px; }
 
   /* the mode chip: the overview pill, compressed to one line */

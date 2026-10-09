@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.20.0 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.20.1 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.20.0";
+const SAVVY_VERSION = "0.20.1";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -1856,13 +1856,55 @@ function fallbackIcon(domain, dc, state, st) {
   }
 }
 
+// An icon someone chose is usually one half of a pair: a switch named mdi:light-switch still says
+// "on" when it is off. Their icon stays, only its state flips to match. [on or open, off or closed];
+// the first pair for an icon is the one it turns into.
+const ICON_PAIRS = [
+  ["lightbulb", "lightbulb-off"], ["lightbulb-outline", "lightbulb-off-outline"], ["lightbulb-on", "lightbulb-off"],
+  ["lightbulb-on-outline", "lightbulb-off-outline"], ["lightbulb-group", "lightbulb-group-off"], ["lightbulb-group-outline", "lightbulb-group-off-outline"],
+  ["light-switch", "light-switch-off"], ["toggle-switch", "toggle-switch-off"], ["toggle-switch-outline", "toggle-switch-off-outline"],
+  ["toggle-switch-variant", "toggle-switch-variant-off"], ["power-plug", "power-plug-off"], ["power-plug-outline", "power-plug-off-outline"],
+  ["spotlight-beam", "spotlight"], ["string-lights", "string-lights-off"], ["led-strip-variant", "led-strip-variant-off"],
+  ["fan", "fan-off"], ["television", "television-off"], ["speaker", "speaker-off"], ["audio-video", "audio-video-off"], ["cast", "cast-off"],
+  ["cast-connected", "cast-off"], ["monitor", "monitor-off"], ["bell", "bell-off"], ["bell-outline", "bell-off-outline"], ["bell-ring", "bell-off"],
+  ["alarm", "alarm-off"], ["motion-sensor", "motion-sensor-off"], ["radiator", "radiator-off"], ["fire", "fire-off"], ["water", "water-off"],
+  ["water-pump", "water-pump-off"], ["water-boiler", "water-boiler-off"], ["air-humidifier", "air-humidifier-off"], ["wifi", "wifi-off"],
+  ["microphone", "microphone-off"], ["volume-high", "volume-off"], ["music-note", "music-note-off"], ["video", "video-off"], ["camera", "camera-off"],
+  ["robot", "robot-off"], ["sync", "sync-off"], ["flash", "flash-off"], ["eye", "eye-off"], ["leak", "leak-off"], ["shield", "shield-off"],
+  ["lock-open", "lock"], ["lock-open-variant", "lock"], ["lock-open-outline", "lock-outline"], ["lock-open-variant-outline", "lock-outline"],
+  ["door-open", "door-closed"], ["garage-open", "garage"], ["garage-open-variant", "garage-variant"], ["gate-open", "gate"],
+  ["window-open", "window-closed"], ["window-open-variant", "window-closed-variant"], ["blinds-open", "blinds"], ["curtains", "curtains-closed"],
+  ["window-shutter-open", "window-shutter"], ["valve-open", "valve-closed"],
+];
+const ICON_TO_OFF = new Map(), ICON_TO_ON = new Map();
+for (const [on, off] of ICON_PAIRS) {
+  if (!ICON_TO_OFF.has(`mdi:${on}`)) ICON_TO_OFF.set(`mdi:${on}`, `mdi:${off}`);
+  if (!ICON_TO_ON.has(`mdi:${off}`)) ICON_TO_ON.set(`mdi:${off}`, `mdi:${on}`);
+}
+const OPEN_DOMAINS = new Set(["cover", "valve", "lock"]);
+// true when the entity is on (or open, or unlocked), false when off (closed, locked), null when it is neither
+function iconSide(st) {
+  if (!st) return null;
+  const s = st.state, domain = domainOf(st.entity_id || "");
+  if (s === "unavailable" || s === "unknown") return null;
+  if (domain === "lock") return s === "locked" ? false : ["unlocked", "open", "opening", "unlocking"].includes(s) ? true : null;
+  if (OPEN_DOMAINS.has(domain)) return ["open", "opening"].includes(s) ? true : ["closed", "closing"].includes(s) ? false : null;
+  if (domain === "media_player") return !["off", "standby"].includes(s);
+  return s === "on" ? true : s === "off" ? false : null;
+}
+function iconForState(icon, st) {
+  const side = iconSide(st);
+  if (side == null || typeof icon !== "string") return icon;
+  return (side ? ICON_TO_ON : ICON_TO_OFF).get(icon) || icon;
+}
+
 // The icon for an entity, by id and state.
 function entityIcon(hass, id, st) {
   st = st || hass?.states?.[id];
   const own = st?.attributes?.icon;
-  if (own) return own;
+  if (own) return iconForState(own, st);
   const reg = hass?.entities?.[id]?.icon;
-  if (reg) return reg;
+  if (reg) return iconForState(reg, st);
   return fallbackIcon(domainOf(id), st?.attributes?.device_class, st?.state, st);
 }
 
@@ -2541,7 +2583,7 @@ const LIST_CSS = `
   .sv-row[data-alert] .sv-ic { color: rgb(var(--bad-rgb)); background: color-mix(in oklab, rgb(var(--bad-rgb)) var(--mix-alert), transparent); }
   .sv-row[data-alert] .sv-val { color: rgb(var(--bad-rgb)); }
   .sv-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .sv-name { font-size: 15px; line-height: 19px; font-weight: 560; letter-spacing: -0.012em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sv-name { font-size: 14px; line-height: 18px; font-weight: 560; letter-spacing: -0.012em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sv-sub { font-size: 12.5px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sv-sub:empty { display: none; }
   .sv-val { flex: none; font-size: 13px; font-weight: 600; color: var(--secondary-text-color); }
@@ -2594,7 +2636,7 @@ const SHEET_CSS = `
   .sv-title[data-link] { cursor: pointer; border-radius: 8px; }
   .sv-title[data-link]::after { content: "\\203A"; margin-inline-start: 6px; opacity: 0.45; font-weight: 500; }
   @media (hover: hover) { .sv-title[data-link]:hover { opacity: 0.8; } }
-  .sv-title { flex: 1; min-width: 0; font-size: 20px; line-height: 25px; font-weight: 640; letter-spacing: -0.026em;
+  .sv-title { flex: 1; min-width: 0; font-size: 18px; line-height: 23px; font-weight: 640; letter-spacing: -0.026em;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sv-close { width: var(--c-s); height: var(--c-s); border-radius: 11px; display: grid; place-items: center;
     background: var(--well); --mdc-icon-size: 18px; flex: none; }
@@ -4542,6 +4584,7 @@ class ModePicker {
     this.el.toggleAttribute("data-matte", this.host?._config?.design === "matte");
     this.el.toggleAttribute("dark", !!this.host?.hasAttribute?.("dark"));
     portalRoot().append(this.scrim, this.el);
+    this.maxCols = info.columns || 4;      // longer words ask for fewer columns
     this.render(info, caption);
     this.place(anchor, bounds);
     this.returnTo = anchor;
@@ -4578,8 +4621,9 @@ class ModePicker {
     put(this.el, "width", `${Math.round(width)}px`);
     put(this.el, "left", `${Math.round(left)}px`);
     put(this.el, "--ox", `${Math.round(a.left + a.width / 2 - left)}px`);
-    this.el.toggleAttribute("data-wide", width >= 330 && width < 450);
-    this.el.toggleAttribute("data-wider", width >= 450);
+    const cols = this.maxCols || 4;
+    this.el.toggleAttribute("data-wide", cols >= 3 && width >= 330 && (width < 450 || cols === 3));
+    this.el.toggleAttribute("data-wider", cols >= 4 && width >= 450);
     const h = this.el.getBoundingClientRect().height;
     const up = a.bottom + 6 + h > window.innerHeight - 8 && a.top - 6 - h > 8;
     this.el.toggleAttribute("data-up", up);
@@ -4840,6 +4884,9 @@ const HEADER_CSS = `
     background: transparent; color: var(--secondary-text-color); }
   @media (hover: hover) { .glyph:hover, .wx:hover { background: var(--well); } }
   .glyph ha-icon { --mdc-icon-size: 19px; display: flex; }
+  /* the home button sits in the chips' icon column: same size, same left edge as the chip icons under it */
+  #home { margin-inline-start: -2px; }
+  #home ha-icon { --mdc-icon-size: 20px; }
   .glyph[data-loading] ha-icon { animation: sv-spin 1s linear infinite; transform-origin: 50% 50%; }
   :host([data-still]) .glyph[data-loading] ha-icon { animation: none; }
   @keyframes sv-spin { to { transform: rotate(360deg); } }
@@ -4855,13 +4902,13 @@ const HEADER_CSS = `
   .pill .col { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; }
   .pill .pre { font-size: 12.5px; line-height: 16px; font-weight: 500; letter-spacing: -0.004em; color: var(--secondary-text-color); white-space: nowrap; }
   .pill .swap { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
-  .pill .val { font-size: 22px; line-height: 27px; font-weight: 650; letter-spacing: -0.03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pill .val { font-size: 20px; line-height: 25px; font-weight: 650; letter-spacing: -0.03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .spacer { flex: 1; }
   /* a readout, not a panel */
   .wx { flex: none; display: flex; align-items: center; gap: 5px; height: var(--c-l); padding: 0 10px 0 8px; border-radius: 13px;
     background: transparent; color: var(--secondary-text-color); }
   .wx ha-icon, .wx savvy-state-icon { --mdc-icon-size: 19px; display: flex; }
-  .wx .deg { font-size: 15px; line-height: 19px; font-weight: 600; letter-spacing: -0.012em; color: var(--primary-text-color); }
+  .wx .deg { font-size: 14px; line-height: 19px; font-weight: 600; letter-spacing: -0.012em; color: var(--primary-text-color); }
   :host([kbd]) :focus-visible { outline-color: color-mix(in oklab, var(--mode) 80%, var(--primary-text-color)); }
 `;
 
@@ -4879,7 +4926,7 @@ const CHIP_ROW_CSS = `
     background: transparent; color: var(--tc); }
   .chip .disc ha-icon, .chip .disc savvy-state-icon { --mdc-icon-size: 20px; display: flex; }
   .chip .col { display: flex; flex-direction: column; }
-  .chip .v { font-size: 15px; line-height: 19px; font-weight: 600; letter-spacing: -0.014em; white-space: nowrap; }
+  .chip .v { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.014em; white-space: nowrap; }
   .chip .k { font-size: 12px; line-height: 15px; font-weight: 500; letter-spacing: -0.002em; color: var(--secondary-text-color); white-space: nowrap; }
   @media (hover: hover) { .chips:not(.nav) .chip:hover { background: var(--well); } }
   .chips[data-icon-only] { gap: 4px; }
@@ -4926,7 +4973,7 @@ SavvyCard.prototype._chipRowNow = function (row, items, { iconOnly = false } = {
     Motion.fadeTo(node.querySelector(".body"), item.dim ? (MQ.contrast.matches ? 0.7 : 0.45) : 1);
     if (wantState) {
       if (node.__icon.stateObj !== item.stateObj) { node.__icon.hass = this._hass; node.__icon.stateObj = item.stateObj; }
-    } else attr(node.__icon, "icon", item.icon);
+    } else attr(node.__icon, "icon", iconForState(item.icon, item.stateObj));
     const col = node.querySelector(".col");
     col.hidden = iconOnly;
     text(node.querySelector(".v"), item.value ?? "");
@@ -5013,7 +5060,7 @@ const TITLE_CSS = `
     transition: color 160ms ease; }
   @media (hover: hover) { [data-tlink]:hover { color: color-mix(in oklab, rgb(var(--accent, 88 142 233)) 82%, var(--primary-text-color)); } }
   :host([kbd]) [data-tlink]:focus-visible { box-shadow: 0 0 0 2px rgb(var(--accent, 88 142 233)); }
-  .sv-ttl { display: flex; min-width: 0; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; color: var(--primary-text-color); }
+  .sv-ttl { display: flex; min-width: 0; font-size: 16px; line-height: 21px; font-weight: 620; letter-spacing: -0.021em; color: var(--primary-text-color); }
   .sv-ttl-t { display: block; min-width: 0; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 `;
 
@@ -6181,7 +6228,7 @@ if (window.__SAVVY_TEST__) {
   window.__savvy = {
     Spring, Clock, MOTION, Motion, attr, text, put, place, norm, title, modeLook, MODE_DICTIONARY, colorOf,
     healthSummary, healthOptions, startupInfo, entryStore, dismissStore, ensureDismissed, resetDismissed, dismissAdd, dismissRestore, isAdminUser, adminOnlyItems, hiddenFromUser, refreshConfigEntries, resetConfigEntries, areaEntities, houseEntities, pick, rankBy, entityArea, shortName, asItems,
-    isActive, isOff, runAction, defaultTapAction, toggleEntity, bindPress, bindActions,
+    isActive, isOff, iconForState, runAction, defaultTapAction, toggleEntity, bindPress, bindActions,
     duration, since, relativeTime, axisLabel, momentLabel, fmtNumber, withUnit, isTimestamp,
     fetchHistory, fetchRange, fetchAttributeHistory, resample, seriesStats, stateRuns, numericPoints, linePath,
     entityIcon, fallbackIcon, NEUTRAL_ICON, offLast, Sheet, EntityListSheet, SavvyEditor, defineEditor, S, version: SAVVY_VERSION,
@@ -6377,7 +6424,7 @@ ${DESIGN_CSS}
   pointer-events: none;
 }
 .who { flex: 1; min-width: 0; display: flex; flex-direction: column; text-shadow: 0 1px 2px rgb(0 0 0 / 0.4); }
-.who b { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.who b { font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .who span { font-size: 12px; line-height: 16px; font-weight: 500; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 :host(:not([grid])) .tile[data-playing] .bot-row { display: none; }
 .dots { position: absolute; left: 50%; top: 19px; transform: translateX(-50%); display: flex; gap: 5px; pointer-events: none; }
@@ -6449,7 +6496,7 @@ ${DESIGN_CSS}
   --mdc-icon-size: 20px; color: var(--primary-text-color); transform-origin: 50% 50%;
 }
 .step[disabled] { opacity: 0.3; cursor: default; }
-.dayname { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; min-width: 0; white-space: nowrap; }
+.dayname { font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; min-width: 0; white-space: nowrap; }
 .daysum { flex: 1; text-align: end; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .tl { position: relative; height: 44px; cursor: pointer; touch-action: none; border-radius: 11px; background: var(--well); outline-offset: 2px; }
@@ -8370,7 +8417,7 @@ const STYLE = `
   header { display: flex; align-items: flex-start; gap: 12px; }
   .titles { flex: 1; min-width: 0; }
   .name {
-    display: block; font-size: 17px; line-height: 22px; font-weight: 620;
+    display: block; font-size: 16px; line-height: 21px; font-weight: 620;
     letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .status {
@@ -8396,7 +8443,7 @@ const STYLE = `
   ha-card[data-glass] .hero, ha-card[data-matte] .hero { --lx: 50%; --ly: 55%; }   /* the light comes from the number, now in the middle */
   .readout { flex: 1; min-width: 0; display: flex; align-items: flex-start; justify-content: center; order: 1; }
   .value {
-    font-size: 76px; line-height: 1; font-weight: 250; letter-spacing: -0.055em;
+    font-size: 66px; line-height: 1; font-weight: 250; letter-spacing: -0.055em;
     color: var(--primary-text-color);
   }
   .unit {
@@ -8504,7 +8551,7 @@ const STYLE = `
   .page.history { padding-bottom: 10px; }
   .legend { display: flex; gap: 8px; align-items: flex-start; }
   .key { display: flex; flex-direction: column; gap: 1px; min-width: 0; padding: 0 2px; }
-  .key .v { font-size: 17px; line-height: 21px; font-weight: 600; letter-spacing: -0.02em; color: var(--kc); }
+  .key .v { font-size: 16px; line-height: 20px; font-weight: 600; letter-spacing: -0.02em; color: var(--kc); }
   .key .k { display: flex; align-items: center; gap: 5px; font-size: 11px; line-height: 14px;
     font-weight: 550; letter-spacing: 0.008em; color: var(--secondary-text-color);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -8601,6 +8648,22 @@ const STYLE = `
 const minutesLabel = (m) => (m < 60 ? `${m} min` : m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : m === 60 ? "1 hour" : `${m / 60} hours`);
 const durationText = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}:00`;
 
+// a fan speed as words and an icon: "medium" reads Medium, with the fan's middle speed
+const fanModeLabel = (m) => { const t = String(m).replace(/[_-]+/g, " ").trim(); return t.charAt(0).toUpperCase() + t.slice(1); };
+function fanModeIcon(m) {
+  const k = String(m).toLowerCase();
+  if (k === "off") return "mdi:fan-off";
+  if (k.includes("auto")) return "mdi:fan-auto";
+  if (/quiet|silent|sleep|night|eco/.test(k)) return "mdi:fan-minus";
+  if (/turbo|max|boost|strong|power/.test(k)) return "mdi:fan-plus";
+  if (/med|mid/.test(k)) return "mdi:fan-speed-2";
+  if (/high/.test(k)) return "mdi:fan-speed-3";
+  if (/low|min/.test(k)) return "mdi:fan-speed-1";
+  const n = /(\d+)/.exec(k);
+  if (n) return `mdi:fan-speed-${Math.min(3, Math.max(1, Number(n[1])))}`;
+  return "mdi:fan";
+}
+
 class ClimateCard extends HTMLElement {
   static getConfigElement() { return document.createElement(EDITOR); }
   static getStubConfig(hass) {
@@ -8686,6 +8749,7 @@ class ClimateCard extends HTMLElement {
     clearInterval(this._tick);
     clearTimeout(this._sendTimer);
     this._timerPicker?.close();
+    this._fanPicker?.close();
   }
 
   getCardSize() { return this._compact ? 2 : 6; }
@@ -9171,6 +9235,21 @@ class ClimateCard extends HTMLElement {
     this._hass.callService("climate", "set_fan_mode", { fan_mode: next }, { entity_id: this._config.entity });
   }
 
+  // The fan button lists the unit's fan speeds, the current one marked; a pick sets it.
+  _fanMenu() {
+    const st = this._climate, modes = st?.attributes.fan_modes;
+    if (!modes?.length) return;
+    const chip = this._el.actions.__rows?.get("fan");
+    if (!chip) return this._cycleFan();
+    this._fanPicker = this._fanPicker || new ModePicker(this, { onPick: (id, v) => {
+      if (v === this._climate?.attributes.fan_mode) return;
+      this._hass.callService("climate", "set_fan_mode", { fan_mode: v }, { entity_id: id });
+    } });
+    const options = modes.map((m) => ({ value: m, label: fanModeLabel(m), icon: fanModeIcon(m), color: "#57B8FF" }));
+    this._haptic("light");
+    this._fanPicker.open(chip, this._el.card, { entity: this._config.entity, value: st.attributes.fan_mode, options }, "Fan");
+  }
+
   // The timer chip. Idle: a tap lists the durations and starts the timer helper with the one you pick.
   // Running: a tap offers +15 min, pause / resume and cancel. (An old `select` still steps its list.)
   _bumpTimer(t) {
@@ -9483,7 +9562,7 @@ class ClimateCard extends HTMLElement {
         key: "fan", icon: "mdi:fan", color: "#57B8FF",
         // the button sits among readouts, so it says what it is: "Fan auto", not a bare "Auto"
         label: st.attributes.fan_mode ? `Fan ${String(st.attributes.fan_mode).replace(/[_-]+/g, " ").toLowerCase()}` : "Fan",
-        on: false, tap: () => this._cycleFan(), hold: () => this._moreInfo(this._config.entity),
+        on: false, tap: () => this._fanMenu(), hold: () => this._moreInfo(this._config.entity),
       });
     }
     if (timer) {
@@ -10067,7 +10146,7 @@ const STYLE = `${BASE_CSS}${LIST_CSS}${ROWS_CSS}
   :host([data-compact]) ha-card { --pad: 12px; }
   ha-card > * { position: relative; }
   .head { display: flex; align-items: center; gap: 8px; min-height: 32px; }
-  .head .t { flex: 1; min-width: 0; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .head .t { flex: 1; min-width: 0; font-size: 16px; line-height: 21px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pill { flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 12px; white-space: nowrap;
     font-size: 12px; font-weight: 650; color: rgb(var(--tone)); background: color-mix(in oklab, rgb(var(--tone)) var(--mix-on), transparent); }
   .ctl { flex: none; display: grid; place-items: center; width: var(--c-s); height: var(--c-s); border-radius: 11px; background: var(--well); --mdc-icon-size: 18px; }
@@ -10257,7 +10336,7 @@ const STYLE = `${BASE_CSS}
   :host([data-compact]) ha-card { --pad: 12px; gap: 8px; }
   ha-card > * { position: relative; }
   .head { display: flex; align-items: center; gap: 10px; min-height: 28px; }
-  .head .t { flex: 1; min-width: 0; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .head .t { flex: 1; min-width: 0; font-size: 16px; line-height: 21px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .live { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 10px 0 7px; border-radius: 12px; white-space: nowrap; --mdc-icon-size: 15px;
     font-size: 12px; font-weight: 650; color: rgb(var(--warn-rgb)); background: color-mix(in oklab, rgb(var(--warn-rgb)) var(--mix-on), transparent); }
   .live ha-icon { display: flex; }
@@ -10268,7 +10347,7 @@ const STYLE = `${BASE_CSS}
   .big { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; min-width: 0; }
   .big .kwh { font-size: 30px; line-height: 34px; font-weight: 650; letter-spacing: -0.03em; }
   .big .kwh small { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: var(--secondary-text-color); margin-inline-start: 3px; }
-  .big .cost { font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -0.015em; color: var(--secondary-text-color); }
+  .big .cost { font-size: 16px; line-height: 21px; font-weight: 600; letter-spacing: -0.015em; color: var(--secondary-text-color); }
   .delta { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 12px; font-size: 12px; font-weight: 650; white-space: nowrap;
     color: var(--secondary-text-color); background: var(--well); }
   .delta[data-dir="up"] { color: rgb(var(--warn-rgb)); background: color-mix(in oklab, rgb(var(--warn-rgb)) var(--mix-on), transparent); }
@@ -10764,7 +10843,7 @@ const STYLE = `${BASE_CSS}
   .av > ha-icon, .av > savvy-state-icon, .av .zone ha-icon { display: flex; align-items: center; justify-content: center;
     width: var(--mdc-icon-size); height: var(--mdc-icon-size); line-height: 0; }
   .txt { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-  .name { font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .name { font-size: 16px; line-height: 21px; font-weight: 620; letter-spacing: -0.021em; min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .sub { display: flex; flex-wrap: wrap; column-gap: 4px; min-width: 0; font-size: 12.5px; line-height: 16px; font-weight: 500; letter-spacing: -0.005em;
     color: var(--secondary-text-color); }
   /* a long state wraps inside the card instead of running out of it; the time goes under it when there is no room */
@@ -11215,7 +11294,7 @@ const STYLE = `${BASE_CSS}${LIST_CSS}${ROWS_CSS}
   :host([data-compact]) ha-card { --pad: 12px; }
   ha-card > * { position: relative; }
   .head { display: flex; align-items: center; gap: 8px; min-height: 32px; }
-  .head .t { flex: 1; min-width: 0; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .head .t { flex: 1; min-width: 0; font-size: 16px; line-height: 21px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pill { flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 12px; white-space: nowrap;
     font-size: 12px; font-weight: 650; color: rgb(var(--tone)); background: color-mix(in oklab, rgb(var(--tone)) var(--mix-on), transparent); }
   .pill[data-off] { color: var(--secondary-text-color); background: var(--well); }
@@ -11428,7 +11507,7 @@ function scaleColor(scale, v) {
 const STYLE = `${BASE_CSS}
   ha-card { display: flex; flex-direction: column; gap: 10px; padding: var(--pad); }
   .head { display: flex; align-items: center; gap: 8px; min-width: 0; }
-  .head .ht { flex: 1; min-width: 0; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .head .ht { flex: 1; min-width: 0; font-size: 16px; line-height: 21px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ranges { position: relative; flex: none; display: flex; gap: 2px; padding: 3px; border-radius: 11px; background: var(--well); }
   .ranges .sel { position: absolute; top: 3px; bottom: 3px; left: 0; border-radius: 8px; pointer-events: none;
     background: var(--ha-card-background, var(--card-background-color)); box-shadow: 0 1px 3px rgb(0 0 0 / 0.14), 0 0 0 0.5px rgb(0 0 0 / 0.04); }
@@ -12424,7 +12503,7 @@ const STYLE = `${BASE_CSS}
   :host([data-compact]) ha-card { --pad: 12px; gap: 8px; }
   ha-card > * { position: relative; }
   .head { display: flex; align-items: center; gap: 10px; min-height: 28px; }
-  .head .t { flex: 1; min-width: 0; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .head .t { flex: 1; min-width: 0; font-size: 16px; line-height: 21px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pill { flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 12px; white-space: nowrap;
     font-size: 12px; font-weight: 650; color: rgb(var(--tone)); background: color-mix(in oklab, rgb(var(--tone)) var(--mix-on), transparent); }
   .list { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -13040,7 +13119,7 @@ ha-card {
 /* ---- header: the room, how many are on, and the room's pill ---- */
 header { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 2px 2px 0; }
 .titles { flex: 1; min-width: 0; }
-.name { display: block; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em;
+.name { display: block; font-size: 16px; line-height: 21px; font-weight: 620; letter-spacing: -0.021em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .count { display: block; font-size: 13px; line-height: 18px; font-weight: 500; letter-spacing: -0.004em;
   color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -13062,8 +13141,8 @@ header { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 2
 
 .light {
   position: relative; overflow: hidden; isolation: isolate;
-  display: grid; grid-template-columns: var(--b-m) minmax(0, 1fr) auto; align-items: center; column-gap: 10px;
-  min-height: 60px; padding: 0 12px 0 10px; border-radius: 16px;
+  display: grid; grid-template-columns: var(--b-s) minmax(0, 1fr) auto; align-items: center; column-gap: 8px;
+  min-height: 56px; padding: 0 8px 0 12px; border-radius: 16px;
   background: var(--well); cursor: pointer; touch-action: pan-y;
   --lit-text: rgb(var(--lc, var(--amber)));
 }
@@ -13081,28 +13160,29 @@ header { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 2
 .lvl {
   position: absolute; inset: 0; z-index: -1; pointer-events: none;
   background: linear-gradient(90deg, rgb(var(--lc, var(--amber)) / var(--lvl-a0)), rgb(var(--lc, var(--amber)) / var(--lvl-a1)));
-  box-shadow: inset -2px 0 0 rgb(var(--lc, var(--amber)) / var(--lvl-edge));
+  /* the edge line fades out near either end, where the row's rounded corner would clip it into a sliver */
+  box-shadow: inset -2px 0 0 rgb(var(--lc, var(--amber)) / calc(var(--lvl-edge) * clamp(0, min(var(--v, 0), 1 - var(--v, 0)) * 12, 1)));
   transform: translateX(calc((var(--v, 0) - 1) * 100%));
   mix-blend-mode: var(--lvl-blend);   /* on dark the level adds light instead of tinting the grey brown */
 }
 .orb {
-  flex: none; display: grid; place-items: center; width: var(--b-m); height: var(--b-m); border-radius: 50%;
+  flex: none; display: grid; place-items: center; width: var(--b-s); height: var(--b-s); border-radius: 50%;
   background: transparent; color: var(--secondary-text-color); pointer-events: none;
 }
 .orb[data-on] { color: var(--lit-text); }
 .orb ha-icon, .orb savvy-state-icon { --mdc-icon-size: 22px; display: flex; }
 .meta { min-width: 0; display: flex; align-items: center; gap: 4px; text-align: start; pointer-events: none; }
-.meta .n { min-width: 0; font-size: 15px; line-height: 20px; font-weight: 560; letter-spacing: -0.012em;
+.meta .n { min-width: 0; font-size: 14px; line-height: 18px; font-weight: 560; letter-spacing: -0.01em;
   color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .light[data-on] .meta .n { color: var(--primary-text-color); }
-.end { display: flex; align-items: center; gap: 2px; margin-inline-end: -4px; }
-.d { flex: none; min-width: 44px; padding-inline-end: 4px; text-align: end;
-  font-size: 15px; line-height: 20px; font-weight: 500; letter-spacing: -0.01em; color: var(--secondary-text-color);
+.end { display: flex; align-items: center; gap: 0; }
+.d { flex: none; min-width: 34px; padding-inline-end: 4px; text-align: end;
+  font-size: 13px; line-height: 18px; font-weight: 500; letter-spacing: -0.004em; color: var(--secondary-text-color);
   white-space: nowrap; pointer-events: none; }
 .light[data-on] .d { color: var(--primary-text-color); }
-.light[data-on] .d[data-num] { font-size: 19px; font-weight: 400; letter-spacing: -0.03em; }
+.light[data-on] .d[data-num] { font-size: 15px; font-weight: 500; letter-spacing: -0.02em; }
 .swatch {
-  flex: none; display: grid; place-items: center; width: var(--c-s); height: var(--c-s); border-radius: 11px;
+  flex: none; display: grid; place-items: center; width: 28px; height: var(--c-s); border-radius: 11px;
   background: transparent;
 }
 .swatch i {
@@ -13118,13 +13198,16 @@ header { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 2
 }
 .power[data-on] { color: var(--lit-text); }
 .power ha-icon { --mdc-icon-size: 18px; display: flex; }
-ha-card[data-glass] .light, ha-card[data-matte] .light { --lx: 28px; --ly: 50%; }   /* the middle of the icon: padding 10 + half the 36 orb */
+ha-card[data-glass] .light, ha-card[data-matte] .light { --lx: 26px; --ly: 50%; }   /* the middle of the icon: padding 12 + half the 28 orb */
+/* a lamp that only switches has no level to show: lit, it fills the row like one at full brightness */
+.light:not([data-dim]) .lvl { transition: transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+@media (prefers-reduced-motion: reduce) { .light .lvl { transition: none; } }
 /* ---- compact: the light, its name and its state, and nothing else ---- */
-ha-card[data-compact] .light { min-height: 46px; padding: 0 10px 0 8px; border-radius: 13px; --lx: 22px; }
+ha-card[data-compact] .light { grid-template-columns: var(--b-s) minmax(0, 1fr) auto; min-height: 46px; padding: 0 10px 0 8px; border-radius: 13px; --lx: 22px; }
 ha-card[data-compact] .orb { width: var(--b-s); height: var(--b-s); }
 ha-card[data-compact] .orb ha-icon, ha-card[data-compact] .orb savvy-state-icon { --mdc-icon-size: 18px; }
-ha-card[data-compact] .meta .n { font-size: 14px; line-height: 18px; }
-ha-card[data-compact] .d, ha-card[data-compact] .light[data-on] .d[data-num] { font-size: 13px; font-weight: 500; letter-spacing: -0.004em; min-width: 0; }
+ha-card[data-compact] .meta .n { font-size: 13.5px; line-height: 18px; }
+ha-card[data-compact] .d, ha-card[data-compact] .light[data-on] .d[data-num] { font-size: 12.5px; font-weight: 500; letter-spacing: -0.004em; min-width: 0; }
 ha-card[data-compact] .grid { gap: 4px; }
 
 /* ---- sliders ---- */
@@ -14065,8 +14148,10 @@ class LightsCard extends HTMLElement {
       attr(node, "aria-valuenow", Math.round(level * 100));
       attr(node, "aria-valuemin", "0");
       attr(node, "aria-valuemax", "100");
-    } else if (this._bars.has(key)) {
-      this._bars.get(key).value.to(0);
+    } else {
+      if (this._bars.has(key)) this._bars.get(key).value.to(0);
+      // a lamp that only switches (or a compact row): lit means full, so on reads at a glance
+      put(node, "--v", on && !dead ? "1" : "0");
     }
     // featured lights get the wider tile: the ones you reach for
     const wide = !this._compact && Number(this._config.columns) !== 1 && this._config.featured.includes(id);
@@ -14295,7 +14380,7 @@ const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_SLIDE_CSS}
   :host([data-compact]) ha-card { --pad: 12px; gap: 8px; }
   ha-card > * { position: relative; }
   .head { display: flex; align-items: center; gap: 10px; min-height: 30px; }
-  .head .t { flex: 1; min-width: 0; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .head .t { flex: 1; min-width: 0; font-size: 16px; line-height: 21px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sum { flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 12px; font-size: 12px; font-weight: 650;
     color: rgb(var(--lk)); background: rgb(var(--lk) / 0.12); white-space: nowrap; }
   .btn { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 11px; background: var(--well);
@@ -14313,7 +14398,7 @@ const STYLE = `${BASE_CSS}${CHIP_ROW_CSS}${LOCK_SLIDE_CSS}
   .disc > .dicon { display: flex; align-items: center; justify-content: center; line-height: 0; }
   .disc > .dicon > * { display: flex; }
   .col { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 5px; }
-  .nm { grid-column: 1 / -1; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nm { grid-column: 1 / -1; font-size: 14px; line-height: 19px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .st { font-size: 13px; line-height: 17px; font-weight: 600; color: var(--tone); white-space: nowrap; }
   :host([data-solo]) .disc { width: var(--b-l); height: var(--b-l); --mdc-icon-size: 22px; }
   .sub { font-size: 13px; line-height: 17px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -14942,6 +15027,16 @@ const ACTIVE = new Set(["playing", "buffering"]);
 const DEAD = new Set(["off", "unavailable", "unknown", "standby"]);
 const PLAYER_ICONS = { tv: "mdi:television", speaker: "mdi:speaker", receiver: "mdi:audio-video", game: "mdi:gamepad-variant", default: "mdi:cast-variant" };
 const AUDIO_CLASSES = new Set(["speaker", "receiver"]);
+// An LG TV (webOS) says where its sound goes in `sound_output` and takes webostv.select_sound_output.
+// The ones that stay in the TV keep the TV's own volume; the rest hand it to the sound output.
+const LG_SOUND = [
+  { value: "tv_speaker", label: "TV speaker", icon: "mdi:television", own: true },
+  { value: "external_arc", label: "HDMI ARC", icon: "mdi:audio-video" },
+  { value: "external_optical", label: "Optical", icon: "mdi:surround-sound" },
+  { value: "bt_soundbar", label: "Bluetooth", icon: "mdi:bluetooth-audio" },
+  { value: "tv_external_speaker", label: "TV + external", icon: "mdi:speaker-multiple", own: true },
+  { value: "headphone", label: "Headphones", icon: "mdi:headphones", own: true },
+];
 const mediaAction = (a, entity) => (a === "press" || a === "turn_on"
   ? { action: "perform-action", perform_action: `${domainOf(entity)}.${a}`, target: { entity_id: entity } } : asAction(a));
 
@@ -14953,19 +15048,19 @@ const STYLE = `${BASE_CSS}
   .art { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border: 0; object-fit: cover; }
   .veil { position: absolute; left: 0; right: 0; bottom: 0; height: 78px; background: linear-gradient(to top, rgb(0 0 0 / 0.74) 0%, rgb(0 0 0 / 0.42) 38%, rgb(0 0 0 / 0) 100%); }
   .caption { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 13px 11px; color: #fff; }
-  .stage .t { display: block; font-size: 15px; line-height: 19px; font-weight: 650; letter-spacing: -0.014em; text-shadow: 0 1px 3px rgb(0 0 0 / 0.42); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stage .t { display: block; font-size: 14.5px; line-height: 19px; font-weight: 650; letter-spacing: -0.014em; text-shadow: 0 1px 3px rgb(0 0 0 / 0.42); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .stage .s { display: block; font-size: 12.5px; line-height: 16px; font-weight: 500; opacity: 0.88; text-shadow: 0 1px 3px rgb(0 0 0 / 0.36); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .progress { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: rgb(255 255 255 / 0.2); }
   .progress i { display: block; height: 100%; background: #fff; transform-origin: 0 50%; }
   header { padding: var(--pad) var(--pad) 10px; }
-  .name { display: block; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .name { display: block; font-size: 16px; line-height: 21px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .body { display: flex; flex-direction: column; padding: var(--pad); gap: 10px; }
   .band { display: flex; flex-direction: column; gap: 9px; }
   .band + .band { padding-top: 10px; border-top: 1px solid var(--line); }
   /* the first visible band never gets a divider, even with a hidden one before it */
   .band[data-first] { padding-top: 0; border-top: 0; }
   .cap { font-size: 13px; line-height: 17px; font-weight: 600; letter-spacing: -0.006em; color: var(--secondary-text-color); margin-bottom: -2px; }
-  .row .when { flex: none; font-size: 15px; line-height: 19px; font-weight: 650; letter-spacing: -0.016em; }
+  .row .when { flex: none; font-size: 14px; line-height: 19px; font-weight: 650; letter-spacing: -0.016em; }
   .row .when[data-off] { color: var(--secondary-text-color); }
   /* the alarm isn't media: its own colour, so it never reads as a player */
   #alarmBand { --alarm: 232 163 61; }
@@ -14990,7 +15085,7 @@ const STYLE = `${BASE_CSS}
   .row .icon[data-live] { color: rgb(var(--accent)); }
   .row .icon ha-icon { --mdc-icon-size: 22px; display: flex; }
   .row .meta { flex: 1; min-width: 0; }
-  .row .n { display: block; font-size: 15px; line-height: 19px; font-weight: 580; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .n { display: block; font-size: 14px; line-height: 18px; font-weight: 580; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .row .d { display: block; font-size: 13px; line-height: 17px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .transport { flex: none; display: flex; align-items: center; gap: 4px; }
   .tb { display: grid; place-items: center; width: var(--c-s); height: var(--c-s); border-radius: 11px; color: var(--secondary-text-color); }
@@ -15005,6 +15100,14 @@ const STYLE = `${BASE_CSS}
   ha-card:is([data-glass], [data-matte]) .row { padding: 8px 10px; border-radius: 15px; background: color-mix(in oklab, var(--primary-text-color) 4%, transparent); }
   ha-card[data-glass] .row, ha-card[data-matte] .row { --lx: 28px; }
   .vol { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .via { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12.5px; line-height: 16px; font-weight: 550; color: var(--secondary-text-color); }
+  .via ha-icon { --mdc-icon-size: 16px; display: flex; color: rgb(var(--accent)); }
+  .via span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* a TV that can switch where its sound goes: the line is a button that lists the outputs */
+  button.via { align-self: flex-start; max-width: 100%; margin-inline-start: -8px; padding: 5px 8px; border-radius: 10px; color: var(--primary-text-color); }
+  button.via .chev { --mdc-icon-size: 16px; color: var(--secondary-text-color); }
+  @media (hover: hover) { button.via:hover { background: var(--well); } }
+  .via + .vol { margin-top: 4px; }
   .vol .bar { position: absolute; left: 0; right: 0; top: 50%; height: 5px; margin-top: -2.5px; border-radius: 99px; background: color-mix(in oklab, var(--primary-text-color) 10%, transparent); overflow: hidden; transform-origin: 50% 50%; }
   .vol .mute { flex: none; display: grid; place-items: center; width: 34px; height: 32px; border-radius: 10px; color: var(--secondary-text-color); }
   .vol .mute ha-icon { --mdc-icon-size: 19px; display: flex; }
@@ -15107,6 +15210,7 @@ class SavvyMediaCard extends SavvyCard {
     this._io?.disconnect();
     clearInterval(this._tick);
     for (const t of this._volTimers?.values() || []) clearTimeout(t);
+    this._soundPicker?.close();
   }
   getCardSize() { return this._compact ? 2 : this._config?.artwork ? 6 : 4; }
   getGridOptions() { return this._compact ? { columns: 12, min_columns: 6, rows: "auto" } : { columns: 12, min_columns: 6, rows: "auto" }; }
@@ -15141,7 +15245,8 @@ class SavvyMediaCard extends SavvyCard {
             </div>
             <div class="nowvol" id="nowVol"></div>
           </div>
-          <div class="band" id="audioBand" hidden><span class="cap" id="audioCap" hidden></span></div>
+          <div class="band" id="audioBand" hidden><span class="cap" id="audioCap" hidden></span>
+            <div class="segmented" id="speakers" hidden><span class="sel"></span></div></div>
           <div class="band" id="alarmBand" hidden>
             <div class="row">
               <button class="icon" id="alarmIcon"><ha-icon id="alarmGlyph"></ha-icon></button>
@@ -15169,12 +15274,14 @@ class SavvyMediaCard extends SavvyCard {
     this._el = { card: root.querySelector("ha-card"), header: $("header"), title: $("title"), stage: $("stage"), art: $("art"), thumb: $("thumb"), nowGlyph: $("nowGlyph"),
       stageT: $("stageT"), stageS: $("stageS"), progress: $("progress"), progressFill: $("progressFill"), videoBand: $("videoBand"), sources: $("sources"),
       nowRow: $("nowRow"), nowIcon: $("nowIcon"), nowName: $("nowName"), nowSub: $("nowSub"), nowTransport: $("nowTransport"), nowVol: $("nowVol"),
-      audioBand: $("audioBand"), videoCap: $("videoCap"), audioCap: $("audioCap"), alarmBand: $("alarmBand"), alarmIcon: $("alarmIcon"), alarmGlyph: $("alarmGlyph"),
+      audioBand: $("audioBand"), speakers: $("speakers"), videoCap: $("videoCap"), audioCap: $("audioCap"), alarmBand: $("alarmBand"), alarmIcon: $("alarmIcon"), alarmGlyph: $("alarmGlyph"),
       alarmMeta: $("alarmMeta"), alarmName: $("alarmName"), alarmSub: $("alarmSub"), alarmWhen: $("alarmWhen"), alarmToggle: $("alarmToggle"),
       alarmToggleIcon: $("alarmToggleIcon"), extras: $("extras"), presets: $("presets"), tts: $("tts"), ttsInput: $("ttsInput"), ttsSend: $("ttsSend"), actions: $("actions") };
     this._sp = {
       pill: this._spring(0, MOTION.pill, "sources", 0.02),
       pillW: this._spring(0, MOTION.pill, "sources", 0.02),
+      spk: this._spring(0, MOTION.pill, "speakers", 0.02),
+      spkW: this._spring(0, MOTION.pill, "speakers", 0.02),
       art: this._spring(0, MEDIA_MOTION.art, "stage", 0.002),
       swap: this._spring(1, SWAP_IN, "now"),
       progress: this._spring(0, MOTION.value, "stage", 0.0005),
@@ -15204,11 +15311,15 @@ class SavvyMediaCard extends SavvyCard {
   }
 
   _measure() {
-    const sel = this._el?.sources.querySelectorAll(".seg")[this._pickedIdx || 0];
-    if (!sel) return;
-    const first = this._first || this._sp.pillW.x === 0;
-    this._sp.pill[first ? "snap" : "to"](sel.offsetLeft);
-    this._sp.pillW[first ? "snap" : "to"](sel.offsetWidth);
+    const slide = (box, idx, x, w) => {
+      const sel = box?.querySelectorAll(".seg")[idx || 0];
+      if (!sel) return;
+      const first = this._first || w.x === 0;
+      x[first ? "snap" : "to"](sel.offsetLeft);
+      w[first ? "snap" : "to"](sel.offsetWidth);
+    };
+    slide(this._el?.sources, this._pickedIdx, this._sp.pill, this._sp.pillW);
+    slide(this._el?.speakers, this._spkIdx, this._sp.spk, this._sp.spkW);
   }
 
   // A volume bar. Nothing moves until a drag is clearly sideways, so a press, or a finger
@@ -15459,9 +15570,11 @@ class SavvyMediaCard extends SavvyCard {
       const live = r.querySelector(".icon[data-live]") || r.querySelector("[data-on]");
       lit(r, live ? accent : null, playing ? 1 : 0.55);
     }
-    const labels = c.labels || {};
+    // with both kinds on the card, each band says what it is for
+    const both = !this._compact && !el.videoBand.hidden && !el.audioBand.hidden;
+    const labels = c.labels === false ? {} : { ...(both ? { video: "Watch", audio: "Listen" } : {}), ...(c.labels || {}) };
     for (const [key, node] of [["video", el.videoCap], ["audio", el.audioCap]]) {
-      node.hidden = !labels[key];
+      node.hidden = this._compact || !labels[key];
       if (labels[key]) text(node, labels[key]);
     }
     let firstSeen = false;
@@ -15571,7 +15684,30 @@ class SavvyMediaCard extends SavvyCard {
     this._buildTransport(el.nowTransport, v, { power: true });
     const owner = this._volumeOwner(v);
     el.nowVol.hidden = !owner;
-    if (owner) this._mountVolume(el.nowVol, owner, "source");
+    if (owner) {
+      // a source that plays through another box says which, so the volume reads as that box's
+      const choice = this._soundChoice(v);
+      let via = el.nowVol.querySelector(".via");
+      if (!via || (via.tagName === "BUTTON") !== !!choice) {
+        via?.remove();
+        via = document.createElement(choice ? "button" : "span");
+        via.className = "via";
+        via.innerHTML = `<ha-icon></ha-icon><span></span>${choice ? `<ha-icon class="chev" icon="mdi:chevron-down"></ha-icon>` : ""}`;
+        if (choice) { attr(via, "aria-haspopup", "listbox"); this._pressable(via, { onTap: () => this._soundMenu(via), haptic: null }, 0.05); }
+        el.nowVol.prepend(via);
+      }
+      const through = owner.entity !== v.entity;
+      via.hidden = this._compact || (!through && !choice);
+      if (!via.hidden) {
+        // a TV playing through itself names its output; one sending it on names the box it goes to
+        const name = through ? owner.name || shortName(this._hass, owner.entity, this._config.area) : choice.current?.label || "TV";
+        const icon = through ? this._playerIcon(owner, this._hass.states[owner.entity]) : choice.current?.icon || "mdi:speaker";
+        attr(via.querySelector("ha-icon"), "icon", icon);
+        text(via.querySelector("span"), `Sound from ${name}`);
+        if (choice) attr(via, "aria-label", `Sound output: ${choice.current?.label || "unknown"}. Change`);
+      }
+      this._mountVolume(el.nowVol, owner, "source");
+    }
   }
 
   // when the stage already shows this player's media, the row says where it comes from
@@ -15616,6 +15752,7 @@ class SavvyMediaCard extends SavvyCard {
   _outputs() {
     const el = this._el, c = this._config;
     el.audioBand.hidden = !c.audio.length;
+    const shown = this._speakerPicker();
     for (const cfg of c.audio) {
       const key = slug(cfg.entity);
       const row = this._rowOf(el.audioBand, key, "div", "player", `<div class="row">
@@ -15633,8 +15770,50 @@ class SavvyMediaCard extends SavvyCard {
       if (!icon.__wired) { icon.__wired = true; this._pressable(icon, { onTap: () => moreInfo(this, cfg.entity), haptic: null }, 0.08); }
       this._mountVolume(row, cfg, key);
     }
-    const keys = new Set(c.audio.map((cfg) => slug(cfg.entity)));
-    for (const [key, node] of el.audioBand.__rows || []) Motion.show(node, keys.has(key));
+    for (const [key, node] of el.audioBand.__rows || []) Motion.show(node, key === slug(shown?.entity || ""));
+  }
+
+  // Several speakers share one row, picked the way the video sources are: the pick while it's
+  // sensible, else whatever is playing. One speaker needs no picker.
+  _speakerPicker() {
+    const c = this._config, el = this._el, list = c.audio;
+    if (!list.length) { this._spkActive = null; return null; }
+    const live = list.filter((a) => ACTIVE.has(this._hass.states[a.entity]?.state));
+    const sig = live.map((a) => a.entity).join("|");
+    if (this._spkSig === undefined) this._spkSig = sig;
+    if (sig !== this._spkSig) { this._spkSig = sig; if (sig) this._spkPicked = null; }
+    if (this._spkPicked && !list.some((a) => a.entity === this._spkPicked)) this._spkPicked = null;
+    // a box that is busy being the picked source's sound comes last: Listen opens on a speaker of its own
+    const out = this._active && this._isOn(this._active) ? this._soundOutput(this._active) : null;
+    const order = out ? [...list.filter((a) => a.entity !== out), ...list.filter((a) => a.entity === out)] : list;
+    const active = (this._spkPicked && list.find((a) => a.entity === this._spkPicked)) || live[0] || order.find((a) => this._isOn(a)) || order[0];
+    this._spkActive = active;
+    this._spkIdx = list.indexOf(active);
+    el.speakers.hidden = list.length < 2;
+    if (!el.speakers.hidden) {
+      list.forEach((a) => {
+        const st = this._hass.states[a.entity];
+        const seg = this._rowOf(el.speakers, a.entity, "button", "seg", `<ha-icon></ha-icon><span></span>`);
+        if (!seg.__wired) {
+          seg.__wired = true;
+          this._pressable(seg, { onTap: () => this._pickSpeaker(a), onHold: () => moreInfo(this, a.entity), haptic: null }, 0.08);
+        }
+        attr(seg.querySelector("ha-icon"), "icon", this._playerIcon(a, st));
+        text(seg.querySelector("span"), a.name || shortName(this._hass, a.entity, c.area));
+        attr(seg, "data-sel", a === active);
+        attr(seg, "data-live", this._isOn(a));
+        attr(seg, "aria-pressed", a === active ? "true" : "false");
+      });
+      this._measure();
+    }
+    return active;
+  }
+
+  _pickSpeaker(a) {
+    if (this._spkActive?.entity === a.entity) return moreInfo(this, a.entity);
+    this._spkPicked = a.entity;
+    haptic("selection");
+    this._update();
   }
 
   // the alarm clock that rings on this room's speaker: when it's set, and whether it's on
@@ -15707,7 +15886,8 @@ class SavvyMediaCard extends SavvyCard {
     if (!io) return;
     let bar = this._bars.get(key);
     if (!bar) bar = this._bar(key, vol);
-    if (bar.cfg && bar.cfg.entity !== cfg.entity) { bar.pending = null; bar.value.snap(io.level); }
+    const swapped = bar.cfg && bar.cfg.entity !== cfg.entity;
+    if (swapped) { bar.pending = null; bar.value.snap(io.level); }
     bar.cfg = cfg;
     if (bar.pending != null && (Math.abs(bar.pending - io.level) < 0.02 || Date.now() - bar.pendingAt > VOL_PREDICT)) bar.pending = null;
     if (!bar.dragging && bar.pending == null) { if (this._first) bar.value.snap(io.level); else bar.value.to(io.level); }
@@ -15731,19 +15911,53 @@ class SavvyMediaCard extends SavvyCard {
     attr(slider, "aria-valuenow", Math.round(io.level * 100));
     attr(slider, "aria-valuemin", "0");
     attr(slider, "aria-valuemax", "100");
+    // a snap moves nothing the frame loop watches: the bar that now belongs to another box is painted at once
+    if (swapped) requestAnimationFrame(() => this._paintAll(null));
+  }
+
+  // Where a TV can send its sound, and where it sends it now: an LG TV's own list, or a select
+  // entity named in `sound_select` (any brand whose integration offers one). null when it can't switch.
+  _soundChoice(cfg) {
+    const h = this._hass, st = h.states[cfg.entity];
+    if (cfg.sound_select) {
+      const sel = h.states[cfg.sound_select];
+      if (!sel) return null;
+      const options = (sel.attributes.options || []).map((v) => ({ value: v, label: v, icon: "mdi:speaker" }));
+      const current = options.find((o) => o.value === sel.state) || (sel.state ? { value: sel.state, label: sel.state } : null);
+      return { options, current, set: (v) => h.callService(domainOf(cfg.sound_select), "select_option", { option: v }, { entity_id: cfg.sound_select }) };
+    }
+    const now = st?.attributes.sound_output;
+    if (now == null || cfg.sound_outputs === false) return null;
+    const given = cfg.sound_outputs ? asItems(cfg.sound_outputs).map((o) => (typeof o === "string" ? { value: o } : o))
+      .map((o) => ({ ...(LG_SOUND.find((x) => x.value === o.value) || { icon: "mdi:speaker", label: title(String(o.value)) }), ...o, ...(o.name ? { label: o.name } : {}) })) : LG_SOUND;
+    const current = given.find((o) => o.value === now) || LG_SOUND.find((o) => o.value === now) || { value: now, label: title(String(now)), icon: "mdi:speaker" };
+    return { options: given, current, set: (v) => h.callService("webostv", "select_sound_output", { sound_output: v }, { entity_id: cfg.entity }) };
+  }
+
+  _soundMenu(anchor) {
+    const v = this._active, choice = v && this._soundChoice(v);
+    if (!choice) return;
+    this._soundPicker = this._soundPicker || new ModePicker(this, { onPick: (id, value) => {
+      const c = this._active && this._soundChoice(this._active);
+      if (c && value !== c.current?.value) c.set(value);
+    } });
+    // the popup sits outside the card, so it gets the accent as a colour, not as the card's variable
+    const accent = `rgb(${getComputedStyle(this._el.card).getPropertyValue("--accent").trim().split(/\s+/).join(" ")})`;
+    const options = choice.options.map((o) => ({ value: o.value, label: o.label, icon: o.icon, color: accent }));
+    this._soundPicker.open(anchor, this._el.card, { entity: v.entity, value: choice.current?.value, options, columns: 3 }, "Sound output");
   }
 
   // Where a source's sound comes out; nothing declared means the box plays its own.
   _soundOutput(cfg) { return (cfg.output !== undefined ? cfg.output : this._config.video_output) || null; }
 
-  // Whose volume belongs under the picked source: nothing if its sound goes to a box with
-  // a row of its own (that row owns it); that box's if it has no row; otherwise its own.
+  // Whose volume belongs under the picked source: the box its sound comes out of, else its own.
   _volumeOwner(cfg) {
     if (cfg.volume === false) return null;
+    if (this._soundChoice(cfg)?.current?.own) return cfg;      // the TV is playing through itself right now
     const out = this._soundOutput(cfg);
     if (!out) return cfg;
     const listed = this._config.audio.find((a) => a.entity === out);
-    if (listed) return this._compact ? listed : null;      // compact has no speaker row: it borrows
+    if (listed) return listed;      // the sound output's volume belongs with what you watch, even when it is a speaker too
     const named = this._config.video.find((v) => v.entity === out);
     return named ? { ...named } : { entity: out };
   }
@@ -15837,6 +16051,12 @@ class SavvyMediaCard extends SavvyCard {
       put(pill, "width", `${w.toFixed(2)}px`);
       put(pill, "transform", `translate3d(${sp.pill.x.toFixed(2)}px,0,0)`);
     }
+    if (all || dirty.has("speakers")) {
+      const pill = el.speakers.querySelector(".sel"), w = Math.max(0, sp.spkW.x);
+      put(pill, "opacity", w < 1 ? "0" : "");
+      put(pill, "width", `${w.toFixed(2)}px`);
+      put(pill, "transform", `translate3d(${sp.spk.x.toFixed(2)}px,0,0)`);
+    }
     if (all || dirty.has("now")) {
       const s = clamp(sp.swap.x);
       put(el.nowRow, "opacity", s > 0.999 ? "" : s.toFixed(3));
@@ -15870,6 +16090,7 @@ const playerList = (name, label, helper) => ({ name, label, helper, type: "list"
     { type: "grid", name: "", schema: [{ name: "name", label: "Name", selector: { text: {} } }, { name: "icon", label: "Icon", selector: { icon: {} } }] },
     { name: "power", label: "Power switch", helper: "A switch that powers it, when the player can't turn itself on.", selector: { entity: { domain: ["switch", "input_boolean"] } } },
     { name: "output", label: "Sound output", helper: "Where this source's sound comes out. Empty: it plays through itself. Overrides the card's output for all sources.", selector: { entity: { domain: "media_player" } } },
+    { name: "sound_select", label: "Sound output list", helper: "A select entity that switches where the TV's sound goes. An LG TV needs none: its outputs are found.", selector: { entity: { domain: ["select", "input_select"] } } },
     { name: "volume", label: "Volume helper", helper: "A helper that is the real volume, when the player's own isn't.", selector: { entity: { domain: ["input_number", "number"] } } },
     { name: "artwork", label: "Artwork when", helper: "A binary sensor that says the artwork is worth showing.", selector: { entity: { domain: "binary_sensor" } } },
   ] });
@@ -15879,7 +16100,7 @@ const EDITOR = defineEditor("savvy-media-card", (hass, c) => [
   S.grid(S.text("name", "Name"), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact (one row)" }])),
   S.titleLink("name"),
   playerList("video", "Video sources", "Empty: the area's players (not its speakers)."),
-  playerList("audio", "Speakers", "The room's speakers: each gets its own row with transport, volume and power. Empty: the area's speakers and receivers."),
+  playerList("audio", "Speakers", "The room's speakers: each with its transport, volume and power; two or more get a picker. Empty: the area's speakers and receivers."),
   { name: "video_output", label: "Sound output for all sources", helper: "The speaker, receiver or soundbar every video source plays through. Its volume sits under the picked source.", selector: { entity: { domain: "media_player" } } },
   S.grid(S.bool("artwork", "Show artwork", null, true), S.bool("volume_buttons", "Volume buttons", null, true)),
   S.grid(S.number("volume_step", "Volume step", 1, 25, 1, "%"), S.number("artwork_max_height", "Artwork height", 80, 800, 10, "px")),
@@ -15929,7 +16150,7 @@ const STYLE = `${BASE_CSS}
   :host([data-compact]) ha-card { --pad: 12px; }
   ha-card > * { position: relative; }
   .head { display: flex; align-items: center; gap: 10px; min-height: 28px; }
-  .head .t { flex: 1; min-width: 0; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .head .t { flex: 1; min-width: 0; font-size: 16px; line-height: 21px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pill { flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 12px; white-space: nowrap;
     font-size: 12px; font-weight: 650; color: rgb(var(--tone)); background: color-mix(in oklab, rgb(var(--tone)) var(--mix-on), transparent); }
   .list { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -16330,7 +16551,7 @@ const STYLE = `${BASE_CSS}
   .name[role="button"] { cursor: pointer; }
   .roomIcon { flex: none; width: var(--b-m); height: var(--b-m); border-radius: 50%; display: grid; place-items: center; background: transparent; --mdc-icon-size: 22px; color: var(--secondary-text-color); }
   .names { display: flex; flex-direction: column; min-width: 0; }
-  .title { font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; overflow-wrap: anywhere; }
+  .title { font-size: 16px; line-height: 21px; font-weight: 620; letter-spacing: -0.021em; overflow-wrap: anywhere; }
   .status { font-size: 13px; line-height: 18px; font-weight: 500; letter-spacing: -0.003em; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .status[data-level="warn"] { color: var(--warn-c); font-weight: 600; }
   .status[data-level="info"] { color: var(--acc-c); font-weight: 600; }
@@ -16368,7 +16589,7 @@ const STYLE = `${BASE_CSS}
     background: color-mix(in oklab, var(--rd-hue, var(--alert-c)) calc(var(--al) * 16%), transparent); cursor: pointer; transform-origin: 50% 50%; }
   .reads { padding-inline-start: 10px; }
   @media (hover: hover) { .rd:hover { background: color-mix(in oklab, var(--rd-hue, var(--alert-c)) calc(var(--al) * 16%), var(--well)); } }
-  .rd .v { display: flex; align-items: center; gap: 5px; white-space: nowrap; font-size: 15px; line-height: 19px; font-weight: 600; letter-spacing: -0.012em;
+  .rd .v { display: flex; align-items: center; gap: 5px; white-space: nowrap; font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.012em;
     color: color-mix(in oklab, var(--rd-hue, var(--alert-c)) calc(var(--al) * 100%), var(--primary-text-color)); }
   .rd .v ha-icon { --mdc-icon-size: 15px; display: flex; flex: none; color: color-mix(in oklab, var(--rd-hue, var(--alert-c)) calc(var(--al) * 100%), var(--secondary-text-color)); }
   .rd .c { font-size: 12px; line-height: 15px; font-weight: 500; letter-spacing: -0.002em; color: var(--secondary-text-color); white-space: nowrap; }
@@ -17903,7 +18124,7 @@ const escRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const STYLE = `${BASE_CSS}
   ha-card { --pad: 12px; --c: #588ee9; display: flex; flex-direction: column; gap: 10px; padding: var(--pad); }
   .head { display: flex; align-items: center; gap: 4px; min-width: 0; align-self: flex-start; margin: -3px -6px; padding: 3px 6px; border-radius: 10px;
-    font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; }
+    font-size: 16px; line-height: 21px; font-weight: 620; letter-spacing: -0.021em; }
   .head[role="button"] { cursor: pointer; }
   .head .t { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .head ha-icon { --mdc-icon-size: 18px; display: flex; color: var(--secondary-text-color); }
@@ -18235,9 +18456,9 @@ const STYLE = `${BASE_CSS}
     padding: 2px 4px; margin: -2px -4px; border-radius: 9px; transform-origin: 0 50%; cursor: default; }
   .title[data-act] { cursor: pointer; }
   .title ha-icon { --mdc-icon-size: 20px; flex: none; display: flex; color: var(--secondary-text-color); }
-  .title .n { min-width: 0; font-size: 20px; line-height: 26px; font-weight: 650; letter-spacing: -0.022em;
+  .title .n { min-width: 0; font-size: 18px; line-height: 24px; font-weight: 650; letter-spacing: -0.022em;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  ha-card[data-style="subtitle"] .title .n { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.014em; }
+  ha-card[data-style="subtitle"] .title .n { font-size: 14px; line-height: 19px; font-weight: 600; letter-spacing: -0.014em; }
   ha-card[data-style="subtitle"] .title ha-icon { --mdc-icon-size: 17px; }
 
   /* the mode chip: the overview pill, compressed to one line */
@@ -18552,7 +18773,7 @@ const STYLE = `${BASE_CSS}
   :host([compact]) .disc ha-icon { --mdc-icon-size: 16px; }
   .disc[data-warn] { background: color-mix(in oklab, var(--lvl-warn) var(--mix-alert), transparent); color: var(--lvl-warn); }
   .col { min-width: 0; display: flex; flex-direction: column; }
-  .name { font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .name { font-size: 16px; line-height: 21px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sub { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); overflow-wrap: anywhere; }
   .sub[data-warn] { color: var(--lvl-warn, #E0A030); }
   :host([compact]) .col { flex-direction: row; align-items: baseline; gap: 10px; flex: 1; }
@@ -18808,7 +19029,7 @@ const STYLE = `${BASE_CSS}
   :host([data-compact]) ha-card { --pad: 12px; gap: 8px; }
   ha-card > * { position: relative; }
   .head { display: flex; align-items: center; gap: 10px; min-height: 28px; }
-  .head .t { flex: 1; min-width: 0; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .head .t { flex: 1; min-width: 0; font-size: 16px; line-height: 21px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sub { font-size: 12.5px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); margin-top: -6px; }
   .filters { display: flex; gap: 6px; overflow-x: auto; overscroll-behavior-x: contain; touch-action: pan-x pan-y; scrollbar-width: none; padding: 3px; margin: -3px; }
   .filters::-webkit-scrollbar { display: none; }
@@ -19321,7 +19542,7 @@ const joinAnd = (parts) => (parts.length < 2 ? parts.join("") : `${parts.slice(0
 const STYLE = `${BASE_CSS}
   ha-card { display: flex; flex-direction: column; gap: 10px; padding: var(--pad); overflow: hidden; --lvl: var(--secondary-text-color); container-name: card; }
   .head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-  .name { font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .name { font-size: 16px; line-height: 21px; font-weight: 620; letter-spacing: -0.021em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pill { flex: none; display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 11px;
     background: color-mix(in oklab, var(--lvl) 16%, transparent); color: color-mix(in oklab, var(--lvl) 78%, var(--primary-text-color));
     font-size: 11px; line-height: 14px; font-weight: 650; letter-spacing: 0.02em; white-space: nowrap; text-transform: uppercase; }
@@ -20116,7 +20337,7 @@ const STYLE = `${BASE_CSS}
   :host([dark]) .well > svg { mix-blend-mode: plus-lighter; }
   .well ha-icon { --mdc-icon-size: 22px; position: relative; display: flex; color: var(--icon, var(--secondary-text-color)); }
   .main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  .name { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.016em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .name { font-size: 14px; line-height: 19px; font-weight: 600; letter-spacing: -0.016em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* the secondary line: the mode carries the colour, the temperature stays quiet */
   .sub { display: flex; align-items: center; gap: 12px; min-width: 0; font-size: 12.5px; line-height: 18px; }
   .sub > [role="button"] { display: inline-flex; align-items: center; min-width: 0; padding: 3px 5px; margin: -3px -5px; border-radius: 7px; outline: none; transform-origin: 20% 50%; }
@@ -20871,8 +21092,8 @@ ha-icon, savvy-state-icon { display: flex; align-items: center; justify-content:
 }
 :host([compact]) .ring .bolt { width: 17px; height: 17px; --mdc-icon-size: 11px; }
 .who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; cursor: pointer; }
-.name { font-size: 18px; line-height: 23px; font-weight: 650; letter-spacing: -0.022em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-:host([compact]) .name { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; }
+.name { font-size: 16px; line-height: 21px; font-weight: 650; letter-spacing: -0.022em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:host([compact]) .name { font-size: 14px; line-height: 19px; font-weight: 600; letter-spacing: -0.015em; }
 .status { display: flex; gap: 5px; min-width: 0; font-size: 13px; line-height: 17px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; }
 :host([compact]) .status { font-size: 12.5px; line-height: 16px; }
 .status .s1 { font-weight: 600; color: var(--primary-text-color); overflow: hidden; text-overflow: ellipsis; }
@@ -21042,7 +21263,7 @@ ha-icon, savvy-state-icon { display: flex; align-items: center; justify-content:
 
 @container (max-width: 340px) {
   .ring { width: 54px; height: 54px; }
-  .name { font-size: 16px; line-height: 21px; }
+  .name { font-size: 15px; line-height: 20px; }
   .ctl { width: 38px; }
   .primary .pl { display: none; }
   .controls .primary .pl { display: inline; }

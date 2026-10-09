@@ -189,6 +189,9 @@ const HEADER_CSS = `
     background: transparent; color: var(--secondary-text-color); }
   @media (hover: hover) { .glyph:hover, .wx:hover { background: var(--well); } }
   .glyph ha-icon { --mdc-icon-size: 19px; display: flex; }
+  /* the home button sits in the chips' icon column: same size, same left edge as the chip icons under it */
+  #home { margin-inline-start: -2px; }
+  #home ha-icon { --mdc-icon-size: 20px; }
   .glyph[data-loading] ha-icon { animation: sv-spin 1s linear infinite; transform-origin: 50% 50%; }
   :host([data-still]) .glyph[data-loading] ha-icon { animation: none; }
   @keyframes sv-spin { to { transform: rotate(360deg); } }
@@ -204,13 +207,13 @@ const HEADER_CSS = `
   .pill .col { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; }
   .pill .pre { font-size: 12.5px; line-height: 16px; font-weight: 500; letter-spacing: -0.004em; color: var(--secondary-text-color); white-space: nowrap; }
   .pill .swap { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
-  .pill .val { font-size: 22px; line-height: 27px; font-weight: 650; letter-spacing: -0.03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pill .val { font-size: 20px; line-height: 25px; font-weight: 650; letter-spacing: -0.03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .spacer { flex: 1; }
   /* a readout, not a panel */
   .wx { flex: none; display: flex; align-items: center; gap: 5px; height: var(--c-l); padding: 0 10px 0 8px; border-radius: 13px;
     background: transparent; color: var(--secondary-text-color); }
   .wx ha-icon, .wx savvy-state-icon { --mdc-icon-size: 19px; display: flex; }
-  .wx .deg { font-size: 15px; line-height: 19px; font-weight: 600; letter-spacing: -0.012em; color: var(--primary-text-color); }
+  .wx .deg { font-size: 14px; line-height: 19px; font-weight: 600; letter-spacing: -0.012em; color: var(--primary-text-color); }
   :host([kbd]) :focus-visible { outline-color: color-mix(in oklab, var(--mode) 80%, var(--primary-text-color)); }
 `;
 
@@ -228,7 +231,7 @@ const CHIP_ROW_CSS = `
     background: transparent; color: var(--tc); }
   .chip .disc ha-icon, .chip .disc savvy-state-icon { --mdc-icon-size: 20px; display: flex; }
   .chip .col { display: flex; flex-direction: column; }
-  .chip .v { font-size: 15px; line-height: 19px; font-weight: 600; letter-spacing: -0.014em; white-space: nowrap; }
+  .chip .v { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.014em; white-space: nowrap; }
   .chip .k { font-size: 12px; line-height: 15px; font-weight: 500; letter-spacing: -0.002em; color: var(--secondary-text-color); white-space: nowrap; }
   @media (hover: hover) { .chips:not(.nav) .chip:hover { background: var(--well); } }
   .chips[data-icon-only] { gap: 4px; }
@@ -275,7 +278,7 @@ SavvyCard.prototype._chipRowNow = function (row, items, { iconOnly = false } = {
     Motion.fadeTo(node.querySelector(".body"), item.dim ? (MQ.contrast.matches ? 0.7 : 0.45) : 1);
     if (wantState) {
       if (node.__icon.stateObj !== item.stateObj) { node.__icon.hass = this._hass; node.__icon.stateObj = item.stateObj; }
-    } else attr(node.__icon, "icon", item.icon);
+    } else attr(node.__icon, "icon", iconForState(item.icon, item.stateObj));
     const col = node.querySelector(".col");
     col.hidden = iconOnly;
     text(node.querySelector(".v"), item.value ?? "");

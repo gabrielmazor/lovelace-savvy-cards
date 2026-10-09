@@ -26,6 +26,11 @@ for (const f of [...walk(path.join(ROOT, "src")), ...walk(path.join(SITE, "asset
   for (const m of fs.readFileSync(f, "utf8").matchAll(/mdi:([a-z0-9]+(?:-[a-z0-9]+)*)/g)) names.add(`mdi:${m[1]}`);
 }
 for (let v = 10; v <= 90; v += 10) names.add(`mdi:battery-${v}`);   // the battery icon is built from a number
+for (let v = 1; v <= 3; v++) names.add(`mdi:fan-speed-${v}`);        // so is a fan speed
+// the on / off pairs an entity's own icon flips between are written without the mdi: prefix
+const pairs = fs.readFileSync(path.join(ROOT, "src/core/55-icons.js"), "utf8").match(/const ICON_PAIRS = \[([\s\S]*?)\];/);
+for (const m of pairs?.[1].matchAll(/"([a-z0-9-]+)"/g) || []) names.add(`mdi:${m[1]}`);
+names.delete("mdi:fan-speed");
 
 let icons;
 try {

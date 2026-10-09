@@ -234,8 +234,10 @@
     const SF = 21437 | 2048 | 2;     // the usual set, sources, and seek
     const P = PLAYLISTS;
     add("media_player.living_room_tv", "playing", { friendly_name: "Living Room TV", device_class: "tv", ...nowPlaying(P["media_player.living_room_tv"][0], 1260),
-      volume_level: 0.3, source: "Apple TV", source_list: ["Apple TV", "PlayStation 5", "HDMI 3"], supported_features: SF }, { area: "living_room", changed: 35 * MIN });
+      volume_level: 0.3, sound_output: "external_arc", source: "Apple TV", source_list: ["Apple TV", "PlayStation 5", "HDMI 3"], supported_features: SF }, { area: "living_room", changed: 35 * MIN });
     add("media_player.living_room_soundbar", "on", { friendly_name: "Living Room Soundbar", device_class: "receiver", volume_level: 0.34, sound_mode: "Movie", supported_features: SF }, { area: "living_room", changed: 35 * MIN });
+    add("media_player.living_room_console", "off", { friendly_name: "Living Room Console", icon: "mdi:gamepad-variant", volume_level: 0.5, supported_features: SF }, { area: "living_room", changed: 20 * HOUR });
+    add("media_player.living_room_speakers", "idle", { friendly_name: "Living Room Speakers", device_class: "speaker", volume_level: 0.22, supported_features: SF }, { area: "living_room", changed: 3 * HOUR });
     add("media_player.kitchen_speaker", "playing", { friendly_name: "Kitchen Speaker", device_class: "speaker", ...nowPlaying(P["media_player.kitchen_speaker"][0], 96),
       volume_level: 0.25, supported_features: SF }, { area: "kitchen", changed: 8 * MIN });
     add("media_player.dining_room_speaker", "idle", { friendly_name: "Dining Room Speaker", device_class: "speaker", volume_level: 0.2, supported_features: SF }, { area: "dining_room", changed: 6 * HOUR });

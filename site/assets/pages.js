@@ -45,8 +45,8 @@
   // the living room's media, the long way: several sources, and where their sound goes
   const LIVING_SOURCES = {
     name: "Living Room",
-    video: [{ entity: "media_player.living_room_tv", name: "TV" }],
-    audio: [{ entity: "media_player.living_room_soundbar", name: "Soundbar" }],
+    video: [{ entity: "media_player.living_room_tv", name: "TV" }, { entity: "media_player.living_room_console", name: "Console", icon: "mdi:gamepad-variant" }],
+    audio: [{ entity: "media_player.living_room_soundbar", name: "Soundbar" }, { entity: "media_player.living_room_speakers", name: "Speakers" }],
     video_output: "media_player.living_room_soundbar",
     presets: [{ entity: "script.good_night", name: "Good night" }],
   };

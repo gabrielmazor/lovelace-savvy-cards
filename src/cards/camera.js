@@ -184,7 +184,7 @@ ${DESIGN_CSS}
   pointer-events: none;
 }
 .who { flex: 1; min-width: 0; display: flex; flex-direction: column; text-shadow: 0 1px 2px rgb(0 0 0 / 0.4); }
-.who b { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.who b { font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .who span { font-size: 12px; line-height: 16px; font-weight: 500; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 :host(:not([grid])) .tile[data-playing] .bot-row { display: none; }
 .dots { position: absolute; left: 50%; top: 19px; transform: translateX(-50%); display: flex; gap: 5px; pointer-events: none; }
@@ -256,7 +256,7 @@ ${DESIGN_CSS}
   --mdc-icon-size: 20px; color: var(--primary-text-color); transform-origin: 50% 50%;
 }
 .step[disabled] { opacity: 0.3; cursor: default; }
-.dayname { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; min-width: 0; white-space: nowrap; }
+.dayname { font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; min-width: 0; white-space: nowrap; }
 .daysum { flex: 1; text-align: end; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .tl { position: relative; height: 44px; cursor: pointer; touch-action: none; border-radius: 11px; background: var(--well); outline-offset: 2px; }

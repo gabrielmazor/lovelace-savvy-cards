@@ -20,7 +20,7 @@ const TITLE_CSS = `
     transition: color 160ms ease; }
   @media (hover: hover) { [data-tlink]:hover { color: color-mix(in oklab, rgb(var(--accent, 88 142 233)) 82%, var(--primary-text-color)); } }
   :host([kbd]) [data-tlink]:focus-visible { box-shadow: 0 0 0 2px rgb(var(--accent, 88 142 233)); }
-  .sv-ttl { display: flex; min-width: 0; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em; color: var(--primary-text-color); }
+  .sv-ttl { display: flex; min-width: 0; font-size: 16px; line-height: 21px; font-weight: 620; letter-spacing: -0.021em; color: var(--primary-text-color); }
   .sv-ttl-t { display: block; min-width: 0; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 `;
 

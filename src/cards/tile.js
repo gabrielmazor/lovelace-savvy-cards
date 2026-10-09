@@ -75,7 +75,7 @@ const STYLE = `${BASE_CSS}
   :host([dark]) .well > svg { mix-blend-mode: plus-lighter; }
   .well ha-icon { --mdc-icon-size: 22px; position: relative; display: flex; color: var(--icon, var(--secondary-text-color)); }
   .main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  .name { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.016em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .name { font-size: 14px; line-height: 19px; font-weight: 600; letter-spacing: -0.016em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* the secondary line: the mode carries the colour, the temperature stays quiet */
   .sub { display: flex; align-items: center; gap: 12px; min-width: 0; font-size: 12.5px; line-height: 18px; }
   .sub > [role="button"] { display: inline-flex; align-items: center; min-width: 0; padding: 3px 5px; margin: -3px -5px; border-radius: 7px; outline: none; transform-origin: 20% 50%; }

@@ -141,7 +141,7 @@ ha-card {
 /* ---- header: the room, how many are on, and the room's pill ---- */
 header { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 2px 2px 0; }
 .titles { flex: 1; min-width: 0; }
-.name { display: block; font-size: 17px; line-height: 22px; font-weight: 620; letter-spacing: -0.021em;
+.name { display: block; font-size: 16px; line-height: 21px; font-weight: 620; letter-spacing: -0.021em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .count { display: block; font-size: 13px; line-height: 18px; font-weight: 500; letter-spacing: -0.004em;
   color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -163,8 +163,8 @@ header { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 2
 
 .light {
   position: relative; overflow: hidden; isolation: isolate;
-  display: grid; grid-template-columns: var(--b-m) minmax(0, 1fr) auto; align-items: center; column-gap: 10px;
-  min-height: 60px; padding: 0 12px 0 10px; border-radius: 16px;
+  display: grid; grid-template-columns: var(--b-s) minmax(0, 1fr) auto; align-items: center; column-gap: 8px;
+  min-height: 56px; padding: 0 8px 0 12px; border-radius: 16px;
   background: var(--well); cursor: pointer; touch-action: pan-y;
   --lit-text: rgb(var(--lc, var(--amber)));
 }
@@ -182,28 +182,29 @@ header { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 2
 .lvl {
   position: absolute; inset: 0; z-index: -1; pointer-events: none;
   background: linear-gradient(90deg, rgb(var(--lc, var(--amber)) / var(--lvl-a0)), rgb(var(--lc, var(--amber)) / var(--lvl-a1)));
-  box-shadow: inset -2px 0 0 rgb(var(--lc, var(--amber)) / var(--lvl-edge));
+  /* the edge line fades out near either end, where the row's rounded corner would clip it into a sliver */
+  box-shadow: inset -2px 0 0 rgb(var(--lc, var(--amber)) / calc(var(--lvl-edge) * clamp(0, min(var(--v, 0), 1 - var(--v, 0)) * 12, 1)));
   transform: translateX(calc((var(--v, 0) - 1) * 100%));
   mix-blend-mode: var(--lvl-blend);   /* on dark the level adds light instead of tinting the grey brown */
 }
 .orb {
-  flex: none; display: grid; place-items: center; width: var(--b-m); height: var(--b-m); border-radius: 50%;
+  flex: none; display: grid; place-items: center; width: var(--b-s); height: var(--b-s); border-radius: 50%;
   background: transparent; color: var(--secondary-text-color); pointer-events: none;
 }
 .orb[data-on] { color: var(--lit-text); }
 .orb ha-icon, .orb savvy-state-icon { --mdc-icon-size: 22px; display: flex; }
 .meta { min-width: 0; display: flex; align-items: center; gap: 4px; text-align: start; pointer-events: none; }
-.meta .n { min-width: 0; font-size: 15px; line-height: 20px; font-weight: 560; letter-spacing: -0.012em;
+.meta .n { min-width: 0; font-size: 14px; line-height: 18px; font-weight: 560; letter-spacing: -0.01em;
   color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .light[data-on] .meta .n { color: var(--primary-text-color); }
-.end { display: flex; align-items: center; gap: 2px; margin-inline-end: -4px; }
-.d { flex: none; min-width: 44px; padding-inline-end: 4px; text-align: end;
-  font-size: 15px; line-height: 20px; font-weight: 500; letter-spacing: -0.01em; color: var(--secondary-text-color);
+.end { display: flex; align-items: center; gap: 0; }
+.d { flex: none; min-width: 34px; padding-inline-end: 4px; text-align: end;
+  font-size: 13px; line-height: 18px; font-weight: 500; letter-spacing: -0.004em; color: var(--secondary-text-color);
   white-space: nowrap; pointer-events: none; }
 .light[data-on] .d { color: var(--primary-text-color); }
-.light[data-on] .d[data-num] { font-size: 19px; font-weight: 400; letter-spacing: -0.03em; }
+.light[data-on] .d[data-num] { font-size: 15px; font-weight: 500; letter-spacing: -0.02em; }
 .swatch {
-  flex: none; display: grid; place-items: center; width: var(--c-s); height: var(--c-s); border-radius: 11px;
+  flex: none; display: grid; place-items: center; width: 28px; height: var(--c-s); border-radius: 11px;
   background: transparent;
 }
 .swatch i {
@@ -219,13 +220,16 @@ header { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 2
 }
 .power[data-on] { color: var(--lit-text); }
 .power ha-icon { --mdc-icon-size: 18px; display: flex; }
-ha-card[data-glass] .light, ha-card[data-matte] .light { --lx: 28px; --ly: 50%; }   /* the middle of the icon: padding 10 + half the 36 orb */
+ha-card[data-glass] .light, ha-card[data-matte] .light { --lx: 26px; --ly: 50%; }   /* the middle of the icon: padding 12 + half the 28 orb */
+/* a lamp that only switches has no level to show: lit, it fills the row like one at full brightness */
+.light:not([data-dim]) .lvl { transition: transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+@media (prefers-reduced-motion: reduce) { .light .lvl { transition: none; } }
 /* ---- compact: the light, its name and its state, and nothing else ---- */
-ha-card[data-compact] .light { min-height: 46px; padding: 0 10px 0 8px; border-radius: 13px; --lx: 22px; }
+ha-card[data-compact] .light { grid-template-columns: var(--b-s) minmax(0, 1fr) auto; min-height: 46px; padding: 0 10px 0 8px; border-radius: 13px; --lx: 22px; }
 ha-card[data-compact] .orb { width: var(--b-s); height: var(--b-s); }
 ha-card[data-compact] .orb ha-icon, ha-card[data-compact] .orb savvy-state-icon { --mdc-icon-size: 18px; }
-ha-card[data-compact] .meta .n { font-size: 14px; line-height: 18px; }
-ha-card[data-compact] .d, ha-card[data-compact] .light[data-on] .d[data-num] { font-size: 13px; font-weight: 500; letter-spacing: -0.004em; min-width: 0; }
+ha-card[data-compact] .meta .n { font-size: 13.5px; line-height: 18px; }
+ha-card[data-compact] .d, ha-card[data-compact] .light[data-on] .d[data-num] { font-size: 12.5px; font-weight: 500; letter-spacing: -0.004em; min-width: 0; }
 ha-card[data-compact] .grid { gap: 4px; }
 
 /* ---- sliders ---- */
@@ -1166,8 +1170,10 @@ class LightsCard extends HTMLElement {
       attr(node, "aria-valuenow", Math.round(level * 100));
       attr(node, "aria-valuemin", "0");
       attr(node, "aria-valuemax", "100");
-    } else if (this._bars.has(key)) {
-      this._bars.get(key).value.to(0);
+    } else {
+      if (this._bars.has(key)) this._bars.get(key).value.to(0);
+      // a lamp that only switches (or a compact row): lit means full, so on reads at a glance
+      put(node, "--v", on && !dead ? "1" : "0");
     }
     // featured lights get the wider tile: the ones you reach for
     const wide = !this._compact && Number(this._config.columns) !== 1 && this._config.featured.includes(id);

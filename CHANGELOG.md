@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.20.1
+
+- **Lights:** a lamp that only switches fills its row while it is on, the way one at 100% does, so on reads at a
+  glance. The level's edge line fades out at the ends instead of showing as a sliver in the rounded corner. Names and
+  levels are smaller and the row is slimmer, so two columns show the whole name.
+- **Media:** the volume under the picked source is its sound output's, labelled "Sound from …", even when that box is
+  also a speaker on the card. Two or more speakers get a picker, like the sources, and the bands are captioned Watch
+  and Listen when the card has both (`labels: false` hides them).
+- **Media, the TV's sound output:** an LG TV gets a button under it that lists where its sound can go (TV speaker,
+  HDMI ARC, optical, Bluetooth…) and switches it; on its own speaker the volume shown is the TV's. Other TVs can do
+  the same through a select entity (`sound_select`).
+- **Climate:** the fan button opens a list of the unit's fan speeds, the current one marked, instead of stepping to the
+  next one.
+- **Icons follow the state:** an icon an entity was given that has an on and an off version (a light switch, a toggle,
+  a bulb, a plug, a lock, a door…) shows the version that matches the state, the same icon with its state flipped.
+- **Type:** text is a step smaller across the cards and popups. The home button lines up with the chip icons under it.
+
 ## 0.20.0
 
 - **A new look, the same cards:** the default design is rebuilt around one surface per card. Icons stand bare instead

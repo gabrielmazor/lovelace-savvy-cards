@@ -217,8 +217,8 @@ ha-icon, savvy-state-icon { display: flex; align-items: center; justify-content:
 }
 :host([compact]) .ring .bolt { width: 17px; height: 17px; --mdc-icon-size: 11px; }
 .who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; cursor: pointer; }
-.name { font-size: 18px; line-height: 23px; font-weight: 650; letter-spacing: -0.022em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-:host([compact]) .name { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.015em; }
+.name { font-size: 16px; line-height: 21px; font-weight: 650; letter-spacing: -0.022em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:host([compact]) .name { font-size: 14px; line-height: 19px; font-weight: 600; letter-spacing: -0.015em; }
 .status { display: flex; gap: 5px; min-width: 0; font-size: 13px; line-height: 17px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; }
 :host([compact]) .status { font-size: 12.5px; line-height: 16px; }
 .status .s1 { font-weight: 600; color: var(--primary-text-color); overflow: hidden; text-overflow: ellipsis; }
@@ -388,7 +388,7 @@ ha-icon, savvy-state-icon { display: flex; align-items: center; justify-content:
 
 @container (max-width: 340px) {
   .ring { width: 54px; height: 54px; }
-  .name { font-size: 16px; line-height: 21px; }
+  .name { font-size: 15px; line-height: 20px; }
   .ctl { width: 38px; }
   .primary .pl { display: none; }
   .controls .primary .pl { display: inline; }
