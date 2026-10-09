@@ -19,6 +19,8 @@
   its sound and the one volume; the inputs follow (the TV itself as "TV apps"), then what the picked one plays.
   A source's `input` (`HDMI 2`) makes the picker follow the TV, even when switched with the remote, and picking
   it switches the TV. With `screen` named, everything else plays on it, whatever it calls itself.
+- **Climate:** each mode is its icon and its word on one line. New `steppers: right` puts − and + together on
+  the right, the number on the left (`sides`, either side of the number, stays the default).
 - **Grid heights:** in a sections view every card is a whole number of grid rows tall (56px rows, 8px between),
   so cards side by side end together instead of a few pixels apart. Cards given a number of rows keep it;
   `grid_snap: false` turns it off.

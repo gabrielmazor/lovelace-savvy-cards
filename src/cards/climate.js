@@ -184,6 +184,10 @@ const STYLE = `
   }
   .steppers { display: contents; }
   #minus { order: 0; } #plus { order: 2; }
+  /* steppers: right — the number reads from the left edge, both steps sit together at the right */
+  ha-card[data-steps="right"]:not([data-compact]) .readout { order: 0; justify-content: flex-start; padding-inline-start: 2px; }
+  ha-card[data-steps="right"]:not([data-compact]) .steppers { display: flex; gap: 8px; order: 1; }
+  ha-card[data-steps="right"]:not([data-compact]) #minus, ha-card[data-steps="right"]:not([data-compact]) #plus { order: 0; }
   /* quiet steps either side: a faint well, the rows' own material, not a grey block */
   .step { display: grid; place-items: center; width: var(--c-l); height: var(--c-l); border-radius: 13px;
     background: color-mix(in oklab, var(--primary-text-color) 4%, transparent); color: var(--secondary-text-color); }
@@ -235,8 +239,9 @@ const STYLE = `
   }
   /* the modes: a row of words under a hairline, the chosen one marked by its colour and a dot that slides */
   .segmented.modes { margin: 14px 0 0; padding: 6px 0 0; border-radius: 0; background: none; border-top: 1px solid var(--line); gap: 0; }
-  .modes .seg { flex-direction: column; gap: 5px; height: 56px; padding-bottom: 6px; font-size: 13px; }
-  .modes .seg ha-icon { --mdc-icon-size: 20px; }
+  /* each mode is its icon and its word on one line; the chosen one's dot sits under it */
+  .modes .seg { flex-direction: row; gap: 6px; height: 46px; padding: 0 2px 6px; font-size: 13px; }
+  .modes .seg ha-icon { --mdc-icon-size: 18px; }
   .segmented.modes .pill, .segmented.modes .pill[data-colored] { background: transparent; box-shadow: none; }
   .segmented.modes .pill[data-colored]::after {
     content: ""; position: absolute; left: 50%; bottom: 3px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%;
@@ -268,6 +273,8 @@ const STYLE = `
   .modes .seg[data-sel] ha-icon { color: var(--sc, var(--primary-text-color)); }
   /* narrow cards drop the mode labels and keep the icons; the range labels always stay */
   @container (max-width: 260px) { .modes .seg span { display: none; } .modes .seg { height: 44px; } }
+  /* five modes with their words need room: a narrower card keeps the words for the chosen one only */
+  @container (max-width: 400px) { .modes:has(.seg:nth-child(6)) .seg:not([data-sel]) span { display: none; } }
 
   /* ---- action row ---- */
   .actions { display: contents; }
@@ -567,6 +574,8 @@ class ClimateCard extends HTMLElement {
       this._root.getElementById("stats").hidden = true;
       this._root.querySelector("ha-card").setAttribute("data-compact", "");
     }
+    // steppers: "sides" (− number +) or "right" (the number on the left, − + together on the right)
+    if (this._config.steppers === "right") this._root.querySelector("ha-card").setAttribute("data-steps", "right");
     const $ = (id) => this._root.getElementById(id);
     this._el = {
       card: this._root.querySelector("ha-card"), pager: $("pager"), track: $("track"),
@@ -1827,6 +1836,7 @@ const EDITOR = defineEditor("savvy-climate-card", (hass, c) => {
       ? { name: "entity", label: "Unit", selector: { select: { mode: "dropdown", options: found.map((id) => ({ value: id, label: hass.states[id].attributes.friendly_name || id })) } } }
       : S.entity("entity", "Climate entity", "climate"),
     S.grid(S.text("name", "Name"), S.select("layout", "Layout", [{ value: "full", label: "Full" }, { value: "compact", label: "Compact" }])),
+    S.select("steppers", "Steps", [{ value: "sides", label: "Either side of the number" }, { value: "right", label: "Together on the right" }]),
     S.titleLink("name"),
     { name: "hvac_modes", label: "Modes", helper: "In this order. Empty: all the unit's modes.", selector: { select: { multiple: true, mode: "list", options: modes } } },
     S.grid(S.select("default_hvac_mode", "Power mode", modes.filter((m) => m !== "off")), S.bool("fan_control", "Fan button", null, true)),

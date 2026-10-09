@@ -597,6 +597,7 @@ the fan. Swipe left for history with the unit's on/off band under the chart.
 | `entity` | entity | from `area` | A specific climate entity. |
 | `name` | string | the entity's | Card title. |
 | `layout` | `full` or `compact` | `full` | `compact`: target and modes in two rows. |
+| `steppers` | `sides` or `right` | `sides` | Where − and + sit: either side of the number, or together on the right with the number on the left. |
 | `hvac_modes` | list | the unit's modes | Which modes show, in order. Quote `"off"` in YAML. |
 | `default_hvac_mode` | string | last used | What the power button turns on. |
 | `fan_control` | boolean | `true` | The fan button: a tap lists the unit's fan speeds, the current one marked. |
