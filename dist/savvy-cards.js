@@ -282,43 +282,34 @@ const GLASS_CSS = `${glassSurface('ha-card[data-glass]', '', ':host(:not([dark])
   ${GLASS_LIT('ha-card[data-glass]')}
 `;
 
-// design: matte. The same tiles and lights as glass, in a flat, solid material: opaque planes derived from the theme's
-// card colour, told apart by tone and a hairline edge, almost no shadow, no bevels. A lit tile is painted, not lit: the
-// state colour (chroma capped, so amber, green and blue sit in one family) is a wash strongest at the icon, with a thin
-// coloured edge on the icon's side. No blur, no glow, no transparency.
+// design: matte. A solid, flat material, the opposite of glass: one opaque plane per card in the theme's own card
+// colour, a faint paper grain, a hairline edge and a quiet lift under it. Rows inside are flat areas a step
+// lighter, with no outlines; nothing is ringed, bevelled or glowing. A lit lamp paints one wash of its colour
+// (chroma capped, so amber, green and blue sit in one family) from its icon, and nothing more.
+const MATTE_GRAIN = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='.33 .33 .33 0 0 .33 .33 .33 0 0 .33 .33 .33 0 0 0 0 0 0 .045'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`;
 const matteVars = (dark) => dark ? `
     --m-base: var(--card-background-color, #1c1c1e);
     --m-card: color-mix(in oklab, var(--m-base) 97%, #fff);
-    --m-tile-bg: color-mix(in oklab, var(--m-base) 91%, #fff);
-    --m-tile-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.05);
+    --m-tile-bg: color-mix(in oklab, var(--m-base) 92%, #fff);
     --m-edge: rgb(255 255 255 / 0.07);
-    --m-lift: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 24px -16px rgb(0 0 0 / 0.55);` : `
+    --m-lift: 0 1px 2px rgb(0 0 0 / 0.28), 0 12px 28px -20px rgb(0 0 0 / 0.6);` : `
     --m-base: var(--card-background-color, #fff);
     --m-card: color-mix(in oklab, var(--m-base) 96%, #e6dfd2);
-    --m-tile-bg: color-mix(in oklab, var(--m-base) 40%, #fff);
-    --m-tile-shadow: inset 0 0 0 1px rgb(60 50 30 / 0.07);
+    --m-tile-bg: color-mix(in oklab, var(--m-base) 45%, #fff);
     --m-edge: rgb(60 50 30 / 0.09);
-    --m-lift: 0 1px 2px rgb(60 50 30 / 0.08), 0 8px 20px -14px rgb(60 50 30 / 0.28);`;
+    --m-lift: 0 1px 2px rgb(60 50 30 / 0.07), 0 10px 24px -18px rgb(60 50 30 / 0.26);`;
 const matteSurface = (R, lightSel) => `
-  ${R} { ${matteVars(true)} background: var(--m-card); border: 1px solid var(--m-edge); box-shadow: var(--m-lift); }
+  ${R} { ${matteVars(true)} background: ${MATTE_GRAIN}, var(--m-card); border: 1px solid var(--m-edge); box-shadow: var(--m-lift); }
   ${lightSel} { ${matteVars(false)} }
 `;
 const MATTE_LIT = (R) => `
   ${R} [data-light], ${R}[data-light] { --lx: 28px; --ly: 50%; --mc: color-mix(in oklab, rgb(var(--lc, 128 128 128)) 72%, #8a8a8a); }
-  ${R} [data-light] { position: relative; isolation: isolate; background: var(--m-tile-bg); box-shadow: var(--m-tile-shadow); }
+  ${R} [data-light] { position: relative; isolation: isolate; background: var(--m-tile-bg); box-shadow: none; }
   ${R} [data-light]::before, ${R}[data-light]::before {
     content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; corner-shape: inherit; pointer-events: none;
-    background: radial-gradient(ellipse 150% 260% at var(--lx) var(--ly), color-mix(in srgb, var(--mc) 30%, transparent), color-mix(in srgb, var(--mc) 12%, transparent) 40%, color-mix(in srgb, var(--mc) 3%, transparent) 78%, transparent 100%);
+    background: radial-gradient(ellipse 130% 240% at var(--lx) var(--ly), color-mix(in srgb, var(--mc) 24%, transparent), color-mix(in srgb, var(--mc) 8%, transparent) 45%, transparent 85%);
     opacity: var(--on, 0); transition: opacity 360ms ease;
   }
-  ${R} [data-light]::after, ${R}[data-light]::after {
-    content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; corner-shape: inherit; padding: 1px; pointer-events: none;
-    background: radial-gradient(circle 170px at var(--lx) var(--ly), color-mix(in srgb, var(--mc) 55%, transparent), color-mix(in srgb, var(--mc) 14%, transparent) 50%, transparent 100%);
-    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
-    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-    opacity: var(--on, 0); transition: opacity 360ms ease;
-  }
-  ${R} :is(.power, .tb, .btn, .master)[data-on] { box-shadow: inset 0 0 0 1px color-mix(in oklab, currentColor 28%, transparent); }
 `;
 const MATTE_CSS = `${matteSurface('ha-card[data-matte]', ':host(:not([dark])) ha-card[data-matte]')}
   ${MATTE_LIT('ha-card[data-matte]')}
@@ -4766,7 +4757,9 @@ function designOn(config) { const d = config?.design; return d === "glass" || d 
 function syncDesign(card) {
   const root = card.shadowRoot || card._root;
   const el = card._glassEl?.isConnected ? card._glassEl : (card._glassEl = root?.querySelector("ha-card"));
-  if (el) { el.toggleAttribute("data-glass", card._config?.design === "glass"); el.toggleAttribute("data-matte", card._config?.design === "matte"); }
+  // a card's design is a word; the settings card's own is the dashboard's ({ style }), and it wears it too
+  const d = card._config?.design, style = d && typeof d === "object" ? d.style : d;
+  if (el) { el.toggleAttribute("data-glass", style === "glass"); el.toggleAttribute("data-matte", style === "matte"); }
 }
 
 class SavvyCard extends HTMLElement {
@@ -5834,6 +5827,9 @@ const SETTINGS_RULES = {
     { path: "exclude", label: "Exclude", kind: "union", get: roomExclude },
   ],
   "savvy-entity-card": [glowRule],
+  // no settings of their own, but they take the dashboard's design like every card
+  "savvy-camera-card": [],
+  "savvy-graph-card": [],
   "savvy-media-card": [glowRule],
   "savvy-lock-card": [
     glowRule,
@@ -15158,16 +15154,18 @@ const STYLE = `${BASE_CSS}
   #videoBand[data-framed] #videoCap { order: 0; } #videoBand[data-framed] #frame { order: 1; }
   #videoBand[data-framed] #sources { order: 2; margin-top: 2px; } #videoBand[data-framed] #nowRow { order: 3; }
   #videoBand[data-framed] #nowVol { order: 4; }
-  .via { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12.5px; line-height: 16px; font-weight: 550; color: var(--secondary-text-color); }
-  .via ha-icon { --mdc-icon-size: 16px; display: flex; color: rgb(var(--accent)); }
+  /* the sound line sits in the rows' columns: its icon centred where theirs are, its words where their names start */
+  .via { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 12.5px; line-height: 16px; font-weight: 550; color: var(--secondary-text-color); }
+  .via ha-icon { --mdc-icon-size: 18px; display: flex; color: rgb(var(--accent)); }
+  .via > ha-icon:first-child { flex: none; width: var(--b-m); justify-content: center; }
   .via span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* a TV that can switch where its sound goes: the line is a button that lists the outputs */
-  button.via { align-self: flex-start; max-width: 100%; margin-inline-start: -8px; padding: 5px 8px; border-radius: 10px; color: var(--primary-text-color); }
-  button.via .chev { --mdc-icon-size: 16px; color: var(--secondary-text-color); }
+  button.via { align-self: flex-start; max-width: 100%; padding: 5px 10px 5px 0; border-radius: 10px; color: var(--primary-text-color); }
+  button.via .chev { --mdc-icon-size: 16px; color: var(--secondary-text-color); margin-inline-start: -6px; }
   @media (hover: hover) { button.via:hover { background: var(--well); } }
   .via + .vol { margin-top: 4px; }
   .vol .bar { position: absolute; left: 0; right: 0; top: 50%; height: 5px; margin-top: -2.5px; border-radius: 99px; background: color-mix(in oklab, var(--primary-text-color) 10%, transparent); overflow: hidden; transform-origin: 50% 50%; }
-  .vol .mute { flex: none; display: grid; place-items: center; width: 34px; height: 32px; border-radius: 10px; color: var(--secondary-text-color); }
+  .vol .mute { flex: none; display: grid; place-items: center; width: var(--b-m); height: 32px; border-radius: 10px; color: var(--secondary-text-color); }
   .vol .mute ha-icon { --mdc-icon-size: 19px; display: flex; }
   .vol .mute[data-on] { color: #E8844F; background: rgb(232 132 79 / 0.16); }
   /* − / + as one pair at the end, the climate card's steppers at the transport's size */

@@ -19,7 +19,9 @@ function designOn(config) { const d = config?.design; return d === "glass" || d 
 function syncDesign(card) {
   const root = card.shadowRoot || card._root;
   const el = card._glassEl?.isConnected ? card._glassEl : (card._glassEl = root?.querySelector("ha-card"));
-  if (el) { el.toggleAttribute("data-glass", card._config?.design === "glass"); el.toggleAttribute("data-matte", card._config?.design === "matte"); }
+  // a card's design is a word; the settings card's own is the dashboard's ({ style }), and it wears it too
+  const d = card._config?.design, style = d && typeof d === "object" ? d.style : d;
+  if (el) { el.toggleAttribute("data-glass", style === "glass"); el.toggleAttribute("data-matte", style === "matte"); }
 }
 
 class SavvyCard extends HTMLElement {

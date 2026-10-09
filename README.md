@@ -156,12 +156,11 @@ switches itself off for people who ask their device for reduced transparency. Wi
 
 <picture><source media="(prefers-color-scheme: light)" srcset="docs/images/matte-light.png"><img src="docs/images/matte-dark.png" width="760" alt="The Savvy cards in the matte design"></picture>
 
-The same layout again, in a flat, solid material, the opposite of glass: opaque surfaces built from your
-theme's own card colour, tiles told apart by tone and a hairline edge instead of bevels and shadows, and a quiet
-lift only under cards and popups. A lit tile is painted, not lit: its
-state colour (desaturated a little, so amber, green and blue sit in one family) washes the tile from the icon
-outwards, with a thin coloured edge on the icon's side, stronger the brighter the lamp. No blur and no
-transparency, so it works on any background and is the lightest style on a tablet.
+The same layout again, in a flat, solid material, the opposite of glass: one opaque plane per card in your
+theme's own card colour, a faint paper grain, a hairline edge and a quiet lift under it. Rows inside are flat
+areas a step lighter, with no outlines; nothing is ringed, bevelled or glowing. A lit tile is painted, not lit:
+its state colour (desaturated a little, so amber, green and blue sit in one family) washes the tile from the
+icon outwards, stronger the brighter the lamp. No blur and no transparency.
 
 Turn it on with `design: { style: matte }` in the [settings card](#savvy-settings), or on one card with
 `design: matte` (`design: plain` keeps a card plain).

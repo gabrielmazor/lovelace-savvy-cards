@@ -19,11 +19,18 @@
   with a fine grain; a 1px edge brighter where the light falls, one top highlight, one soft shadow. Rows inside
   are flat (no glass on glass), and a lit lamp throws one faint wash of its colour. The specular sheen, the
   pointer highlight, the bevels and the rim lights are gone. Popups and menus share the material.
-- **Media: the screen frames its inputs.** The TV's name, the input it is on and its power sit at the top with
-  its sound and the one volume; the inputs follow (the TV itself as "TV apps"), then what the picked one plays.
-  A source's `input` (`HDMI 2`) makes the picker follow the TV, even when switched with the remote, and picking
-  it switches the TV. With `screen` named, everything else plays on it, whatever it calls itself. The sound and
-  its volume sit under the inputs; `screen_frame: false` keeps the TV as one more input instead.
+- **Matte, cleaned up the same way:** one flat plane per card with a faint paper grain, a hairline edge and a
+  quiet lift; rows are flat tone with no outlines, keys are no longer ringed, and a lit lamp paints one wash of
+  its colour without a rim.
+- **Every card takes the dashboard's design:** the camera and graph cards now follow the settings card's
+  `design.style` like the rest, and the settings card wears it too.
+- **Media:** the "Sound from …" line sits in the rows' columns, its icon centred with the other icons and its
+  words aligned with their names.
+- **Media: the screen frames its inputs.** The TV's name, the input it is on and its power sit at the top; then
+  the inputs (the TV itself as "TV apps"), what the picked one plays, and the screen's sound with its one volume.
+  A source's `input` (`HDMI 2`) makes the picker follow the TV, even when switched with the remote, and picking it
+  switches the TV. With `screen` named, everything else plays on it, whatever it calls itself.
+  `screen_frame: false` keeps the TV as one more input instead.
 - **Climate:** the modes are the same sliding selector as the media card's sources, each mode its icon and word on one line, the chosen one on a plate in its colour ("Fan only" reads "Fan" there). New `steppers: right` puts − and + together on
   the right, the number on the left (`sides`, either side of the number, stays the default).
 - **Grid heights:** in a sections view every card is a whole number of grid rows tall (56px rows, 8px between),

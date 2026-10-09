@@ -106,16 +106,18 @@ const STYLE = `${BASE_CSS}
   #videoBand[data-framed] #videoCap { order: 0; } #videoBand[data-framed] #frame { order: 1; }
   #videoBand[data-framed] #sources { order: 2; margin-top: 2px; } #videoBand[data-framed] #nowRow { order: 3; }
   #videoBand[data-framed] #nowVol { order: 4; }
-  .via { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12.5px; line-height: 16px; font-weight: 550; color: var(--secondary-text-color); }
-  .via ha-icon { --mdc-icon-size: 16px; display: flex; color: rgb(var(--accent)); }
+  /* the sound line sits in the rows' columns: its icon centred where theirs are, its words where their names start */
+  .via { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 12.5px; line-height: 16px; font-weight: 550; color: var(--secondary-text-color); }
+  .via ha-icon { --mdc-icon-size: 18px; display: flex; color: rgb(var(--accent)); }
+  .via > ha-icon:first-child { flex: none; width: var(--b-m); justify-content: center; }
   .via span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* a TV that can switch where its sound goes: the line is a button that lists the outputs */
-  button.via { align-self: flex-start; max-width: 100%; margin-inline-start: -8px; padding: 5px 8px; border-radius: 10px; color: var(--primary-text-color); }
-  button.via .chev { --mdc-icon-size: 16px; color: var(--secondary-text-color); }
+  button.via { align-self: flex-start; max-width: 100%; padding: 5px 10px 5px 0; border-radius: 10px; color: var(--primary-text-color); }
+  button.via .chev { --mdc-icon-size: 16px; color: var(--secondary-text-color); margin-inline-start: -6px; }
   @media (hover: hover) { button.via:hover { background: var(--well); } }
   .via + .vol { margin-top: 4px; }
   .vol .bar { position: absolute; left: 0; right: 0; top: 50%; height: 5px; margin-top: -2.5px; border-radius: 99px; background: color-mix(in oklab, var(--primary-text-color) 10%, transparent); overflow: hidden; transform-origin: 50% 50%; }
-  .vol .mute { flex: none; display: grid; place-items: center; width: 34px; height: 32px; border-radius: 10px; color: var(--secondary-text-color); }
+  .vol .mute { flex: none; display: grid; place-items: center; width: var(--b-m); height: 32px; border-radius: 10px; color: var(--secondary-text-color); }
   .vol .mute ha-icon { --mdc-icon-size: 19px; display: flex; }
   .vol .mute[data-on] { color: #E8844F; background: rgb(232 132 79 / 0.16); }
   /* − / + as one pair at the end, the climate card's steppers at the transport's size */

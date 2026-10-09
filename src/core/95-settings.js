@@ -215,6 +215,9 @@ const SETTINGS_RULES = {
     { path: "exclude", label: "Exclude", kind: "union", get: roomExclude },
   ],
   "savvy-entity-card": [glowRule],
+  // no settings of their own, but they take the dashboard's design like every card
+  "savvy-camera-card": [],
+  "savvy-graph-card": [],
   "savvy-media-card": [glowRule],
   "savvy-lock-card": [
     glowRule,
