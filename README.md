@@ -664,8 +664,9 @@ so one box never shows two bars; with the TV off it is back in Listen, for music
 guessed: without `video_output` the TV plays through itself. Speakers sit under the screen, each with its own
 volume, and two or more get a picker. With both kinds on the card, the bands are captioned Watch and Listen.
 
-With inputs, the screen frames them: the TV's name, the input it is on and its power at the top, its sound
-and the one volume under it, then the inputs (the TV itself as "TV apps") and what the picked one is playing.
+With inputs, the screen frames them: the TV's name, the input it is on and its power at the top, then the
+inputs (the TV itself as "TV apps"), what the picked one is playing, and the screen's sound and its one volume.
+`screen_frame: false` keeps the TV as one more input in the picker instead.
 Give each input its `input` (`HDMI 2`) and the picker follows the TV, even when you switch with the remote,
 and picking an input switches the TV to it.
 
@@ -688,6 +689,7 @@ presets, text to speech and an alarm clock. Volume moves only on a sideways drag
 | `layout` | `full` or `compact` | `full` | `compact`: one row with what is playing, its transport and the volume. |
 | `video` | list | found | The video sources in the picker (TVs, consoles, streamers, PCs): `{ entity, name, icon, power, screen, input, output, volume, artwork, sound_select, sound_outputs }`. `power`: a switch that turns it on. `screen`: the TV it plays on, in a room with two. `input`: the TV's input it is on (`HDMI 2`): the picker follows what is really on screen, and picking it switches the TV. `output`: on a screen, the soundbar it sends its sound to; it wins over `video_output`. `volume`: a helper that holds its real volume. `artwork`: a binary sensor that says its artwork is worth showing. `sound_select`: a select entity that switches where its sound goes (an LG TV needs none, see below). `sound_outputs`: the LG outputs to list, or `false` for none. |
 | `audio` | list | found | The speakers, under the sources with their own transport and volume; two or more get a picker. Same item format as `video`. |
+| `screen_frame` | boolean | `true` | The screen on its own row above its inputs. `false`: the TV is one more input in the picker. |
 | `screen` | entity | the first TV among `video` | The TV the video sources play on. It owns their volume. Every TV is its own screen; any other source plays on this one unless its own `screen` says otherwise (a room with two TVs). |
 | `video_output` | entity | none | The soundbar or receiver the main screen sends its sound to (eARC). While it does (an LG says so; another TV while the soundbar is on, and the soundbar is on its TV input), the bar is the soundbar's, and the soundbar leaves Listen. The soundbar playing something of its own (Spotify, Bluetooth) is not the TV's sound: it stays in Listen. A second TV uses only its own `output`. Empty: the TV plays through itself. |
 | `output_source` | string | TV, ARC, eARC, HDMI, optical | The soundbar's source while it plays the TV, when it has another name. |

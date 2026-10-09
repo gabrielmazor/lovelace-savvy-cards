@@ -102,10 +102,10 @@ const STYLE = `${BASE_CSS}
   ha-card[data-glass] .row, ha-card[data-matte] .row { --lx: 28px; }
   .vol { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
   /* a screen with inputs: the screen (its power, its sound, the one volume) frames the inputs below it */
-  #videoBand[data-framed] #frame { order: 1; } #videoBand[data-framed] #nowVol { order: 2; }
-  #videoBand[data-framed] #sources { order: 3; margin-top: 6px; } #videoBand[data-framed] #nowRow { order: 4; }
-  #videoBand[data-framed] #videoCap { order: 0; }
-  #videoBand[data-framed] #nowVol .vol { margin-top: 4px; }
+  /* framed: the screen on top, its inputs and what plays, then its sound and the one volume */
+  #videoBand[data-framed] #videoCap { order: 0; } #videoBand[data-framed] #frame { order: 1; }
+  #videoBand[data-framed] #sources { order: 2; margin-top: 2px; } #videoBand[data-framed] #nowRow { order: 3; }
+  #videoBand[data-framed] #nowVol { order: 4; }
   .via { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12.5px; line-height: 16px; font-weight: 550; color: var(--secondary-text-color); }
   .via ha-icon { --mdc-icon-size: 16px; display: flex; color: rgb(var(--accent)); }
   .via span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -636,7 +636,7 @@ class SavvyMediaCard extends SavvyCard {
         }
         attr(seg.querySelector("ha-icon"), "icon", this._playerIcon(v, st));
         // under its frame the TV in the picker stands for its own apps
-        const framedTv = c.video.some((x) => x.entity !== v.entity && this._screenOf(x)?.entity === v.entity);
+        const framedTv = c.screen_frame !== false && c.video.some((x) => x.entity !== v.entity && this._screenOf(x)?.entity === v.entity);
         text(seg.querySelector("span"), v.name || (framedTv ? "TV apps" : shortName(this._hass, v.entity, c.area)));
         attr(seg, "data-sel", v === active);
         attr(seg, "data-live", this._isOn(v));
@@ -685,7 +685,7 @@ class SavvyMediaCard extends SavvyCard {
   // The screen as a frame: its name, power and what it is on; the volume and sound line sit under it.
   _frame(v) {
     const el = this._el, c = this._config, screen = this._screenOf(v);
-    const framed = !this._compact && !!screen && c.video.some((x) => x.entity !== screen.entity && this._screenOf(x)?.entity === screen.entity);
+    const framed = !this._compact && c.screen_frame !== false && !!screen && c.video.some((x) => x.entity !== screen.entity && this._screenOf(x)?.entity === screen.entity);
     attr(el.videoBand, "data-framed", framed);
     el.frame.hidden = !framed;
     if (!framed) return null;
@@ -1222,6 +1222,7 @@ const EDITOR = defineEditor("savvy-media-card", (hass, c) => [
   playerList("video", "Video sources", "Empty: the area's players (not its speakers)."),
   playerList("audio", "Speakers", "The room's speakers: each with its transport, volume and power; two or more get a picker. Empty: the area's speakers and receivers."),
   { name: "screen", label: "Screen", helper: "The TV the sources play on: it owns their volume. Empty: the one source that is a TV.", selector: { entity: { domain: "media_player" } } },
+  S.bool("screen_frame", "Screen on its own row", "The TV, the input it is on and its power above its inputs. Off: the TV is one more input in the picker.", true),
   { name: "output_source", label: "Soundbar's TV input", helper: "The soundbar's source while it plays the TV, when it isn't called TV, ARC, eARC, HDMI or Optical.", selector: { text: {} } },
   { name: "video_output", label: "Screen's sound output", helper: "The soundbar or receiver the screen sends its sound to (eARC). While it does, the bar is the soundbar's and the soundbar leaves Listen. Empty: the TV plays through itself.", selector: { entity: { domain: "media_player" } } },
   S.grid(S.bool("artwork", "Show artwork", null, true), S.bool("volume_buttons", "Volume buttons", null, true)),

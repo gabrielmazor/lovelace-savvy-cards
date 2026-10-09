@@ -237,16 +237,11 @@ const STYLE = `
     position: relative; display: flex; gap: 2px; margin-top: 12px;
     padding: 3px; border-radius: 14px; background: var(--well);
   }
-  /* the modes: a row of words under a hairline, the chosen one marked by its colour and a dot that slides */
-  .segmented.modes { margin: 14px 0 0; padding: 6px 0 0; border-radius: 0; background: none; border-top: 1px solid var(--line); gap: 0; }
-  /* each mode is its icon and its word on one line; the chosen one's dot sits under it */
-  .modes .seg { flex-direction: row; gap: 6px; height: 46px; padding: 0 2px 6px; font-size: 13px; }
+  /* the modes: the same selector as the media card's sources, each mode its icon and word on one line, the
+     chosen one on a plate that slides between them, tinted in that mode's colour */
+  .segmented.modes { margin: 16px 0 0; }
+  .modes .seg { flex-direction: row; gap: 6px; height: 36px; padding: 0 4px; font-size: 13px; }
   .modes .seg ha-icon { --mdc-icon-size: 18px; }
-  .segmented.modes .pill, .segmented.modes .pill[data-colored] { background: transparent; box-shadow: none; }
-  .segmented.modes .pill[data-colored]::after {
-    content: ""; position: absolute; left: 50%; bottom: 3px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%;
-    background: var(--sc);
-  }
   .pill {
     position: absolute; top: 3px; bottom: 3px; left: 0; border-radius: 11px;
     background: var(--ha-card-background, var(--card-background-color));
@@ -259,7 +254,7 @@ const STYLE = `
   .modes .pill[data-colored] {
     background: color-mix(in oklab, var(--sc) 22%, var(--ha-card-background, var(--card-background-color)));
   }
-  .modes .pill:not([data-colored]) { background: transparent; box-shadow: none; }
+  /* off has no colour of its own: the plain plate, as on the media card */
   .seg {
     position: relative; flex: 1; min-width: 0; height: 34px;
     display: flex; align-items: center; justify-content: center; gap: 6px;
@@ -272,7 +267,7 @@ const STYLE = `
   .modes .seg[data-sel] { color: var(--primary-text-color); }
   .modes .seg[data-sel] ha-icon { color: var(--sc, var(--primary-text-color)); }
   /* narrow cards drop the mode labels and keep the icons; the range labels always stay */
-  @container (max-width: 260px) { .modes .seg span { display: none; } .modes .seg { height: 44px; } }
+  @container (max-width: 260px) { .modes .seg span { display: none; } }
   /* five modes with their words need room: a narrower card keeps the words for the chosen one only */
   @container (max-width: 400px) { .modes:has(.seg:nth-child(6)) .seg:not([data-sel]) span { display: none; } }
 
@@ -349,9 +344,9 @@ const STYLE = `
   ha-card[data-compact] .now { height: 13px; margin-top: -6.5px; }
   ha-card[data-compact] .segmented { margin-top: 9px; }
   ha-card[data-compact] .seg { height: 30px; font-size: 12.5px; }
-  /* compact keeps the modes on one line: icon and word side by side, the dot under the pair */
-  ha-card[data-compact] .segmented.modes { margin-top: 10px; padding-top: 4px; }
-  ha-card[data-compact] .modes .seg { flex-direction: row; gap: 6px; height: 40px; padding-bottom: 4px; }
+  /* compact keeps the modes on one line: icon and word side by side */
+  ha-card[data-compact] .segmented.modes { margin-top: 10px; }
+  ha-card[data-compact] .modes .seg { flex-direction: row; gap: 6px; height: 32px; }
   ha-card[data-compact] .modes .seg ha-icon { --mdc-icon-size: 17px; }
   @container (max-width: 420px) { ha-card[data-compact] .modes .seg span { display: none; } }
   ha-card[data-compact] .seg ha-icon { --mdc-icon-size: 17px; }
@@ -1210,7 +1205,7 @@ class ClimateCard extends HTMLElement {
         seg.__wired = true;
         this._pressable(seg, new Spring(0, MOTION.press, "x"), () => this._setMode(mode));
       }
-      text(seg.querySelector("span"), this._label(mode));
+      text(seg.querySelector("span"), this._short(mode));
       attr(seg, "aria-pressed", st?.state === mode ? "true" : "false");
       const sel = st?.state === mode;
       attr(seg, "data-sel", sel ? "" : null);
@@ -1245,6 +1240,12 @@ class ClimateCard extends HTMLElement {
     });
     this._segGeom(r, this._sp.rangeX, this._sp.rangeW, this._rangeIdx);
     r.hidden = this._ranges.length < 2;
+  }
+
+  // in the row of modes a shorter word fits: "Fan only" reads "Fan" next to Cool and Heat
+  _short(mode) {
+    const label = this._label(mode);
+    return mode === "fan_only" && /^fan only$/i.test(label) ? "Fan" : label;
   }
 
   _label(mode) {

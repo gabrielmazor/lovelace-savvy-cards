@@ -129,7 +129,8 @@ export default async function ({ browser, base, check }) {
       bars: [...r.querySelectorAll(".vol")].filter(vis).length };
   });
   check("frame: the TV, on its input, with only its power", fr.framed && fr.sub === "Console" && fr.framePower && fr.frameKeys.join() === "power", JSON.stringify(fr));
-  check("frame: the screen, its sound, then the inputs, then what plays, top to bottom", fr.order.every((v, i, a) => i === 0 || a[i - 1] < v), JSON.stringify(fr.order));
+  const [yFrame, yVol, ySources, yNow] = fr.order;
+  check("frame: the screen, its inputs, what plays, then its sound, top to bottom", yFrame < ySources && ySources < yNow && yNow < yVol, JSON.stringify(fr.order));
   check("frame: the TV in the picker stands for its own apps", fr.segs[0] === "TV apps", JSON.stringify(fr.segs));
   check("the picker follows the TV's input (HDMI 2: the console)", fr.sel === "Console", fr.sel);
   check("one volume bar for the screen", fr.bars === 1, String(fr.bars));
@@ -147,6 +148,14 @@ export default async function ({ browser, base, check }) {
   await page.waitForTimeout(700);
   const sel3 = await page.evaluate(() => window.cards.at(-1).shadowRoot.querySelector("#sources .seg[data-sel]")?.textContent.trim());
   check("switched with the remote: the picker follows", sel3 === "Console", sel3);
+
+  // screen_frame: false — the TV is one more input in the picker, with its own name; no frame
+  await mount({ screen: TV, video_output: BAR, screen_frame: false, video: [{ entity: TV, name: "TV" }, { entity: "media_player.streamer", name: "Streamer", input: "HDMI 1" }],
+    audio: [{ entity: BAR, name: "Soundbar" }] });
+  await page.waitForTimeout(800);
+  const flat = await page.evaluate(() => { const r = window.cards.at(-1).shadowRoot, vis = (e) => !!e && !e.hidden && e.getClientRects().length > 0;
+    return { frame: vis(r.getElementById("frame")), segs: [...r.querySelectorAll("#sources .seg")].filter(vis).map((x) => x.textContent.trim()), bars: [...r.querySelectorAll(".vol")].filter(vis).length }; });
+  check("screen_frame: false — no frame, the TV is an input by its name, still one bar", !flat.frame && flat.segs.includes("TV") && flat.bars === 1, JSON.stringify(flat));
 
   check("no errors", errors.length === 0, errors.join(" | "));
   await page.close();
