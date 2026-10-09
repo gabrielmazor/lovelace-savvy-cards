@@ -15,6 +15,10 @@
   (Spotify, Bluetooth: its source isn't the TV) is never the TV's sound: it stays in Listen with its own bar
   (`output_source` names its TV input when it has another name). With two TVs each is its own screen, and a
   source with no `screen` of its own plays on the first.
+- **Glass, rebuilt as frosted glass:** one sheet per card, the backdrop blurred under a semi-transparent tint
+  with a fine grain; a 1px edge brighter where the light falls, one top highlight, one soft shadow. Rows inside
+  are flat (no glass on glass), and a lit lamp throws one faint wash of its colour. The specular sheen, the
+  pointer highlight, the bevels and the rim lights are gone. Popups and menus share the material.
 - **Media: the screen frames its inputs.** The TV's name, the input it is on and its power sit at the top with
   its sound and the one volume; the inputs follow (the TV itself as "TV apps"), then what the picked one plays.
   A source's `input` (`HDMI 2`) makes the picker follow the TV, even when switched with the remote, and picking

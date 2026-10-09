@@ -229,36 +229,32 @@ const GLOW_CSS = `
     background: radial-gradient(140% 110% at 0% 0%, rgb(var(--glow-rgb, var(--accent)) / calc(var(--glow, 0) * 0.1 + var(--pulse, 0) * 0.05)), transparent 66%); }
 `;
 
-// design: glass. A frosted surface, and anything marked data-light is a light source (lit(el, rgb, level) sets
-// --lc, --on). The source sits at --lx --ly (the icon). A broad ambient bleed falls off with distance, a tighter
-// core gives depth, and a rim light brightens the edge nearest the source. The colour mixes additively
-// (plus-lighter) so it shows on pure black too: a lit tile is a faintly lifted matte surface for it to land on.
-// The glass material, after the way Apple's liquid glass reads: a tinted body (so it never melts into what is behind
-// it), a bright specular sheen from the top-left, a rim lit at the top-left and the bottom-right and dim between,
-// an inner glow towards the edges, saturated and slightly brightened backdrop, deep soft shadows, and a soft
-// highlight that follows the pointer. The body, the rim and the pointer highlight are one layered background
-// (`--g-bg`), so every glass surface (a card, a popup, a menu) takes the same variables.
+// design: glass. Frosted glass, not a copy of anyone's: one sheet per surface, and nothing stacked on it.
+//   body    the backdrop blurred and a little saturated, under a semi-transparent tint (so text always reads)
+//   grain   a fine, static noise over the body: frosted material rather than a smeared screenshot, no banding
+//   edge    a 1px border brighter where the light falls (top-left) and fading to almost nothing opposite,
+//           one hairline highlight along the top, one soft shadow under the card
+//   inside  rows are flat areas a few percent lighter: no rims, gradients or shadows of their own
+//   light   a lit lamp throws one faint wash of its colour from its icon (--lx --ly), and nothing more
+// The body, grain and edge are one layered background (`--g-bg`), so a card, a popup and a menu share it.
+const GRAIN = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='.33 .33 .33 0 0 .33 .33 .33 0 0 .33 .33 .33 0 0 0 0 0 0 .07'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`;
 const glassVars = (dark, d = 0) => dark ? `
-    --g-spec: radial-gradient(240px circle at var(--px, 50%) var(--py, 0%), rgb(255 255 255 / calc(var(--pa, 0) * 0.16)), transparent 70%);
-    --g-bg: var(--g-spec) padding-box,
-      linear-gradient(135deg, rgb(255 255 255 / 0.17), rgb(255 255 255 / 0.05) 36%, rgb(255 255 255 / 0) 62%) padding-box,
-      radial-gradient(ellipse 110% 80% at 100% 100%, rgb(255 255 255 / 0.07), transparent 62%) padding-box,
-      linear-gradient(180deg, rgb(30 34 52 / ${0.5 + d}), rgb(14 17 28 / ${0.58 + d})) padding-box,
-      linear-gradient(135deg, rgb(255 255 255 / 0.62), rgb(255 255 255 / 0.1) 26%, rgb(255 255 255 / 0.03) 52%, rgb(255 255 255 / 0.24)) border-box;
-    --g-shadow: inset 0 1px 0 rgb(255 255 255 / 0.3), inset 0 -1px 0 rgb(255 255 255 / 0.05), inset 0 0 26px rgb(255 255 255 / 0.05), 0 22px 44px -14px rgb(0 0 0 / 0.6), 0 3px 8px rgb(0 0 0 / 0.28);
-    --g-filter: saturate(1.9) brightness(1.06) blur(22px);
-    --glass-tile: linear-gradient(180deg, rgb(255 255 255 / 0.13), rgb(255 255 255 / 0.05));
-    --glass-tile-shadow: inset 0 1px 0 rgb(255 255 255 / 0.24), inset 0 0 0 1px rgb(255 255 255 / 0.07), inset 0 -10px 16px -10px rgb(255 255 255 / 0.06), 0 6px 12px -6px rgb(0 0 0 / 0.4);
+    --g-bg: ${GRAIN} padding-box,
+      linear-gradient(180deg, rgb(255 255 255 / 0.06), rgb(255 255 255 / 0.025)) padding-box,
+      linear-gradient(rgb(20 22 30 / ${0.46 + d}), rgb(20 22 30 / ${0.46 + d})) padding-box,
+      linear-gradient(155deg, rgb(255 255 255 / 0.26), rgb(255 255 255 / 0.08) 32%, rgb(255 255 255 / 0.03) 66%, rgb(255 255 255 / 0.07)) border-box;
+    --g-shadow: inset 0 1px 0 rgb(255 255 255 / 0.07), 0 18px 40px -22px rgb(0 0 0 / 0.65), 0 2px 6px -2px rgb(0 0 0 / 0.25);
+    --g-filter: blur(24px) saturate(1.35);
+    --glass-tile: rgb(255 255 255 / 0.05);
+    --glass-tile-shadow: none;
     --lblend: plus-lighter;` : `
-    --g-spec: radial-gradient(240px circle at var(--px, 50%) var(--py, 0%), rgb(255 255 255 / calc(var(--pa, 0) * 0.5)), transparent 70%);
-    --g-bg: var(--g-spec) padding-box,
-      linear-gradient(135deg, rgb(255 255 255 / 0.8), rgb(255 255 255 / 0.2) 38%, rgb(255 255 255 / 0) 64%) padding-box,
-      linear-gradient(180deg, rgb(255 255 255 / ${0.5 + d}), rgb(236 241 252 / ${0.42 + d})) padding-box,
-      linear-gradient(135deg, #fff, rgb(255 255 255 / 0.3) 30%, rgb(255 255 255 / 0.12) 56%, rgb(255 255 255 / 0.85)) border-box;
-    --g-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 rgb(255 255 255 / 0.5), inset 0 0 24px rgb(255 255 255 / 0.35), 0 20px 40px -14px rgb(50 60 110 / 0.3), 0 2px 6px rgb(50 60 110 / 0.1);
-    --g-filter: saturate(1.8) brightness(1.04) blur(22px);
-    --glass-tile: linear-gradient(180deg, rgb(255 255 255 / 0.86), rgb(255 255 255 / 0.56));
-    --glass-tile-shadow: inset 0 1px 0 #fff, inset 0 0 0 1px rgb(255 255 255 / 0.75), 0 6px 14px -6px rgb(50 60 110 / 0.24);
+    --g-bg: ${GRAIN} padding-box,
+      linear-gradient(180deg, rgb(255 255 255 / ${0.62 + d}), rgb(255 255 255 / ${0.5 + d})) padding-box,
+      linear-gradient(155deg, rgb(255 255 255 / 0.95), rgb(255 255 255 / 0.55) 40%, rgb(24 28 48 / 0.08) 100%) border-box;
+    --g-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 16px 36px -20px rgb(40 50 90 / 0.3), 0 2px 6px -2px rgb(40 50 90 / 0.1);
+    --g-filter: blur(24px) saturate(1.3);
+    --glass-tile: rgb(255 255 255 / 0.45);
+    --glass-tile-shadow: none;
     --lblend: normal;`;
 const glassSurface = (R, darkSel, lightSel, d = 0) => `
   ${R} { ${glassVars(true, d)}
@@ -271,19 +267,10 @@ const GLASS_LIT = (R) => `
   ${R} [data-light] { --lx: 28px; --ly: 50%; position: relative; isolation: isolate; background: var(--glass-tile); box-shadow: var(--glass-tile-shadow); }
   ${R} [data-light]::before, ${R}[data-light]::before {
     content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; corner-shape: inherit; pointer-events: none;
-    background:
-      radial-gradient(circle 34px at var(--lx) var(--ly), rgb(var(--lc, 128 128 128) / 0.34), transparent),
-      radial-gradient(ellipse 150% 260% at var(--lx) var(--ly), rgb(var(--lc, 128 128 128) / 0.25), rgb(var(--lc, 128 128 128) / 0.1) 34%, rgb(var(--lc, 128 128 128) / 0.03) 66%, transparent 100%);
+    background: radial-gradient(ellipse 120% 220% at var(--lx) var(--ly), rgb(var(--lc, 128 128 128) / 0.2), rgb(var(--lc, 128 128 128) / 0.06) 45%, transparent 80%);
     mix-blend-mode: var(--lblend); opacity: var(--on, 0); transition: opacity 360ms ease;
   }
   ${R}[data-light] { --lx: 28px; --ly: 50%; }
-  ${R} [data-light]::after, ${R}[data-light]::after {
-    content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; corner-shape: inherit; padding: 1px; pointer-events: none;
-    background: radial-gradient(circle 170px at var(--lx) var(--ly), rgb(var(--lc, 128 128 128) / 0.58), rgb(var(--lc, 128 128 128) / 0.17) 42%, transparent 100%);
-    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
-    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-    mix-blend-mode: var(--lblend); opacity: var(--on, 0); transition: opacity 360ms ease;
-  }
 `;
 const GLASS_CSS = `${glassSurface('ha-card[data-glass]', '', ':host(:not([dark])) ha-card[data-glass]')}
   ${GLASS_LIT('ha-card[data-glass]')}

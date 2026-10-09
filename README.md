@@ -140,12 +140,12 @@ animations, light and dark themes, and honour reduced motion.
 
 <picture><source media="(prefers-color-scheme: light)" srcset="docs/images/glass-light.png"><img src="docs/images/glass-dark.png" width="760" alt="The Savvy cards in the glass design"></picture>
 
-An optional second design, after Apple's liquid glass: a tinted, saturated pane with a bright specular rim and sheen, a highlight that follows the pointer, and everything that is on is a light source: the
-icon of a lit light, a person at home, a playing speaker, a cooling thermostat throws its colour into its
-own tile, brightest at the icon and fading with distance, with a thin rim light on the tile's nearest edge.
-The light is the tile's own layer, so it shows on a plain black dashboard too; the frosted blur needs a
-background behind the cards (a wallpaper or a soft gradient) to show. A lamp throws more light the
-brighter it is.
+An optional second design: frosted glass. Each card is one sheet: whatever is behind it, blurred and a
+little saturated, under a semi-transparent tint so text always reads, with a fine grain that makes it read as
+frosted material. Its edge is a 1px border, brighter where the light falls and fading opposite, with one
+hairline highlight along the top and one soft shadow under the card. Rows inside are flat areas a touch
+lighter, never glass on glass. A lit lamp, a playing speaker or a cooling AC throws one faint wash of its
+colour from its icon. The blur needs a background behind the cards (a wallpaper or a soft gradient) to show.
 
 Turn it on for every card with `design: { style: glass }` in the [settings card](#savvy-settings), or for
 one card with `design: glass` (`design: plain` on a card keeps it plain when the dashboard is glass). It
