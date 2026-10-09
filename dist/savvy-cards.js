@@ -15177,6 +15177,11 @@ const STYLE = `${BASE_CSS}
   ha-card:is([data-glass], [data-matte]) .row { padding: 8px 10px; border-radius: 15px; background: color-mix(in oklab, var(--primary-text-color) 4%, transparent); }
   ha-card[data-glass] .row, ha-card[data-matte] .row { --lx: 28px; }
   .vol { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  /* a screen with inputs: the screen (its power, its sound, the one volume) frames the inputs below it */
+  #videoBand[data-framed] #frame { order: 1; } #videoBand[data-framed] #nowVol { order: 2; }
+  #videoBand[data-framed] #sources { order: 3; margin-top: 6px; } #videoBand[data-framed] #nowRow { order: 4; }
+  #videoBand[data-framed] #videoCap { order: 0; }
+  #videoBand[data-framed] #nowVol .vol { margin-top: 4px; }
   .via { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12.5px; line-height: 16px; font-weight: 550; color: var(--secondary-text-color); }
   .via ha-icon { --mdc-icon-size: 16px; display: flex; color: rgb(var(--accent)); }
   .via span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -15314,6 +15319,11 @@ class SavvyMediaCard extends SavvyCard {
         <div class="body">
           <div class="band" id="videoBand" hidden>
             <span class="cap" id="videoCap" hidden></span>
+            <div class="row frame" id="frame" hidden>
+              <span class="icon" id="frameIcon"><ha-icon></ha-icon></span>
+              <span class="meta"><span class="n" id="frameName"></span><span class="d" id="frameSub"></span></span>
+              <div class="transport" id="frameTransport"></div>
+            </div>
             <div class="segmented" id="sources" hidden><span class="sel"></span></div>
             <div class="row" id="nowRow">
               <span class="icon" id="nowIcon"></span>
@@ -15349,7 +15359,7 @@ class SavvyMediaCard extends SavvyCard {
     }
     const $ = (id) => root.getElementById(id);
     this._el = { card: root.querySelector("ha-card"), header: $("header"), title: $("title"), stage: $("stage"), art: $("art"), thumb: $("thumb"), nowGlyph: $("nowGlyph"),
-      stageT: $("stageT"), stageS: $("stageS"), progress: $("progress"), progressFill: $("progressFill"), videoBand: $("videoBand"), sources: $("sources"),
+      stageT: $("stageT"), stageS: $("stageS"), progress: $("progress"), progressFill: $("progressFill"), videoBand: $("videoBand"), sources: $("sources"), frame: $("frame"), frameIcon: $("frameIcon"), frameName: $("frameName"), frameSub: $("frameSub"), frameTransport: $("frameTransport"),
       nowRow: $("nowRow"), nowIcon: $("nowIcon"), nowName: $("nowName"), nowSub: $("nowSub"), nowTransport: $("nowTransport"), nowVol: $("nowVol"),
       audioBand: $("audioBand"), speakers: $("speakers"), videoCap: $("videoCap"), audioCap: $("audioCap"), alarmBand: $("alarmBand"), alarmIcon: $("alarmIcon"), alarmGlyph: $("alarmGlyph"),
       alarmMeta: $("alarmMeta"), alarmName: $("alarmName"), alarmSub: $("alarmSub"), alarmWhen: $("alarmWhen"), alarmToggle: $("alarmToggle"),
@@ -15679,12 +15689,14 @@ class SavvyMediaCard extends SavvyCard {
     el.videoBand.hidden = !c.video.length;
     if (!c.video.length) { this._active = null; return; }
     const live = c.video.filter((v) => ACTIVE.has(this._hass.states[v.entity]?.state));
-    const sig = live.map((v) => v.entity).join("|");
+    // the input the TV is on, when a source names it (input: HDMI 2): what is really on screen
+    const tuned = this._tuned();
+    const sig = [tuned?.entity || "", ...live.map((v) => v.entity)].join("|");
     if (this._liveSig === undefined) this._liveSig = sig;
     if (sig !== this._liveSig) { this._liveSig = sig; if (sig) this._picked = null; }
     const on = c.video.filter((v) => this._isOn(v));
     if (this._picked && !c.video.some((v) => v.entity === this._picked)) this._picked = null;
-    const auto = live[0] || on[0] || c.video[0];
+    const auto = tuned || live[0] || on[0] || c.video[0];
     const active = this._picked ? c.video.find((v) => v.entity === this._picked) : auto;
     const changed = this._active && this._active.entity !== active.entity;
     this._active = active;
@@ -15699,7 +15711,9 @@ class SavvyMediaCard extends SavvyCard {
           this._pressable(seg, { onTap: () => this._pick(v), onHold: () => moreInfo(this, v.entity), haptic: null }, 0.08);
         }
         attr(seg.querySelector("ha-icon"), "icon", this._playerIcon(v, st));
-        text(seg.querySelector("span"), v.name || shortName(this._hass, v.entity, c.area));
+        // under its frame the TV in the picker stands for its own apps
+        const framedTv = c.video.some((x) => x.entity !== v.entity && this._screenOf(x)?.entity === v.entity);
+        text(seg.querySelector("span"), v.name || (framedTv ? "TV apps" : shortName(this._hass, v.entity, c.area)));
         attr(seg, "data-sel", v === active);
         attr(seg, "data-live", this._isOn(v));
         attr(seg, "aria-pressed", v === active ? "true" : "false");
@@ -15723,7 +15737,44 @@ class SavvyMediaCard extends SavvyCard {
     if (this._active?.entity === v.entity) return moreInfo(this, v.entity);
     this._picked = v.entity;
     haptic("selection");
+    // an input with a name on the TV: switch the TV to it (waking the TV first when it is off)
+    const screen = this._screenOf(v);
+    if (v.input && screen && screen.entity !== v.entity) {
+      const go = () => this._call("media_player", "select_source", { source: v.input }, screen.entity);
+      if (!this._isOn(screen)) { this._togglePower(screen); setTimeout(go, 1500); } else go();
+    }
     this._update();
+  }
+
+  // The source whose `input` is the TV's current source, while the TV is on.
+  _tuned() {
+    const c = this._config;
+    for (const v of c.video) {
+      if (!v.input) continue;
+      const screen = this._screenOf(v);
+      const src = screen && this._isOn(screen) ? this._hass.states[screen.entity]?.attributes.source : null;
+      if (src != null && norm(src) === norm(v.input)) return v;
+    }
+    return null;
+  }
+
+  // The screen as a frame: its name, power and what it is on; the volume and sound line sit under it.
+  _frame(v) {
+    const el = this._el, c = this._config, screen = this._screenOf(v);
+    const framed = !this._compact && !!screen && c.video.some((x) => x.entity !== screen.entity && this._screenOf(x)?.entity === screen.entity);
+    attr(el.videoBand, "data-framed", framed);
+    el.frame.hidden = !framed;
+    if (!framed) return null;
+    const st = this._hass.states[screen.entity], on = this._isOn(screen);
+    attr(el.frameIcon, "data-live", on);
+    attr(el.frameIcon.querySelector("ha-icon"), "icon", this._playerIcon(screen, st));
+    if (!el.frameIcon.__wired) { el.frameIcon.__wired = true; this._pressable(el.frameIcon, { onTap: () => moreInfo(this, el.frameIcon.__entity), haptic: null }, 0.08); }
+    el.frameIcon.__entity = screen.entity;
+    text(el.frameName, screen.name || shortName(this._hass, screen.entity, c.area));
+    const tuned = this._tuned(), src = st?.attributes.source;
+    text(el.frameSub, !on ? "Off" : tuned ? (tuned.name || shortName(this._hass, tuned.entity, c.area)) : src || "On");
+    this._buildTransport(el.frameTransport, { ...screen, __powerOnly: true }, { power: true });
+    return screen;
   }
 
   _nowPlaying() {
@@ -15758,7 +15809,9 @@ class SavvyMediaCard extends SavvyCard {
       text(el.nowName, info.name || info.title);
       text(el.nowSub, this._rowSub(v, info));
     }
-    this._buildTransport(el.nowTransport, v, { power: true });
+    // under a frame the screen's power is in the frame: the TV's own apps row doesn't repeat it
+    const frame = this._compact ? null : this._frame(v);
+    this._buildTransport(el.nowTransport, v, { power: !(frame && frame.entity === v.entity) });
     const owner = this._volumeOwner(v);
     el.nowVol.hidden = !owner;
     if (owner) {
@@ -15806,10 +15859,14 @@ class SavvyMediaCard extends SavvyCard {
     const st = this._hass.states[cfg.entity];
     const on = this._isOn(cfg), playing = ACTIVE.has(st?.state);
     const want = [];
+    if (cfg.__powerOnly) {
+      if (cfg.power || has(st, F.TURN_ON) || has(st, F.TURN_OFF)) want.push({ key: "power", icon: "mdi:power", on, act: () => this._togglePower(cfg) });
+    } else {
     if (has(st, F.PREV)) want.push({ key: "prev", icon: "mdi:skip-previous", act: () => this._transport(cfg, "media_previous_track") });
     if (has(st, F.PAUSE) || has(st, F.PLAY)) want.push({ key: "play", solid, icon: playing ? "mdi:pause" : "mdi:play", act: () => this._transport(cfg, "media_play_pause") });
     if (has(st, F.NEXT)) want.push({ key: "next", icon: "mdi:skip-next", act: () => this._transport(cfg, "media_next_track") });
     if (power && (cfg.power || has(st, F.TURN_ON) || has(st, F.TURN_OFF))) want.push({ key: "power", icon: "mdi:power", on, act: () => this._togglePower(cfg) });
+    }
     for (const b of want) {
       const btn = this._rowOf(parent, b.key, "button", `tb${b.solid ? " solid" : ""}`, `<ha-icon></ha-icon>`);
       if (!btn.__wired) { btn.__wired = true; this._pressable(btn, { onTap: () => btn.__act(), haptic: null }, 0.08); }
@@ -16035,10 +16092,12 @@ class SavvyMediaCard extends SavvyCard {
   // sources. The screen owns the volume of everything watched on it (an Apple TV or a console has none).
   _screenOf(cfg) {
     const c = this._config, isTv = (v) => this._hass.states[v.entity]?.attributes.device_class === "tv";
-    if (cfg.screen) return c.video.find((v) => v.entity === cfg.screen) || { entity: cfg.screen };
-    // a TV is its own screen; anything else plays on the card's screen, else on the first TV
-    if (cfg.entity === c.screen || isTv(cfg)) return cfg;
-    if (c.screen) return c.video.find((v) => v.entity === c.screen) || { entity: c.screen };
+    const find = (id) => (id === cfg.entity ? cfg : c.video.find((v) => v.entity === id) || { entity: id });
+    if (cfg.screen) return find(cfg.screen);
+    // with the card's screen named, everything else plays on it, whatever it calls itself (an Apple TV can say "tv")
+    if (c.screen) return find(c.screen);
+    // otherwise a TV is its own screen, and anything else plays on the first TV
+    if (isTv(cfg)) return cfg;
     return c.video.find(isTv) || null;
   }
 
@@ -16062,6 +16121,11 @@ class SavvyMediaCard extends SavvyCard {
   _volumeOwner(cfg) {
     if (cfg.volume === false) return null;
     const screen = this._screenOf(cfg) || cfg;
+    // a source with a sound output of its own (a PC on its desk speakers) keeps it
+    if (cfg.entity !== screen.entity && cfg.output) {
+      const own = this._config.audio.find((a) => a.entity === cfg.output) || this._config.video.find((v) => v.entity === cfg.output);
+      return own ? { ...own } : { entity: cfg.output };
+    }
     const out = this._externalOut(screen);
     if (!out) return screen;
     const listed = this._config.audio.find((a) => a.entity === out);
@@ -16220,6 +16284,7 @@ const playerList = (name, label, helper) => ({ name, label, helper, type: "list"
     { type: "grid", name: "", schema: [{ name: "name", label: "Name", selector: { text: {} } }, { name: "icon", label: "Icon", selector: { icon: {} } }] },
     { name: "power", label: "Power switch", helper: "A switch that powers it, when the player can't turn itself on.", selector: { entity: { domain: ["switch", "input_boolean"] } } },
     { name: "screen", label: "Screen", helper: "The TV this source plays on, when the room has more than one.", selector: { entity: { domain: "media_player" } } },
+    { name: "input", label: "TV input", helper: "The TV's input this source is on, e.g. HDMI 2: the picker follows the TV, and picking it switches the TV.", selector: { text: {} } },
     { name: "output", label: "Sound output", helper: "For a screen: the soundbar it sends its sound to. Overrides the card's output.", selector: { entity: { domain: "media_player" } } },
     { name: "sound_select", label: "Sound output list", helper: "A select entity that switches where the TV's sound goes. An LG TV needs none: its outputs are found.", selector: { entity: { domain: ["select", "input_select"] } } },
     { name: "volume", label: "Volume helper", helper: "A helper that is the real volume, when the player's own isn't.", selector: { entity: { domain: ["input_number", "number"] } } },

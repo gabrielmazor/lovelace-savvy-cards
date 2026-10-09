@@ -110,6 +110,44 @@ export default async function ({ browser, base, check }) {
   const str = await pickSeg("Streamer");
   check("two screens: an unmapped source plays on the first TV (its soundbar's 34%)", str.source === "34%", JSON.stringify(str));
 
+  // the frame: the screen (name, what it is on, its power) over the inputs; inputs follow and switch the TV's input
+  await page.evaluate(({ TV, BAR }) => window.setStates({
+    [TV]: { state: "on", attributes: { ...window.hass.states[TV].attributes, source: "HDMI 2", source_list: ["HDMI 1", "HDMI 2"], sound_output: "external_arc" } },
+    [BAR]: { state: "on", attributes: { ...window.hass.states[BAR].attributes, source: "TV" } },
+    "media_player.console": { state: "idle", attributes: { friendly_name: "Console", device_class: "tv", supported_features: 21437 } },
+  }), { TV, BAR });
+  await mount({ screen: TV, video_output: BAR, video: [{ entity: TV }, { entity: "media_player.streamer", name: "Streamer", input: "HDMI 1" }, { entity: "media_player.console", name: "Console", input: "HDMI 2" }],
+    audio: [{ entity: BAR, name: "Soundbar" }] });
+  await page.waitForTimeout(900);
+  const fr = await page.evaluate(() => {
+    const r = window.cards.at(-1).shadowRoot, vis = (e) => !!e && !e.hidden && e.getClientRects().length > 0;
+    const y = (e) => e.getBoundingClientRect().top;
+    return { framed: vis(r.getElementById("frame")), name: r.getElementById("frameName").textContent, sub: r.getElementById("frameSub").textContent,
+      framePower: vis(r.querySelector("#frameTransport [data-k=power]")), frameKeys: [...r.querySelectorAll("#frameTransport [data-k]")].filter(vis).map((b) => b.dataset.k),
+      sel: r.querySelector("#sources .seg[data-sel]")?.textContent.trim(), segs: [...r.querySelectorAll("#sources .seg")].filter(vis).map((x) => x.textContent.trim()),
+      order: [y(r.getElementById("frame")), y(r.getElementById("nowVol")), y(r.getElementById("sources")), y(r.getElementById("nowRow"))],
+      bars: [...r.querySelectorAll(".vol")].filter(vis).length };
+  });
+  check("frame: the TV, on its input, with only its power", fr.framed && fr.sub === "Console" && fr.framePower && fr.frameKeys.join() === "power", JSON.stringify(fr));
+  check("frame: the screen, its sound, then the inputs, then what plays, top to bottom", fr.order.every((v, i, a) => i === 0 || a[i - 1] < v), JSON.stringify(fr.order));
+  check("frame: the TV in the picker stands for its own apps", fr.segs[0] === "TV apps", JSON.stringify(fr.segs));
+  check("the picker follows the TV's input (HDMI 2: the console)", fr.sel === "Console", fr.sel);
+  check("one volume bar for the screen", fr.bars === 1, String(fr.bars));
+  await page.evaluate(() => { window.log.length = 0; });
+  const st = await page.evaluate(() => { const s = [...window.cards.at(-1).shadowRoot.querySelectorAll("#sources .seg")].find((x) => x.textContent.includes("Streamer")); s.scrollIntoView({ block: "center" }); const q = s.getBoundingClientRect(); return [q.x + q.width / 2, q.y + q.height / 2]; });
+  await page.mouse.click(...st);
+  await page.waitForTimeout(500);
+  const sw = await page.evaluate(() => [...window.log]);
+  check("picking an input switches the TV to it", sw.some((c) => c.includes("select_source") && c.includes("HDMI 1") && c.includes("living_room_tv")), JSON.stringify({ sw, st }));
+  await page.evaluate((TV) => window.setStates({ [TV]: { state: "on", attributes: { ...window.hass.states[TV].attributes, source: "HDMI 1" } } }), TV);
+  await page.waitForTimeout(700);
+  const sel2 = await page.evaluate(() => window.cards.at(-1).shadowRoot.querySelector("#sources .seg[data-sel]")?.textContent.trim());
+  check("...and the picker stays on it once the TV reports it", sel2 === "Streamer", sel2);
+  await page.evaluate((TV) => window.setStates({ [TV]: { state: "on", attributes: { ...window.hass.states[TV].attributes, source: "HDMI 2" } } }), TV);
+  await page.waitForTimeout(700);
+  const sel3 = await page.evaluate(() => window.cards.at(-1).shadowRoot.querySelector("#sources .seg[data-sel]")?.textContent.trim());
+  check("switched with the remote: the picker follows", sel3 === "Console", sel3);
+
   check("no errors", errors.length === 0, errors.join(" | "));
   await page.close();
 }

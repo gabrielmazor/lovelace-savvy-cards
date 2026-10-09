@@ -47,6 +47,7 @@ const MEDIA_SOURCES = `(() => {
   add("media_player.living_room_pc", "off", { friendly_name: "PC", device_class: "tv", supported_features: SF }, 300);
   add("media_player.living_room_soundbar", "on", { friendly_name: "Soundbar", device_class: "receiver", volume_level: 0.34, supported_features: SF }, 14);
   add("media_player.living_room_speakers", "idle", { friendly_name: "Speakers", device_class: "speaker", volume_level: 0.2, supported_features: SF }, 90);
+  add("media_player.living_room_tv", "on", { friendly_name: "Living Room TV", device_class: "tv", source: "HDMI 2", source_list: ["HDMI 1", "HDMI 2", "HDMI 3"], volume_level: 0.12, supported_features: SF | 2048 }, 14);
   window.setStates(patch);
 })();`;
 // the tiles: three rooms side by side (the first is mounted by the loop)
@@ -238,11 +239,11 @@ const SHOTS = [
   ["room-activity", "savvy-room-activity-card", { area: "living_room", chips: [{ entity: "input_boolean.movie_mode", name: "Movie", icon: "mdi:movie-open" }] }, 460],
   ["room-activity-compact", "savvy-room-activity-card", { area: "bedroom", layout: "compact" }, 400],
   ["media", "savvy-media-card", { area: "living_room", presets: [{ entity: "script.good_night", name: "Good night" }] }, 460],
-  ["media-sources", "savvy-media-card", { name: "Living room", video: [
-      { entity: "media_player.living_room_console", name: "Console", icon: "mdi:controller" },
-      { entity: "media_player.living_room_tv", name: "TV" },
-      { entity: "media_player.living_room_streamer", name: "Streamer", icon: "mdi:cast-variant" },
-      { entity: "media_player.living_room_pc", name: "PC", icon: "mdi:desktop-tower-monitor", output: "media_player.living_room_speakers" }],
+  ["media-sources", "savvy-media-card", { name: "Living room", screen: "media_player.living_room_tv", video: [
+      { entity: "media_player.living_room_tv" },
+      { entity: "media_player.living_room_streamer", name: "Streamer", icon: "mdi:cast-variant", input: "HDMI 1" },
+      { entity: "media_player.living_room_console", name: "Console", icon: "mdi:controller", input: "HDMI 2" },
+      { entity: "media_player.living_room_pc", name: "PC", icon: "mdi:desktop-tower-monitor", input: "HDMI 3" }],
     audio: [{ entity: "media_player.living_room_soundbar", name: "Soundbar" }, { entity: "media_player.living_room_speakers", name: "Speakers" }],
     video_output: "media_player.living_room_soundbar" }, 460, MEDIA_SOURCES],
   ["media-compact", "savvy-media-card", { area: "kitchen", layout: "compact" }, 460],
