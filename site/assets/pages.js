@@ -1,198 +1,275 @@
-// The demo dashboard: its pages, and on each page the cards, in sections.
-//   A page: { id, title, nav (label), icon, sections: [section] }
-//   A section: { wide?: true, title?: "...", grid?: n, cards: [[type, config], ...] }
-// The home page shows every card in its compact layout; a room page and a domain page show
-// them in full. Addresses are query strings (?p=lights), so the site works from any folder of
-// any static host, and a refresh lands on the same page.
+// The demo dashboard, laid out the way a real one is: Home Assistant "sections" views of up to three
+// columns. Every page here is a view, every block a section, in the same order and with the same
+// options a real home's dashboard uses; only the devices are made up.
+//   A page:    { id, title, nav, group, max_columns, sections: [section] }
+//   A section: { column_span?: n, cards: [[type, config], ...] }   config.grid_options as in Home Assistant
+// Addresses are query strings (?p=lights), so the site works from any folder of any static host, and a
+// refresh lands on the same page.
 (() => {
   const D = window.SavvyDemo;
 
-  const ROOMS = [
-    { id: "living_room", name: "Living Room" },
-    { id: "kitchen", name: "Kitchen" },
-    { id: "dining_room", name: "Dining Room" },
-    { id: "bedroom", name: "Bedroom" },
-    { id: "office", name: "Office" },
-    { id: "kids_room", name: "Kids Room" },
-  ];
+  const ROOMS = D.ROOM_LIST.map(([id, name, icon]) => ({ id, name, icon }));
   const slug = (area) => area.replace(/_/g, "-");
+  const page = (p) => `?p=${p}`;
   const WATCHMAN = ["sensor.watchman_missing_entities", "sensor.watchman_missing_actions"];
+  const MODES = ["off", "cool", "heat"];
+  const subtitle = (name, to) => ["savvy-section-title-card", { name, heading_style: "subtitle", ...(to ? { navigation_path: page(to) } : {}) }];
 
   // what every card on the dashboard shares, held once by the settings card (and found by the cards
   // through the dashboard's own config, as they find it in Home Assistant)
   const SETTINGS = {
     type: "custom:savvy-settings-card",
-    pages: { home: "?p=home", lights: "?p=lights", climate: "?p=climate", media: "?p=media", security: "?p=security", health: "?p=health", room: "?p={slug}" },
-    house: { control: "input_select.house_mode", weather: "weather.home" },
-    health: { watchman: WATCHMAN, battery_threshold: 20 },
+    pages: { home: page("home"), lights: page("lights"), climate: page("climate"), media: page("media"), security: page("security"), health: page("admin"), room: page("{slug}") },
+    house: { control: "input_select.home_mode", weather: "weather.home", security: "lock.front_door", tap: "list" },
+    health: { watchman: WATCHMAN, battery_threshold: 20, warn_above: 10, group_by: "hub", watchman_last_run: "sensor.watchman_last_report" },
+    ignore: { entities: ["binary_sensor.living_room_camera_person", "binary_sensor.kitchen_camera_motion"] },
     room_order: ROOMS.map((r) => r.id),
-    rooms: {
-      living_room: { control: "input_select.living_room_scene", temperature: "sensor.living_room_temperature" },
-      bedroom: { control: "input_select.bedroom_scene" },
-    },
+    rooms: Object.fromEntries(ROOMS.map((r) => [r.id, {
+      page: page(slug(r.id)), control: `input_select.${r.id}_mode`, light_state: `input_boolean.${r.id}_auto_lights`,
+      ...(r.id === "living_room" ? { temperature: "sensor.living_room_ac_room_temperature" } : {}),
+    }])),
+    layout: "full",
+    aggregate: ["presence"],
+    admin_only: ["health_badges"],
+    design: { state_glow: true, animations: true },
   };
 
-  // ---- what a room has, so its page and the domain pages can be put together
-  const ROOM = {
-    living_room: { climate: "climate.living_room_ac", media: true, covers: true, cameras: ["camera.living_room"], lights: true, scenes: true, sources: true, vacuum: true },
-    kitchen: { media: true, cameras: ["camera.kitchen"], lights: true, scenes: true, lock: "lock.back_door" },
-    dining_room: { lights: true, scenes: true },
-    bedroom: { climate: "climate.bedroom_ac", media: true, covers: true, fans: true, lights: true, scenes: true },
-    office: { climate: "climate.office_heater", media: true, covers: true, fans: true, lights: true, scenes: true },
-    kids_room: { climate: "climate.kids_room_ac", media: true, covers: true, fans: true, lights: true, scenes: true },
-  };
-
-  // the living room's media, the long way: several sources, and where their sound goes
-  const LIVING_SOURCES = {
-    name: "Living Room",
-    video: [{ entity: "media_player.living_room_tv", name: "TV" }, { entity: "media_player.living_room_console", name: "Console", icon: "mdi:gamepad-variant" }],
-    audio: [{ entity: "media_player.living_room_soundbar", name: "Soundbar" }, { entity: "media_player.living_room_speakers", name: "Speakers" }],
+  // ---- the media of each room, as the dashboard describes it
+  const LIVING_MEDIA = {
+    area: "living_room",
+    video: [
+      { entity: "media_player.living_room_streamer", icon: "mdi:apple" },
+      { entity: "media_player.living_room_console", icon: "mdi:sony-playstation" },
+      { entity: "media_player.living_room_tv" },
+    ],
     video_output: "media_player.living_room_soundbar",
-    presets: [{ entity: "script.good_night", name: "Good night" }],
+    audio: [{ entity: "media_player.living_room_soundbar", name: "Soundbar", icon: "mdi:soundbar" }],
+    volume_step: 1,
+    labels: {},
+    name: "Media",
+  };
+  const BEDROOM_MEDIA = {
+    area: "bedroom", name: "Media", volume_step: 1,
+    video: [{ entity: "media_player.bedroom_streamer", icon: "mdi:apple" }, { entity: "media_player.bedroom_tv" }],
+    video_output: "media_player.bedroom_tv",
+    audio: [{ entity: "media_player.bedroom_speaker" }],
+  };
+  const SCREEN_SYNC = [{ entity: "input_boolean.living_room_screen_sync", icon: "mdi:lightbulb-auto", name: "Screen sync", show_state: false }];
+  const speak = (player) => ({ action: "tts.speak", data: { message: "$MSG", media_player_entity_id: player, entity_id: "tts.home_cloud" } });
+
+  // ---- the lights of each room, in the order the dashboard keeps them
+  const ORDER = {
+    living_room: ["light.living_room_ceiling", "light.living_room_arc_lamp", "light.living_room_sconces", "light.living_room_light_bar", "light.living_room_tv_glow", "light.living_room_candle"],
+    kitchen: ["light.kitchen_ceiling", "light.kitchen_pendant", "light.kitchen_passage", "light.kitchen_counter_strip", "light.kitchen_plinth"],
+    office: ["light.office_ceiling", "light.office_shelf_lamps", "light.office_screen_glow", "light.office_desk_strip", "light.office_task_lamp", "light.office_key_light"],
+    bedroom: ["light.bedroom_ceiling", "light.bedroom_left_bedside", "light.bedroom_right_bedside"],
+  };
+  const lights = (area, extra = {}) => ["savvy-lights-card", { area, columns: 2, ...(ORDER[area] ? { order: ORDER[area] } : {}), ...extra }];
+  const climate = (area, extra = {}) => ["savvy-climate-card", { area, hvac_modes: MODES, default_hvac_mode: "cool", name: "Climate", grid_options: { rows: "auto" }, ...extra }];
+  const SLEEP_TIMER = { entity: "timer.bedroom_ac_sleep", presets: ["30", "60", "120", "240", "480"] };
+
+  // ---- appliances
+  const entity = (cfg) => ["savvy-entity-card", { show_since: false, ...cfg }];
+  const VACUUM = "vacuum.robot";
+  const DISHWASHER = entity({ name: "Dishwasher", color: "amber", entity: "binary_sensor.dishwasher_running" });
+  const WASHER = entity({ name: "Washer", color: "amber", entity: "binary_sensor.washer_running" });
+  const ZAPPER = entity({ name: "Bug Zapper", color: "purple", entity: "switch.kitchen_bug_zapper" });
+  const HEATER = entity({ name: "Water Heater", color: "red", entity: "switch.water_heater", tap_action: { action: "toggle" } });
+  const KETTLE = entity({ name: "Boil kettle", color: "blue", entity: "button.kettle_boil", icon: "mdi:kettle-steam", show_state: false });
+
+  // ---- home: the header, the rooms as tiles, the people, then each room in compact cards
+  const HOME = {
+    id: "home", title: "Home", nav: "Home", group: "home", max_columns: 3,
+    sections: [
+      { column_span: 3, cards: [
+        ["savvy-home-header-card", { grid_options: { columns: "full" }, chips: [{ entity: "alarm_control_panel.home_alarm", show_state: true }] }],
+        ...ROOMS.map((r) => ["savvy-room-tile", { area: r.id, grid_options: { rows: "auto" } }]),
+        ["savvy-people-card", { battery: false, layout: "full", grid_options: { columns: "full" }, direction: "horizontal", people: [{ entity: "person.maya" }, { entity: "person.ben" }], columns: 2 }],
+      ] },
+      { cards: [
+        ["savvy-section-title-card", { area: "living_room" }],
+        lights("living_room", { layout: "compact", order: undefined }),
+        climate("living_room", { layout: "compact" }),
+        ["savvy-media-card", { ...LIVING_MEDIA, layout: "compact" }],
+      ] },
+      { cards: [
+        ["savvy-section-title-card", { area: "kitchen" }],
+        lights("kitchen", { layout: "compact", title: "Lights" }),
+        ["savvy-media-card", { area: "kitchen", name: "Media", layout: "compact", volume_step: 1 }],
+      ] },
+      { cards: [
+        ["savvy-section-title-card", { area: "office" }],
+        lights("office", { layout: "compact", title: "Lights" }),
+        climate("office", { layout: "compact" }),
+      ] },
+      { cards: [
+        ["savvy-section-title-card", { area: "bedroom" }],
+        lights("bedroom", { layout: "compact", title: "Lights" }),
+        climate("bedroom", { layout: "compact" }),
+        ["savvy-media-card", { ...BEDROOM_MEDIA, layout: "compact" }],
+      ] },
+      { cards: [
+        ["savvy-section-title-card", { area: "bathroom" }],
+        lights("bathroom", { layout: "compact", title: "Lights" }),
+        ["savvy-media-card", { area: "bathroom", name: "Media", layout: "compact", volume_step: 1 }],
+      ] },
+      { cards: [
+        ["savvy-section-title-card", { area: "toilet" }],
+        lights("toilet", { layout: "compact", title: "Lights" }),
+      ] },
+      { cards: [
+        subtitle("Appliances"),
+        ["savvy-vacuum-card", { entity: VACUUM, layout: "compact" }],
+        WASHER, DISHWASHER, ZAPPER, HEATER, KETTLE,
+      ] },
+    ],
   };
 
-  function roomPage({ id, name }) {
-    const r = ROOM[id];
-    const left = [], middle = [], right = [];
-    left.push(["savvy-section-title-card", { title: "Lights" }]);
-    left.push(["savvy-lights-card", { area: id, ...(id === "living_room" ? { featured: ["light.living_room_ceiling"], chips: [{ entity: "switch.living_room_plug", name: "Plug" }] } : {}) }]);
-    if (r.scenes) left.push(["savvy-scene-card", { area: id, title: "Scenes", strip: `^${name}\\s+` }]);
-    if (r.climate) {
-      middle.push(["savvy-section-title-card", { title: "Climate" }]);
-      middle.push(["savvy-climate-card", { entity: r.climate, weather: "weather.home", fan_control: true }]);
-    }
-    if (r.fans) middle.push(["savvy-fan-card", { area: id }]);
-    if (r.covers) middle.push(["savvy-cover-card", { area: id }]);
-    middle.push(["savvy-graph-card", { title: "Air", entities: [
-      { entity: `sensor.${id}_temperature`, name: "Temperature", thresholds: "temperature" },
-      { entity: `sensor.${id}_humidity`, name: "Humidity" }] }]);
-    if (r.media) {
-      right.push(["savvy-section-title-card", { title: "Media" }]);
-      right.push(["savvy-media-card", r.sources ? LIVING_SOURCES : { area: id }]);
-    }
-    right.push(["savvy-section-title-card", { title: "Activity" }]);
-    right.push(["savvy-room-activity-card", { area: id }]);
-    if (r.lock) right.push(["savvy-lock-card", { entity: r.lock, alarm: false, camera: false }]);
-    if (r.cameras) right.push(["savvy-camera-card", { cameras: r.cameras }]);
-    if (r.vacuum) right.push(["savvy-vacuum-card", { entity: "vacuum.robot", start: "button.robot_vacuum" }]);
-    return {
-      id: slug(id), area: id, title: name, nav: name, group: "rooms",
-      sections: [
-        { wide: true, cards: [["savvy-room-header-card", { area: id }]] },
-        { cards: left }, { cards: middle }, { cards: right },
-      ],
-    };
-  }
+  // ---- a room: its header across the top, then its lights, climate, media, cameras and appliances
+  const header = (area) => ({ column_span: 3, cards: [["savvy-room-header-card", { area, grid_options: { columns: "full" } }]] });
+  const camera = (area) => ({ cards: [subtitle("Security", "security"), ["savvy-camera-card", { area, recordings: "inline" }]] });
+  const roomPage = (id, sections) => {
+    const r = ROOMS.find((x) => x.id === id);
+    return { id: slug(id), area: id, title: r.name, nav: r.name, group: "rooms", max_columns: 3, sections: [header(id), ...sections] };
+  };
+  const ROOM_PAGES = [
+    roomPage("living_room", [
+      { cards: [subtitle("Lights", "lights"), lights("living_room", { title: "Lights" }), ["savvy-scene-card", { area: "living_room", title: "Scenes", layout: "compact" }]] },
+      { cards: [subtitle("Climate", "climate"), climate("living_room", { hvac_modes: [...MODES, "fan_only"] })] },
+      { cards: [subtitle("Media", "media"), ["savvy-media-card", { ...LIVING_MEDIA, chips: SCREEN_SYNC }]] },
+      camera("living_room"),
+    ]),
+    roomPage("kitchen", [
+      { cards: [subtitle("Lights", "lights"), lights("kitchen", { title: "Lights" })] },
+      { cards: [subtitle("Media", "media"), ["savvy-media-card", { area: "kitchen", name: "Media", volume_step: 1, tts: speak("media_player.kitchen_speaker"),
+        presets: [{ entity: "input_button.kitchen_radio_jazz", name: "Jazz radio" }, { entity: "input_button.kitchen_radio_news", name: "Morning news" }] }]] },
+      camera("kitchen"),
+      { cards: [
+        subtitle("Appliances"),
+        ["savvy-vacuum-card", { entity: VACUUM, start: "button.robot_vacuum", rooms: "auto", battery_warn: 40, battery_critical: 20 }],
+        DISHWASHER,
+        entity({ name: "Monthly cost", color: "amber", entity: "sensor.dishwasher_monthly_cost" }),
+        ZAPPER, KETTLE,
+      ] },
+    ]),
+    roomPage("office", [
+      { cards: [subtitle("Lights", "lights"), lights("office", { title: "Lights" }), ["savvy-scene-card", { area: "office", title: "Scenes" }]] },
+      { cards: [subtitle("Climate", "climate"), climate("office")] },
+      { cards: [
+        subtitle("Appliances"),
+        entity({ color: "amber", entity: "switch.bike_charger_1" }),
+        entity({ color: "amber", entity: "switch.bike_charger_2" }),
+        entity({ color: "amber", entity: "sensor.bike_charger_monthly_cost", name: "Monthly cost" }),
+      ] },
+    ]),
+    roomPage("bedroom", [
+      { cards: [subtitle("Lights", "lights"), lights("bedroom", { title: "Lights" })] },
+      { cards: [subtitle("Climate", "climate"), climate("bedroom", { timer: SLEEP_TIMER })] },
+      { cards: [subtitle("Media", "media"), ["savvy-media-card", { ...BEDROOM_MEDIA, tts: speak("media_player.bedroom_speaker") }]] },
+    ]),
+    roomPage("bathroom", [
+      { cards: [subtitle("Lights", "lights"), lights("bathroom", { title: "Lights" })] },
+      { cards: [subtitle("Media", "media"), ["savvy-media-card", { area: "bathroom", name: "Media", volume_step: 1, tts: { action: "notify.bathroom_speaker", data: "$MSG" } }]] },
+      { cards: [
+        subtitle("Appliances"),
+        HEATER,
+        entity({ name: "Heater cost", color: "green", entity: "sensor.water_heater_monthly_cost" }),
+        WASHER,
+        entity({ name: "Washer cost", color: "green", entity: "sensor.washer_monthly_cost" }),
+      ] },
+    ]),
+    roomPage("toilet", [
+      { cards: [subtitle("Lights", "lights"), lights("toilet", { title: "Lights" })] },
+    ]),
+  ];
 
-  const PAGES = [
+  // ---- the domain pages the home header's chips open
+  const homeHeader = { column_span: 3, cards: [["savvy-home-header-card", { grid_options: { columns: "full" } }]] };
+  const graph = (area, title) => ({ column_span: 3, cards: [["savvy-graph-card", {
+    entities: [{ entity: `sensor.${area}_temperature`, name: "Temperature" }, { entity: `sensor.${area}_humidity`, name: "Humidity" }],
+    hours_to_show: 24, ranges: ["6", "24", "72"], title, grid_options: { columns: "full" } }]] });
+  const level = (warn, bad) => [{ value: 0, level: "good" }, { value: warn, level: "warn" }, { value: bad, level: "bad" }];
+
+  const DOMAIN_PAGES = [
     {
-      id: "home", title: "Home", nav: "Home", group: "home",
-      sections: [
-        { wide: true, cards: [["savvy-home-header-card", { aggregate: true }]] },
-        { wide: true, grid: 3, cards: ROOMS.map((r) => ["savvy-room-tile", { area: r.id }]) },
-        { cards: [
-          ["savvy-section-title-card", { title: "Around the house" }],
-          ["savvy-people-card", { layout: "compact", title: "Family", people: ["person.alex", "person.sam", { entity: "person.jo", eta: "sensor.jo_travel_time" }] }],
-          ["savvy-lights-card", { area: "living_room", layout: "compact" }],
-          ["savvy-climate-card", { entity: "climate.living_room_ac", layout: "compact" }],
-          ["savvy-scene-card", { area: "living_room", layout: "compact", strip: "^Living Room\\s+" }],
-        ] },
-        { cards: [
-          ["savvy-section-title-card", { title: "Playing" }],
-          ["savvy-media-card", { area: "kitchen", layout: "compact" }],
-          ["savvy-media-card", { area: "kids_room", layout: "compact" }],
-          ["savvy-fan-card", { area: "bedroom", layout: "compact" }],
-          ["savvy-cover-card", { area: "living_room", layout: "compact" }],
-          ["savvy-vacuum-card", { entity: "vacuum.robot", layout: "compact" }],
-        ] },
-        { cards: [
-          ["savvy-section-title-card", { title: "Before you go" }],
-          ["savvy-last-check-card", { mode: "leave", layout: "compact", area: ROOMS.map((r) => r.id) }],
-          ["savvy-lock-card", { entities: ["lock.entrance_door", "lock.back_door"], layout: "compact", alarm: false, camera: false }],
-          ["savvy-room-activity-card", { area: "living_room", layout: "compact" }],
-          ["savvy-energy-card", { layout: "compact", total: "sensor.house_energy", power: "sensor.house_power", price: 0.28, currency: "EUR" }],
-          ["savvy-story-card", { layout: "compact", filters: false, max_events: 5 }],
-        ] },
-      ],
+      id: "lights", title: "Lights", nav: "Lights", group: "domains", max_columns: 3,
+      sections: [homeHeader, ...ROOMS.map((r) => ({ cards: [["savvy-lights-card", { area: r.id, columns: 2, title: r.name, title_path: page(slug(r.id)) }]] }))],
     },
-    ...ROOMS.map(roomPage),
     {
-      id: "lights", title: "Lights", nav: "Lights", group: "domains",
+      id: "climate", title: "Climate", nav: "Climate", group: "domains", max_columns: 3,
       sections: [
-        { wide: true, cards: [["savvy-home-header-card", { title: "Lights" }]] },
-        ...[["living_room", "kitchen"], ["dining_room", "bedroom"], ["office", "kids_room"]].map((pair) => ({
-          cards: pair.flatMap((a) => [["savvy-section-title-card", { area: a }], ["savvy-lights-card", { area: a }]]),
-        })),
-        { cards: [
-          ["savvy-section-title-card", { title: "Outside" }],
-          ["savvy-lights-card", { title: "Garden", lights: ["light.garden_string", "light.porch"] }],
-          ["savvy-scene-card", { title: "Every scene", entities: ["scene.party"], area: ROOMS.map((r) => r.id), strip: "^(Living Room|Kitchen|Dining Room|Bedroom|Office|Kids Room)\\s+" }],
-        ] },
+        homeHeader,
+        { cards: [climate("living_room", { name: "Living Room" })] },
+        { cards: [climate("office", { name: "Office" })] },
+        { cards: [climate("bedroom", { name: "Bedroom", timer: { entity: "timer.bedroom_ac_sleep", select: "input_select.bedroom_ac_sleep_length" } })] },
+        graph("kitchen", "Kitchen"), graph("bathroom", "Bathroom"), graph("toilet", "Toilet"),
       ],
     },
     {
-      id: "climate", title: "Climate", nav: "Climate", group: "domains",
+      id: "media", title: "Media", nav: "Media", group: "domains", max_columns: 3,
       sections: [
-        { wide: true, cards: [["savvy-home-header-card", { title: "Climate" }]] },
-        { cards: [["savvy-climate-card", { entity: "climate.living_room_ac", weather: "weather.home", fan_control: true }], ["savvy-climate-card", { entity: "climate.bedroom_ac", fan_control: true }]] },
-        { cards: [["savvy-climate-card", { entity: "climate.office_heater" }], ["savvy-climate-card", { entity: "climate.kids_room_ac", fan_control: true }]] },
-        { cards: [
-          ["savvy-graph-card", { title: "Temperature", entities: ROOMS.map((r) => ({ entity: `sensor.${r.id}_temperature`, name: r.name, thresholds: "temperature" })) }],
-          ["savvy-fan-card", { area: ["bedroom", "office", "kids_room"], title: "Fans and air" }],
-          ["savvy-cover-card", { area: ROOMS.map((r) => r.id), title: "Blinds and curtains" }],
-        ] },
+        homeHeader,
+        { cards: [["savvy-media-card", { ...LIVING_MEDIA, name: "Living Room", chips: SCREEN_SYNC }]] },
+        { cards: [["savvy-media-card", { area: "kitchen", name: "Kitchen", volume_step: 1, tts: { action: "tts.speak" } }]] },
+        { cards: [["savvy-media-card", { ...BEDROOM_MEDIA, name: "Bedroom", tts: { action: "tts.speak" } }]] },
+        { cards: [["savvy-media-card", { area: "bathroom", volume_step: 1, tts: { action: "notify.bathroom_speaker" }, name: "Bathroom" }]] },
       ],
     },
     {
-      id: "media", title: "Media", nav: "Media", group: "domains",
+      id: "security", title: "Security", nav: "Security", group: "domains", max_columns: 3,
       sections: [
-        { wide: true, cards: [["savvy-home-header-card", { title: "Media" }]] },
-        { cards: [["savvy-media-card", LIVING_SOURCES], ["savvy-media-card", { area: "kitchen" }]] },
-        { cards: [["savvy-media-card", { area: "bedroom" }], ["savvy-media-card", { area: "office" }]] },
-        { cards: [["savvy-media-card", { area: "kids_room" }], ["savvy-scene-card", { title: "Moods", entities: ["scene.living_room_movie", "scene.party", "scene.dining_room_candlelight", "scene.kids_room_bedtime"] }]] },
+        homeHeader,
+        { cards: [["savvy-lock-card", { entity: "lock.front_door", layout: "full", battery_warn: 40, unlocked_warn: 5, camera_view: "hidden" }]] },
+        { column_span: 2, cards: [["savvy-camera-card", { area: "kitchen", grid_options: { columns: "full" }, recordings: "inline", columns: "auto",
+          cameras: [{ entity: "camera.living_room", area: "living_room" }, { entity: "camera.kitchen", area: "kitchen" }] }]] },
+        { cards: [["savvy-room-activity-card", { name: "Home", layout: "full", alarm: "none",
+          chips: [{ entity: "sensor.people_home" }, { entity: "sensor.people_asleep" }, { entity: "switch.lock_bridge_plug" }] }]] },
+        ...["living_room", "kitchen", "office", "bathroom", "toilet"].map((a) => ({ cards: [["savvy-room-activity-card", { area: a, alarm: "" }]] })),
       ],
     },
     {
-      id: "security", title: "Security", nav: "Security", group: "domains",
+      id: "admin", title: "Admin", nav: "Admin", group: "domains", max_columns: 3,
       sections: [
-        { wide: true, cards: [["savvy-home-header-card", { title: "Security" }]] },
+        homeHeader,
         { cards: [
-          ["savvy-lock-card", { entity: "lock.entrance_door", alarm: "alarm_control_panel.home_alarm", camera: "camera.front_door" }],
-          ["savvy-lock-card", { entities: ["lock.back_door", "lock.shed"], name: "Other doors", alarm: false, camera: false }],
-          ["savvy-people-card", { title: "Family", people: ["person.alex", "person.sam", { entity: "person.jo", eta: "sensor.jo_travel_time" }] }],
-        ] },
-        { cards: [
-          ["savvy-camera-card", { cameras: ["camera.front_door", "camera.living_room", "camera.kitchen", "camera.garden"] }],
-          ["savvy-last-check-card", { mode: "leave", area: ROOMS.map((r) => r.id), max_rows: 6 }],
-        ] },
-        { cards: [
-          ["savvy-story-card", { range: "24h" }],
-          ...["living_room", "bedroom"].map((a) => ["savvy-room-activity-card", { area: a }]),
-        ] },
-      ],
-    },
-    {
-      id: "health", title: "Health", nav: "Health", group: "domains",
-      sections: [
-        { wide: true, cards: [["savvy-home-header-card", { title: "Health" }]] },
-        { cards: [["savvy-system-health-card", { watchman: WATCHMAN, max_rows: 12 }]] },
-        { cards: [
-          ["savvy-energy-card", { total: "sensor.house_energy", consumers: ["sensor.living_room_ac_energy", "sensor.kitchen_oven_energy", "sensor.office_heater_energy", "sensor.living_room_tv_energy", "sensor.washer_energy"], power: "sensor.house_power", price: 0.28, currency: "EUR" }],
-          ["savvy-energy-card", { range: "week", by: "room", total: "sensor.house_energy", consumers: ["sensor.living_room_ac_energy", "sensor.kitchen_oven_energy", "sensor.office_heater_energy", "sensor.living_room_tv_energy", "sensor.washer_energy"], price: 0.28, currency: "EUR" }],
-        ] },
-        { cards: [
-          ["savvy-graph-card", { title: "House", entities: [{ entity: "sensor.house_power", name: "Power" }, { entity: "sensor.outdoor_temperature", name: "Outside", thresholds: "temperature" }, { entity: "sensor.energy_cost", name: "Cost today" }, { entity: "sensor.watchman_last_parse", name: "Checked" }] }],
-          ["savvy-entity-card", { entity: "person.alex", chips: [{ entity: "switch.living_room_plug", name: "Plug", icon: "mdi:power-plug", color: "blue" }, { entity: "sensor.alex_phone_battery", name: "Phone" }] }],
           ["savvy-settings-card", { ...SETTINGS, type: undefined }],
+          ["savvy-system-health-card", { source: "all", grid_options: { columns: "full" }, battery_threshold: 20, warn_above: 5, columns: 3, title: "System Health" }],
+          ["savvy-graph-card", { title: "System Connectivity", columns: 2, grid_options: { columns: "full" }, entities: [
+            { entity: "binary_sensor.internet", name: "Internet", state_color: true },
+            { entity: "binary_sensor.cloud_link", name: "Cloud link", state_color: true },
+            { entity: "sensor.uptime", name: "Last restart", state_color: false, icon: "mdi:restart" },
+            { entity: "sensor.last_boot", name: "Last reboot", icon: "mdi:power" }] }],
+          ["savvy-story-card", { max_events: 10 }],
+        ] },
+        { cards: [
+          ["savvy-graph-card", { title: "System Performance", hours_to_show: 24, ranges: ["6", "24", "720"], columns: 2, grid_options: { columns: "full" }, entities: [
+            { entity: "sensor.server_cpu", name: "CPU", icon: "mdi:chip", state_color: false, thresholds: level(70, 90) },
+            { entity: "sensor.server_memory", name: "RAM", icon: "mdi:memory", thresholds: level(6, 7) },
+            { entity: "sensor.server_load_5m", name: "Load", thresholds: level(2.5, 4) },
+            { entity: "sensor.server_swap", name: "Memory swap", icon: "mdi:memory-arrow-down", thresholds: level(10, 50) },
+            { entity: "sensor.server_cpu_temperature", thresholds: level(65, 78) },
+            { entity: "sensor.server_disk", name: "Storage", thresholds: level(190, 220) }] }],
+          ["savvy-energy-card", { total: "sensor.grid_since_last_bill", by: "device", layout: "full", exclude: ["sensor.grid_meter_reading"], price: 0.18, currency: "EUR" }],
+        ] },
+        { cards: [
+          ["savvy-graph-card", { title: "Utility Costs", hours_to_show: 720, columns: 2, ranges: ["720", "2160", "8760"], grid_options: { columns: "full" }, entities: [
+            { entity: "sensor.next_electricity_bill", smooth: true, thresholds: level(250, 400) },
+            { entity: "sensor.next_water_bill", smooth: true, thresholds: level(80, 150) },
+            { entity: "sensor.water_heater_monthly_cost", smooth: true, icon: "mdi:water-boiler", thresholds: level(20, 40) },
+            { entity: "sensor.dishwasher_monthly_cost", smooth: true, icon: "mdi:dishwasher", thresholds: level(20, 40) },
+            { entity: "sensor.washer_monthly_cost", smooth: true, icon: "mdi:washing-machine", thresholds: level(20, 40) },
+            { entity: "sensor.bike_charger_monthly_cost", smooth: true, icon: "mdi:bicycle-electric", thresholds: level(20, 40) }] }],
         ] },
       ],
     },
   ];
 
-  // the dashboard as Home Assistant would describe it: a view per page, the settings card on the home view
+  const PAGES = [HOME, ...ROOM_PAGES, ...DOMAIN_PAGES];
+
+  // the dashboard as Home Assistant would describe it: a view per page, the settings card on the admin view
   const DASHBOARD = {
     title: "Savvy demo",
-    views: PAGES.map((p) => ({ title: p.title, path: p.id, cards: p.id === "home" ? [SETTINGS] : [] })),
+    views: PAGES.map((p) => ({ title: p.title, path: p.id, cards: p.id === "admin" ? [SETTINGS] : [] })),
   };
 
   D.ROOMS = ROOMS;

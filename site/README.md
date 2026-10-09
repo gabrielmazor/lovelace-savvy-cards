@@ -1,8 +1,9 @@
 # Savvy Cards demo site
 
-A live demo of every Savvy card on a made-up house: six rooms with their lights, climate,
-media, covers, fans and cameras; pages for lights, climate, media, security and health; a
-home page with the compact layouts. Every card is the real code from `dist/`, running on a
+A live demo of the Savvy cards on a made-up house, laid out the way a real dashboard is: Home
+Assistant "sections" views of up to three columns. A home page with the room tiles and each room
+in compact cards, a page per room (living room, kitchen, office, bedroom, bathroom, toilet), and
+pages for lights, climate, media, security and admin. Every card is the real code from `dist/`, running on a
 fake Home Assistant (`assets/hass.js`) that answers taps the way a house would.
 
 ## Run it
@@ -34,5 +35,5 @@ are needed.
 | `assets/hass.js` | The fake Home Assistant: services, history, energy, logbook, Frigate |
 | `assets/pages.js` | Every page and every card's config; the settings the cards share |
 | `assets/ha-shim.js` | `ha-card`, `ha-icon`, `ha-state-icon`, and the drawn camera feeds |
-| `assets/app.js` | Navigation, theme, the details panel |
+| `assets/app.js` | Navigation, theme, the details panel, and the sections layout (column spans, `grid_options`) |
 | `assets/site.css` | The site's look, and the theme variables the cards read |

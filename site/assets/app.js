@@ -29,7 +29,7 @@
     return (q || location.hash.replace(/^#/, "") || "home").toLowerCase();
   }
   function nav() {
-    const groups = [["home", "Home"], ["rooms", "Rooms"], ["domains", "House"]];
+    const groups = [["home", "Home"], ["rooms", "Rooms"], ["domains", "House"]];   // the pages, as the dashboard's views
     $("#nav").innerHTML = groups.map(([g, label]) => `<div class="nav-group" role="group" aria-label="${label}">${D.PAGES.filter((p) => p.group === g)
       .map((p) => `<a href="?p=${p.id}" data-page="${p.id}">${esc(p.nav)}</a>`).join("")}</div>`).join(`<span class="nav-sep" aria-hidden="true"></span>`);
   }
@@ -61,25 +61,56 @@
     main.innerHTML = "";
     main.dataset.page = page.id;
     if (page.id === "home") main.append(intro());
+    // a "sections" view: up to max_columns columns; a section spans column_span of them, and lays its
+    // cards on a grid of 12 columns per column it spans, each card as wide as its grid_options say
     const grid = document.createElement("div");
     grid.className = "sections";
+    grid.__max = page.max_columns || 3;
     for (const section of page.sections) {
       const box = document.createElement("section");
-      box.className = `section${section.wide ? " wide" : ""}${section.grid ? " tiles" : ""}`;
-      for (const [type, config] of section.cards) box.append(mount(type, config));
+      box.className = "section";
+      box.__span = section.column_span || 1;
+      for (const [type, config] of section.cards) {
+        const el = mount(type, config);
+        el.__grid = config.grid_options || {};
+        box.append(el);
+      }
       grid.append(box);
     }
     main.append(grid);
+    layout.observe(grid);
     document.title = page.id === "home" ? "Savvy Cards · Live demo" : `${page.title} · Savvy Cards demo`;
     for (const a of document.querySelectorAll("#nav a")) a.toggleAttribute("aria-current", a.dataset.page === page.id);
     $("#nav a[aria-current]")?.scrollIntoView({ block: "nearest", inline: "center" });
     window.scrollTo({ top: 0 });
   }
 
+  // Home Assistant's sections view: columns of 320 to 500 px, at most the view's max_columns
+  const COL_MIN = 320, GAP = 24;
+  const layout = new ResizeObserver(([e]) => fit(e.target));
+  function fit(grid) {
+    const w = grid.parentElement.clientWidth;
+    const cols = Math.max(1, Math.min(grid.__max, Math.floor((w + GAP) / (COL_MIN + GAP))));
+    grid.style.setProperty("--cols", cols);
+    for (const box of grid.children) {
+      const span = Math.min(box.__span, cols);
+      box.style.gridColumn = `span ${span}`;
+      box.style.setProperty("--cells", 12 * span);
+      for (const card of box.children) {
+        const want = card.__grid?.columns ?? card.getGridOptions?.()?.columns ?? 12;
+        const n = want === "full" ? 12 * span : Math.min(12 * span, Number(want) || 12);
+        card.style.gridColumn = `span ${n}`;
+        const rows = card.__grid?.rows ?? card.getGridOptions?.()?.rows;
+        card.style.height = typeof rows === "number" ? `${rows * 56 + (rows - 1) * 8}px` : "";
+      }
+    }
+  }
+
   function mount(type, config) {
     const el = document.createElement(type);
     try {
-      el.setConfig({ type: `custom:${type}`, ...config });
+      const { grid_options, ...rest } = config;
+      el.setConfig({ type: `custom:${type}`, ...rest, ...(grid_options ? { grid_options } : {}) });
     } catch (err) {
       const box = document.createElement("div");
       box.className = "card-error";

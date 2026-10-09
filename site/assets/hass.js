@@ -73,6 +73,8 @@
       return Promise.resolve();
     }
 
+    const toSecs = (v) => { if (typeof v === "number") return v; const [h = 0, m = 0, sec = 0] = String(v || "0").split(":").map(Number); return h * 3600 + m * 60 + sec; };
+    const fromSecs = (n) => { n = Math.round(n); return `${Math.floor(n / 3600)}:${String(Math.floor((n % 3600) / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`; };
     const onOff = (on) => (id) => later(180, () => patch(id, { state: on ? "on" : "off" }));
     const toggle = (id) => later(180, () => patch(id, { state: get(id).state === "on" ? "off" : "on" }));
 
@@ -145,21 +147,13 @@
 
     // scenes the demo knows how to show; any other scene just records that it ran
     const SCENES = {
-      "scene.living_room_movie": { "light.living_room_ceiling": 0, "light.living_room_floor_lamp": { pct: 15, k: 2200 }, "light.living_room_tv_backlight": { pct: 60, hs: [262, 75] }, "light.living_room_sconces": 0, "light.living_room_bookshelf": 0 },
-      "scene.living_room_reading": { "light.living_room_floor_lamp": { pct: 85, k: 4000 }, "light.living_room_ceiling": { pct: 55, k: 3500 }, "light.living_room_tv_backlight": 0 },
-      "scene.living_room_evening": { "light.living_room_ceiling": { pct: 50, k: 2700 }, "light.living_room_floor_lamp": { pct: 40, k: 2400 }, "light.living_room_sconces": { pct: 35 }, "light.living_room_bookshelf": { pct: 40, hs: [30, 55] } },
-      "scene.living_room_bright": { "light.living_room_ceiling": { pct: 100, k: 4500 }, "light.living_room_floor_lamp": { pct: 100, k: 4000 }, "light.living_room_sconces": { pct: 100 }, "light.living_room_bookshelf": { pct: 80, k: 4000 } },
-      "scene.kitchen_cooking": { "light.kitchen_pendants": { pct: 100, k: 4000 }, "light.kitchen_island": { pct: 100 }, "light.kitchen_ceiling": 1, "light.kitchen_under_cabinet": { pct: 90, hs: [40, 25] } },
-      "scene.kitchen_late_snack": { "light.kitchen_pendants": 0, "light.kitchen_island": 0, "light.kitchen_ceiling": 0, "light.kitchen_under_cabinet": { pct: 25, hs: [28, 70] } },
-      "scene.dining_room_dinner": { "light.dining_room_chandelier": { pct: 60, k: 2700 }, "light.dining_room_candles": { pct: 35, hs: [22, 85] }, "light.dining_room_sideboard": { pct: 30, k: 2400 } },
-      "scene.dining_room_candlelight": { "light.dining_room_chandelier": { pct: 15, k: 2200 }, "light.dining_room_candles": { pct: 50, hs: [18, 90] }, "light.dining_room_sideboard": 0 },
-      "scene.bedroom_wind_down": { "light.bedroom_ceiling": 0, "light.bedroom_bedside_left": { pct: 20, k: 2200 }, "light.bedroom_bedside_right": { pct: 20, k: 2200 }, "light.bedroom_headboard": { pct: 25, hs: [340, 55] } },
-      "scene.bedroom_wake_up": { "light.bedroom_ceiling": { pct: 80 }, "light.bedroom_bedside_left": { pct: 70, k: 4000 }, "light.bedroom_bedside_right": { pct: 70, k: 4000 }, "light.bedroom_headboard": 0 },
-      "scene.office_focus": { "light.office_desk_lamp": { pct: 100, k: 5500 }, "light.office_ceiling": { pct: 80 }, "light.office_monitor_bar": { pct: 30, k: 5000 } },
-      "scene.office_calls": { "light.office_desk_lamp": { pct: 70, k: 4200 }, "light.office_ceiling": { pct: 40 }, "light.office_monitor_bar": { pct: 70, hs: [205, 60] } },
-      "scene.kids_room_bedtime": { "light.kids_room_ceiling": 0, "light.kids_room_night_light": { pct: 10, hs: [36, 80] }, "light.kids_room_star_projector": { pct: 40, hs: [230, 80] } },
-      "scene.kids_room_play": { "light.kids_room_ceiling": { pct: 100 }, "light.kids_room_night_light": 0, "light.kids_room_star_projector": 0 },
-      "scene.party": { "light.living_room_tv_backlight": { pct: 90, hs: [300, 90] }, "light.living_room_bookshelf": { pct: 80, hs: [190, 90] }, "light.kitchen_under_cabinet": { pct: 90, hs: [120, 80] }, "light.dining_room_candles": { pct: 70, hs: [20, 95] } },
+      "scene.living_room_movie": { "light.living_room_ceiling": 0, "light.living_room_arc_lamp": { pct: 15, k: 2200 }, "light.living_room_tv_glow": { pct: 60, hs: [262, 75] }, "light.living_room_sconces": 0, "light.living_room_light_bar": 0 },
+      "scene.living_room_reading": { "light.living_room_arc_lamp": { pct: 85, k: 4000 }, "light.living_room_ceiling": { pct: 55, k: 3500 }, "light.living_room_tv_glow": 0 },
+      "scene.living_room_evening": { "light.living_room_ceiling": { pct: 50, k: 2700 }, "light.living_room_arc_lamp": { pct: 40, k: 2400 }, "light.living_room_sconces": { pct: 35 }, "light.living_room_light_bar": { pct: 40, hs: [30, 55] } },
+      "scene.living_room_bright": { "light.living_room_ceiling": { pct: 100, k: 4500 }, "light.living_room_arc_lamp": { pct: 100, k: 4000 }, "light.living_room_sconces": { pct: 100 }, "light.living_room_light_bar": { pct: 80, k: 4000 } },
+      "scene.office_focus": { "light.office_task_lamp": { pct: 100, k: 5500 }, "light.office_ceiling": { pct: 80 }, "light.office_screen_glow": { pct: 30, k: 5000 }, "light.office_key_light": 0 },
+      "scene.office_calls": { "light.office_task_lamp": { pct: 70, k: 4200 }, "light.office_ceiling": { pct: 40 }, "light.office_key_light": { pct: 80, k: 4800 }, "light.office_screen_glow": { pct: 70, hs: [205, 60] } },
+      "scene.office_evening": { "light.office_ceiling": 0, "light.office_task_lamp": { pct: 30, k: 2700 }, "light.office_desk_strip": { pct: 40, hs: [30, 70] }, "light.office_key_light": 0 },
     };
     const runScene = (id) => {
       patch(id, { state: now() });
@@ -256,6 +250,21 @@
       scene: { turn_on: runScene },
       script: { turn_on: runScript, toggle: runScript },
       button: { press: (id) => patch(id, { state: now() }) },
+      // a timer runs from now: start (with a duration), +15 min, pause, resume, cancel
+      timer: {
+        start: (id, d) => {
+          const a = get(id).attributes, paused = get(id).state === "paused";
+          const secs = d.duration ? toSecs(d.duration) : paused ? toSecs(a.remaining) : toSecs(a.duration);
+          later(120, () => patch(id, { state: "active", attributes: { duration: d.duration || a.duration, remaining: fromSecs(secs), finishes_at: new Date(Date.now() + secs * 1000).toISOString() } }));
+        },
+        change: (id, d) => {
+          const a = get(id).attributes, end = Date.parse(a.finishes_at || now()) + toSecs(d.duration) * 1000;
+          later(120, () => patch(id, { attributes: { finishes_at: new Date(end).toISOString() } }));
+        },
+        pause: (id) => { const left = Math.max(0, (Date.parse(get(id).attributes.finishes_at) - Date.now()) / 1000); later(120, () => patch(id, { state: "paused", attributes: { remaining: fromSecs(left), finishes_at: null } })); },
+        cancel: (id) => later(120, () => patch(id, { state: "idle", attributes: { finishes_at: null, remaining: null } })),
+        finish: (id) => later(120, () => patch(id, { state: "idle", attributes: { finishes_at: null, remaining: null } })),
+      },
       input_button: { press: (id) => patch(id, { state: now() }) },
       vacuum: {
         start: (id) => { later(300, () => patch(id, { state: "cleaning" })); later(400, () => patch("sensor.robot_status", { state: "cleaning" })); },
@@ -295,7 +304,7 @@
         case "logbook/get_events": return logbook(m);
         case "config_entries/get": return house.entries;
         case "config/entity_registry/get":
-          if (m.entity_id === "vacuum.robot") return { entity_id: m.entity_id, options: { vacuum: { area_mapping: { living_room: ["16"], kitchen: ["17"], bedroom: ["18"], office: ["19"], kids_room: ["20"], dining_room: ["21"] } } } };
+          if (m.entity_id === "vacuum.robot") return { entity_id: m.entity_id, options: { vacuum: { area_mapping: { living_room: ["16"], kitchen: ["17"], office: ["18"], bedroom: ["19"], bathroom: ["20"], toilet: ["21"] } } } };
           return { entity_id: m.entity_id, options: {} };
         case "vacuum/get_segments": return { segments: [] };
         case "frontend/get_user_data": return { value: userData[m.key] ?? null };
@@ -326,7 +335,8 @@
           if (numeric) {
             const dc = st.attributes.device_class;
             const amp = dc === "temperature" ? 1.6 : dc === "humidity" ? 6 : dc === "power" ? v * 0.4 : dc === "monetary" ? 0 : v * 0.08;
-            s = dc === "monetary" ? (v * i) / n : wave(v, amp, t) + ((i * 7919) % 13) * amp * 0.02;
+            const day = new Date(t);
+            s = dc === "monetary" ? v * (0.04 + 0.96 * ((day.getDate() - 1 + day.getHours() / 24) / 30)) : wave(v, amp, t) + ((i * 7919) % 13) * amp * 0.02;
             s = (Math.round(s * 10) / 10).toString();
           } else if (id.startsWith("binary_sensor.")) s = ((i * 37) % 11) < 3 ? "on" : "off";
           else if (id.startsWith("climate.")) s = i < n * 0.35 ? "off" : st.state;
@@ -341,12 +351,14 @@
 
     // hourly use by appliance: the shape of a weekday
     const USE = {
-      "sensor.house_energy": (h) => 0.32 + (h >= 6 && h <= 9 ? 0.7 : 0) + (h >= 17 && h <= 22 ? 1.1 : 0) + (h >= 12 && h <= 14 ? 0.4 : 0),
-      "sensor.kitchen_oven_energy": (h) => (h === 18 || h === 12 ? 0.9 : 0.02),
-      "sensor.living_room_tv_energy": (h) => (h >= 17 ? 0.16 : 0.01),
+      "sensor.grid_since_last_bill": (h) => 0.32 + (h >= 6 && h <= 9 ? 0.7 : 0) + (h >= 17 && h <= 22 ? 1.1 : 0) + (h >= 12 && h <= 14 ? 0.4 : 0),
       "sensor.living_room_ac_energy": (h) => (h >= 13 && h <= 20 ? 0.55 : 0.05),
-      "sensor.office_heater_energy": (h) => (h >= 8 && h <= 17 ? 0.35 : 0.02),
+      "sensor.office_ac_energy": (h) => (h >= 8 && h <= 17 ? 0.35 : 0.02),
+      "sensor.bedroom_ac_energy": (h) => (h >= 22 || h <= 2 ? 0.4 : 0.01),
+      "sensor.water_heater_energy": (h) => (h === 6 || h === 19 ? 1.2 : 0.02),
+      "sensor.dishwasher_energy": (h) => (h === 21 ? 0.9 : 0),
       "sensor.washer_energy": (h) => (h === 8 || h === 9 ? 0.5 : 0),
+      "sensor.bike_charger_energy": (h) => (h >= 18 && h <= 20 ? 0.2 : 0),
     };
     function statistics(m) {
       const step = { "5minute": 5 * MIN, hour: HOUR, day: 24 * HOUR, week: 7 * 24 * HOUR, month: 30 * 24 * HOUR }[m.period] || HOUR;
@@ -364,7 +376,9 @@
           } else change = 0;
           sum += change;
           const base = Number(st?.state);
-          const mean = Number.isFinite(base) ? wave(base, Math.abs(base) * 0.06 + 0.8, t) : 0;
+          // a cost runs up through the month and starts again on the 1st; anything else drifts through the day
+          const d = new Date(t), monthly = st?.attributes.device_class === "monetary";
+          const mean = !Number.isFinite(base) ? 0 : monthly ? base * (0.04 + 0.96 * ((d.getDate() - 1 + d.getHours() / 24) / 30)) : wave(base, Math.abs(base) * 0.06 + 0.8, t);
           rows.push({ start: t, end: t + step, change, sum, state: sum, mean, min: mean - 0.6, max: mean + 0.6 });
         }
         out[id] = rows;
@@ -380,21 +394,21 @@
       const nowS = Date.now() / 1000;
       const all = [
         ...[0, 4, 9, 15, 22].map((x) => ev("binary_sensor.kitchen_motion", "on", at(7, 5 + x))),
-        ev("light.kitchen_pendants", "on", at(7, 6)), ev("scene.bedroom_wake_up", "scening", at(7, 0)),
-        ev("person.sam", "not_home", at(8, 10)), ev("person.jo", "not_home", at(8, 25)), ev("lock.entrance_door", "locked", at(8, 26)),
+        ev("light.kitchen_pendant", "on", at(7, 6)), ev("switch.water_heater", "on", at(6, 0)), ev("switch.water_heater", "off", at(7, 0)),
+        ev("person.ben", "not_home", at(8, 10)), ev("lock.front_door", "locked", at(8, 11)),
         ev("vacuum.robot", "cleaning", at(10, 0)), ev("vacuum.robot", "docked", at(11, 5)),
-        ev("binary_sensor.living_room_door", "on", at(12, 0)), ev("binary_sensor.living_room_door", "off", at(12, 1)),
+        ev("binary_sensor.living_room_balcony_door", "on", at(12, 0)), ev("binary_sensor.living_room_balcony_door", "off", at(12, 1)),
         ev("climate.living_room_ac", "cool", at(14, 30)), ev("binary_sensor.bedroom_window", "on", at(15, 40)),
-        ev("person.alex", "home", at(17, 55)), ev("lock.entrance_door", "unlocked", at(18, 2), { context_user_id: "person.alex" }), ev("lock.entrance_door", "locked", at(18, 3)),
-        ev("light.living_room_ceiling", "on", at(18, 4)), ev("light.living_room_floor_lamp", "on", at(18, 10)), ev("scene.dining_room_dinner", "scening", at(19, 30)),
-        ev("media_player.living_room_tv", "playing", at(20, 15)), ev("lock.back_door", "unlocked", at(21, 5)),
+        ev("person.ben", "home", at(17, 55)), ev("lock.front_door", "unlocked", at(18, 2), { context_user_id: "person.ben" }), ev("lock.front_door", "locked", at(18, 3)),
+        ev("light.living_room_ceiling", "on", at(18, 4)), ev("light.living_room_arc_lamp", "on", at(18, 10)), ev("binary_sensor.washer_running", "on", at(19, 30)),
+        ev("media_player.living_room_streamer", "playing", at(20, 15)), ev("scene.living_room_movie", "scening", at(20, 16)),
       ].filter((e) => e.when <= nowS);
       const start = m.start_time ? Date.parse(m.start_time) / 1000 : 0;
       return all.filter((e) => e.when >= start && (!m.entity_ids || m.entity_ids.includes(e.entity_id)));
     }
 
     function frigateReviews(m) {
-      const t = Date.now() / 1000, cam = (m.cameras || [])[0] || "front_door";
+      const t = Date.now() / 1000, cam = (m.cameras || [])[0] || "living_room";
       return [
         { id: "r1", camera: cam, start_time: t - 300, end_time: t - 240, severity: "alert", has_been_reviewed: false, thumb_path: "", data: { objects: ["person"] } },
         { id: "r2", camera: cam, start_time: t - 7200, end_time: t - 7150, severity: "detection", has_been_reviewed: true, thumb_path: "", data: { objects: ["cat"] } },

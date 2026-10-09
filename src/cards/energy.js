@@ -403,6 +403,9 @@ class SavvyEnergyCard extends SavvyCard {
     const el = this._el, h = this._hass, rows = d.rank.slice(0, this._config.max_consumers), seen = new Set();
     text(el.cap, this._config.by === "room" ? "By room" : "Biggest consumers");
     const max = Math.max(0.0001, ...rows.map((r) => r.kwh));
+    // a device's short name drops its room; two that end up the same ("AC", "AC") keep their full names
+    const short = new Map(rows.filter((r) => !r.room).map((r) => [r.id, shortName(h, r.id, null)]));
+    const twice = new Set([...short.values()].filter((n, i, all) => all.indexOf(n) !== i));
     rows.forEach((r, at) => {
       seen.add(r.id);
       let node = this._rows.get(r.id);
@@ -415,7 +418,8 @@ class SavvyEnergyCard extends SavvyCard {
         this._rows.set(r.id, node);
       }
       node.__r = r;
-      const name = r.room ? (r.area ? areaInfo(h, r.area).name : "No room") : shortName(h, r.id, null);
+      const name = r.room ? (r.area ? areaInfo(h, r.area).name : "No room")
+        : twice.has(short.get(r.id)) ? h.states[r.id]?.attributes.friendly_name || short.get(r.id) : short.get(r.id);
       text(node.querySelector(".nm"), name);
       attr(node.querySelector("ha-icon"), "icon", r.room ? (r.area && h.areas?.[r.area]?.icon) || "mdi:floor-plan" : (h.states[r.id]?.attributes.icon || "mdi:flash"));
       put(node.querySelector(".meter i"), "--w", (r.kwh / max).toFixed(3));
