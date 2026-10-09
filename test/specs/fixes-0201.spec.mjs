@@ -60,25 +60,22 @@ export default async function ({ browser, base, check }) {
   const set = await page.evaluate(() => [...window.log]);
   check("climate: picking a speed sets it", set.some((c) => c.includes("set_fan_mode") && c.includes("high")), set.join(" | "));
 
-  // ---- media: several speakers get a picker; the sound output's volume sits under the source
+  // ---- media: several speakers get a picker
   await page.evaluate(() => {
     window.mount("savvy-media-card", { name: "Living", artwork: false,
-      video: [{ entity: "media_player.living_room_tv" }], audio: [{ entity: "media_player.kitchen_speaker" }, { entity: "media_player.living_room_speaker" }],
-      video_output: "media_player.living_room_speaker" }, 460);
+      video: [{ entity: "media_player.living_room_tv" }], audio: [{ entity: "media_player.kitchen_speaker" }, { entity: "media_player.living_room_speaker" }] }, 460);
   });
   await page.waitForTimeout(800);
   const m = await page.evaluate(() => {
     const r = window.cards.at(-1).shadowRoot, vis = (e) => !!e && !e.hidden && e.getClientRects().length > 0;
     return {
-      picker: vis(r.getElementById("speakers")), segs: [...r.querySelectorAll("#speakers .seg")].length,
+      picker: vis(r.getElementById("speakers")), segs: [...r.querySelectorAll("#speakers .seg")].filter(vis).length,
       rows: [...r.querySelectorAll("#audioBand .player")].filter(vis).length,
-      sourceVol: vis(r.querySelector("#nowVol .vol")), via: r.querySelector("#nowVol .via")?.textContent.trim(),
       caps: [r.getElementById("videoCap"), r.getElementById("audioCap")].map((c) => (vis(c) ? c.textContent : "")),
     };
   });
   check("media: two speakers get a picker", m.picker && m.segs === 2, JSON.stringify(m));
   check("media: the picker shows one speaker at a time", m.rows === 1, JSON.stringify(m));
-  check("media: the sound output's volume sits under the source, even when it is a listed speaker", m.sourceVol && /Living Room Speaker|Speaker/.test(m.via || ""), JSON.stringify(m));
   check("media: the bands say Watch and Listen", m.caps[0] === "Watch" && m.caps[1] === "Listen", JSON.stringify(m.caps));
   const seg = await page.evaluate(() => { const s = [...window.cards.at(-1).shadowRoot.querySelectorAll("#speakers .seg")].find((x) => !x.hasAttribute("data-sel")); const q = s.getBoundingClientRect(); return { x: q.x + q.width / 2, y: q.y + q.height / 2, t: s.textContent.trim() }; });
   await page.mouse.click(seg.x, seg.y);

@@ -7,6 +7,11 @@
   tap), then everything active (a tripped leak or smoke alarm, presence, an open door, the rest), then
   everything idle (presence, door, the rest). With nobody in the room and the door shut, the TV that is
   playing comes first. The section title no longer keeps presence and the door at the end.
+- **Media: the screen owns the volume.** The TV is the volume of everything watched on it (an Apple TV, a
+  console). When it sends its sound to the soundbar named in `video_output` (an LG says so; another TV while the
+  soundbar is on), the bar is the soundbar's own, with its real level, and the soundbar leaves Listen while the
+  TV is on: one box, one bar. Nothing is guessed: without `video_output` the TV plays through itself. New
+  `screen` option (the card's, or a source's in a room with two TVs).
 - **Room header: how many lights are on.** A Lights chip leads its row ("3 on", or Off, dimmed); a tap lists the
   room's lights with all on and all off. `lights: false` hides it. Everything else the room has stays in the row,
   idle ones dimmed, never hidden.

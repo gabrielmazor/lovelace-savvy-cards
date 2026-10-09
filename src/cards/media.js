@@ -313,7 +313,7 @@ class SavvyMediaCard extends SavvyCard {
 
   _measure() {
     const slide = (box, idx, x, w) => {
-      const sel = box?.querySelectorAll(".seg")[idx || 0];
+      const sel = box?.querySelectorAll(".seg:not([hidden])")[idx || 0];
       if (!sel) return;
       const first = this._first || w.x === 0;
       x[first ? "snap" : "to"](sel.offsetLeft);
@@ -687,7 +687,7 @@ class SavvyMediaCard extends SavvyCard {
     el.nowVol.hidden = !owner;
     if (owner) {
       // a source that plays through another box says which, so the volume reads as that box's
-      const choice = this._soundChoice(v);
+      const screen = this._screenOf(v) || v, choice = this._soundChoice(screen);
       let via = el.nowVol.querySelector(".via");
       if (!via || (via.tagName === "BUTTON") !== !!choice) {
         via?.remove();
@@ -700,9 +700,11 @@ class SavvyMediaCard extends SavvyCard {
       const through = owner.entity !== v.entity;
       via.hidden = this._compact || (!through && !choice);
       if (!via.hidden) {
-        // a TV playing through itself names its output; one sending it on names the box it goes to
-        const name = through ? owner.name || shortName(this._hass, owner.entity, this._config.area) : choice.current?.label || "TV";
-        const icon = through ? this._playerIcon(owner, this._hass.states[owner.entity]) : choice.current?.icon || "mdi:speaker";
+        // the sound goes out to a soundbar: that box; the TV plays through itself and can say how: its output
+        // (TV speaker, headphones); otherwise the box whose volume this is
+        const out = owner.entity !== screen.entity, named = !out && choice?.current;
+        const name = named ? choice.current.label : owner.name || shortName(this._hass, owner.entity, this._config.area);
+        const icon = named ? choice.current.icon || "mdi:speaker" : this._playerIcon(owner, this._hass.states[owner.entity]);
         attr(via.querySelector("ha-icon"), "icon", icon);
         text(via.querySelector("span"), `Sound from ${name}`);
         if (choice) attr(via, "aria-label", `Sound output: ${choice.current?.label || "unknown"}. Change`);
@@ -752,7 +754,9 @@ class SavvyMediaCard extends SavvyCard {
 
   _outputs() {
     const el = this._el, c = this._config;
-    el.audioBand.hidden = !c.audio.length;
+    const busy = this._busyOutputs(), free = c.audio.filter((a) => !busy.has(a.entity));
+    this._listen = free;
+    el.audioBand.hidden = !free.length;
     const shown = this._speakerPicker();
     for (const cfg of c.audio) {
       const key = slug(cfg.entity);
@@ -777,17 +781,14 @@ class SavvyMediaCard extends SavvyCard {
   // Several speakers share one row, picked the way the video sources are: the pick while it's
   // sensible, else whatever is playing. One speaker needs no picker.
   _speakerPicker() {
-    const c = this._config, el = this._el, list = c.audio;
+    const el = this._el, list = this._listen || this._config.audio;
     if (!list.length) { this._spkActive = null; return null; }
     const live = list.filter((a) => ACTIVE.has(this._hass.states[a.entity]?.state));
     const sig = live.map((a) => a.entity).join("|");
     if (this._spkSig === undefined) this._spkSig = sig;
     if (sig !== this._spkSig) { this._spkSig = sig; if (sig) this._spkPicked = null; }
     if (this._spkPicked && !list.some((a) => a.entity === this._spkPicked)) this._spkPicked = null;
-    // a box that is busy being the picked source's sound comes last: Listen opens on a speaker of its own
-    const out = this._active && this._isOn(this._active) ? this._soundOutput(this._active) : null;
-    const order = out ? [...list.filter((a) => a.entity !== out), ...list.filter((a) => a.entity === out)] : list;
-    const active = (this._spkPicked && list.find((a) => a.entity === this._spkPicked)) || live[0] || order.find((a) => this._isOn(a)) || order[0];
+    const active = (this._spkPicked && list.find((a) => a.entity === this._spkPicked)) || live[0] || list.find((a) => this._isOn(a)) || list[0];
     this._spkActive = active;
     this._spkIdx = list.indexOf(active);
     el.speakers.hidden = list.length < 2;
@@ -800,11 +801,14 @@ class SavvyMediaCard extends SavvyCard {
           this._pressable(seg, { onTap: () => this._pickSpeaker(a), onHold: () => moreInfo(this, a.entity), haptic: null }, 0.08);
         }
         attr(seg.querySelector("ha-icon"), "icon", this._playerIcon(a, st));
-        text(seg.querySelector("span"), a.name || shortName(this._hass, a.entity, c.area));
+        text(seg.querySelector("span"), a.name || shortName(this._hass, a.entity, this._config.area));
         attr(seg, "data-sel", a === active);
         attr(seg, "data-live", this._isOn(a));
         attr(seg, "aria-pressed", a === active ? "true" : "false");
       });
+      // a speaker busy being a screen's sound is out of the picker until the screen lets it go
+      const keep = new Set(list.map((a) => a.entity));
+      for (const [id, seg] of el.speakers.__rows || []) seg.hidden = !keep.has(id);
       this._measure();
     }
     return active;
@@ -936,10 +940,10 @@ class SavvyMediaCard extends SavvyCard {
   }
 
   _soundMenu(anchor) {
-    const v = this._active, choice = v && this._soundChoice(v);
+    const v = this._active && (this._screenOf(this._active) || this._active), choice = v && this._soundChoice(v);
     if (!choice) return;
     this._soundPicker = this._soundPicker || new ModePicker(this, { onPick: (id, value) => {
-      const c = this._active && this._soundChoice(this._active);
+      const scr = this._active && (this._screenOf(this._active) || this._active), c = scr && this._soundChoice(scr);
       if (c && value !== c.current?.value) c.set(value);
     } });
     // the popup sits outside the card, so it gets the accent as a colour, not as the card's variable
@@ -951,16 +955,49 @@ class SavvyMediaCard extends SavvyCard {
   // Where a source's sound comes out; nothing declared means the box plays its own.
   _soundOutput(cfg) { return (cfg.output !== undefined ? cfg.output : this._config.video_output) || null; }
 
-  // Whose volume belongs under the picked source: the box its sound comes out of, else its own.
+  // The screen a source plays on: its own `screen`, the card's `screen`, else the one TV among the
+  // sources. The screen owns the volume of everything watched on it (an Apple TV or a console has none).
+  _screenOf(cfg) {
+    const c = this._config, id = cfg.screen || c.screen;
+    if (id) return c.video.find((v) => v.entity === id) || { entity: id };
+    const tvs = c.video.filter((v) => this._hass.states[v.entity]?.attributes.device_class === "tv");
+    return tvs.length === 1 ? tvs[0] : null;
+  }
+
+  // A screen's sound goes out to its configured output (a soundbar over eARC) when the TV says so (an
+  // LG names its sound output), or, for a TV that doesn't say, while that output is on. Never guessed:
+  // without an `output` / `video_output` in the config the TV plays through itself.
+  _externalOut(screen) {
+    const out = this._soundOutput(screen);
+    if (!out || out === screen.entity) return null;
+    const choice = this._soundChoice(screen);
+    if (choice?.current) return choice.current.own ? null : out;
+    return this._isOn({ entity: out, ...(this._config.audio.find((a) => a.entity === out) || {}) }) ? out : null;
+  }
+
+  // Whose volume belongs under the picked source: its screen's, or the soundbar's when the screen's
+  // sound goes there. One bar for one box: that soundbar leaves Listen meanwhile (_busyOutputs).
   _volumeOwner(cfg) {
     if (cfg.volume === false) return null;
-    if (this._soundChoice(cfg)?.current?.own) return cfg;      // the TV is playing through itself right now
-    const out = this._soundOutput(cfg);
-    if (!out) return cfg;
+    const screen = this._screenOf(cfg) || cfg;
+    const out = this._externalOut(screen);
+    if (!out) return screen;
     const listed = this._config.audio.find((a) => a.entity === out);
-    if (listed) return listed;      // the sound output's volume belongs with what you watch, even when it is a speaker too
+    if (listed) return listed;
     const named = this._config.video.find((v) => v.entity === out);
     return named ? { ...named } : { entity: out };
+  }
+
+  // The speakers busy being a screen's sound right now: their bar is under that screen, not in Listen.
+  _busyOutputs() {
+    const busy = new Set();
+    const screens = new Set(this._config.video.map((v) => this._screenOf(v) || v));
+    for (const screen of screens) {
+      if (!this._isOn(screen)) continue;
+      const out = this._externalOut(screen);
+      if (out) busy.add(out);
+    }
+    return busy;
   }
 
   _chips() {
@@ -1090,7 +1127,8 @@ const playerList = (name, label, helper) => ({ name, label, helper, type: "list"
     { name: "entity", label: "Player", selector: { entity: { domain: "media_player" } } },
     { type: "grid", name: "", schema: [{ name: "name", label: "Name", selector: { text: {} } }, { name: "icon", label: "Icon", selector: { icon: {} } }] },
     { name: "power", label: "Power switch", helper: "A switch that powers it, when the player can't turn itself on.", selector: { entity: { domain: ["switch", "input_boolean"] } } },
-    { name: "output", label: "Sound output", helper: "Where this source's sound comes out. Empty: it plays through itself. Overrides the card's output for all sources.", selector: { entity: { domain: "media_player" } } },
+    { name: "screen", label: "Screen", helper: "The TV this source plays on, when the room has more than one.", selector: { entity: { domain: "media_player" } } },
+    { name: "output", label: "Sound output", helper: "For a screen: the soundbar it sends its sound to. Overrides the card's output.", selector: { entity: { domain: "media_player" } } },
     { name: "sound_select", label: "Sound output list", helper: "A select entity that switches where the TV's sound goes. An LG TV needs none: its outputs are found.", selector: { entity: { domain: ["select", "input_select"] } } },
     { name: "volume", label: "Volume helper", helper: "A helper that is the real volume, when the player's own isn't.", selector: { entity: { domain: ["input_number", "number"] } } },
     { name: "artwork", label: "Artwork when", helper: "A binary sensor that says the artwork is worth showing.", selector: { entity: { domain: "binary_sensor" } } },
@@ -1102,7 +1140,8 @@ const EDITOR = defineEditor("savvy-media-card", (hass, c) => [
   S.titleLink("name"),
   playerList("video", "Video sources", "Empty: the area's players (not its speakers)."),
   playerList("audio", "Speakers", "The room's speakers: each with its transport, volume and power; two or more get a picker. Empty: the area's speakers and receivers."),
-  { name: "video_output", label: "Sound output for all sources", helper: "The speaker, receiver or soundbar every video source plays through. Its volume sits under the picked source.", selector: { entity: { domain: "media_player" } } },
+  { name: "screen", label: "Screen", helper: "The TV the sources play on: it owns their volume. Empty: the one source that is a TV.", selector: { entity: { domain: "media_player" } } },
+  { name: "video_output", label: "Screen's sound output", helper: "The soundbar or receiver the screen sends its sound to (eARC). While it does, the bar is the soundbar's and the soundbar leaves Listen. Empty: the TV plays through itself.", selector: { entity: { domain: "media_player" } } },
   S.grid(S.bool("artwork", "Show artwork", null, true), S.bool("volume_buttons", "Volume buttons", null, true)),
   S.grid(S.number("volume_step", "Volume step", 1, 25, 1, "%"), S.number("artwork_max_height", "Artwork height", 80, 800, 10, "px")),
   { type: "expandable", name: "labels", title: "Captions", schema: [S.text("video", "Video caption"), S.text("audio", "Speaker caption")] },
