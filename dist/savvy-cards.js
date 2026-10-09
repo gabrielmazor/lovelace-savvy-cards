@@ -15976,18 +15976,24 @@ class SavvyMediaCard extends SavvyCard {
   // The screen a source plays on: its own `screen`, the card's `screen`, else the one TV among the
   // sources. The screen owns the volume of everything watched on it (an Apple TV or a console has none).
   _screenOf(cfg) {
-    const c = this._config, id = cfg.screen || c.screen;
-    if (id) return c.video.find((v) => v.entity === id) || { entity: id };
-    const tvs = c.video.filter((v) => this._hass.states[v.entity]?.attributes.device_class === "tv");
-    return tvs.length === 1 ? tvs[0] : null;
+    const c = this._config, isTv = (v) => this._hass.states[v.entity]?.attributes.device_class === "tv";
+    if (cfg.screen) return c.video.find((v) => v.entity === cfg.screen) || { entity: cfg.screen };
+    // a TV is its own screen; anything else plays on the card's screen, else on the first TV
+    if (cfg.entity === c.screen || isTv(cfg)) return cfg;
+    if (c.screen) return c.video.find((v) => v.entity === c.screen) || { entity: c.screen };
+    return c.video.find(isTv) || null;
   }
 
   // A screen's sound goes out to its configured output (a soundbar over eARC) when the TV says so (an
   // LG names its sound output), or, for a TV that doesn't say, while that output is on. Never guessed:
   // without an `output` / `video_output` in the config the TV plays through itself.
   _externalOut(screen) {
-    const out = this._soundOutput(screen);
+    // the card's video_output is its main screen's; a second TV sends its sound only where its own `output` says
+    const main = this._screenOf({ entity: "" });
+    const out = screen.output !== undefined ? screen.output || null : !main || main.entity === screen.entity ? this._soundOutput(screen) : null;
     if (!out || out === screen.entity) return null;
+    // the soundbar playing something of its own (Spotify, Bluetooth) is not the TV's sound, whatever the TV says
+    if (!this._fromTv(screen, out)) return null;
     const choice = this._soundChoice(screen);
     if (choice?.current) return choice.current.own ? null : out;
     return this._isOn({ entity: out, ...(this._config.audio.find((a) => a.entity === out) || {}) }) ? out : null;
@@ -16004,6 +16010,16 @@ class SavvyMediaCard extends SavvyCard {
     if (listed) return listed;
     const named = this._config.video.find((v) => v.entity === out);
     return named ? { ...named } : { entity: out };
+  }
+
+  // Is the soundbar on the TV's input? Its `source` says (the screen's `output_source` names it exactly;
+  // otherwise TV, eARC / ARC, HDMI or optical). A soundbar that names no source counts as the TV's.
+  _fromTv(screen, out) {
+    const src = this._hass.states[out]?.attributes.source;
+    if (src == null || src === "") return true;
+    const want = screen.output_source ?? this._config.output_source;
+    if (want) return [].concat(want).some((w) => norm(w) === norm(src));
+    return /\b(tv|e?arc|hdmi|optical|opt|toslink|spdif)\b/i.test(String(src));
   }
 
   // The speakers busy being a screen's sound right now: their bar is under that screen, not in Listen.
@@ -16159,6 +16175,7 @@ const EDITOR = defineEditor("savvy-media-card", (hass, c) => [
   playerList("video", "Video sources", "Empty: the area's players (not its speakers)."),
   playerList("audio", "Speakers", "The room's speakers: each with its transport, volume and power; two or more get a picker. Empty: the area's speakers and receivers."),
   { name: "screen", label: "Screen", helper: "The TV the sources play on: it owns their volume. Empty: the one source that is a TV.", selector: { entity: { domain: "media_player" } } },
+  { name: "output_source", label: "Soundbar's TV input", helper: "The soundbar's source while it plays the TV, when it isn't called TV, ARC, eARC, HDMI or Optical.", selector: { text: {} } },
   { name: "video_output", label: "Screen's sound output", helper: "The soundbar or receiver the screen sends its sound to (eARC). While it does, the bar is the soundbar's and the soundbar leaves Listen. Empty: the TV plays through itself.", selector: { entity: { domain: "media_player" } } },
   S.grid(S.bool("artwork", "Show artwork", null, true), S.bool("volume_buttons", "Volume buttons", null, true)),
   S.grid(S.number("volume_step", "Volume step", 1, 25, 1, "%"), S.number("artwork_max_height", "Artwork height", 80, 800, 10, "px")),

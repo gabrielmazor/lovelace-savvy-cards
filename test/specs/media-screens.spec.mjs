@@ -75,6 +75,41 @@ export default async function ({ browser, base, check }) {
   const alone = await read();
   check("a TV alone: its own bar", alone.source === "12%" && alone.bars.length === 1, JSON.stringify(alone));
 
+  // the soundbar playing its own music while the TV is on: not the TV's sound
+  await page.evaluate(({ TV, BAR }) => window.setStates({
+    [TV]: { state: "on", attributes: { ...window.hass.states[TV].attributes, volume_level: 0.12, sound_output: "external_arc" } },
+    [BAR]: { state: "playing", attributes: { ...window.hass.states[BAR].attributes, source: "Spotify", media_title: "So What" } },
+  }), { TV, BAR });
+  await mount({ ...both, video_output: BAR });
+  await page.waitForTimeout(800);
+  const spot = await read();
+  check("soundbar on Spotify while the TV is on: the bar under the screen is the TV's, the soundbar is in Listen", spot.source === "12%" && spot.listen.includes("Soundbar"), JSON.stringify(spot));
+  await page.evaluate((BAR) => window.setStates({ [BAR]: { state: "on", attributes: { ...window.hass.states[BAR].attributes, source: "TV", media_title: null } } }), BAR);
+  await page.waitForTimeout(800);
+  const back = await read();
+  check("back on the TV input: the soundbar's bar under the screen, out of Listen", back.source === "34%" && !back.listen.includes("Soundbar"), JSON.stringify(back));
+  await page.evaluate((BAR) => window.setStates({ [BAR]: { state: "on", attributes: { ...window.hass.states[BAR].attributes, source: "Input 2" } } }), BAR);
+  await mount({ ...both, video_output: BAR, output_source: "Input 2" });
+  await page.waitForTimeout(800);
+  const named = await read();
+  check("output_source names the soundbar's TV input when it has another name", named.source === "34%", JSON.stringify(named));
+
+  // two screens: each TV is its own screen; a source with no screen of its own plays on the first TV
+  await page.evaluate((BAR) => window.setStates({ "media_player.bedroom_tv": { state: "on", attributes: { friendly_name: "Bedroom TV", device_class: "tv", supported_features: 21437, volume_level: 0.55 } },
+    [BAR]: { state: "on", attributes: { ...window.hass.states[BAR].attributes, source: "TV" } } }), BAR);
+  await mount({ video: [{ entity: TV }, { entity: "media_player.bedroom_tv" }, { entity: "media_player.streamer" }], video_output: BAR, audio: [{ entity: BAR, name: "Soundbar" }] });
+  await page.waitForTimeout(800);
+  const pickSeg = async (name) => {
+    const box = await page.evaluate((name) => { const s = [...window.cards.at(-1).shadowRoot.querySelectorAll("#sources .seg")].find((x) => x.textContent.includes(name)); s.scrollIntoView(); const q = s.getBoundingClientRect(); return [q.x + q.width / 2, q.y + q.height / 2]; }, name);
+    await page.mouse.click(...box);
+    await page.waitForTimeout(700);
+    return read();
+  };
+  const two = await pickSeg("Bedroom");
+  check("two screens: the second TV keeps its own bar (55%), not the first TV's soundbar", two.source === "55%", JSON.stringify(two));
+  const str = await pickSeg("Streamer");
+  check("two screens: an unmapped source plays on the first TV (its soundbar's 34%)", str.source === "34%", JSON.stringify(str));
+
   check("no errors", errors.length === 0, errors.join(" | "));
   await page.close();
 }

@@ -11,7 +11,10 @@
   console). When it sends its sound to the soundbar named in `video_output` (an LG says so; another TV while the
   soundbar is on), the bar is the soundbar's own, with its real level, and the soundbar leaves Listen while the
   TV is on: one box, one bar. Nothing is guessed: without `video_output` the TV plays through itself. New
-  `screen` option (the card's, or a source's in a room with two TVs).
+  `screen` option (the card's, or a source's in a room with two TVs). The soundbar playing its own music
+  (Spotify, Bluetooth: its source isn't the TV) is never the TV's sound: it stays in Listen with its own bar
+  (`output_source` names its TV input when it has another name). With two TVs each is its own screen, and a
+  source with no `screen` of its own plays on the first.
 - **Room header: how many lights are on.** A Lights chip leads its row ("3 on", or Off, dimmed); a tap lists the
   room's lights with all on and all off. `lights: false` hides it. Everything else the room has stays in the row,
   idle ones dimmed, never hidden.
