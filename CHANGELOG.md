@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.20.0
 
 - **A new look, the same cards:** the default design is rebuilt around one surface per card. Icons stand bare instead
   of on tinted discs (an alert keeps its disc), rows replace boxes inside boxes, titles are larger, group names are in
