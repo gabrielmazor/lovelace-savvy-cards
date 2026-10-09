@@ -18047,7 +18047,7 @@ class SavvyRoomHeaderCard extends SavvyCard {
     const on = ids.filter((id) => h.states[id]?.state === "on").length;
     const value = on ? `${on} on` : "Off";
     return {
-      key: "lights", icon: on ? "mdi:lightbulb-on" : "mdi:lightbulb-outline", value, caption: "Lights", aria: `Lights, ${value}`,
+      key: "lights", icon: on ? "mdi:lightbulb" : "mdi:lightbulb-outline", value, caption: "Lights", aria: `Lights, ${value}`,
       color: on ? LIGHT_COLOR : "var(--secondary-text-color)", dim: !on,
       config: { tap_action: { action: "list" }, hold_action: { action: "list" } }, defaults: { tap: { action: "list" }, hold: { action: "list" } },
       list: (from) => this._showList("Lights", ids, LIGHT_COLOR, from, null, { bulk: "auto" }),
