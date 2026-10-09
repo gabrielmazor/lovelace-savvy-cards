@@ -1641,6 +1641,12 @@ rooms:
 
 Every card takes `design: glass`, `design: matte` or `design: plain`. Empty follows the dashboard's `design.style` in the [settings card](#savvy-settings); plain is the default. See [Glass](#glass) and [Matte](#matte).
 
+### Grid heights
+
+In a sections view, every card rounds its height up to whole grid rows (Home Assistant's 56px rows and 8px
+gaps), so cards side by side end together. A card given `grid_options: { rows: n }` keeps the height Home
+Assistant gives it, and `grid_snap: false` turns it off for one card.
+
 ### Chips
 
 One chip format everywhere: `entity`, `name`, `icon`, `color` (a Home Assistant colour name or hex),

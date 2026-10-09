@@ -377,7 +377,57 @@ const BASE_CSS = `${ROLL_CSS}${GLOW_CSS}${DESIGN_CSS}
 
 // Registers a card for HA's card picker. Every Savvy card goes through this so the
 // picker shows them together, with previews.
+// Grid heights. In a sections view Home Assistant lays cards on rows of 56px with 8px between; a card
+// that sizes itself ("rows: auto") ends wherever its content ends, so two cards side by side that are
+// nearly the same height end a few pixels apart. Every Savvy card rounds its height up to whole rows,
+// so neighbours line up. Only inside a sections grid (it defines --row-height), never for a card given
+// a number of rows (Home Assistant sizes those), and `grid_snap: false` turns it off.
+function snapToGrid(host) {
+  const card = host.shadowRoot?.querySelector("ha-card");
+  if (!card) return;
+  const cs = getComputedStyle(host);
+  const row = parseFloat(cs.getPropertyValue("--row-height")), gap = parseFloat(cs.getPropertyValue("--row-gap"));
+  const rows = host._config?.grid_options?.rows ?? host.getGridOptions?.()?.rows;
+  const off = !Number.isFinite(row) || row <= 0 || typeof rows === "number" || host._config?.grid_snap === false;
+  const prev = card.style.minHeight;
+  if (off) { if (prev) card.style.minHeight = ""; return; }
+  // the natural height, measured without our own floor; putting the same value back reports no resize
+  card.style.minHeight = "";
+  const natural = card.offsetHeight;
+  if (!natural) { card.style.minHeight = prev; return; }
+  const step = row + (Number.isFinite(gap) ? gap : 8);
+  const snapped = Math.ceil((natural + step - row - 0.5) / step) * step - (step - row);
+  card.style.minHeight = `${Math.max(natural, snapped)}px`;
+}
+function wireGridSnap(cls) {
+  const proto = cls.prototype;
+  if (proto.__gridSnap) return;
+  proto.__gridSnap = true;
+  const connect = proto.connectedCallback, disconnect = proto.disconnectedCallback;
+  proto.connectedCallback = function () {
+    connect?.call(this);
+    if (this.__snapRo) return;
+    let card = null;
+    const seen = new WeakSet();
+    const ro = this.__snapRo = new ResizeObserver(() => {
+      // the card builds its shadow DOM when it gets hass: follow whichever ha-card is there now
+      const now = this.shadowRoot?.querySelector("ha-card") || null;
+      if (now !== card) { if (card) ro.unobserve(card); card = now; if (card) ro.observe(card); }
+      // content that shrinks inside a card held at its rows doesn't resize the card: watch the content too
+      for (const child of card?.children || []) if (!seen.has(child)) { seen.add(child); ro.observe(child); }
+      snapToGrid(this);
+    });
+    ro.observe(this);
+  };
+  proto.disconnectedCallback = function () {
+    disconnect?.call(this);
+    this.__snapRo?.disconnect();
+    this.__snapRo = null;
+  };
+}
+
 const registerCard = (type, cls, name, description) => {
+  wireGridSnap(cls);             // whole grid rows, so cards side by side end together
   wireSettings(type, cls);       // fills in what the dashboard's Savvy settings supply (core/settings)
   if (!customElements.get(type)) customElements.define(type, cls);
   window.customCards = window.customCards || [];

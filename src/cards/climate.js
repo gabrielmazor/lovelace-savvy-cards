@@ -158,32 +158,37 @@ const STYLE = `
   ha-card { --accent-text: rgb(var(--accent)); }
   :host(:not([dark])) ha-card { --accent-text: color-mix(in oklab, rgb(var(--accent)) 72%, #000); }
 
+  /* the header key every card shares: 32px, tinted while on, a bare glyph while off */
   .power {
     flex: none; display: grid; place-items: center;
-    width: var(--c-l); height: var(--c-l); border-radius: 13px;
-    background: var(--well); color: var(--secondary-text-color);
+    width: var(--c-s); height: var(--c-s); border-radius: 11px;
+    background: transparent; color: var(--secondary-text-color);
   }
+  @media (hover: hover) { .power:not([data-on]):hover { background: var(--well); } }
   .power[data-on] { background: color-mix(in oklab, rgb(var(--accent)) var(--mix-on), transparent); color: rgb(var(--accent)); }
-  .power ha-icon { --mdc-icon-size: 21px; display: flex; }
+  .power ha-icon { --mdc-icon-size: 19px; display: flex; }
 
   /* ---- target temperature ---- */
-  .hero { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+  .hero { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
   /* glass and matte: the target and its buttons are one tile, lit in the mode's colour */
   ha-card:is([data-glass], [data-matte]):not([data-compact]) .hero { padding: 10px 12px; border-radius: 18px; background: color-mix(in oklab, var(--primary-text-color) 4%, transparent); }
   ha-card[data-glass] .hero, ha-card[data-matte] .hero { --lx: 50%; --ly: 55%; }   /* the light comes from the number, now in the middle */
   .readout { flex: 1; min-width: 0; display: flex; align-items: flex-start; justify-content: center; order: 1; }
   .value {
-    font-size: 66px; line-height: 1; font-weight: 250; letter-spacing: -0.055em;
+    font-size: 60px; line-height: 1; font-weight: 300; letter-spacing: -0.045em;
     color: var(--primary-text-color);
   }
   .unit {
-    font-size: 26px; line-height: 1; font-weight: 400; letter-spacing: -0.01em;
-    color: var(--accent-text); margin: 10px 0 0 3px;
+    font-size: 22px; line-height: 1; font-weight: 400; letter-spacing: -0.01em;
+    color: var(--accent-text); margin: 8px 0 0 3px;
   }
   .steppers { display: contents; }
   #minus { order: 0; } #plus { order: 2; }
-  .step { display: grid; place-items: center; width: var(--c-l); height: var(--c-l); border-radius: 13px; background: var(--well); }
-  .step ha-icon { --mdc-icon-size: 22px; display: flex; }
+  /* quiet steps either side: a faint well, the rows' own material, not a grey block */
+  .step { display: grid; place-items: center; width: var(--c-l); height: var(--c-l); border-radius: 13px;
+    background: color-mix(in oklab, var(--primary-text-color) 4%, transparent); color: var(--secondary-text-color); }
+  @media (hover: hover) { .step:not([disabled]):hover { background: var(--well); color: var(--primary-text-color); } }
+  .step ha-icon { --mdc-icon-size: 20px; display: flex; }
   .step[disabled] { opacity: 0.34; cursor: default; }
 
   /* the bar is the control: grab it anywhere, it thickens under the finger */
@@ -208,8 +213,8 @@ const STYLE = `
   }
   .bounds {
     display: flex; justify-content: space-between;
-    margin: 2px 7px 0; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.01em;
-    color: var(--secondary-text-color); opacity: 0.75;
+    margin: 2px 7px 0; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: -0.002em;
+    color: var(--secondary-text-color);
   }
 
   /* ---- readouts ---- */
@@ -220,7 +225,7 @@ const STYLE = `
   .stat ha-icon, .stat savvy-state-icon { --mdc-icon-size: 16px; flex: none; display: flex; color: var(--sc, var(--secondary-text-color)); }
   .stat .col { min-width: 0; display: flex; align-items: baseline; gap: 4px; }
   .stat .v { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.012em; white-space: nowrap; }
-  .stat .k { font-size: 13.5px; line-height: 18px; font-weight: 500; letter-spacing: -0.004em;
+  .stat .k { font-size: 13px; line-height: 18px; font-weight: 500; letter-spacing: -0.004em;
     color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: lowercase; }
 
   /* ---- segmented control ---- */
@@ -229,7 +234,7 @@ const STYLE = `
     padding: 3px; border-radius: 14px; background: var(--well);
   }
   /* the modes: a row of words under a hairline, the chosen one marked by its colour and a dot that slides */
-  .segmented.modes { margin: 14px -4px 0; padding: 6px 0 0; border-radius: 0; background: none; border-top: 1px solid var(--line); gap: 0; }
+  .segmented.modes { margin: 14px 0 0; padding: 6px 0 0; border-radius: 0; background: none; border-top: 1px solid var(--line); gap: 0; }
   .modes .seg { flex-direction: column; gap: 5px; height: 56px; padding-bottom: 6px; font-size: 13px; }
   .modes .seg ha-icon { --mdc-icon-size: 20px; }
   .segmented.modes .pill, .segmented.modes .pill[data-colored] { background: transparent; box-shadow: none; }

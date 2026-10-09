@@ -15,6 +15,13 @@
   (Spotify, Bluetooth: its source isn't the TV) is never the TV's sound: it stays in Listen with its own bar
   (`output_source` names its TV input when it has another name). With two TVs each is its own screen, and a
   source with no `screen` of its own plays on the first.
+- **Grid heights:** in a sections view every card is a whole number of grid rows tall (56px rows, 8px between),
+  so cards side by side end together instead of a few pixels apart. Cards given a number of rows keep it;
+  `grid_snap: false` turns it off.
+- **Lights:** the state ends the row, the colour dot just before it. The level stays inside the row's rounded
+  corners while it animates.
+- **Climate, tuned to the rest:** the power key is the 32px header key every card uses (a bare glyph while off),
+  the steps are quiet wells, the number is a touch steadier, the modes' hairline sits within the card's edges.
 - **Room header: how many lights are on.** A Lights chip leads its row ("3 on", or Off, dimmed); a tap lists the
   room's lights with all on and all off. `lights: false` hides it. Everything else the room has stays in the row,
   idle ones dimmed, never hidden.

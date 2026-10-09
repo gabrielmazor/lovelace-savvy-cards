@@ -383,7 +383,57 @@ const BASE_CSS = `${ROLL_CSS}${GLOW_CSS}${DESIGN_CSS}
 
 // Registers a card for HA's card picker. Every Savvy card goes through this so the
 // picker shows them together, with previews.
+// Grid heights. In a sections view Home Assistant lays cards on rows of 56px with 8px between; a card
+// that sizes itself ("rows: auto") ends wherever its content ends, so two cards side by side that are
+// nearly the same height end a few pixels apart. Every Savvy card rounds its height up to whole rows,
+// so neighbours line up. Only inside a sections grid (it defines --row-height), never for a card given
+// a number of rows (Home Assistant sizes those), and `grid_snap: false` turns it off.
+function snapToGrid(host) {
+  const card = host.shadowRoot?.querySelector("ha-card");
+  if (!card) return;
+  const cs = getComputedStyle(host);
+  const row = parseFloat(cs.getPropertyValue("--row-height")), gap = parseFloat(cs.getPropertyValue("--row-gap"));
+  const rows = host._config?.grid_options?.rows ?? host.getGridOptions?.()?.rows;
+  const off = !Number.isFinite(row) || row <= 0 || typeof rows === "number" || host._config?.grid_snap === false;
+  const prev = card.style.minHeight;
+  if (off) { if (prev) card.style.minHeight = ""; return; }
+  // the natural height, measured without our own floor; putting the same value back reports no resize
+  card.style.minHeight = "";
+  const natural = card.offsetHeight;
+  if (!natural) { card.style.minHeight = prev; return; }
+  const step = row + (Number.isFinite(gap) ? gap : 8);
+  const snapped = Math.ceil((natural + step - row - 0.5) / step) * step - (step - row);
+  card.style.minHeight = `${Math.max(natural, snapped)}px`;
+}
+function wireGridSnap(cls) {
+  const proto = cls.prototype;
+  if (proto.__gridSnap) return;
+  proto.__gridSnap = true;
+  const connect = proto.connectedCallback, disconnect = proto.disconnectedCallback;
+  proto.connectedCallback = function () {
+    connect?.call(this);
+    if (this.__snapRo) return;
+    let card = null;
+    const seen = new WeakSet();
+    const ro = this.__snapRo = new ResizeObserver(() => {
+      // the card builds its shadow DOM when it gets hass: follow whichever ha-card is there now
+      const now = this.shadowRoot?.querySelector("ha-card") || null;
+      if (now !== card) { if (card) ro.unobserve(card); card = now; if (card) ro.observe(card); }
+      // content that shrinks inside a card held at its rows doesn't resize the card: watch the content too
+      for (const child of card?.children || []) if (!seen.has(child)) { seen.add(child); ro.observe(child); }
+      snapToGrid(this);
+    });
+    ro.observe(this);
+  };
+  proto.disconnectedCallback = function () {
+    disconnect?.call(this);
+    this.__snapRo?.disconnect();
+    this.__snapRo = null;
+  };
+}
+
 const registerCard = (type, cls, name, description) => {
+  wireGridSnap(cls);             // whole grid rows, so cards side by side end together
   wireSettings(type, cls);       // fills in what the dashboard's Savvy settings supply (core/settings)
   if (!customElements.get(type)) customElements.define(type, cls);
   window.customCards = window.customCards || [];
@@ -8443,32 +8493,37 @@ const STYLE = `
   ha-card { --accent-text: rgb(var(--accent)); }
   :host(:not([dark])) ha-card { --accent-text: color-mix(in oklab, rgb(var(--accent)) 72%, #000); }
 
+  /* the header key every card shares: 32px, tinted while on, a bare glyph while off */
   .power {
     flex: none; display: grid; place-items: center;
-    width: var(--c-l); height: var(--c-l); border-radius: 13px;
-    background: var(--well); color: var(--secondary-text-color);
+    width: var(--c-s); height: var(--c-s); border-radius: 11px;
+    background: transparent; color: var(--secondary-text-color);
   }
+  @media (hover: hover) { .power:not([data-on]):hover { background: var(--well); } }
   .power[data-on] { background: color-mix(in oklab, rgb(var(--accent)) var(--mix-on), transparent); color: rgb(var(--accent)); }
-  .power ha-icon { --mdc-icon-size: 21px; display: flex; }
+  .power ha-icon { --mdc-icon-size: 19px; display: flex; }
 
   /* ---- target temperature ---- */
-  .hero { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+  .hero { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
   /* glass and matte: the target and its buttons are one tile, lit in the mode's colour */
   ha-card:is([data-glass], [data-matte]):not([data-compact]) .hero { padding: 10px 12px; border-radius: 18px; background: color-mix(in oklab, var(--primary-text-color) 4%, transparent); }
   ha-card[data-glass] .hero, ha-card[data-matte] .hero { --lx: 50%; --ly: 55%; }   /* the light comes from the number, now in the middle */
   .readout { flex: 1; min-width: 0; display: flex; align-items: flex-start; justify-content: center; order: 1; }
   .value {
-    font-size: 66px; line-height: 1; font-weight: 250; letter-spacing: -0.055em;
+    font-size: 60px; line-height: 1; font-weight: 300; letter-spacing: -0.045em;
     color: var(--primary-text-color);
   }
   .unit {
-    font-size: 26px; line-height: 1; font-weight: 400; letter-spacing: -0.01em;
-    color: var(--accent-text); margin: 10px 0 0 3px;
+    font-size: 22px; line-height: 1; font-weight: 400; letter-spacing: -0.01em;
+    color: var(--accent-text); margin: 8px 0 0 3px;
   }
   .steppers { display: contents; }
   #minus { order: 0; } #plus { order: 2; }
-  .step { display: grid; place-items: center; width: var(--c-l); height: var(--c-l); border-radius: 13px; background: var(--well); }
-  .step ha-icon { --mdc-icon-size: 22px; display: flex; }
+  /* quiet steps either side: a faint well, the rows' own material, not a grey block */
+  .step { display: grid; place-items: center; width: var(--c-l); height: var(--c-l); border-radius: 13px;
+    background: color-mix(in oklab, var(--primary-text-color) 4%, transparent); color: var(--secondary-text-color); }
+  @media (hover: hover) { .step:not([disabled]):hover { background: var(--well); color: var(--primary-text-color); } }
+  .step ha-icon { --mdc-icon-size: 20px; display: flex; }
   .step[disabled] { opacity: 0.34; cursor: default; }
 
   /* the bar is the control: grab it anywhere, it thickens under the finger */
@@ -8493,8 +8548,8 @@ const STYLE = `
   }
   .bounds {
     display: flex; justify-content: space-between;
-    margin: 2px 7px 0; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.01em;
-    color: var(--secondary-text-color); opacity: 0.75;
+    margin: 2px 7px 0; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: -0.002em;
+    color: var(--secondary-text-color);
   }
 
   /* ---- readouts ---- */
@@ -8505,7 +8560,7 @@ const STYLE = `
   .stat ha-icon, .stat savvy-state-icon { --mdc-icon-size: 16px; flex: none; display: flex; color: var(--sc, var(--secondary-text-color)); }
   .stat .col { min-width: 0; display: flex; align-items: baseline; gap: 4px; }
   .stat .v { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.012em; white-space: nowrap; }
-  .stat .k { font-size: 13.5px; line-height: 18px; font-weight: 500; letter-spacing: -0.004em;
+  .stat .k { font-size: 13px; line-height: 18px; font-weight: 500; letter-spacing: -0.004em;
     color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: lowercase; }
 
   /* ---- segmented control ---- */
@@ -8514,7 +8569,7 @@ const STYLE = `
     padding: 3px; border-radius: 14px; background: var(--well);
   }
   /* the modes: a row of words under a hairline, the chosen one marked by its colour and a dot that slides */
-  .segmented.modes { margin: 14px -4px 0; padding: 6px 0 0; border-radius: 0; background: none; border-top: 1px solid var(--line); gap: 0; }
+  .segmented.modes { margin: 14px 0 0; padding: 6px 0 0; border-radius: 0; background: none; border-top: 1px solid var(--line); gap: 0; }
   .modes .seg { flex-direction: column; gap: 5px; height: 56px; padding-bottom: 6px; font-size: 13px; }
   .modes .seg ha-icon { --mdc-icon-size: 20px; }
   .segmented.modes .pill, .segmented.modes .pill[data-colored] { background: transparent; box-shadow: none; }
@@ -13161,8 +13216,10 @@ header { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 2
 .light {
   position: relative; overflow: hidden; isolation: isolate;
   display: grid; grid-template-columns: var(--b-s) minmax(0, 1fr) auto; align-items: center; column-gap: 8px;
-  min-height: 56px; padding: 0 8px 0 12px; border-radius: 16px;
+  min-height: 56px; padding: 0 12px 0 12px; border-radius: 16px;
   background: var(--well); cursor: pointer; touch-action: pan-y;
+  /* overflow alone stops clipping to the corners while the level animates on its own layer: clip-path holds */
+  --row-r: 16px; clip-path: inset(0 round var(--row-r));
   --lit-text: rgb(var(--lc, var(--amber)));
 }
 :host(:not([dark])) .light { --lit-text: color-mix(in oklab, rgb(var(--lc, var(--amber))) 80%, #000); }
@@ -13194,8 +13251,9 @@ header { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 2
 .meta .n { min-width: 0; font-size: 14px; line-height: 18px; font-weight: 560; letter-spacing: -0.01em;
   color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .light[data-on] .meta .n { color: var(--primary-text-color); }
-.end { display: flex; align-items: center; gap: 0; }
-.d { flex: none; min-width: 34px; padding-inline-end: 4px; text-align: end;
+/* the state ends the row; the colour dot sits just before it, a power button before that */
+.end { display: flex; align-items: center; gap: 0; margin-inline-end: -2px; }
+.d { flex: none; min-width: 34px; padding-inline-start: 2px; text-align: end;
   font-size: 13px; line-height: 18px; font-weight: 500; letter-spacing: -0.004em; color: var(--secondary-text-color);
   white-space: nowrap; pointer-events: none; }
 .light[data-on] .d { color: var(--primary-text-color); }
@@ -13222,7 +13280,7 @@ ha-card[data-glass] .light, ha-card[data-matte] .light { --lx: 26px; --ly: 50%; 
 .light:not([data-dim]) .lvl { transition: transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1); }
 @media (prefers-reduced-motion: reduce) { .light .lvl { transition: none; } }
 /* ---- compact: the light, its name and its state, and nothing else ---- */
-ha-card[data-compact] .light { grid-template-columns: var(--b-s) minmax(0, 1fr) auto; min-height: 46px; padding: 0 10px 0 8px; border-radius: 13px; --lx: 22px; }
+ha-card[data-compact] .light { grid-template-columns: var(--b-s) minmax(0, 1fr) auto; min-height: 46px; padding: 0 10px 0 8px; border-radius: 13px; --row-r: 13px; --lx: 22px; }
 ha-card[data-compact] .orb { width: var(--b-s); height: var(--b-s); }
 ha-card[data-compact] .orb ha-icon, ha-card[data-compact] .orb savvy-state-icon { --mdc-icon-size: 18px; }
 ha-card[data-compact] .meta .n { font-size: 13.5px; line-height: 18px; }
@@ -14085,9 +14143,9 @@ class LightsCard extends HTMLElement {
         <span class="orb"><savvy-state-icon></savvy-state-icon></span>
         <span class="meta"><span class="n"></span></span>
         <span class="end">
-          <span class="d"></span>
-          <button class="swatch" hidden><i></i></button>
           <button class="power" hidden><ha-icon icon="mdi:power"></ha-icon></button>
+          <button class="swatch" hidden><i></i></button>
+          <span class="d"></span>
         </span>`;
       cache.set(key, node);
       el.grid.appendChild(node);

@@ -164,8 +164,10 @@ header { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 2
 .light {
   position: relative; overflow: hidden; isolation: isolate;
   display: grid; grid-template-columns: var(--b-s) minmax(0, 1fr) auto; align-items: center; column-gap: 8px;
-  min-height: 56px; padding: 0 8px 0 12px; border-radius: 16px;
+  min-height: 56px; padding: 0 12px 0 12px; border-radius: 16px;
   background: var(--well); cursor: pointer; touch-action: pan-y;
+  /* overflow alone stops clipping to the corners while the level animates on its own layer: clip-path holds */
+  --row-r: 16px; clip-path: inset(0 round var(--row-r));
   --lit-text: rgb(var(--lc, var(--amber)));
 }
 :host(:not([dark])) .light { --lit-text: color-mix(in oklab, rgb(var(--lc, var(--amber))) 80%, #000); }
@@ -197,8 +199,9 @@ header { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 2
 .meta .n { min-width: 0; font-size: 14px; line-height: 18px; font-weight: 560; letter-spacing: -0.01em;
   color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .light[data-on] .meta .n { color: var(--primary-text-color); }
-.end { display: flex; align-items: center; gap: 0; }
-.d { flex: none; min-width: 34px; padding-inline-end: 4px; text-align: end;
+/* the state ends the row; the colour dot sits just before it, a power button before that */
+.end { display: flex; align-items: center; gap: 0; margin-inline-end: -2px; }
+.d { flex: none; min-width: 34px; padding-inline-start: 2px; text-align: end;
   font-size: 13px; line-height: 18px; font-weight: 500; letter-spacing: -0.004em; color: var(--secondary-text-color);
   white-space: nowrap; pointer-events: none; }
 .light[data-on] .d { color: var(--primary-text-color); }
@@ -225,7 +228,7 @@ ha-card[data-glass] .light, ha-card[data-matte] .light { --lx: 26px; --ly: 50%; 
 .light:not([data-dim]) .lvl { transition: transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1); }
 @media (prefers-reduced-motion: reduce) { .light .lvl { transition: none; } }
 /* ---- compact: the light, its name and its state, and nothing else ---- */
-ha-card[data-compact] .light { grid-template-columns: var(--b-s) minmax(0, 1fr) auto; min-height: 46px; padding: 0 10px 0 8px; border-radius: 13px; --lx: 22px; }
+ha-card[data-compact] .light { grid-template-columns: var(--b-s) minmax(0, 1fr) auto; min-height: 46px; padding: 0 10px 0 8px; border-radius: 13px; --row-r: 13px; --lx: 22px; }
 ha-card[data-compact] .orb { width: var(--b-s); height: var(--b-s); }
 ha-card[data-compact] .orb ha-icon, ha-card[data-compact] .orb savvy-state-icon { --mdc-icon-size: 18px; }
 ha-card[data-compact] .meta .n { font-size: 13.5px; line-height: 18px; }
@@ -1088,9 +1091,9 @@ class LightsCard extends HTMLElement {
         <span class="orb"><savvy-state-icon></savvy-state-icon></span>
         <span class="meta"><span class="n"></span></span>
         <span class="end">
-          <span class="d"></span>
-          <button class="swatch" hidden><i></i></button>
           <button class="power" hidden><ha-icon icon="mdi:power"></ha-icon></button>
+          <button class="swatch" hidden><i></i></button>
+          <span class="d"></span>
         </span>`;
       cache.set(key, node);
       el.grid.appendChild(node);
