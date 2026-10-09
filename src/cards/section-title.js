@@ -208,7 +208,7 @@ class SavvySectionTitleCard extends SavvyCard {
 
   _renderBadges() {
     const h = this._hass, found = roomBadges(h, this._config.area, this._config, { alwaysKinds: TRIO });
-    const list = [...found.filter((b) => b.pinned), ...found.filter((b) => !b.pinned && !TRIO.includes(b.key)), ...TRIO.map((k) => found.find((b) => !b.pinned && b.key === k)).filter(Boolean)];
+    const list = found;     // already in the shared order: active first, then presence, door, the rest
     const seen = new Set(), red = MQ.reduced.matches;
     for (const b of list) {
       seen.add(b.key);

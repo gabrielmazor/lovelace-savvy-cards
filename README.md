@@ -1644,20 +1644,27 @@ chip's defaults follow its domain: a switch toggles, a button presses, a select 
 
 ### Badges
 
-The home header, room header, section title and room tile show what a room has. `entities` pins yours
-first. With `auto_discover` on (the default) the area's own follow: presence and doors always, and media,
+The home header, room header, section title and room tile show what a room has. `entities` pins yours.
+With `auto_discover` on (the default) the area's own join them: presence and doors always, and media,
 locks, climate, fans, covers, windows, leaks and smoke while they are active.
+
+What is relevant comes first, and the order follows the states as they change:
+
+1. On the room tile, the room's lights toggle (`toggle`, or the settings' `light_state`), so it is always in the same place to tap.
+2. Everything active: a tripped leak or smoke alarm, then presence, then an open door, then the rest.
+3. Everything idle: presence, then the door, then the rest.
+
+So when nobody is in the room and the door is shut, the TV that is playing comes first.
 
 | Option | Type | Default | What it does |
 |---|---|---|---|
-| `entities` | chips | none | Pinned badges, first and always shown. Never merged or ignored. |
+| `entities` | chips | none | Pinned badges, always shown, in the order above. Never merged or ignored. |
 | `auto_discover` | boolean | `true` | Add what the area has. `false` leaves the pinned ones and the temperature. |
 | `exclude_kinds` | list of kinds | none | Kinds never discovered. |
 | `include` | list of entities | none | Entities to treat as in this area (a lock with no area). |
 | `exclude` | list of entities | none | Entities never discovered. The settings' `ignore.entities` and the room's `exclude` are added to it; `exclude: false` opts out. |
 
-On the section title the order is fixed: temperature at the right edge, then presence, then door and
-window, then whatever else is active.
+On the section title the temperature ends the row.
 
 ### Popups
 

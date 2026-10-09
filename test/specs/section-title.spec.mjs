@@ -23,10 +23,10 @@ export default async function ({ browser, base, check }) {
     check(`${tag} name and icon come from the area`, r.lr.name === "Living Room" && r.lr.icon === "mdi:sofa", JSON.stringify(r.lr));
     check(`${tag} mode chip shows the option with its dictionary icon`, r.lr.mode === "Relax" && r.lr.modeIcon, JSON.stringify(r.lr));
     check(`${tag} temperature: the area's sensor`, r.lr.temp === "23.6°", r.lr.temp);
-    check(`${tag} discovered: the active extras on the left, then the door and presence, which are always there`,
-      JSON.stringify(r.lr.badges.map((b) => b.split(",")[0])) === JSON.stringify(["TV", "AC", "Door", "Presence"]), JSON.stringify(r.lr.badges));
-    check(`${tag} pinned only, in order, even when idle; temperature off`,
-      JSON.stringify(r.pinned.badges.map((b) => b.split(",")[0])) === JSON.stringify(["Movie Mode", "Living Room Door"]) && r.pinned.temp === null, JSON.stringify(r.pinned));
+    check(`${tag} discovered: what is active first (presence, then the rest), then the closed door, which is always there`,
+      JSON.stringify(r.lr.badges.map((b) => b.split(",")[0])) === JSON.stringify(["Presence", "TV", "AC", "Door"]), JSON.stringify(r.lr.badges));
+    check(`${tag} pinned only, shown even when idle, a door before the rest; temperature off`,
+      JSON.stringify(r.pinned.badges.map((b) => b.split(",")[0])) === JSON.stringify(["Living Room Door", "Movie Mode"]) && r.pinned.temp === null, JSON.stringify(r.pinned));
     check(`${tag} legacy locks: an unlocked lock shows as its kind`, r.legacy.badges.some((b) => b.startsWith("Back Door")) && r.legacy.name === "Hall", JSON.stringify(r.legacy));
     if (width === 520) await shot(page, `heading-${theme}`, 0);
     check(`${tag} springs idle`, await idle(page));

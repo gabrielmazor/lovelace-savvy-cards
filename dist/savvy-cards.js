@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.20.1 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.20.2 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.20.1";
+const SAVVY_VERSION = "0.20.2";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -634,6 +634,9 @@ function asItems(v) {
 // tile cards. All of it is computed from states and the registries: no helper needed.
 //
 // Badges (a room's row of little status icons) follow one rule everywhere:
+//   order:          what is relevant comes first. The room tile's lights toggle leads (it is the one
+//                   you tap); then everything active (a tripped leak or smoke alarm first, then presence,
+//                   an open door, the rest); then everything idle (presence, door, the rest).
 //   entities:       pinned, in this order, always shown (dimmed when idle)
 //   auto_discover:  true (default) adds what the area has, one badge per kind; presence and
 //                   doors always show, the rest only while they're doing something.
@@ -679,7 +682,19 @@ const isGroup = (st) => Array.isArray(st?.attributes.entity_id) || st?.attribute
 // The badge row for an area: [{ key, entity, ids, kind, on, pinned, cfg }]
 // opts.idle: every kind the area has, active or not (the room card's full sensor row)
 // opts.alwaysKinds: kind keys that show even when idle, besides presence and doors
+// opts.lead: an entity whose badge always comes first (the room tile's lights toggle)
 function roomBadges(hass, area, cfg = {}, opts = {}) {
+  return orderBadges(collectBadges(hass, area, cfg, opts), opts.lead);
+}
+
+// active before idle; within each, alerts, presence, doors, then the rest as they were found
+const BADGE_RANK = { presence: 1, door: 2 };
+function orderBadges(list, lead) {
+  const rank = (b) => (lead && b.entity === lead ? -1 : (b.on ? 0 : 10) + (b.on && b.kind?.critical ? 0 : BADGE_RANK[b.kind?.key] ?? 3));
+  return list.map((b, i) => ({ b, i, r: rank(b) })).sort((x, y) => x.r - y.r || x.i - y.i).map((x) => x.b);
+}
+
+function collectBadges(hass, area, cfg, opts) {
   const out = [], pinnedIds = new Set(), pinnedKinds = new Set();
   for (const item of asItems(cfg.entities)) {
     const st = hass.states[item.entity];
@@ -18635,7 +18650,7 @@ class SavvySectionTitleCard extends SavvyCard {
 
   _renderBadges() {
     const h = this._hass, found = roomBadges(h, this._config.area, this._config, { alwaysKinds: TRIO });
-    const list = [...found.filter((b) => b.pinned), ...found.filter((b) => !b.pinned && !TRIO.includes(b.key)), ...TRIO.map((k) => found.find((b) => !b.pinned && b.key === k)).filter(Boolean)];
+    const list = found;     // already in the shared order: active first, then presence, door, the rest
     const seen = new Set(), red = MQ.reduced.matches;
     for (const b of list) {
       seen.add(b.key);
@@ -20684,7 +20699,7 @@ class SavvyRoomTile extends SavvyCard {
   }
 
   _renderBadges() {
-    const h = this._hass, c = this._config, list = roomBadges(h, c.area, c);
+    const h = this._hass, c = this._config, list = roomBadges(h, c.area, c, { lead: c.toggle || asItems(c.entities).find((i) => i.name === "Light")?.entity });
     const seen = new Set(), red = this._reduced, first = this._first;
     for (const b of list) {
       seen.add(b.key);

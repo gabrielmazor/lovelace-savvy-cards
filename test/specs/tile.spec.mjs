@@ -24,7 +24,7 @@ export default async function ({ browser, base, check }) {
     const [lr, office, legacy] = r;
     check(`${tag} name, icon, mode and temperature from the area`, lr.name === "Living Room" && lr.icon === "mdi:sofa" && lr.mode === "Relax" && lr.temp === "23.6°", JSON.stringify(lr));
     check(`${tag} the drop is lit by the room's lights; a dark room's isn't`, lr.intensity > 0.5 && office.intensity === 0, `${lr.intensity} ${office.intensity}`);
-    check(`${tag} badges: presence, door, then what's active`, JSON.stringify(lr.badges) === JSON.stringify(["Presence", "Door", "TV", "AC"]), JSON.stringify(lr.badges));
+    check(`${tag} badges: what's active first (presence, then the rest), then the closed door`, JSON.stringify(lr.badges) === JSON.stringify(["Presence", "TV", "AC", "Door"]), JSON.stringify(lr.badges));
     check(`${tag} legacy keys: light_state pinned first, as "Light"`, legacy.badges[0] === "Light" && legacy.name === "Legacy", JSON.stringify(legacy));
 
     // gestures

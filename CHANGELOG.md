@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.20.2
+
+- **Badges: what is relevant comes first.** The room tile, room header and section title order their badges
+  the same way, and follow the states as they change: the room tile's lights toggle first (it is the one you
+  tap), then everything active (a tripped leak or smoke alarm, presence, an open door, the rest), then
+  everything idle (presence, door, the rest). With nobody in the room and the door shut, the TV that is
+  playing comes first. The section title no longer keeps presence and the door at the end.
+
 ## 0.20.1
 
 - **Lights:** a lamp that only switches fills its row while it is on, the way one at 100% does, so on reads at a

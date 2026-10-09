@@ -418,7 +418,7 @@ class SavvyRoomTile extends SavvyCard {
   }
 
   _renderBadges() {
-    const h = this._hass, c = this._config, list = roomBadges(h, c.area, c);
+    const h = this._hass, c = this._config, list = roomBadges(h, c.area, c, { lead: c.toggle || asItems(c.entities).find((i) => i.name === "Light")?.entity });
     const seen = new Set(), red = this._reduced, first = this._first;
     for (const b of list) {
       seen.add(b.key);
