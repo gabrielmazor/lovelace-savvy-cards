@@ -303,7 +303,8 @@ dimmed), your own chips, and a row to jump to the other rooms.
 | `control`, `mode_label`, `mode_icons`, `mode_colors`, `control_tap_action`, `control_hold_action`, `control_double_tap_action` | | none, `Room mode` | The room's mode or scenes, or any entity. Same as on the [home header](#home-header). |
 | `temperature` | entity or `false` | found | The area's temperature sensor, else its climate unit's reading. |
 | `home_path` | string | from settings | Home button page. Empty hides it. |
-| `entities`, `auto_discover`, `exclude_kinds`, `include`, `exclude` | | discovered | The badge row, see [Badges](#badges). Here every kind the room has shows, active or not. |
+| `lights` | boolean | `true` | How many of the room's lights are on, first in the row; a tap lists them. With `auto_discover: false` it shows only when set to `true`. |
+| `entities`, `auto_discover`, `exclude_kinds`, `include`, `exclude` | | discovered | The badge row, see [Badges](#badges). Here every kind the room has shows, active or not; idle ones dimmed. |
 | `aggregate` | `true` or list | off | See [Aggregate sensors](#aggregate-sensors). |
 | `icons_only` | boolean | `false` | Just the coloured icons. |
 | `chips` | chips | none | Your own chips, in a row of their own. |

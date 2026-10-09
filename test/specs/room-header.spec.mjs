@@ -26,8 +26,9 @@ export default async function ({ browser, base, check }) {
     const [lr, bed, kit] = r;
     check(`${tag} mode, caption, home button, temperature`, lr.mode === "Relax" && lr.pre === "Room mode" && lr.home && lr.temp === "23.6°C", JSON.stringify(lr));
     check(`${tag} everything the room has, what is active first (presence, then the rest), then the idle door and the idle pinned helper`,
-      JSON.stringify(lr.sensors.map((s) => s.split(",")[0])) === JSON.stringify(["Presence", "Media", "Climate", "Door", "Movie"]), JSON.stringify(lr.sensors));
-    check(`${tag} idle ones dimmed (the closed door, the pinned helper)`, lr.dim[0] === "1" && lr.dim[3] !== "1" && lr.dim[4] !== "1", JSON.stringify(lr.dim));
+      JSON.stringify(lr.sensors.map((s) => s.split(",")[0])) === JSON.stringify(["Lights", "Presence", "Media", "Climate", "Door", "Movie"]), JSON.stringify(lr.sensors));
+    check(`${tag} the lights count leads the row`, /^Lights, \d+ on$/.test(lr.sensors[0]), lr.sensors[0]);
+    check(`${tag} idle ones dimmed (the closed door, the pinned helper)`, lr.dim[1] === "1" && lr.dim[4] !== "1" && lr.dim[5] !== "1", JSON.stringify(lr.dim));
     const media = await page.evaluate(() => {
       const out = {};
       for (const state of ["paused", "idle", "on", "off", "standby", "playing", "unavailable"]) {
@@ -44,7 +45,7 @@ export default async function ({ browser, base, check }) {
       JSON.stringify(["Office", "Bedroom", "Hallway", "Kitchen"]) && lr.sep, JSON.stringify(lr.rooms));
     check(`${tag} discovery off: only the pinned (captioned by its kind), icons only; no room paths, no rooms row`, JSON.stringify(bed.sensors.map((s) => s.split(",")[0])) === JSON.stringify(["Window"])
       && bed.iconOnly && !bed.rooms.length && !bed.sep && bed.mode === null, JSON.stringify(bed));
-    check(`${tag} pre-Savvy keys: light_state as "Light" (only the room tile puts it first), ignore_sensors, order, rooms overrides`, kit.sensors.some((x) => x.startsWith("Light,")) && kit.sensors[0].startsWith("Lock,")
+    check(`${tag} pre-Savvy keys: light_state as "Light" (only the room tile puts it first), ignore_sensors, order, rooms overrides`, kit.sensors.some((x) => x.startsWith("Light,")) && kit.sensors[0].startsWith("Lights,") && kit.sensors[1].startsWith("Lock,")
       && !kit.sensors.some((s) => s.startsWith("Media")) && JSON.stringify(kit.rooms) === JSON.stringify(["Study"]), JSON.stringify(kit));
 
     // gestures: pinned helper toggles; a sensor opens more-info; a room navigates; the mode picker
@@ -56,8 +57,8 @@ export default async function ({ browser, base, check }) {
       await page.waitForTimeout(250);
       return page.evaluate(({ sel, i }) => { const b = window.cards[0].shadowRoot.querySelectorAll(sel)[i].getBoundingClientRect(); return [b.x + 15, b.y + b.height / 2]; }, { sel, i });
     };
-    await page.mouse.click(...await chip("#sensors .chip", 4));      // the pinned helper, idle, last
-    await page.mouse.click(...await chip("#sensors .chip", 0));      // presence, detected, first
+    await page.mouse.click(...await chip("#sensors .chip", 5));      // the pinned helper, idle, last
+    await page.mouse.click(...await chip("#sensors .chip", 1));      // presence, detected, first after the lights count
     await page.mouse.click(...await chip("#rooms .chip", 0));
     await page.mouse.click(...await chip("#home", 0));
     await page.waitForTimeout(300);

@@ -7,6 +7,9 @@
   tap), then everything active (a tripped leak or smoke alarm, presence, an open door, the rest), then
   everything idle (presence, door, the rest). With nobody in the room and the door shut, the TV that is
   playing comes first. The section title no longer keeps presence and the door at the end.
+- **Room header: how many lights are on.** A Lights chip leads its row ("3 on", or Off, dimmed); a tap lists the
+  room's lights with all on and all off. `lights: false` hides it. Everything else the room has stays in the row,
+  idle ones dimmed, never hidden.
 
 ## 0.20.1
 

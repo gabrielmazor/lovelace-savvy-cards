@@ -17926,9 +17926,9 @@ registerCard("savvy-room-activity-card", SavvyRoomActivityCard, "Room activity",
 // ===== cards/room-header.js =====
 (() => {
 // savvy-room-header-card: the header at the top of a room's own page. The room's control (a mode
-// select, say: tap to change it) and temperature; a row of what the room has, pinned entities first, then
-// everything the area has, on or off (dimmed when idle); your own chips; and a row to
-// jump to every other room.
+// select, say: tap to change it) and temperature; a row of what the room has: how many lights are on,
+// then everything the area has, on or off (dimmed when idle), what is active first; your own chips;
+// and a row to jump to every other room.
 //
 //   type: custom:savvy-room-header-card
 //   area: living_room
@@ -18037,9 +18037,27 @@ class SavvyRoomHeaderCard extends SavvyCard {
     this._wake();
   }
 
+  // How many of the room's lights are on, leading the row: a tap lists them, with all on / off.
+  _lightsItem() {
+    const h = this._hass, c = this._config;
+    // its own option; with discovery off (only the pinned badges) it shows only when asked for
+    if (c.lights === false || (c.auto_discover === false && c.lights !== true)) return null;
+    const ids = areaLights(h, c.area).filter((id) => !asItems(c.exclude).some((i) => i.entity === id));
+    if (!ids.length) return null;
+    const on = ids.filter((id) => h.states[id]?.state === "on").length;
+    const value = on ? `${on} on` : "Off";
+    return {
+      key: "lights", icon: on ? "mdi:lightbulb-on" : "mdi:lightbulb-outline", value, caption: "Lights", aria: `Lights, ${value}`,
+      color: on ? LIGHT_COLOR : "var(--secondary-text-color)", dim: !on,
+      config: { tap_action: { action: "list" }, hold_action: { action: "list" } }, defaults: { tap: { action: "list" }, hold: { action: "list" } },
+      list: (from) => this._showList("Lights", ids, LIGHT_COLOR, from, null, { bulk: "auto" }),
+    };
+  }
+
   // Everything the room has, on or off: active ones in their colour, idle ones dimmed.
   _sensors() {
     const h = this._hass, c = this._config;
+    const lights = this._lightsItem();
     const items = roomBadges(h, c.area, c, { idle: true }).map((b) => {
       const look = badgeLook(b), st = h.states[b.entity];
       const caption = b.cfg.name || b.kind?.name || shortName(h, b.entity, c.area);
@@ -18053,7 +18071,7 @@ class SavvyRoomHeaderCard extends SavvyCard {
         list: (from) => this._showList(caption, b.ids, look.color, from, null, { bulk: "auto" }),
       };
     });
-    this._chipRow(this._el.sensors, items, { iconOnly: !!c.icons_only });
+    this._chipRow(this._el.sensors, lights ? [lights, ...items] : items, { iconOnly: !!c.icons_only });
   }
 
   _customChips() {
@@ -18101,7 +18119,8 @@ const EDITOR = defineEditor("savvy-room-header-card", (hass, c) => [
   S.nav("home_path", "Home button", "Empty hides the button."),
   { name: "temperature", label: "Temperature", helper: "Found from the area. Pick another to override.", selector: { entity: { domain: ["sensor", "climate"] } } },
   ...badgeSchema({ pinnedHelp: "Always shown first, in this order: a lights helper, presence, a door. The rest of the room follows." }),
-  S.bool("icons_only", "Icons only", "Just the coloured icons, no names or states.", false),
+  S.grid(S.bool("lights", "Lights count", "How many of the room's lights are on, first in the row; a tap lists them.", true),
+    S.bool("icons_only", "Icons only", "Just the coloured icons, no names or states.", false)),
   S.chips("chips", "Custom chips", "Your own chips, in a row under the room's."),
   { name: "room_path", label: "Room pages", helper: "E.g. /lovelace/{slug} ({area}: the area id, {slug}: with dashes). Empty hides the row.", selector: { text: {} } },
   { name: "room_order", label: "Room order", type: "list", helper: "Rooms listed first, in this order; the rest follow by name.",
