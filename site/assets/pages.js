@@ -81,8 +81,12 @@
   const HOME = {
     id: "home", title: "Home", nav: "Home", group: "home", max_columns: 3,
     sections: [
+      // only the header takes the full width; everything else sits in the three columns
       { column_span: 3, cards: [
         ["savvy-home-header-card", { grid_options: { columns: "full" }, chips: [{ entity: "alarm_control_panel.home_alarm", show_state: true }] }],
+      ] },
+      { cards: [
+        subtitle("Rooms"),
         ...ROOMS.map((r) => ["savvy-room-tile", { area: r.id, grid_options: { rows: "auto" } }]),
         ["savvy-people-card", { battery: false, layout: "full", grid_options: { columns: "full" }, direction: "horizontal", people: [{ entity: "person.maya" }, { entity: "person.ben" }], columns: 2 }],
       ] },
@@ -185,7 +189,7 @@
 
   // ---- the domain pages the home header's chips open
   const homeHeader = { column_span: 3, cards: [["savvy-home-header-card", { grid_options: { columns: "full" } }]] };
-  const graph = (area, title) => ({ column_span: 3, cards: [["savvy-graph-card", {
+  const graph = (area, title) => ({ cards: [["savvy-graph-card", {
     entities: [{ entity: `sensor.${area}_temperature`, name: "Temperature" }, { entity: `sensor.${area}_humidity`, name: "Humidity" }],
     hours_to_show: 24, ranges: ["6", "24", "72"], title, grid_options: { columns: "full" } }]] });
   const level = (warn, bad) => [{ value: 0, level: "good" }, { value: warn, level: "warn" }, { value: bad, level: "bad" }];
@@ -220,7 +224,7 @@
       sections: [
         homeHeader,
         { cards: [["savvy-lock-card", { entity: "lock.front_door", layout: "full", battery_warn: 40, unlocked_warn: 5, camera_view: "hidden" }]] },
-        { column_span: 2, cards: [["savvy-camera-card", { area: "kitchen", grid_options: { columns: "full" }, recordings: "inline", columns: "auto",
+        { cards: [["savvy-camera-card", { area: "kitchen", grid_options: { columns: "full" }, recordings: "inline", columns: "auto",
           cameras: [{ entity: "camera.living_room", area: "living_room" }, { entity: "camera.kitchen", area: "kitchen" }] }]] },
         { cards: [["savvy-room-activity-card", { name: "Home", layout: "full", alarm: "none",
           chips: [{ entity: "sensor.people_home" }, { entity: "sensor.people_asleep" }, { entity: "switch.lock_bridge_plug" }] }]] },
