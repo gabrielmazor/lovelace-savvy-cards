@@ -16,7 +16,8 @@ export default async function ({ browser, base, check }) {
           mode: r.getElementById("mode").hidden ? null : r.getElementById("modeText").textContent,
           modeIcon: r.getElementById("modeIcon").getAttribute("icon"),
           temp: r.getElementById("temp").hidden ? null : r.getElementById("tempText").textContent,
-          badges: [...r.querySelectorAll(".badge")].filter((b) => b.getAttribute("aria-hidden") === "false").map((b) => b.getAttribute("aria-label")) };
+          // read from the row's end, next to the temperature: the order the card reads in
+          badges: [...r.querySelectorAll(".badge")].filter((b) => b.getAttribute("aria-hidden") === "false").map((b) => b.getAttribute("aria-label")).reverse() };
       };
       return { lr: read(lr), pinned: read(pinned), legacy: read(legacy) };
     }, width);

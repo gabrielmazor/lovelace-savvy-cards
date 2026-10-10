@@ -7,6 +7,8 @@
   content, and fills its grid cell, so cards side by side still end together. `grid_snap: true` brings the
   rounding back for one card.
 - **Headers and titles take the height they need,** never rounded to rows.
+- **Section title: its badges read from the right,** the end the row is anchored at: the temperature, then
+  presence while detected, an open door, the rest that is active, then the idle ones further left.
 - **Room tile:** laid out for its two rows, with the same space above the name and under the badges, instead of
   the spare space collecting at the bottom.
 

@@ -1,6 +1,6 @@
-// The section title's badges follow the rule every room card shares: what is relevant comes first.
-// Everything active leads (presence, then an open door, then the rest), everything idle follows
-// (presence, door, the rest), and the temperature ends the row. Presence, doors and windows are
+// The section title's badges follow the rule every room card shares: what is relevant comes first. This
+// card reads from its end (right to left): the temperature, then everything active (presence, then an
+// open door, then the rest), then everything idle (presence, door, the rest), growing leftwards. Presence, doors and windows are
 // always there when the room has them, dimmed while idle; the rest only while active.
 import { openPage } from "./_util.mjs";
 
@@ -13,7 +13,8 @@ const read = `(el) => {
   const tempX = el._el.temp.hidden ? null : Math.round(el._el.temp.getBoundingClientRect().x * 10) / 10;
   const on = Object.fromEntries(shown.map(([k, i]) => [k, i.on.target]));
   const rtl = getComputedStyle(el).direction === "rtl";
-  return { keys: shown.map(([k]) => k).sort((a, b) => (rtl ? pos[b] - pos[a] : pos[a] - pos[b])), pos, tempX, on };
+  // read from the row's end, where the temperature is: right to left (left to right in rtl)
+  return { keys: shown.map(([k]) => k).sort((a, b) => (rtl ? pos[a] - pos[b] : pos[b] - pos[a])), pos, tempX, on };
 }`;
 
 export default async function ({ browser, base, check }) {

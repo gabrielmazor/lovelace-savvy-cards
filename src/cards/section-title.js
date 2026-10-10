@@ -11,9 +11,9 @@
 //   temperature: sensor.x | false               heading_style: title | subtitle
 
 const BADGE_W = 30;          // icon plus spacing
-// The row is anchored at its end. On screen, left to right: the pinned badges, whatever else is
-// active (it grows leftwards), then these always-there kinds, then the temperature. To flip the
-// order, change this list.
+// The row is anchored at its end and reads from it, right to left: the temperature, then the shared
+// order (active presence, an open door, the rest that is active, then the idle ones), growing leftwards.
+// These kinds are always there, active or not.
 const TRIO = ["window", "door", "presence"];
 
 const STYLE = `${BASE_CSS}
@@ -257,9 +257,10 @@ class SavvySectionTitleCard extends SavvyCard {
       item.el.tabIndex = -1;
       attr(item.el, "aria-hidden", "true");
     }
-    // DOM order follows the list, and the temperature closes the row
+    // the row reads from its end: the temperature at the right, then the list from right to left, so
+    // the most relevant badge sits next to the temperature; badges on their way out go at the far left
     const leaving = [...this._badges.values()].filter((i) => !seen.has(i.b.key)).map((i) => i.el);
-    const want = [...list.map((b) => this._badges.get(b.key).el), ...leaving, this._el.temp];
+    const want = [...leaving, ...list.map((b) => this._badges.get(b.key).el).reverse(), this._el.temp];
     const kids = [...this._el.badges.children];
     if (want.some((n, i) => kids[i] !== n)) for (const n of want) this._el.badges.appendChild(n);
   }

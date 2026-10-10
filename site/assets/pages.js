@@ -81,12 +81,9 @@
   const HOME = {
     id: "home", title: "Home", nav: "Home", group: "home", max_columns: 3,
     sections: [
-      // only the header takes the full width; everything else sits in the three columns
+      // the header, the rooms and the people take the full width; everything else sits in the three columns
       { column_span: 3, cards: [
         ["savvy-home-header-card", { grid_options: { columns: "full" }, chips: [{ entity: "alarm_control_panel.home_alarm", show_state: true }] }],
-      ] },
-      { cards: [
-        subtitle("Rooms"),
         ...ROOMS.map((r) => ["savvy-room-tile", { area: r.id, grid_options: { rows: "auto" } }]),
         ["savvy-people-card", { battery: false, layout: "full", grid_options: { columns: "full" }, direction: "horizontal", people: [{ entity: "person.maya" }, { entity: "person.ben" }], columns: 2 }],
       ] },
