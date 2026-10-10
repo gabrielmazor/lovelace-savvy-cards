@@ -548,7 +548,8 @@ for warmth and colour. The pill at the top switches the room, or an entity of yo
 | `state_detail` | boolean | `true` | Brightness under the name; `false` shows On/Off. |
 | `color_background` | boolean | `false` | Tint lit tiles with their bulb's colour. |
 | `chips` | chips | none | Extra chips under the lights. |
-| `layout` | `full` or `compact` | `full` | `compact`: toggles only, no sliders or swatches. |
+| `layout` | `full` or `compact` | `full` | `compact`: toggles, no sliders or swatches. To change a lamp's brightness, hold its row until it clicks, then swipe right to brighten or left to dim, one step per swipe (never to off). Held and let go, it opens its details. |
+| `bump_step` | number (%) | `10` | The step a compact row's swipe brightens or dims by. |
 | `state_glow` | boolean | `true` | A soft glow in the card's corner in what it is doing (a lit light, a locked door, music playing). `false` keeps the card plain. |
 | `title_path` | string | none | Title link: tapping the title opens this page. Only the words are the link. |
 

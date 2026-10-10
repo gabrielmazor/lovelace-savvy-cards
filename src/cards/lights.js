@@ -32,6 +32,8 @@ const MOTION = {
 const DIMMABLE = new Set(["brightness", "color_temp", "hs", "xy", "rgb", "rgbw", "rgbww", "white"]);
 const HUE_MODES = new Set(["hs", "xy", "rgb", "rgbw", "rgbww"]);
 // a room's ceiling light, by its name or id (English or Hebrew): the first light on every lights card
+// px a held compact row must travel sideways before it counts as a bump
+const BUMP_TRAVEL = 24;
 const CEILING = /ceiling|\u05ea\u05e7\u05e8\u05d4/i;
 const modesOf = (st) => new Set(st?.attributes.supported_color_modes || []);
 const canDim = (st) => [...modesOf(st)].some((m) => DIMMABLE.has(m));
@@ -683,6 +685,9 @@ class LightsCard extends HTMLElement {
   // A light's row is its control. Feedback on press; a tap switches the lamp; a hold opens more-info;
   // a drag that goes sideways past the slop dims it, 1:1 from the level it had (never from where the
   // finger landed, so a scroll that starts on a row changes nothing); vertical intent stays the page's.
+  // Compact rows have no slider: a deliberate hold arms the row (a click, a pop), and then a swipe right
+  // bumps the lamp up one step, a swipe left down one step (never to off); one bump per gesture. Held and
+  // let go without a swipe, the row opens more-info as before.
   _rowGesture(node, id) {
     const key = slug(id);
     const spring = this._spring(0, MOTION.press, `p${this._springs.length}`);
@@ -706,6 +711,7 @@ class LightsCard extends HTMLElement {
       }
       settle(MOTION.release);
       if (!was.mode && !cancel) this._toggle(id);
+      if (was.mode === "armed" && !was.bumped && !cancel) { this._haptic("medium"); this._moreInfo(id); }
     };
     node.addEventListener("pointerdown", (e) => {
       if (e.button > 0 || o || own(e) || node.hasAttribute("data-unavailable")) return;
@@ -714,14 +720,26 @@ class LightsCard extends HTMLElement {
       this._wake();
       o.timer = setTimeout(() => {
         if (!o || o.mode) return;
-        o.mode = "held";
         settle(MOTION.pop);
+        if (this._compact && canDim(this._hass.states[id])) {
+          // armed: the swipe that follows is a bump; let go without one and it is more-info
+          o.mode = "armed";
+          this._haptic("light");
+          try { node.setPointerCapture(o.pid); } catch (err) { /* already released */ }
+          return;
+        }
+        o.mode = "held";
         this._haptic("medium");
         this._moreInfo(id);
       }, HOLD_MS);
     });
     node.addEventListener("pointermove", (e) => {
       if (!o || e.pointerId !== o.pid) return;
+      if (o.mode === "armed") {
+        const dx = e.clientX - o.x, dy = e.clientY - o.y;
+        if (!o.bumped && Math.abs(dx) > BUMP_TRAVEL && Math.abs(dx) > Math.abs(dy)) { o.bumped = true; this._bump(id, Math.sign(dx)); }
+        return;
+      }
       if (!o.mode) {
         const dx = e.clientX - o.x, dy = e.clientY - o.y;
         if (Math.hypot(dx, dy) < SLOP) return;
@@ -745,7 +763,7 @@ class LightsCard extends HTMLElement {
     node.addEventListener("pointerup", (e) => end(e, false));
     node.addEventListener("pointercancel", (e) => end(e, true));
     // a press that became a scroll (or wandered off) ends where the row can no longer see the release
-    node.addEventListener("pointerleave", (e) => { if (o && o.mode !== "drag") end(e, true); });
+    node.addEventListener("pointerleave", (e) => { if (o && o.mode !== "drag" && o.mode !== "armed") end(e, true); });
     node.addEventListener("contextmenu", (e) => e.preventDefault());
     // a screen reader's activation arrives as a click with no pointer before it
     node.addEventListener("click", (e) => { if (e.detail === 0 && !own(e)) this._toggle(id); });
@@ -759,6 +777,21 @@ class LightsCard extends HTMLElement {
       e.preventDefault();
       bar.set(clamp((this._isOn(id) ? bar.value.target : 0) + d * 0.05, 0.01, 1), false);
     });
+  }
+
+  // One step brighter (+1) or dimmer (-1) from where the lamp is: a dark lamp bumped up comes on at one step,
+  // and a bump down stops at the lowest level rather than switching it off.
+  _bump(id, d) {
+    const st = this._hass.states[id];
+    if (!st) return;
+    const step = clamp((Number(this._config.bump_step) || 10) / 100, 0.01, 1);
+    const on = this._isOn(id);
+    if (!on && d < 0) return;
+    const from = on ? this._level(st) : 0;
+    const to = clamp(from + d * step, 0.01, 1);
+    if (Math.abs(to - from) < 0.005) { this._haptic("light"); return; }
+    this._haptic("selection");
+    this._service("turn_on", { brightness_pct: Math.max(1, Math.round(to * 100)) }, id);
   }
 
   // Writes are throttled while dragging; the release always lands.
@@ -1133,7 +1166,8 @@ class LightsCard extends HTMLElement {
     attr(d, "data-num", node.__live || /^\d+%$/.test(d.textContent) ? "" : null);
     attr(node, "data-dim", dim && !dead ? "" : null);
     attr(node, "role", dim ? "slider" : "switch");
-    attr(node, "aria-label", `${name}, ${this._subtitle(st, { dead, on })}. Tap to switch${dim ? ", drag sideways to dim" : ""}, hold for details.`);
+    const bump = this._compact && canDim(st) && !dead;
+    attr(node, "aria-label", `${name}, ${this._subtitle(st, { dead, on })}. Tap to switch${dim ? ", drag sideways to dim" : ""}${bump ? ", hold then swipe right or left to brighten or dim" : ""}, hold for details.`);
     if (!dim) attr(node, "aria-checked", on ? "true" : "false");
 
     const rgb = this._lightRgb(st);

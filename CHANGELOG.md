@@ -10,6 +10,9 @@
 - **Media: switching between sounds no longer jumps.** The row that leaves goes at once instead of fading while
   the next one fades in, every sound row is the same height, and the picker's highlight shows as soon as the
   picker appears.
+- **Lights card, compact: brightness by a deliberate hold and swipe.** The compact rows have no slider, so a quick drag
+  changes nothing. Hold a row until it clicks, then swipe right to brighten or left to dim, one step per swipe
+  (`bump_step`, 10% by default), never down to off; held and let go, it opens the light's details.
 - **Media: the artwork grows in.** The artwork waits until the picture has loaded, then opens in height while the
   picture comes up from a blur, so the card grows smoothly instead of jumping. A new cover of another shape
   glides to its height, and when the artwork goes the stage closes the same way.
