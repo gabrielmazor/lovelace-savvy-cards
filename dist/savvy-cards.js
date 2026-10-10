@@ -15664,7 +15664,7 @@ class SavvyMediaCard extends SavvyCard {
     }
     // with both kinds on the card, each band says what it is for
     const both = !this._compact && !el.videoBand.hidden && !el.audioBand.hidden;
-    const labels = c.labels === false ? {} : { ...(both ? { video: "Watch", audio: "Sound" } : {}), ...(c.labels || {}) };
+    const labels = c.labels === false ? {} : { ...(both ? { video: "Video", audio: "Audio" } : {}), ...(c.labels || {}) };
     for (const [key, node] of [["video", el.videoCap], ["audio", el.audioCap]]) {
       node.hidden = this._compact || !labels[key];
       if (labels[key]) text(node, labels[key]);

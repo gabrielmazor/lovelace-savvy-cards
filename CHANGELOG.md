@@ -5,10 +5,12 @@
 - **Media: the TV leads its inputs.** No separate screen row by default: the TV is first in the picker and its
   inputs follow. An input that is on while the TV is on (an Apple TV) holds the picker, so its transport shows
   instead of disappearing. `screen_frame: true` brings the screen row back.
-- **Media: every sound at the bottom.** The Sound band (was Listen) holds the TV's own speakers while it plays
+- **Media: every sound at the bottom.** The Audio band holds the TV's own speakers while it plays
   through them, the soundbar and the speakers, each with its transport, power and volume. The soundbar no longer
   leaves the band while it plays the TV: its row says "Sound output for TV", and on an LG that line still
   switches the TV's output. The volume is no longer under the video row.
+- **Media: the bands are captioned Video and Audio** (were Watch and Listen) when the card has both;
+  `labels` still sets your own words.
 - **Media: switch the soundbar's source.** A speaker or soundbar with a source list gets a "Source" line that
   opens the list (TV, HDMI, Bluetooth, ...).
 - **Media: the picker's selector moves again,** and the volume bars animate. A method added in 0.20.2 took over

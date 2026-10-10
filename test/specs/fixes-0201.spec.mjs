@@ -77,7 +77,7 @@ export default async function ({ browser, base, check }) {
   // the TV is on and plays through itself: its speakers are one more entry in the sound picker
   check("media: two speakers (and the TV's own) get a picker", m.picker && m.segs === 3, JSON.stringify(m));
   check("media: the picker shows one speaker at a time", m.rows === 1, JSON.stringify(m));
-  check("media: the bands say Watch and Sound", m.caps[0] === "Watch" && m.caps[1] === "Sound", JSON.stringify(m.caps));
+  check("media: the bands say Video and Audio", m.caps[0] === "Video" && m.caps[1] === "Audio", JSON.stringify(m.caps));
   const seg = await page.evaluate(() => { const s = [...window.cards.at(-1).shadowRoot.querySelectorAll("#speakers .seg")].find((x) => !x.hasAttribute("data-sel")); const q = s.getBoundingClientRect(); return { x: q.x + q.width / 2, y: q.y + q.height / 2, t: s.textContent.trim() }; });
   await page.mouse.click(seg.x, seg.y);
   await page.waitForTimeout(600);
