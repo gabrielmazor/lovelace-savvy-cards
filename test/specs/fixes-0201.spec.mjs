@@ -74,9 +74,10 @@ export default async function ({ browser, base, check }) {
       caps: [r.getElementById("videoCap"), r.getElementById("audioCap")].map((c) => (vis(c) ? c.textContent : "")),
     };
   });
-  check("media: two speakers get a picker", m.picker && m.segs === 2, JSON.stringify(m));
+  // the TV is on and plays through itself: its speakers are one more entry in the sound picker
+  check("media: two speakers (and the TV's own) get a picker", m.picker && m.segs === 3, JSON.stringify(m));
   check("media: the picker shows one speaker at a time", m.rows === 1, JSON.stringify(m));
-  check("media: the bands say Watch and Listen", m.caps[0] === "Watch" && m.caps[1] === "Listen", JSON.stringify(m.caps));
+  check("media: the bands say Watch and Sound", m.caps[0] === "Watch" && m.caps[1] === "Sound", JSON.stringify(m.caps));
   const seg = await page.evaluate(() => { const s = [...window.cards.at(-1).shadowRoot.querySelectorAll("#speakers .seg")].find((x) => !x.hasAttribute("data-sel")); const q = s.getBoundingClientRect(); return { x: q.x + q.width / 2, y: q.y + q.height / 2, t: s.textContent.trim() }; });
   await page.mouse.click(seg.x, seg.y);
   await page.waitForTimeout(600);
@@ -90,10 +91,12 @@ export default async function ({ browser, base, check }) {
       video_output: "media_player.living_room_speaker" }, 460);
   });
   await page.waitForTimeout(700);
-  const lg = () => page.evaluate(() => { const r = window.cards.at(-1).shadowRoot, b = r.querySelector("#nowVol .via"); const q = b.getBoundingClientRect();
-    return { tag: b.tagName, t: b.textContent.trim(), x: q.x + q.width / 2, y: q.y + q.height / 2, vol: r.querySelector("#nowVol .vol .pct")?.textContent }; });
+  // the sound line is in the row carrying the TV's sound, at the bottom
+  const lg = () => page.evaluate(() => { const r = window.cards.at(-1).shadowRoot, vis = (e) => !!e && !e.hidden && e.getClientRects().length > 0;
+    const row = [...r.querySelectorAll("#audioBand .player")].find(vis), b = row.querySelector('.via[data-line="sound"]'); b.scrollIntoView({ block: "center" }); const q = b.getBoundingClientRect();
+    return { row: row.querySelector(".n").textContent, tag: b.tagName, t: b.textContent.trim(), x: q.x + q.width / 2, y: q.y + q.height / 2, vol: row.querySelector(".vol .pct")?.textContent }; });
   const v1 = await lg();
-  check("media/LG: the sound line is a button, naming the box the sound goes to", v1.tag === "BUTTON" && /Speaker/.test(v1.t), JSON.stringify(v1));
+  check("media/LG: the soundbar's row carries the TV's sound, its line a button naming the output", v1.row === "Speaker" && v1.tag === "BUTTON" && /Sound output for TV · HDMI ARC/.test(v1.t), JSON.stringify(v1));
   await page.evaluate(() => { window.log.length = 0; });
   await page.mouse.click(v1.x, v1.y);
   await page.waitForTimeout(700);
@@ -108,7 +111,7 @@ export default async function ({ browser, base, check }) {
   await page.evaluate(() => window.setStates({ "media_player.living_room_tv": { state: "playing", attributes: { ...window.hass.states["media_player.living_room_tv"].attributes, sound_output: "tv_speaker" } } }));
   await page.waitForTimeout(800);
   const v2 = await lg();
-  check("media/LG: on its own speaker, the line says so and the volume is the TV's (30%)", /TV speaker/.test(v2.t) && v2.vol === "30%", JSON.stringify(v2));
+  check("media/LG: on its own speaker, the TV's row carries it, says so, and the volume is the TV's (30%)", v2.row === "TV" && /TV speaker/.test(v2.t) && v2.vol === "30%", JSON.stringify(v2));
 
   check("no errors", errors.length === 0, errors.join(" | "));
   await page.close();

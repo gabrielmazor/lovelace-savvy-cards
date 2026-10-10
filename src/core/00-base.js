@@ -360,13 +360,29 @@ const BASE_CSS = `${ROLL_CSS}${GLOW_CSS}${DESIGN_CSS}
 // nearly the same height end a few pixels apart. Every Savvy card rounds its height up to whole rows,
 // so neighbours line up. Only inside a sections grid (it defines --row-height), never for a card given
 // a number of rows (Home Assistant sizes those), and `grid_snap: false` turns it off.
+// A card as wide as its section has no neighbour to end with: rounding it up would only add empty space.
+// The grid is the nearest ancestor (across shadow roots) laid out as one; none found, the card snaps.
+function aloneInRow(host) {
+  let n = host;
+  for (let i = 0; i < 8 && n; i++) {
+    const p = n.parentElement || n.getRootNode?.()?.host;
+    if (!p) return false;
+    const cs = getComputedStyle(p);
+    if (cs.display === "grid" || cs.display === "inline-grid") {
+      const inner = p.clientWidth - parseFloat(cs.paddingLeft || 0) - parseFloat(cs.paddingRight || 0);
+      return inner > 0 && n.getBoundingClientRect().width >= inner - 1;
+    }
+    n = p;
+  }
+  return false;
+}
 function snapToGrid(host) {
   const card = host.shadowRoot?.querySelector("ha-card");
   if (!card) return;
   const cs = getComputedStyle(host);
   const row = parseFloat(cs.getPropertyValue("--row-height")), gap = parseFloat(cs.getPropertyValue("--row-gap"));
   const rows = host._config?.grid_options?.rows ?? host.getGridOptions?.()?.rows;
-  const off = !Number.isFinite(row) || row <= 0 || typeof rows === "number" || host._config?.grid_snap === false;
+  const off = !Number.isFinite(row) || row <= 0 || typeof rows === "number" || host._config?.grid_snap === false || aloneInRow(host);
   const prev = card.style.minHeight;
   if (off) { if (prev) card.style.minHeight = ""; return; }
   // the natural height, measured without our own floor; putting the same value back reports no resize

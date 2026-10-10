@@ -52,6 +52,24 @@ export default async function ({ browser, base, check }) {
   });
   check("fewer lights: the card shrinks to fewer rows", shrink[1] < shrink[0], JSON.stringify(shrink));
 
+  // in a grid: a card beside another snaps; a card as wide as the section has no neighbour, so keeps its height;
+  // the one-row cards (entity, compact scene, compact vacuum) are exactly one row
+  const grid = await page.evaluate(async () => {
+    const stage = document.getElementById("stage");
+    stage.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;width:440px;align-items:start;--row-height:56px;--row-gap:8px";
+    const half = window.mount("savvy-lights-card", { area: "living_room" }), next = window.mount("savvy-entity-card", { entity: "switch.living_room_plug" });
+    const full = window.mount("savvy-home-header-card", {});
+    full.style.gridColumn = "1 / -1";
+    const one = [window.mount("savvy-scene-card", { area: "living_room", layout: "compact" }), window.mount("savvy-vacuum-card", { entity: "vacuum.robot", layout: "compact" })];
+    for (const el of [half, next, full, ...one]) el.style.width = "";
+    await new Promise((r) => setTimeout(r, 1000));
+    const h = (el) => el.shadowRoot.querySelector("ha-card").getBoundingClientRect().height;
+    return { half: h(half), fullMin: full.shadowRoot.querySelector("ha-card").style.minHeight, one: [next, ...one].map(h) };
+  });
+  check("in a grid, beside another card: whole rows", whole(grid.half), JSON.stringify(grid));
+  check("as wide as the section: no rows added", grid.fullMin === "", JSON.stringify(grid));
+  check("entity, compact scene and compact vacuum: one row (56px)", grid.one.every((x) => Math.round(x) === 56), JSON.stringify(grid));
+
   check("no errors", errors.length === 0, errors.join(" | "));
   await page.close();
 }

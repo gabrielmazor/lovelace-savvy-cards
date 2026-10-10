@@ -23,11 +23,12 @@ export default async function ({ browser, base, check }) {
       return window.cards.map(read);
     }, width);
     const [lr, kit, legacy] = r;
-    check(`${tag} the area's players: the TV is the source, the speaker the output`, lr.title === "Living Room" && lr.now === "TV"
-      && JSON.stringify(lr.speakers) === JSON.stringify(["Speaker"]) && lr.vols.length === 2, JSON.stringify(lr));
+    // the TV is on and plays through itself: its speakers lead the sound band, the speaker is the next in its picker
+    check(`${tag} the area's players: the TV is the source, its sound at the bottom`, lr.title === "Living Room" && lr.now === "TV"
+      && JSON.stringify(lr.speakers) === JSON.stringify(["TV"]) && lr.vols.length === 2, JSON.stringify(lr));
     check(`${tag} presets, text to speech, chips`, JSON.stringify(lr.chips) === JSON.stringify(["Night", "Plug"]) && lr.tts, JSON.stringify(lr));
     check(`${tag} compact: one row, what's playing`, kit.now === "A Song" && kit.vols.length === 1, JSON.stringify(kit));
-    check(`${tag} the pre-Savvy shape: players and actions`, legacy.now === "TV" && JSON.stringify(legacy.speakers) === JSON.stringify(["Speaker"]) && legacy.chips[0] === "Plug", JSON.stringify(legacy));
+    check(`${tag} the pre-Savvy shape: players and actions`, legacy.now === "TV" && JSON.stringify(legacy.speakers) === JSON.stringify(["TV"]) && legacy.chips[0] === "Plug", JSON.stringify(legacy));
 
     // gestures: play/pause, a preset, TTS, the volume steppers, a sideways drag; a tap on the bar alone never changes it
     await page.evaluate(() => { window.log.length = 0; window.info = []; document.addEventListener("hass-more-info", (e) => window.info.push(e.detail.entityId)); });

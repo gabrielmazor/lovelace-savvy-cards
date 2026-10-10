@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.20.2 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.20.3 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.20.2";
+const SAVVY_VERSION = "0.20.3";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -366,13 +366,29 @@ const BASE_CSS = `${ROLL_CSS}${GLOW_CSS}${DESIGN_CSS}
 // nearly the same height end a few pixels apart. Every Savvy card rounds its height up to whole rows,
 // so neighbours line up. Only inside a sections grid (it defines --row-height), never for a card given
 // a number of rows (Home Assistant sizes those), and `grid_snap: false` turns it off.
+// A card as wide as its section has no neighbour to end with: rounding it up would only add empty space.
+// The grid is the nearest ancestor (across shadow roots) laid out as one; none found, the card snaps.
+function aloneInRow(host) {
+  let n = host;
+  for (let i = 0; i < 8 && n; i++) {
+    const p = n.parentElement || n.getRootNode?.()?.host;
+    if (!p) return false;
+    const cs = getComputedStyle(p);
+    if (cs.display === "grid" || cs.display === "inline-grid") {
+      const inner = p.clientWidth - parseFloat(cs.paddingLeft || 0) - parseFloat(cs.paddingRight || 0);
+      return inner > 0 && n.getBoundingClientRect().width >= inner - 1;
+    }
+    n = p;
+  }
+  return false;
+}
 function snapToGrid(host) {
   const card = host.shadowRoot?.querySelector("ha-card");
   if (!card) return;
   const cs = getComputedStyle(host);
   const row = parseFloat(cs.getPropertyValue("--row-height")), gap = parseFloat(cs.getPropertyValue("--row-gap"));
   const rows = host._config?.grid_options?.rows ?? host.getGridOptions?.()?.rows;
-  const off = !Number.isFinite(row) || row <= 0 || typeof rows === "number" || host._config?.grid_snap === false;
+  const off = !Number.isFinite(row) || row <= 0 || typeof rows === "number" || host._config?.grid_snap === false || aloneInRow(host);
   const prev = card.style.minHeight;
   if (off) { if (prev) card.style.minHeight = ""; return; }
   // the natural height, measured without our own floor; putting the same value back reports no resize
@@ -10899,6 +10915,11 @@ const STYLE = `${BASE_CSS}
   .sub .st:not([hidden]) + .since::before { content: "· "; }
   .sub .since:empty { display: none; }
   .main[data-off] .av, .main[data-off] .sub .st { opacity: 0.55; }
+  /* no chips: one grid row (56px with the 1px border), like Home Assistant's own tile */
+  ha-card:has(> .pills:empty) { --pad: 9px; }
+  ha-card[data-glass]:has(> .pills:empty) { --lx: calc(var(--pad) + 18px); --ly: calc(var(--pad) + 18px); }
+  ha-card:has(> .pills:empty) .av { width: var(--b-m); height: var(--b-m); --mdc-icon-size: 20px; }
+  ha-card:has(> .pills:empty) .name { line-height: 20px; }
 
   .pills { display: flex; gap: 6px; min-width: 0; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; padding: 3px; margin: -3px; }
   .pills::-webkit-scrollbar { display: none; }
@@ -15165,6 +15186,12 @@ const STYLE = `${BASE_CSS}
   button.via .chev { --mdc-icon-size: 16px; color: var(--secondary-text-color); margin-inline-start: -6px; }
   @media (hover: hover) { button.via:hover { background: var(--well); } }
   .via + .vol { margin-top: 4px; }
+  /* under a sound row: the screen it carries, its source; each a line in the rows' columns */
+  .lines { display: flex; flex-wrap: wrap; align-items: center; column-gap: 6px; margin-top: 8px; }
+  .lines .via { margin-top: 0; }
+  .lines .via:not([hidden]) ~ .via > ha-icon:first-child { width: auto; }
+  .lines .via:not([hidden]) ~ button.via { padding-inline-start: 8px; }
+  .lines + .vol { margin-top: 4px; }
   .vol .bar { position: absolute; left: 0; right: 0; top: 50%; height: 5px; margin-top: -2.5px; border-radius: 99px; background: color-mix(in oklab, var(--primary-text-color) 10%, transparent); overflow: hidden; transform-origin: 50% 50%; }
   .vol .mute { flex: none; display: grid; place-items: center; width: var(--b-m); height: 32px; border-radius: 10px; color: var(--secondary-text-color); }
   .vol .mute ha-icon { --mdc-icon-size: 19px; display: flex; }
@@ -15259,6 +15286,9 @@ class SavvyMediaCard extends SavvyCard {
     }
     c.video = video;
     c.audio = audio;
+    // a screen leads the picker, its inputs after it
+    const screens = new Set(video.map((v) => this._screenOf(v)?.entity).filter(Boolean));
+    c.video = [...video.filter((v) => screens.has(v.entity)), ...video.filter((v) => !screens.has(v.entity))];
   }
 
   connectedCallback() { this._observe(); this._wake(); }
@@ -15267,7 +15297,7 @@ class SavvyMediaCard extends SavvyCard {
     this._io?.disconnect();
     clearInterval(this._tick);
     for (const t of this._volTimers?.values() || []) clearTimeout(t);
-    this._soundPicker?.close();
+    this._picker?.close();
   }
   getCardSize() { return this._compact ? 2 : this._config?.artwork ? 6 : 4; }
   getGridOptions() { return this._compact ? { columns: 12, min_columns: 6, rows: "auto" } : { columns: 12, min_columns: 6, rows: "auto" }; }
@@ -15634,7 +15664,7 @@ class SavvyMediaCard extends SavvyCard {
     }
     // with both kinds on the card, each band says what it is for
     const both = !this._compact && !el.videoBand.hidden && !el.audioBand.hidden;
-    const labels = c.labels === false ? {} : { ...(both ? { video: "Watch", audio: "Listen" } : {}), ...(c.labels || {}) };
+    const labels = c.labels === false ? {} : { ...(both ? { video: "Watch", audio: "Sound" } : {}), ...(c.labels || {}) };
     for (const [key, node] of [["video", el.videoCap], ["audio", el.audioCap]]) {
       node.hidden = this._compact || !labels[key];
       if (labels[key]) text(node, labels[key]);
@@ -15666,12 +15696,15 @@ class SavvyMediaCard extends SavvyCard {
     const live = c.video.filter((v) => ACTIVE.has(this._hass.states[v.entity]?.state));
     // the input the TV is on, when a source names it (input: HDMI 2): what is really on screen
     const tuned = this._tuned();
-    const sig = [tuned?.entity || "", ...live.map((v) => v.entity)].join("|");
+    // an input that is on while its screen is on is what is on screen, ahead of the TV's own apps
+    const kids = c.video.filter((v) => { const s = this._screenOf(v); return s && s.entity !== v.entity && this._isOn(s) && this._isOn(v); });
+    const kid = kids.find((v) => ACTIVE.has(this._hass.states[v.entity]?.state)) || kids[0];
+    const sig = [tuned?.entity || "", kid?.entity || "", ...live.map((v) => v.entity)].join("|");
     if (this._liveSig === undefined) this._liveSig = sig;
     if (sig !== this._liveSig) { this._liveSig = sig; if (sig) this._picked = null; }
     const on = c.video.filter((v) => this._isOn(v));
     if (this._picked && !c.video.some((v) => v.entity === this._picked)) this._picked = null;
-    const auto = tuned || live[0] || on[0] || c.video[0];
+    const auto = tuned || kid || live[0] || on[0] || c.video[0];
     const active = this._picked ? c.video.find((v) => v.entity === this._picked) : auto;
     const changed = this._active && this._active.entity !== active.entity;
     this._active = active;
@@ -15687,12 +15720,13 @@ class SavvyMediaCard extends SavvyCard {
         }
         attr(seg.querySelector("ha-icon"), "icon", this._playerIcon(v, st));
         // under its frame the TV in the picker stands for its own apps
-        const framedTv = c.screen_frame !== false && c.video.some((x) => x.entity !== v.entity && this._screenOf(x)?.entity === v.entity);
+        const framedTv = c.screen_frame === true && c.video.some((x) => x.entity !== v.entity && this._screenOf(x)?.entity === v.entity);
         text(seg.querySelector("span"), v.name || (framedTv ? "TV apps" : shortName(this._hass, v.entity, c.area)));
         attr(seg, "data-sel", v === active);
         attr(seg, "data-live", this._isOn(v));
         attr(seg, "aria-pressed", v === active ? "true" : "false");
       });
+      c.video.forEach((v, i) => place(el.sources, el.sources.__rows.get(v.entity), i + 1));
       this._measure();
     }
     if (changed && !MQ.reduced.matches) this._sp.swap.snap(0).to(1, SWAP_IN);
@@ -15734,9 +15768,9 @@ class SavvyMediaCard extends SavvyCard {
   }
 
   // The screen as a frame: its name, power and what it is on; the volume and sound line sit under it.
-  _frame(v) {
+  _screenFrame(v) {
     const el = this._el, c = this._config, screen = this._screenOf(v);
-    const framed = !this._compact && c.screen_frame !== false && !!screen && c.video.some((x) => x.entity !== screen.entity && this._screenOf(x)?.entity === screen.entity);
+    const framed = !this._compact && c.screen_frame === true && !!screen && c.video.some((x) => x.entity !== screen.entity && this._screenOf(x)?.entity === screen.entity);
     attr(el.videoBand, "data-framed", framed);
     el.frame.hidden = !framed;
     if (!framed) return null;
@@ -15785,36 +15819,12 @@ class SavvyMediaCard extends SavvyCard {
       text(el.nowSub, this._rowSub(v, info));
     }
     // under a frame the screen's power is in the frame: the TV's own apps row doesn't repeat it
-    const frame = this._compact ? null : this._frame(v);
+    const frame = this._compact ? null : this._screenFrame(v);
     this._buildTransport(el.nowTransport, v, { power: !(frame && frame.entity === v.entity) });
-    const owner = this._volumeOwner(v);
+    // compact: the room's one volume under its one row; full: every volume is in the sound band
+    const owner = this._compact ? this._volumeOwner(v) : null;
     el.nowVol.hidden = !owner;
-    if (owner) {
-      // a source that plays through another box says which, so the volume reads as that box's
-      const screen = this._screenOf(v) || v, choice = this._soundChoice(screen);
-      let via = el.nowVol.querySelector(".via");
-      if (!via || (via.tagName === "BUTTON") !== !!choice) {
-        via?.remove();
-        via = document.createElement(choice ? "button" : "span");
-        via.className = "via";
-        via.innerHTML = `<ha-icon></ha-icon><span></span>${choice ? `<ha-icon class="chev" icon="mdi:chevron-down"></ha-icon>` : ""}`;
-        if (choice) { attr(via, "aria-haspopup", "listbox"); this._pressable(via, { onTap: () => this._soundMenu(via), haptic: null }, 0.05); }
-        el.nowVol.prepend(via);
-      }
-      const through = owner.entity !== v.entity;
-      via.hidden = this._compact || (!through && !choice);
-      if (!via.hidden) {
-        // the sound goes out to a soundbar: that box; the TV plays through itself and can say how: its output
-        // (TV speaker, headphones); otherwise the box whose volume this is
-        const out = owner.entity !== screen.entity, named = !out && choice?.current;
-        const name = named ? choice.current.label : owner.name || shortName(this._hass, owner.entity, this._config.area);
-        const icon = named ? choice.current.icon || "mdi:speaker" : this._playerIcon(owner, this._hass.states[owner.entity]);
-        attr(via.querySelector("ha-icon"), "icon", icon);
-        text(via.querySelector("span"), `Sound from ${name}`);
-        if (choice) attr(via, "aria-label", `Sound output: ${choice.current?.label || "unknown"}. Change`);
-      }
-      this._mountVolume(el.nowVol, owner, "source");
-    }
+    if (owner) this._mountVolume(el.nowVol, owner, "source");
   }
 
   // when the stage already shows this player's media, the row says where it comes from
@@ -15860,71 +15870,135 @@ class SavvyMediaCard extends SavvyCard {
     parent.hidden = !want.length;
   }
 
+  // Every sound in the room, at the bottom: a screen playing through its own speakers (its volume),
+  // the soundbar (always here, with its transport, power and source), the speakers. The one carrying a
+  // screen's sound says so, and on a TV that can switch its output, the line switches it.
+  _soundEntries() {
+    const c = this._config, list = [], carriers = new Map();
+    const screens = new Map();
+    for (const v of c.video) { const s = this._screenOf(v) || v; if (!screens.has(s.entity)) screens.set(s.entity, s); }
+    for (const s of screens.values()) {
+      if (s.volume === false || !this._isOn(s)) continue;
+      const out = this._externalOut(s);
+      if (out) { if (!carriers.has(out)) carriers.set(out, s); continue; }
+      const key = `tv:${s.entity}`;
+      carriers.set(key, s);
+      list.push({ ...s, __tv: true, __key: key });
+    }
+    // a source with a sound output of its own (a PC on its desk speakers): that output carries it
+    const a = this._active, scr = a && this._screenOf(a);
+    if (a?.output && scr && scr.entity !== a.entity && this._isOn(a)) {
+      if (!carriers.has(a.output)) carriers.set(a.output, a);
+      if (!c.audio.some((x) => x.entity === a.output) && this._hass.states[a.output]) list.push({ entity: a.output, __key: a.output });
+    }
+    for (const x of c.audio) list.push({ ...x, __key: x.entity });
+    return { list, carriers };
+  }
+
   _outputs() {
     const el = this._el, c = this._config;
-    const busy = this._busyOutputs(), free = c.audio.filter((a) => !busy.has(a.entity));
-    this._listen = free;
-    el.audioBand.hidden = !free.length;
-    const shown = this._speakerPicker();
-    for (const cfg of c.audio) {
-      const key = slug(cfg.entity);
+    const { list, carriers } = this._soundEntries();
+    el.audioBand.hidden = !list.length;
+    const shown = this._speakerPicker(list, carriers);
+    for (const cfg of list) {
+      const key = slug(cfg.__key);
       const row = this._rowOf(el.audioBand, key, "div", "player", `<div class="row">
           <span class="icon"><ha-icon></ha-icon></span>
           <span class="meta"><span class="n"></span><span class="d"></span></span>
-          <div class="transport"></div></div>`);
+          <div class="transport"></div></div><div class="lines"></div>`);
       const st = this._hass.states[cfg.entity];
       const info = this._mediaOf(cfg);
       const icon = row.querySelector(".icon");
       attr(icon, "data-live", this._isOn(cfg));
-      attr(icon.querySelector("ha-icon"), "icon", this._playerIcon(cfg, st));
+      attr(icon.querySelector("ha-icon"), "icon", cfg.__tv ? "mdi:television-speaker" : this._playerIcon(cfg, st));
       text(row.querySelector(".n"), info.name || info.title);
       text(row.querySelector(".d"), this._rowSub(cfg, info));
-      this._buildTransport(row.querySelector(".transport"), cfg, { power: true });
-      if (!icon.__wired) { icon.__wired = true; this._pressable(icon, { onTap: () => moreInfo(this, cfg.entity), haptic: null }, 0.08); }
+      // a screen's own speakers: its transport and power are up in Watch
+      if (cfg.__tv) row.querySelector(".transport").hidden = true;
+      else this._buildTransport(row.querySelector(".transport"), cfg, { power: true });
+      if (!icon.__wired) { icon.__wired = true; this._pressable(icon, { onTap: () => moreInfo(this, icon.__entity), haptic: null }, 0.08); }
+      icon.__entity = cfg.entity;
+      this._lines(row.querySelector(".lines"), cfg, carriers.get(cfg.__key));
       this._mountVolume(row, cfg, key);
     }
-    for (const [key, node] of el.audioBand.__rows || []) Motion.show(node, key === slug(shown?.entity || ""));
+    for (const [key, node] of el.audioBand.__rows || []) Motion.show(node, key === slug(shown?.__key || ""));
   }
 
-  // Several speakers share one row, picked the way the video sources are: the pick while it's
-  // sensible, else whatever is playing. One speaker needs no picker.
-  _speakerPicker() {
-    const el = this._el, list = this._listen || this._config.audio;
+  // Under a sound row: whose sound it is carrying (a button when the screen can switch its output),
+  // and the box's own source, when it has a list to pick from (a soundbar's TV, HDMI, Bluetooth).
+  _lines(box, cfg, screen) {
+    const h = this._hass, st = h.states[cfg.entity], c = this._config;
+    const line = (key, on, icon, words, menu) => {
+      let b = box.querySelector(`[data-line="${key}"]`);
+      if (!b || (b.tagName === "BUTTON") !== !!menu) {
+        const next = document.createElement(menu ? "button" : "span");
+        next.className = "via";
+        next.dataset.line = key;
+        next.innerHTML = `<ha-icon></ha-icon><span></span>${menu ? `<ha-icon class="chev" icon="mdi:chevron-down"></ha-icon>` : ""}`;
+        if (menu) { attr(next, "aria-haspopup", "listbox"); this._pressable(next, { onTap: () => next.__menu?.(next), haptic: null }, 0.05); }
+        if (b) b.replaceWith(next); else box.appendChild(next);
+        b = next;
+      }
+      b.hidden = !on;
+      if (!on) return;
+      b.__menu = menu;
+      attr(b.querySelector("ha-icon"), "icon", icon);
+      text(b.querySelector("span"), words);
+    };
+    // order: the sound it carries first, then its source
+    const choice = screen && this._soundChoice(screen);
+    const screenName = screen && (screen.name || shortName(h, screen.entity, c.area));
+    line("sound", !!screen, "mdi:television", screen ? `Sound output for ${screenName}${choice?.current ? ` · ${choice.current.label}` : ""}` : "",
+      choice ? (anchor) => this._soundMenu(anchor, screen) : null);
+    const sources = !cfg.__tv && this._isOn(cfg) ? st?.attributes.source_list || [] : [];
+    const src = st?.attributes.source;
+    line("source", sources.length > 1, "mdi:import", `Source · ${src || "None"}`, (anchor) => this._sourceMenu(anchor, cfg));
+    box.hidden = ![...box.children].some((n) => !n.hidden);
+  }
+
+  // Several sounds share one row, picked the way the video sources are: the pick while it's sensible,
+  // else what carries the screen you are watching, else whatever is playing. One needs no picker.
+  _speakerPicker(list, carriers) {
+    const el = this._el;
     if (!list.length) { this._spkActive = null; return null; }
-    const live = list.filter((a) => ACTIVE.has(this._hass.states[a.entity]?.state));
-    const sig = live.map((a) => a.entity).join("|");
+    const live = list.filter((a) => !a.__tv && ACTIVE.has(this._hass.states[a.entity]?.state));
+    const watched = this._active && (this._screenOf(this._active) || this._active);
+    let carrying = null;
+    for (const [key, who] of carriers) if (who.entity === watched?.entity || who.entity === this._active?.entity) { carrying = list.find((a) => a.__key === key); if (carrying) break; }
+    carrying = carrying || list.find((a) => carriers.has(a.__key));
+    const sig = [carrying?.__key || "", ...live.map((a) => a.__key)].join("|");
     if (this._spkSig === undefined) this._spkSig = sig;
     if (sig !== this._spkSig) { this._spkSig = sig; if (sig) this._spkPicked = null; }
-    if (this._spkPicked && !list.some((a) => a.entity === this._spkPicked)) this._spkPicked = null;
-    const active = (this._spkPicked && list.find((a) => a.entity === this._spkPicked)) || live[0] || list.find((a) => this._isOn(a)) || list[0];
+    if (this._spkPicked && !list.some((a) => a.__key === this._spkPicked)) this._spkPicked = null;
+    const active = (this._spkPicked && list.find((a) => a.__key === this._spkPicked)) || carrying || live[0] || list.find((a) => this._isOn(a)) || list[0];
     this._spkActive = active;
-    this._spkIdx = list.indexOf(active);
     el.speakers.hidden = list.length < 2;
-    if (!el.speakers.hidden) {
-      list.forEach((a) => {
-        const st = this._hass.states[a.entity];
-        const seg = this._rowOf(el.speakers, a.entity, "button", "seg", `<ha-icon></ha-icon><span></span>`);
-        if (!seg.__wired) {
-          seg.__wired = true;
-          this._pressable(seg, { onTap: () => this._pickSpeaker(a), onHold: () => moreInfo(this, a.entity), haptic: null }, 0.08);
-        }
-        attr(seg.querySelector("ha-icon"), "icon", this._playerIcon(a, st));
-        text(seg.querySelector("span"), a.name || shortName(this._hass, a.entity, this._config.area));
-        attr(seg, "data-sel", a === active);
-        attr(seg, "data-live", this._isOn(a));
-        attr(seg, "aria-pressed", a === active ? "true" : "false");
-      });
-      // a speaker busy being a screen's sound is out of the picker until the screen lets it go
-      const keep = new Set(list.map((a) => a.entity));
-      for (const [id, seg] of el.speakers.__rows || []) seg.hidden = !keep.has(id);
-      this._measure();
+    const keep = new Set(list.map((a) => a.__key));
+    for (const a of list) {
+      const st = this._hass.states[a.entity];
+      const seg = this._rowOf(el.speakers, a.__key, "button", "seg", `<ha-icon></ha-icon><span></span>`);
+      seg.__a = a;
+      if (!seg.__wired) {
+        seg.__wired = true;
+        this._pressable(seg, { onTap: () => this._pickSpeaker(seg.__a), onHold: () => moreInfo(this, seg.__a.entity), haptic: null }, 0.08);
+      }
+      attr(seg.querySelector("ha-icon"), "icon", a.__tv ? "mdi:television-speaker" : this._playerIcon(a, st));
+      text(seg.querySelector("span"), a.name || shortName(this._hass, a.entity, this._config.area));
+      attr(seg, "data-sel", a.__key === active.__key);
+      attr(seg, "data-live", this._isOn(a));
+      attr(seg, "aria-pressed", a.__key === active.__key ? "true" : "false");
     }
+    // the picker keeps the entries' order, whichever segment was built first
+    list.forEach((a, i) => place(el.speakers, el.speakers.__rows.get(a.__key), i + 1));
+    for (const [key, seg] of el.speakers.__rows || []) seg.hidden = !keep.has(key);
+    this._spkIdx = list.indexOf(active);
+    if (!el.speakers.hidden) this._measure();
     return active;
   }
 
   _pickSpeaker(a) {
-    if (this._spkActive?.entity === a.entity) return moreInfo(this, a.entity);
-    this._spkPicked = a.entity;
+    if (this._spkActive?.__key === a.__key) return moreInfo(this, a.entity);
+    this._spkPicked = a.__key;
     haptic("selection");
     this._update();
   }
@@ -16047,17 +16121,27 @@ class SavvyMediaCard extends SavvyCard {
     return { options: given, current, set: (v) => h.callService("webostv", "select_sound_output", { sound_output: v }, { entity_id: cfg.entity }) };
   }
 
-  _soundMenu(anchor) {
-    const v = this._active && (this._screenOf(this._active) || this._active), choice = v && this._soundChoice(v);
-    if (!choice) return;
-    this._soundPicker = this._soundPicker || new ModePicker(this, { onPick: (id, value) => {
-      const scr = this._active && (this._screenOf(this._active) || this._active), c = scr && this._soundChoice(scr);
-      if (c && value !== c.current?.value) c.set(value);
-    } });
+  // one popup for the card's lists: where a TV's sound goes, a box's source
+  _menu(anchor, info, title, pick) {
+    this._picker = this._picker || new ModePicker(this, { onPick: (id, value) => this._onMenu?.(value) });
+    this._onMenu = pick;
     // the popup sits outside the card, so it gets the accent as a colour, not as the card's variable
     const accent = `rgb(${getComputedStyle(this._el.card).getPropertyValue("--accent").trim().split(/\s+/).join(" ")})`;
-    const options = choice.options.map((o) => ({ value: o.value, label: o.label, icon: o.icon, color: accent }));
-    this._soundPicker.open(anchor, this._el.card, { entity: v.entity, value: choice.current?.value, options, columns: 3 }, "Sound output");
+    this._picker.open(anchor, this._el.card, { ...info, options: info.options.map((o) => ({ ...o, color: accent })) }, title);
+  }
+
+  _soundMenu(anchor, screen) {
+    const choice = this._soundChoice(screen);
+    if (!choice) return;
+    this._menu(anchor, { entity: screen.entity, value: choice.current?.value, options: choice.options.map((o) => ({ value: o.value, label: o.label, icon: o.icon })), columns: 3 },
+      "Sound output", (value) => { const c = this._soundChoice(screen); if (c && value !== c.current?.value) c.set(value); });
+  }
+
+  _sourceMenu(anchor, cfg) {
+    const st = this._hass.states[cfg.entity], list = st?.attributes.source_list || [];
+    if (!list.length) return;
+    this._menu(anchor, { entity: cfg.entity, value: st.attributes.source, options: list.map((v) => ({ value: v, label: v, icon: "mdi:import" })), columns: list.length > 4 ? 3 : 2 },
+      "Source", (value) => { if (value !== this._hass.states[cfg.entity]?.attributes.source) this._call("media_player", "select_source", { source: value }, cfg.entity); });
   }
 
   // Where a source's sound comes out; nothing declared means the box plays its own.
@@ -16092,7 +16176,7 @@ class SavvyMediaCard extends SavvyCard {
   }
 
   // Whose volume belongs under the picked source: its screen's, or the soundbar's when the screen's
-  // sound goes there. One bar for one box: that soundbar leaves Listen meanwhile (_busyOutputs).
+  // sound goes there (the compact layout's one bar).
   _volumeOwner(cfg) {
     if (cfg.volume === false) return null;
     const screen = this._screenOf(cfg) || cfg;
@@ -16117,18 +16201,6 @@ class SavvyMediaCard extends SavvyCard {
     const want = screen.output_source ?? this._config.output_source;
     if (want) return [].concat(want).some((w) => norm(w) === norm(src));
     return /\b(tv|e?arc|hdmi|optical|opt|toslink|spdif)\b/i.test(String(src));
-  }
-
-  // The speakers busy being a screen's sound right now: their bar is under that screen, not in Listen.
-  _busyOutputs() {
-    const busy = new Set();
-    const screens = new Set(this._config.video.map((v) => this._screenOf(v) || v));
-    for (const screen of screens) {
-      if (!this._isOn(screen)) continue;
-      const out = this._externalOut(screen);
-      if (out) busy.add(out);
-    }
-    return busy;
   }
 
   _chips() {
@@ -16273,9 +16345,9 @@ const EDITOR = defineEditor("savvy-media-card", (hass, c) => [
   playerList("video", "Video sources", "Empty: the area's players (not its speakers)."),
   playerList("audio", "Speakers", "The room's speakers: each with its transport, volume and power; two or more get a picker. Empty: the area's speakers and receivers."),
   { name: "screen", label: "Screen", helper: "The TV the sources play on: it owns their volume. Empty: the one source that is a TV.", selector: { entity: { domain: "media_player" } } },
-  S.bool("screen_frame", "Screen on its own row", "The TV, the input it is on and its power above its inputs. Off: the TV is one more input in the picker.", true),
+  S.bool("screen_frame", "Screen on its own row", "The TV, the input it is on and its power above its inputs. Off: the TV leads the picker, its inputs after it.", false),
   { name: "output_source", label: "Soundbar's TV input", helper: "The soundbar's source while it plays the TV, when it isn't called TV, ARC, eARC, HDMI or Optical.", selector: { text: {} } },
-  { name: "video_output", label: "Screen's sound output", helper: "The soundbar or receiver the screen sends its sound to (eARC). While it does, the bar is the soundbar's and the soundbar leaves Listen. Empty: the TV plays through itself.", selector: { entity: { domain: "media_player" } } },
+  { name: "video_output", label: "Screen's sound output", helper: "The soundbar or receiver the screen sends its sound to (eARC). While it does, the soundbar's row says it carries the TV's sound. Empty: the TV plays through itself.", selector: { entity: { domain: "media_player" } } },
   S.grid(S.bool("artwork", "Show artwork", null, true), S.bool("volume_buttons", "Volume buttons", null, true)),
   S.grid(S.number("volume_step", "Volume step", 1, 25, 1, "%"), S.number("artwork_max_height", "Artwork height", 80, 800, 10, "px")),
   { type: "expandable", name: "labels", title: "Captions", schema: [S.text("video", "Video caption"), S.text("audio", "Speaker caption")] },
@@ -18338,6 +18410,8 @@ const STYLE = `${BASE_CSS}
   .grid[data-noicon] .tile { padding-left: 12px; }
   .grid[data-noicon] .tile .ic { display: none; }
 
+  /* compact: one grid row (56px with the border) */
+  ha-card:has(> .grid[data-compact]) { --pad: 10px; }
   .grid[data-compact] { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; touch-action: pan-x pan-y; padding: 3px; margin: -3px; }
   .grid[data-compact]::-webkit-scrollbar { display: none; }
   .grid[data-compact][data-overflow] { mask-image: linear-gradient(to left, transparent 0, #000 26px); -webkit-mask-image: linear-gradient(to left, transparent 0, #000 26px); }
@@ -21237,7 +21311,7 @@ ha-card {
   container-type: inline-size;
   transition: background-color 240ms ease, border-color 240ms ease;
 }
-:host([compact]) ha-card { --pad: 12px; gap: 8px; }
+:host([compact]) ha-card { --pad: 9px; gap: 8px; }
 @supports (corner-shape: squircle) {
   ha-card { corner-shape: squircle; border-radius: calc(var(--radius) * 1.7); }
 }
@@ -21269,7 +21343,7 @@ ha-icon, savvy-state-icon { display: flex; align-items: center; justify-content:
 .hero { display: flex; align-items: center; gap: 14px; min-width: 0; }
 :host([compact]) .hero { gap: 11px; }
 .ring { position: relative; flex: none; width: 64px; height: 64px; cursor: pointer; }
-:host([compact]) .ring { width: 46px; height: 46px; }
+:host([compact]) .ring { width: var(--b-m); height: var(--b-m); }
 .ring > svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
 .ring .track { fill: none; stroke: var(--well); stroke-width: 3.2; }
 .ring .fill { fill: none; stroke: var(--ring-c, var(--acc)); stroke-width: 3.2; stroke-linecap: round; }
@@ -21278,7 +21352,7 @@ ha-icon, savvy-state-icon { display: flex; align-items: center; justify-content:
   --mdc-icon-size: 28px; color: color-mix(in oklab, var(--acc) calc(var(--act, 0) * 100%), var(--primary-text-color));
   background: color-mix(in oklab, var(--acc) calc(var(--act, 0) * 14%), var(--well));
 }
-:host([compact]) .ring .bot { inset: 5px; --mdc-icon-size: 20px; }
+:host([compact]) .ring .bot { inset: 4px; --mdc-icon-size: 18px; }
 .ring .bolt {
   position: absolute; right: -2px; bottom: -2px; width: 20px; height: 20px; border-radius: 50%;
   display: grid; place-items: center; --mdc-icon-size: 13px; color: var(--acc);

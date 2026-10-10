@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.20.3
+
+- **Media: the TV leads its inputs.** No separate screen row by default: the TV is first in the picker and its
+  inputs follow. An input that is on while the TV is on (an Apple TV) holds the picker, so its transport shows
+  instead of disappearing. `screen_frame: true` brings the screen row back.
+- **Media: every sound at the bottom.** The Sound band (was Listen) holds the TV's own speakers while it plays
+  through them, the soundbar and the speakers, each with its transport, power and volume. The soundbar no longer
+  leaves the band while it plays the TV: its row says "Sound output for TV", and on an LG that line still
+  switches the TV's output. The volume is no longer under the video row.
+- **Media: switch the soundbar's source.** A speaker or soundbar with a source list gets a "Source" line that
+  opens the list (TV, HDMI, Bluetooth, ...).
+- **Media: the picker's selector moves again,** and the volume bars animate. A method added in 0.20.2 took over
+  the card's animation loop.
+- **Grid heights:** the entity card without chips, and the compact scene and vacuum cards, are exactly one grid
+  row (56px), so they neither stretch to two rows nor overlap with `rows: 1`. A card as wide as its section is no
+  longer rounded up to whole rows: with no card beside it there is nothing to line up with.
+
 ## 0.20.2
 
 - **Badges: what is relevant comes first.** The room tile, room header and section title order their badges

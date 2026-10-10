@@ -660,27 +660,26 @@ chips:
 
 <picture><source media="(prefers-color-scheme: light)" srcset="docs/images/media-sources-light.png"><img src="docs/images/media-sources-dark.png" width="460" alt="Savvy media card with four video sources and two sound outputs"></picture>
 
-**One card for everything that plays in a room.** Pick the video source (TV, console, streamer, PC) with
-one tap, and the card shows what it is playing and its controls. Each source can send its sound to the
-output you choose. The screen (the TV) owns the volume of everything watched on it: an Apple TV or a console
-has no bar of its own. When the TV sends its sound to the soundbar you name in `video_output` (eARC), the bar
-under the picked source is the soundbar's own, with its real level ("Sound from Soundbar"); when the TV plays
-through its own speakers, it is the TV's. A soundbar that is the TV's sound leaves Listen while the TV is on,
-so one box never shows two bars; with the TV off it is back in Listen, for music on its own. Nothing is
-guessed: without `video_output` the TV plays through itself. Speakers sit under the screen, each with its own
-volume, and two or more get a picker. With both kinds on the card, the bands are captioned Watch and Listen.
+**One card for everything that plays in a room.** Pick what you watch with one tap: the TV leads the picker,
+its inputs (a console, an Apple TV, a PC) after it, and the card shows what the picked one plays with its
+controls. An input that is on while the TV is on holds the picker, so its transport is the one you see. Give
+each input its `input` (`HDMI 2`) and the picker follows the TV, even when you switch with the remote, and
+picking an input switches the TV to it.
 
-With inputs, the screen frames them: the TV's name, the input it is on and its power at the top, then the
-inputs (the TV itself as "TV apps"), what the picked one is playing, and the screen's sound and its one volume.
-`screen_frame: false` keeps the TV as one more input in the picker instead.
-Give each input its `input` (`HDMI 2`) and the picker follows the TV, even when you switch with the remote,
-and picking an input switches the TV to it.
+**Every sound sits at the bottom, under Sound.** The TV's own speakers (its volume) while it plays through them,
+the soundbar, the speakers: one row at a time, with a picker when there are two or more. The soundbar is always
+there with its transport, power, volume and source (tap "Source" to switch it: TV, HDMI, Bluetooth, whatever it
+lists). The row carrying the TV's sound says so ("Sound output for TV"), so you always know which bar moves what
+you hear; the picker starts on it while the TV is on. When the TV sends its sound to the soundbar you name in
+`video_output` (eARC), that row is the soundbar's, with its real level; when the TV plays through itself, it is
+the TV's. One box never shows two bars. Nothing is guessed: without `video_output` the TV plays through itself.
+`screen_frame: true` puts the screen on its own row above its inputs instead.
 
 <picture><source media="(prefers-color-scheme: light)" srcset="docs/images/media-light.png"><img src="docs/images/media-dark.png" width="460" alt="Savvy media card with artwork"></picture>
 
-**Switch where the TV's sound goes.** An LG TV (the webOS integration) shows its sound output under it as a
+**Switch where the TV's sound goes.** On an LG TV (the webOS integration) the "Sound output for TV" line is a
 button: tap it for TV speaker, HDMI ARC, Optical, Bluetooth and the rest, the current one marked. On its own
-speaker the volume under it is the TV's; on ARC or optical it is the soundbar's. Any other TV whose integration
+speaker the row is the TV's; on ARC or optical it is the soundbar's. Any other TV whose integration
 has a select entity for its sound output works the same with `sound_select`.
 
 With a player that has artwork, the card also shows what is playing, the way a phone would. It also has
@@ -694,16 +693,16 @@ presets, text to speech and an alarm clock. Volume moves only on a sideways drag
 | `name` | string | the area's | Title. |
 | `layout` | `full` or `compact` | `full` | `compact`: one row with what is playing, its transport and the volume. |
 | `video` | list | found | The video sources in the picker (TVs, consoles, streamers, PCs): `{ entity, name, icon, power, screen, input, output, volume, artwork, sound_select, sound_outputs }`. `power`: a switch that turns it on. `screen`: the TV it plays on, in a room with two. `input`: the TV's input it is on (`HDMI 2`): the picker follows what is really on screen, and picking it switches the TV. `output`: on a screen, the soundbar it sends its sound to; it wins over `video_output`. `volume`: a helper that holds its real volume. `artwork`: a binary sensor that says its artwork is worth showing. `sound_select`: a select entity that switches where its sound goes (an LG TV needs none, see below). `sound_outputs`: the LG outputs to list, or `false` for none. |
-| `audio` | list | found | The speakers, under the sources with their own transport and volume; two or more get a picker. Same item format as `video`. |
-| `screen_frame` | boolean | `true` | The screen on its own row above its inputs. `false`: the TV is one more input in the picker. |
+| `audio` | list | found | The speakers and the soundbar, in the Sound band with their transport, power, volume and source; two or more get a picker. Same item format as `video`. |
+| `screen_frame` | boolean | `false` | `true`: the screen on its own row (its name, the input it is on, its power) above its inputs. Off: the TV leads the picker, its inputs after it. |
 | `screen` | entity | the first TV among `video` | The TV the video sources play on. It owns their volume. Every TV is its own screen; any other source plays on this one unless its own `screen` says otherwise (a room with two TVs). |
-| `video_output` | entity | none | The soundbar or receiver the main screen sends its sound to (eARC). While it does (an LG says so; another TV while the soundbar is on, and the soundbar is on its TV input), the bar is the soundbar's, and the soundbar leaves Listen. The soundbar playing something of its own (Spotify, Bluetooth) is not the TV's sound: it stays in Listen. A second TV uses only its own `output`. Empty: the TV plays through itself. |
+| `video_output` | entity | none | The soundbar or receiver the main screen sends its sound to (eARC). While it does (an LG says so; another TV while the soundbar is on, and the soundbar is on its TV input), the soundbar's row says it carries the TV's sound. The soundbar playing something of its own (Spotify, Bluetooth) is not the TV's sound: then the TV's own speakers carry it. A second TV uses only its own `output`. Empty: the TV plays through itself. |
 | `output_source` | string | TV, ARC, eARC, HDMI, optical | The soundbar's source while it plays the TV, when it has another name. |
 | `presets` | chips | none | Stations and playlists. |
 | `tts` | object | none | `{ action, data, placeholder }`: a text box. `$MSG` in `data` is where the text goes. |
 | `alarm` | object | none | `{ entity, time, name }`: an alarm clock that rings here. |
 | `chips` | chips | none | The room's other controls. |
-| `labels` | object or `false` | Watch / Listen | `{ video, audio }`: the captions over each band, shown when the card has both. `false` hides them. |
+| `labels` | object or `false` | Watch / Sound | `{ video, audio }`: the captions over each band, shown when the card has both. `false` hides them. |
 | `artwork` | boolean | `true` | The artwork stage. |
 | `artwork_max_height` | number (px) | none | Cap the artwork's height. |
 | `volume_buttons` | boolean | `true` | The minus and plus buttons. |
@@ -740,7 +739,7 @@ audio:
   - entity: media_player.soundbar
   - entity: media_player.speakers
 screen: media_player.tv                # the sources play on the TV: it owns their volume
-video_output: media_player.soundbar    # the TV sends its sound here (eARC): then the bar is the soundbar's
+video_output: media_player.soundbar    # the TV sends its sound here (eARC): the soundbar's row carries it
 presets:
   - entity: script.play_radio
     name: Jazz
@@ -754,7 +753,7 @@ alarm:
   name: Wake up
 chips:
   - entity: switch.adaptive_lighting
-labels: { video: Watch, audio: Listen }
+labels: { video: Watch, audio: Sound }
 artwork: true
 artwork_max_height: 320
 volume_buttons: true
@@ -1659,9 +1658,11 @@ Every card takes `design: glass`, `design: matte` or `design: plain`. Empty foll
 
 ### Grid heights
 
-In a sections view, every card rounds its height up to whole grid rows (Home Assistant's 56px rows and 8px
-gaps), so cards side by side end together. A card given `grid_options: { rows: n }` keeps the height Home
-Assistant gives it, and `grid_snap: false` turns it off for one card.
+In a sections view, a card beside another rounds its height up to whole grid rows (Home Assistant's 56px rows
+and 8px gaps), so cards side by side end together; a card as wide as its section keeps its own height. The
+entity card, and the compact scene and vacuum cards, are exactly one row. A card given
+`grid_options: { rows: n }` keeps the height Home Assistant gives it, and `grid_snap: false` turns it off for
+one card.
 
 ### Chips
 

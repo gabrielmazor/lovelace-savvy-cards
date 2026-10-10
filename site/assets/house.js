@@ -231,7 +231,7 @@
     add("media_player.living_room_console", "off", { friendly_name: "Living Room Console", volume_level: 0.5, supported_features: SF }, { area: "living_room", changed: 20 * HOUR });
     add("media_player.living_room_tv", "on", { friendly_name: "Living Room TV", device_class: "tv", volume_level: 0.12, sound_output: "external_arc", source: "HDMI 1",
       source_list: ["HDMI 1", "HDMI 2", "Live TV"], supported_features: SF }, { area: "living_room", platform: "webostv", changed: 35 * MIN });
-    add("media_player.living_room_soundbar", "on", { friendly_name: "Living Room Soundbar", device_class: "receiver", volume_level: 0.34, sound_mode: "Movie", supported_features: SF }, { area: "living_room", changed: 35 * MIN });
+    add("media_player.living_room_soundbar", "on", { friendly_name: "Living Room Soundbar", device_class: "receiver", volume_level: 0.34, sound_mode: "Movie", source: "TV", source_list: ["TV", "HDMI", "Bluetooth", "Wi-Fi"], supported_features: SF }, { area: "living_room", changed: 35 * MIN });
     add("media_player.kitchen_speaker", "playing", { friendly_name: "Kitchen Speaker", device_class: "speaker", ...nowPlaying(P["media_player.kitchen_speaker"][0], 96),
       volume_level: 0.25, supported_features: SF }, { area: "kitchen", changed: 8 * MIN });
     add("media_player.bedroom_streamer", "off", { friendly_name: "Bedroom Streamer", device_class: "tv", volume_level: 0.2, supported_features: SF }, { area: "bedroom", changed: 11 * HOUR });

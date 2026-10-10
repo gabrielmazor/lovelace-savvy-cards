@@ -52,6 +52,11 @@ const STYLE = `${BASE_CSS}
   .sub .st:not([hidden]) + .since::before { content: "· "; }
   .sub .since:empty { display: none; }
   .main[data-off] .av, .main[data-off] .sub .st { opacity: 0.55; }
+  /* no chips: one grid row (56px with the 1px border), like Home Assistant's own tile */
+  ha-card:has(> .pills:empty) { --pad: 9px; }
+  ha-card[data-glass]:has(> .pills:empty) { --lx: calc(var(--pad) + 18px); --ly: calc(var(--pad) + 18px); }
+  ha-card:has(> .pills:empty) .av { width: var(--b-m); height: var(--b-m); --mdc-icon-size: 20px; }
+  ha-card:has(> .pills:empty) .name { line-height: 20px; }
 
   .pills { display: flex; gap: 6px; min-width: 0; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; padding: 3px; margin: -3px; }
   .pills::-webkit-scrollbar { display: none; }

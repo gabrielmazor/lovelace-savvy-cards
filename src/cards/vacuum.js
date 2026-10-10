@@ -168,7 +168,7 @@ ha-card {
   container-type: inline-size;
   transition: background-color 240ms ease, border-color 240ms ease;
 }
-:host([compact]) ha-card { --pad: 12px; gap: 8px; }
+:host([compact]) ha-card { --pad: 9px; gap: 8px; }
 @supports (corner-shape: squircle) {
   ha-card { corner-shape: squircle; border-radius: calc(var(--radius) * 1.7); }
 }
@@ -200,7 +200,7 @@ ha-icon, savvy-state-icon { display: flex; align-items: center; justify-content:
 .hero { display: flex; align-items: center; gap: 14px; min-width: 0; }
 :host([compact]) .hero { gap: 11px; }
 .ring { position: relative; flex: none; width: 64px; height: 64px; cursor: pointer; }
-:host([compact]) .ring { width: 46px; height: 46px; }
+:host([compact]) .ring { width: var(--b-m); height: var(--b-m); }
 .ring > svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
 .ring .track { fill: none; stroke: var(--well); stroke-width: 3.2; }
 .ring .fill { fill: none; stroke: var(--ring-c, var(--acc)); stroke-width: 3.2; stroke-linecap: round; }
@@ -209,7 +209,7 @@ ha-icon, savvy-state-icon { display: flex; align-items: center; justify-content:
   --mdc-icon-size: 28px; color: color-mix(in oklab, var(--acc) calc(var(--act, 0) * 100%), var(--primary-text-color));
   background: color-mix(in oklab, var(--acc) calc(var(--act, 0) * 14%), var(--well));
 }
-:host([compact]) .ring .bot { inset: 5px; --mdc-icon-size: 20px; }
+:host([compact]) .ring .bot { inset: 4px; --mdc-icon-size: 18px; }
 .ring .bolt {
   position: absolute; right: -2px; bottom: -2px; width: 20px; height: 20px; border-radius: 50%;
   display: grid; place-items: center; --mdc-icon-size: 13px; color: var(--acc);
