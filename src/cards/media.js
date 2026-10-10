@@ -1188,20 +1188,34 @@ class SavvyMediaCard extends SavvyCard {
       const url = this._artOf(cfg);
       if (url) { src = url; owner = cfg; break; }
     }
-    el.stage.hidden = !src;
-    if (!src) { this._sp.art.snap(0); this._stageOwner = null; return; }
+    if (!src) {
+      // the artwork leaves: the stage closes in height, the card follows it
+      if (!el.stage.hidden && el.stage.__to !== 0) this._growStage(0);
+      this._stageOwner = null;
+      return;
+    }
     if (this._stageSrc !== src) {
       this._stageSrc = src;
+      this._artReady = false;
       this._sp.art.snap(0);
-      // the stage takes the artwork's shape first, then the artwork arrives into it
+      // the stage waits for the artwork: it opens (or takes the new shape) only once the picture is there
       el.art.onload = () => {
         const r = el.art.naturalWidth / el.art.naturalHeight;
         if (Number.isFinite(r) && r > 0.05) put(el.stage, "--ar", clamp(r, 0.56, 2.6).toFixed(4));
+        this._artReady = true;
+        this._growStage(this._stageHeight());
         this._sp.art.to(1, MEDIA_MOTION.art);
         this._wake();
       };
-      el.art.onerror = () => { this._sp.art.to(1, MEDIA_MOTION.art); this._wake(); };
+      el.art.onerror = () => { this._artReady = true; this._growStage(this._stageHeight()); this._sp.art.to(1, MEDIA_MOTION.art); this._wake(); };
       el.art.src = src;
+    } else if (this._artReady && (el.stage.hidden || el.stage.__to === 0)) {
+      // the same artwork back again (a pause and play): it is loaded already, so the stage opens at once,
+      // and the picture comes up again as it opens
+      this._growStage(this._stageHeight());
+      this._sp.art.snap(0);
+      this._sp.art.to(1, MEDIA_MOTION.art);
+      this._wake();
     }
     this._stageOwner = owner;
     const info = this._mediaOf(owner);
@@ -1213,6 +1227,41 @@ class SavvyMediaCard extends SavvyCard {
       if (this._first || Math.abs(pos - this._sp.progress.x) > 0.08) this._sp.progress.snap(pos);
       else this._sp.progress.to(pos);
     }
+  }
+
+  // The stage's own height at its artwork's proportions (its min and max heights included), read without
+  // showing anything: the inline height of a running grow is set aside for the measure and put back.
+  _stageHeight() {
+    const st = this._el.stage, was = st.hidden, h = st.style.height, mh = st.style.minHeight;
+    st.hidden = false;
+    st.style.height = "";
+    st.style.minHeight = "";
+    const full = st.getBoundingClientRect().height;
+    st.style.height = h;
+    st.style.minHeight = mh;
+    st.hidden = was;
+    return full;
+  }
+
+  // The stage grows to a height (0 closes it) from wherever it is, so the card under it never jumps: it opens
+  // when artwork arrives, takes a new shape when the next cover is taller or wider, and closes when it goes.
+  _growStage(to) {
+    const st = this._el.stage;
+    if (st.__ga) st.__ga.dead = true;
+    st.__ga = null;
+    const from = st.hidden ? 0 : st.getBoundingClientRect().height;
+    st.__to = to;
+    const done = () => {
+      st.__ga = null;
+      put(st, "height", "");
+      put(st, "min-height", "");
+      if (!to) st.hidden = true;
+    };
+    if (to) st.hidden = false;
+    if (!Motion.can(st) || this._first || Math.abs(from - to) < 1) return done();
+    put(st, "min-height", "0px");
+    put(st, "height", `${from.toFixed(1)}px`);
+    st.__ga = Motion.start(new MotionAnim(0, 1, MOTION.flip, 0, (t) => put(st, "height", `${Math.max(0, from + (to - from) * t).toFixed(1)}px`), done));
   }
 
   // one ticking clock, only while something is actually running on screen

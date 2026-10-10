@@ -10,6 +10,9 @@
 - **Media: switching between sounds no longer jumps.** The row that leaves goes at once instead of fading while
   the next one fades in, every sound row is the same height, and the picker's highlight shows as soon as the
   picker appears.
+- **Media: the artwork grows in.** The artwork waits until the picture has loaded, then opens in height while the
+  picture comes up from a blur, so the card grows smoothly instead of jumping. A new cover of another shape
+  glides to its height, and when the artwork goes the stage closes the same way.
 - **Only what changed moves.** When a label changes, the part it shares with the old value stays still and only
   the difference rolls: "2 on" to "4 on" rolls the digit while "on" stays; "17%" to "19%" rolls the 7. Words
   change whole ("Playing" to "Paused", "1 on" to "All off"). The shared text slides only when the changed part
