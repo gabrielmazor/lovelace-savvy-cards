@@ -168,22 +168,24 @@ const Motion = {
   // "19%" rolls the 7. Words change whole ("Playing" to "Paused", "1 on" to "All off"). The text after the
   // change slides only when the changed part takes more or less room. It is drawn in a shadow root on the
   // element, so the element's own text (what is read and selected) is the new value throughout; at the end
-  // the shadow root only shows that text again. Elements that cannot hold one, or that lay their text out
-  // as flex items, roll whole. -> true when it rolled
+  // the shadow root only shows that text again. Nothing shared, the whole value rolls the same way. The
+  // drawing takes the element's colour as it is on every frame, so a pill whose colour changes with its
+  // value changes text and background together. Elements that cannot hold a shadow root roll whole with
+  // the pseudo-elements instead. -> true when it rolled
   rollPart(el, old, val, down) {
-    const parts = rollParts(old, val);
-    if (!parts) return false;
     if (!PART_HOSTS.has(el.localName) || (el.shadowRoot && !el.__rs)) return false;
-    const cs = getComputedStyle(el);
-    if (/flex|grid/.test(cs.display)) return false;
+    const parts = rollParts(old, val) || { pre: "", oldMid: old, newMid: val, suf: "" };
     const sr = el.__rs || (el.__rs = el.attachShadow({ mode: "open" }));
     const span = (cls, t) => { const n = document.createElement("span"); if (cls) n.className = cls; n.textContent = t; return n; };
     const style = document.createElement("style");
-    style.textContent = `.m { display: inline-block; position: relative; vertical-align: bottom; clip-path: inset(-0.7em 0 -0.7em 0); white-space: pre; }
+    // one wrapper: in a flex pill the parts stay one run of text (one flex item), not three
+    style.textContent = `.w { min-width: 0; overflow: inherit; text-overflow: inherit; white-space: inherit; }
+      .m { display: inline-block; position: relative; vertical-align: bottom; clip-path: inset(-0.7em 0 -0.7em 0); white-space: pre; }
       .o { position: absolute; left: 0; top: 0; white-space: pre; } .n { display: inline-block; white-space: pre; }`;
-    const mid = span("m", ""), o = span("o", parts.oldMid), n = span("n", parts.newMid);
+    const mid = span("m", ""), o = span("o", parts.oldMid), n = span("n", parts.newMid), w = span("w", "");
     mid.append(n, o);
-    sr.replaceChildren(style, span("", parts.pre), mid, span("", parts.suf));
+    w.append(span("", parts.pre), mid, span("", parts.suf));
+    sr.replaceChildren(style, w);
     const ow = o.getBoundingClientRect().width, nw = n.getBoundingClientRect().width;
     const sign = down ? 1 : -1;      // up: the old leaves upwards and the new comes from below
     el.setAttribute("data-rolling", "part");

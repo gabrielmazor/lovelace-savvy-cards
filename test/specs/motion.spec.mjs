@@ -110,7 +110,7 @@ export default async function ({ browser, base, check }) {
     // ---- Roll: a number rolls the way it went (up when it grows), in place; the real text is final at once
     const before = await page.evaluate(() => { const q = window.v.getBoundingClientRect(); return [q.x, q.y]; });
     const tick = await afterChange(page, () => window.__savvy.text(window.v, "40 on"), () => { const q = window.v.getBoundingClientRect();
-      const suf = window.v.shadowRoot ? [...window.v.shadowRoot.children].filter((c) => c.localName === "span").at(-1) : null;
+      const suf = window.v.shadowRoot?.querySelector(".w")?.lastElementChild || null;
       return { text: window.v.textContent, mode: window.v.getAttribute("data-rolling"), dir: window.v.getAttribute("data-dir"), in: window.v.getAttribute("data-in"), at: [q.x, q.y],
         suf: suf?.textContent ?? null, sufX: suf ? Math.round(suf.getBoundingClientRect().x * 10) / 10 : null }; }, 800);
     // from "10 on": only the 1 becomes a 4; "0 on" stays where it is, like an odometer
@@ -127,10 +127,15 @@ export default async function ({ browser, base, check }) {
     check(`${tag} roll: a number that falls rolls down`, down[0].dir === "down", JSON.stringify(down.slice(0, 1)));
     await page.waitForTimeout(500);
     await page.waitForTimeout(300);
-    const slide = await afterChange(page, () => window.__savvy.text(window.v, "Off"), () => ({ mode: window.v.getAttribute("data-rolling"), rl: window.v.style.getPropertyValue("--rl"), out: window.v.getAttribute("data-out") }), 800);
-    const rls = slide.map((s) => Number(s.rl)).filter((n) => Number.isFinite(n) && n > 0 && n < 1);
-    check(`${tag} roll: words slide (old out, new in) and clean up afterwards`,
-      slide[0].mode === "slide" && slide[0].out === "12 on" && rls.length > 3 && slide[slide.length - 1].mode === null, JSON.stringify(slide.slice(0, 2)));
+    // words change whole, in the same drawing: the old value fades out as the new one comes in, then the element shows its own text
+    const slide = await afterChange(page, () => window.__savvy.text(window.v, "Off"), () => {
+      const o = window.v.shadowRoot?.querySelector(".o");
+      return { mode: window.v.getAttribute("data-rolling"), out: window.v.getAttribute("data-out"), oldOp: o ? Number(o.style.opacity) : null,
+        whole: window.v.shadowRoot?.querySelector(".w")?.textContent ?? null, slotOnly: !!window.v.shadowRoot && [...window.v.shadowRoot.children].every((c) => c.localName === "slot") };
+    }, 800);
+    const fading = slide.map((s) => s.oldOp).filter((n) => n != null && n > 0 && n < 1);
+    check(`${tag} roll: words change whole (old out, new in) and clean up afterwards`,
+      slide[0].mode === "part" && slide[0].out === "12 on" && fading.length > 3 && slide[slide.length - 1].mode === null && slide[slide.length - 1].slotOnly, JSON.stringify(slide.slice(0, 2)));
 
     // a value that changes every frame (a drag) never rolls more than once
     await page.waitForTimeout(400);
@@ -200,7 +205,7 @@ export default async function ({ browser, base, check }) {
       }, 1200);
     const orbSeen = [0, 1].map((i) => new Set(run.map((s) => s.orbs[i])).size);
     check(`${tag} lights card: switching the room off slides the orbs' colours (not a jump)`, orbSeen.every((n) => n >= 4), `${orbSeen}`);
-    check(`${tag} lights card: the pill slides too, and its count and words roll`, new Set(run.map((s) => s.pill)).size >= 4 && run.some((s) => s.count === "slide"), `${new Set(run.map((s) => s.pill)).size}`);
+    check(`${tag} lights card: the pill slides too, and its count and words roll`, new Set(run.map((s) => s.pill)).size >= 4 && run.some((s) => s.count === "part" || s.count === "slide"), `${new Set(run.map((s) => s.pill)).size}`);
     check(`${tag} lights card: the text is final at once ("${run[0].text}" / "${run[0].pillText}")`, run[0].text === "All off" && run[0].pillText === "Lights off", `${run[0].text} / ${run[0].pillText}`);
     check(`${tag} lights card: the orbs cascade (they do not all start in the same frame)`, (() => {
       const startOf = (i) => run.findIndex((s) => s.orbs[i] !== run[0].orbs[i]);

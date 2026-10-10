@@ -16,7 +16,9 @@
 - **Only what changed moves.** When a label changes, the part it shares with the old value stays still and only
   the difference rolls: "2 on" to "4 on" rolls the digit while "on" stays; "17%" to "19%" rolls the 7. Words
   change whole ("Playing" to "Paused", "1 on" to "All off"). The shared text slides only when the changed part
-  takes more or less room. The label's own text is the new value throughout.
+  takes more or less room. The label's own text is the new value throughout. Pills too (the health card's
+  issue count), and a label that changes colour with its value (green to amber) changes its text and its
+  background together, frame for frame.
 - **Vacuum: rooms in the dashboard's order.** The settings card's `room_order` now orders the vacuum's rooms too
   (a card's own `room_order` or `rooms` list wins); a robot's own rooms are matched by name.
 - **A changing label never moves the layout.** While a value changes, the old one leaves and the new one arrives in
