@@ -1702,7 +1702,8 @@ On the section title the temperature ends the row.
 Hold a chip on the home header, a room's light chip or a room tile and the entities behind it open. Every
 row is one line: the entity, its main control, and a chevron that opens one extra line (media transport and
 volume, a climate unit's modes, a light's brightness bar). Tapping a row's name opens its more-info. Lock
-rows use the same slide handle as the [lock card](#lock).
+rows use the same slide handle as the [lock card](#lock). A climate row always ends with its power button,
+with the target temperature's minus and plus to its left while the unit is on.
 
 - **Bulk action.** One button for what the popup lists: All off, Pause all, Lock all. It touches only what
   still needs it. `bulk_action: false` hides it.

@@ -9,6 +9,8 @@
 - **Headers and titles take the height they need,** never rounded to rows.
 - **Section title: its badges read from the right,** the end the row is anchored at: the temperature, then
   presence while detected, an open door, the rest that is active, then the idle ones further left.
+- **Popups: a climate row always has its power button,** at the end of the line, so an AC that is on can be
+  switched off from the popup; the target temperature's minus and plus sit to its left while it is on.
 - **Room tile:** laid out for its two rows, with the same space above the name and under the badges, instead of
   the spare space collecting at the bottom.
 

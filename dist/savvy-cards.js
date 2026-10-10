@@ -3995,7 +3995,7 @@ ROW_KINDS.media_player = {
   },
 };
 
-// ---- climate: a - target + stepper on the line (power when off); the modes on the extra line
+// ---- climate: power always at the end of the line, the - target + stepper to its left while on; the modes on the extra line
 // Off is a power control, so it comes last in a list of modes
 const offLast = (modes) => [...modes.filter((m) => m !== "off"), ...modes.filter((m) => m === "off")];
 const HVAC_ORDER = ["off", "cool", "heat", "heat_cool", "auto", "dry", "fan_only"];
@@ -4007,14 +4007,18 @@ ROW_KINDS.climate = {
   build(ctx) {
     const { kit } = ctx;
     const main = div("sv-act-in");
-    const power = iconButton(kit, { icon: "mdi:power", label: "Turn on", onTap: () => {
+    const power = iconButton(kit, { icon: "mdi:power", label: "Power", onTap: () => {
       const cur = ctx.hass().states[ctx.id];
+      if (cur?.state !== "off") return feature(cur, 256) ? call(ctx, "climate", "turn_off") : call(ctx, "climate", "set_hvac_mode", { hvac_mode: "off" });
       if (feature(cur, 128)) return call(ctx, "climate", "turn_on");
       const m = HVAC_ORDER.find((x) => x !== "off" && (cur?.attributes.hvac_modes || []).includes(x));
       if (m) call(ctx, "climate", "set_hvac_mode", { hvac_mode: m });
     } });
     const step = new Stepper(kit, { label: "Target temperature", compact: true, onChange: (v) => call(ctx, "climate", "set_temperature", { temperature: v }) });
     main.append(step.el, power);
+    // power is the line's last control: the chevron moves ahead of the stepper
+    const chev = ctx.row.querySelector(".sv-chev"), act = ctx.row.querySelector(".sv-act");
+    if (chev && act) ctx.line.insertBefore(chev, act);
     const extra = div("sv-xline sv-ctl-climate");
     let seg = null, segKey = "";
     return {
@@ -4024,7 +4028,9 @@ ROW_KINDS.climate = {
         const target = Number(a.temperature);
         const hasTarget = a.temperature != null && Number.isFinite(target);
         const off = st.state === "off";
-        power.hidden = !off;
+        power.hidden = st.state === "unavailable";
+        attr(power, "data-on", !off);
+        attr(power, "aria-label", off ? "Turn on" : "Turn off");
         step.el.hidden = off || !hasTarget || st.state === "unavailable";
         if (!step.el.hidden) {
           step.set({ value: target, min: Number.isFinite(a.min_temp) ? a.min_temp : 7, max: Number.isFinite(a.max_temp) ? a.max_temp : 35,
