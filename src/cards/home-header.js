@@ -49,6 +49,8 @@ const AUTO = {
 };
 
 class SavvyHomeHeaderCard extends SavvyCard {
+  // a header or a title sits on its own line: it takes the height it needs, never whole grid rows
+  static gridSnap = false;
   // the control is never guessed: a select's options (and their icons in the editor) only
   // appear once one is chosen
   static getStubConfig() { return {}; }

@@ -58,7 +58,10 @@ const legible = ([r, g, b]) => {
 
 const STYLE = `${BASE_CSS}
   ha-card { --well-size: var(--b-l); --gap: 12px; --chip: var(--b-s); --tint: 245 184 61;
-    display: flex; flex-direction: column; gap: 4px; padding: var(--pad); overflow: hidden; cursor: pointer;
+    /* two grid rows (120px): the same padding above the name and under the badges; any height Home Assistant
+       gives the tile goes between them, never under the badges */
+    height: 100%; min-height: 120px; justify-content: space-between;
+    display: flex; flex-direction: column; gap: 14px; padding: var(--pad); overflow: hidden; cursor: pointer;
     user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation; outline: none; }
   :host([dark]) ha-card::after { z-index: 2; }
   @media (hover: hover) { ha-card:hover { background: color-mix(in oklab, var(--primary-text-color) 2.5%, var(--ha-card-background, var(--card-background-color))); } }

@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.20.3 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.20.4 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.20.3";
+const SAVVY_VERSION = "0.20.4";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -318,7 +318,7 @@ const DESIGN_CSS = `${GLASS_CSS}${MATTE_CSS}`;
 
 // The CSS every card shares: host basics, the card surface, focus rings.
 const BASE_CSS = `${ROLL_CSS}${GLOW_CSS}${DESIGN_CSS}
-  :host { display: block; -webkit-tap-highlight-color: transparent; }
+  :host { display: block; height: 100%; -webkit-tap-highlight-color: transparent; }
   [hidden] { display: none !important; }
   button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0;
     cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; }
@@ -332,7 +332,8 @@ const BASE_CSS = `${ROLL_CSS}${GLOW_CSS}${DESIGN_CSS}
     --lvl-warn: ${TONE.warn};
     --lvl-bad: ${TONE.bad};
     ${DESIGN_TOKENS}
-    position: relative; box-sizing: border-box;
+    /* fills its grid cell: beside a taller card both end together; on its own it is as tall as it needs */
+    position: relative; box-sizing: border-box; min-height: 100%;
     border-radius: var(--radius);
     border: var(--ha-card-border-width, 1px) solid var(--ha-card-border-color, var(--line));
     background: var(--ha-card-background, var(--card-background-color));
@@ -388,7 +389,7 @@ function snapToGrid(host) {
   const cs = getComputedStyle(host);
   const row = parseFloat(cs.getPropertyValue("--row-height")), gap = parseFloat(cs.getPropertyValue("--row-gap"));
   const rows = host._config?.grid_options?.rows ?? host.getGridOptions?.()?.rows;
-  const off = !Number.isFinite(row) || row <= 0 || typeof rows === "number" || host._config?.grid_snap === false || aloneInRow(host);
+  const off = host._config?.grid_snap !== true || !Number.isFinite(row) || row <= 0 || typeof rows === "number" || aloneInRow(host);
   const prev = card.style.minHeight;
   if (off) { if (prev) card.style.minHeight = ""; return; }
   // the natural height, measured without our own floor; putting the same value back reports no resize
@@ -427,7 +428,7 @@ function wireGridSnap(cls) {
 }
 
 const registerCard = (type, cls, name, description) => {
-  wireGridSnap(cls);             // whole grid rows, so cards side by side end together
+  if (cls.gridSnap !== false) wireGridSnap(cls);   // grid_snap: true rounds a card up to whole grid rows (headers and titles never)
   wireSettings(type, cls);       // fills in what the dashboard's Savvy settings supply (core/settings)
   if (!customElements.get(type)) customElements.define(type, cls);
   window.customCards = window.customCards || [];
@@ -6367,7 +6368,7 @@ const parseWS = (r) => (typeof r === "string" ? JSON.parse(r) : r) || [];
 
 const STYLE = `
 :host {
-  display: block; -webkit-tap-highlight-color: transparent;
+  display: block; height: 100%; -webkit-tap-highlight-color: transparent;
   /* repeated here from ha-card so the recordings popup, which lives outside it, matches */
   --well: color-mix(in oklab, var(--primary-text-color) 6%, transparent);
   --line: color-mix(in oklab, var(--primary-text-color) 9%, transparent);
@@ -6380,6 +6381,8 @@ const STYLE = `
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; }
 
 ha-card {
+
+  min-height: 100%;   /* fills its grid cell, so it ends with the card beside it */
   --radius: var(--ha-card-border-radius, 18px);
   --pad: 12px;
   --well: color-mix(in oklab, var(--primary-text-color) 6%, transparent);
@@ -8406,12 +8409,13 @@ const prepScale = (stops) => stops
 // ---------- look ----------
 
 const STYLE = `
-  :host { display: block; -webkit-tap-highlight-color: transparent; }
+  :host { display: block; height: 100%; -webkit-tap-highlight-color: transparent; }
   [hidden] { display: none !important; }
   button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0;
     cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; }
   ${GLOW_CSS}${DESIGN_CSS}
   ha-card {
+    min-height: 100%;   /* fills its grid cell, so it ends with the card beside it */
     --radius: var(--ha-card-border-radius, 18px);
     --pad: 16px;
     --accent: 90 169 224;
@@ -12187,6 +12191,8 @@ const AUTO = {
 };
 
 class SavvyHomeHeaderCard extends SavvyCard {
+  // a header or a title sits on its own line: it takes the height it needs, never whole grid rows
+  static gridSnap = false;
   // the control is never guessed: a select's options (and their icons in the editor) only
   // appear once one is chosen
   static getStubConfig() { return {}; }
@@ -13132,13 +13138,15 @@ const legible = ([r, g, b]) => {
 
 
 const STYLE = `
-:host { display: block; -webkit-tap-highlight-color: transparent; }
+:host { display: block; height: 100%; -webkit-tap-highlight-color: transparent; }
 [hidden] { display: none !important; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0;
   cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; }
 ${GLOW_CSS}${DESIGN_CSS}
 
 ha-card {
+
+  min-height: 100%;   /* fills its grid cell, so it ends with the card beside it */
   --radius: var(--ha-card-border-radius, 18px);
   --pad: 16px;
   --amber: 245 184 61;
@@ -18166,6 +18174,8 @@ registerCard("savvy-room-activity-card", SavvyRoomActivityCard, "Room activity",
 const STYLE = `${BASE_CSS}${HEADER_CSS}${CHIP_ROW_CSS}`;
 
 class SavvyRoomHeaderCard extends SavvyCard {
+  // a header or a title sits on its own line: it takes the height it needs, never whole grid rows
+  static gridSnap = false;
   static getStubConfig(hass) {
     const a = allAreas(hass).find((x) => areaEntities(hass, x.id).length);
     return a ? { area: a.id } : {};
@@ -18771,6 +18781,8 @@ const tempColor = (t) => {
 const tempText = (t) => `${t.value.toFixed(1)}${t.unit.includes("°") ? "°" : ` ${t.unit}`}`;
 
 class SavvySectionTitleCard extends SavvyCard {
+  // a header or a title sits on its own line: it takes the height it needs, never whole grid rows
+  static gridSnap = false;
   static getStubConfig(hass) {
     const a = allAreas(hass).find((x) => areaEntities(hass, x.id).length);
     return a ? { area: a.id } : { name: "Heading" };
@@ -20588,7 +20600,10 @@ const legible = ([r, g, b]) => {
 
 const STYLE = `${BASE_CSS}
   ha-card { --well-size: var(--b-l); --gap: 12px; --chip: var(--b-s); --tint: 245 184 61;
-    display: flex; flex-direction: column; gap: 4px; padding: var(--pad); overflow: hidden; cursor: pointer;
+    /* two grid rows (120px): the same padding above the name and under the badges; any height Home Assistant
+       gives the tile goes between them, never under the badges */
+    height: 100%; min-height: 120px; justify-content: space-between;
+    display: flex; flex-direction: column; gap: 14px; padding: var(--pad); overflow: hidden; cursor: pointer;
     user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation; outline: none; }
   :host([dark]) ha-card::after { z-index: 2; }
   @media (hover: hover) { ha-card:hover { background: color-mix(in oklab, var(--primary-text-color) 2.5%, var(--ha-card-background, var(--card-background-color))); } }
@@ -21272,7 +21287,7 @@ const STYLE = `
 /* tokens live on :host, not ha-card: the popup renders outside ha-card and must
    inherit the same palette */
 :host {
-  display: block; -webkit-tap-highlight-color: transparent;
+  display: block; height: 100%; -webkit-tap-highlight-color: transparent;
   --radius: var(--ha-card-border-radius, 18px);
   --well: color-mix(in oklab, var(--primary-text-color) 6%, transparent);
   --line: color-mix(in oklab, var(--primary-text-color) 9%, transparent);
@@ -21286,6 +21301,8 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 ${GLOW_CSS}${DESIGN_CSS}
 
 ha-card {
+
+  min-height: 100%;   /* fills its grid cell, so it ends with the card beside it */
   --radius: var(--ha-card-border-radius, 18px);
   --pad: 14px;
   --well: color-mix(in oklab, var(--primary-text-color) 6%, transparent);

@@ -312,7 +312,7 @@ const DESIGN_CSS = `${GLASS_CSS}${MATTE_CSS}`;
 
 // The CSS every card shares: host basics, the card surface, focus rings.
 const BASE_CSS = `${ROLL_CSS}${GLOW_CSS}${DESIGN_CSS}
-  :host { display: block; -webkit-tap-highlight-color: transparent; }
+  :host { display: block; height: 100%; -webkit-tap-highlight-color: transparent; }
   [hidden] { display: none !important; }
   button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0;
     cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; }
@@ -326,7 +326,8 @@ const BASE_CSS = `${ROLL_CSS}${GLOW_CSS}${DESIGN_CSS}
     --lvl-warn: ${TONE.warn};
     --lvl-bad: ${TONE.bad};
     ${DESIGN_TOKENS}
-    position: relative; box-sizing: border-box;
+    /* fills its grid cell: beside a taller card both end together; on its own it is as tall as it needs */
+    position: relative; box-sizing: border-box; min-height: 100%;
     border-radius: var(--radius);
     border: var(--ha-card-border-width, 1px) solid var(--ha-card-border-color, var(--line));
     background: var(--ha-card-background, var(--card-background-color));
@@ -382,7 +383,7 @@ function snapToGrid(host) {
   const cs = getComputedStyle(host);
   const row = parseFloat(cs.getPropertyValue("--row-height")), gap = parseFloat(cs.getPropertyValue("--row-gap"));
   const rows = host._config?.grid_options?.rows ?? host.getGridOptions?.()?.rows;
-  const off = !Number.isFinite(row) || row <= 0 || typeof rows === "number" || host._config?.grid_snap === false || aloneInRow(host);
+  const off = host._config?.grid_snap !== true || !Number.isFinite(row) || row <= 0 || typeof rows === "number" || aloneInRow(host);
   const prev = card.style.minHeight;
   if (off) { if (prev) card.style.minHeight = ""; return; }
   // the natural height, measured without our own floor; putting the same value back reports no resize
@@ -421,7 +422,7 @@ function wireGridSnap(cls) {
 }
 
 const registerCard = (type, cls, name, description) => {
-  wireGridSnap(cls);             // whole grid rows, so cards side by side end together
+  if (cls.gridSnap !== false) wireGridSnap(cls);   // grid_snap: true rounds a card up to whole grid rows (headers and titles never)
   wireSettings(type, cls);       // fills in what the dashboard's Savvy settings supply (core/settings)
   if (!customElements.get(type)) customElements.define(type, cls);
   window.customCards = window.customCards || [];

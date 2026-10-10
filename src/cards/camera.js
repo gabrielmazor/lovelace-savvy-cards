@@ -84,7 +84,7 @@ const parseWS = (r) => (typeof r === "string" ? JSON.parse(r) : r) || [];
 
 const STYLE = `
 :host {
-  display: block; -webkit-tap-highlight-color: transparent;
+  display: block; height: 100%; -webkit-tap-highlight-color: transparent;
   /* repeated here from ha-card so the recordings popup, which lives outside it, matches */
   --well: color-mix(in oklab, var(--primary-text-color) 6%, transparent);
   --line: color-mix(in oklab, var(--primary-text-color) 9%, transparent);
@@ -97,6 +97,8 @@ const STYLE = `
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; }
 
 ha-card {
+
+  min-height: 100%;   /* fills its grid cell, so it ends with the card beside it */
   --radius: var(--ha-card-border-radius, 18px);
   --pad: 12px;
   --well: color-mix(in oklab, var(--primary-text-color) 6%, transparent);

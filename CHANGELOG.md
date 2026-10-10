@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.20.4
+
+- **Heights, rethought: no more empty space under cards.** 0.20.2 rounded every card up to whole grid rows, which
+  left up to a row of empty space under the lights, climate and other cards. Now every card is as tall as its
+  content, and fills its grid cell, so cards side by side still end together. `grid_snap: true` brings the
+  rounding back for one card.
+- **Headers and titles take the height they need,** never rounded to rows.
+- **Room tile:** laid out for its two rows, with the same space above the name and under the badges, instead of
+  the spare space collecting at the bottom.
+
 ## 0.20.3
 
 - **Media: the TV leads its inputs.** No separate screen row by default: the TV is first in the picker and its

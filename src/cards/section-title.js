@@ -81,6 +81,8 @@ const tempColor = (t) => {
 const tempText = (t) => `${t.value.toFixed(1)}${t.unit.includes("°") ? "°" : ` ${t.unit}`}`;
 
 class SavvySectionTitleCard extends SavvyCard {
+  // a header or a title sits on its own line: it takes the height it needs, never whole grid rows
+  static gridSnap = false;
   static getStubConfig(hass) {
     const a = allAreas(hass).find((x) => areaEntities(hass, x.id).length);
     return a ? { area: a.id } : { name: "Heading" };

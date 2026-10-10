@@ -1658,11 +1658,11 @@ Every card takes `design: glass`, `design: matte` or `design: plain`. Empty foll
 
 ### Grid heights
 
-In a sections view, a card beside another rounds its height up to whole grid rows (Home Assistant's 56px rows
-and 8px gaps), so cards side by side end together; a card as wide as its section keeps its own height. The
-entity card, and the compact scene and vacuum cards, are exactly one row. A card given
-`grid_options: { rows: n }` keeps the height Home Assistant gives it, and `grid_snap: false` turns it off for
-one card.
+Every card is as tall as its content needs. In a sections view it also fills its grid cell, so two cards side
+by side end together, and the shorter one only gains the difference. Headers and titles always take just the
+height they need. The entity card, and the compact scene and vacuum cards, are exactly one grid row (56px);
+the room tile is two rows, with the same space above its name and under its badges. `grid_snap: true` rounds a
+card up to whole grid rows (Home Assistant's 56px rows and 8px gaps), as 0.20.2 did for every card.
 
 ### Chips
 

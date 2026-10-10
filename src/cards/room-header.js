@@ -12,6 +12,8 @@
 const STYLE = `${BASE_CSS}${HEADER_CSS}${CHIP_ROW_CSS}`;
 
 class SavvyRoomHeaderCard extends SavvyCard {
+  // a header or a title sits on its own line: it takes the height it needs, never whole grid rows
+  static gridSnap = false;
   static getStubConfig(hass) {
     const a = allAreas(hass).find((x) => areaEntities(hass, x.id).length);
     return a ? { area: a.id } : {};

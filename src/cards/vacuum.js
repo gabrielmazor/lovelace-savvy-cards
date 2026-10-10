@@ -129,7 +129,7 @@ const STYLE = `
 /* tokens live on :host, not ha-card: the popup renders outside ha-card and must
    inherit the same palette */
 :host {
-  display: block; -webkit-tap-highlight-color: transparent;
+  display: block; height: 100%; -webkit-tap-highlight-color: transparent;
   --radius: var(--ha-card-border-radius, 18px);
   --well: color-mix(in oklab, var(--primary-text-color) 6%, transparent);
   --line: color-mix(in oklab, var(--primary-text-color) 9%, transparent);
@@ -143,6 +143,8 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 ${GLOW_CSS}${DESIGN_CSS}
 
 ha-card {
+
+  min-height: 100%;   /* fills its grid cell, so it ends with the card beside it */
   --radius: var(--ha-card-border-radius, 18px);
   --pad: 14px;
   --well: color-mix(in oklab, var(--primary-text-color) 6%, transparent);
