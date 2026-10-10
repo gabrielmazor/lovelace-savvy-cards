@@ -207,16 +207,21 @@ const watchKeyboard = (host) => {
   host.addEventListener("pointerdown", sync);
 };
 
-// The roll: while a value changes, the real text hides and its two pseudo-elements draw the
-// old words leaving and the new ones arriving (Motion.roll drives --rl from 0 to 1).
+// The roll: while a value changes, the real text hides (it already holds the new value, so the layout is final)
+// and two pseudo-elements draw the old value leaving and the new one arriving, each clipped to the element's
+// own box: nothing moves, resizes or spills. A number rolls the way it went, up when it grows and down when it
+// falls, like an odometer (Motion.roll drives --rl from 0 to 1). An element that is not positioned gets
+// position: relative for the moment (data-rl-rel); one that is (a pinned pill, a badge) keeps its own.
 const ROLL_CSS = `
-  [data-rolling] { position: relative; color: transparent !important; -webkit-text-fill-color: transparent !important; }
-  [data-rolling]::before, [data-rolling]::after { position: absolute; inset: 0; display: block; overflow: inherit; text-overflow: inherit;
+  [data-rolling] { color: transparent !important; -webkit-text-fill-color: transparent !important; }
+  [data-rolling][data-rl-rel] { position: relative; }
+  [data-rolling]::before, [data-rolling]::after { position: absolute; inset: 0; box-sizing: border-box; overflow: hidden; text-overflow: clip;
+    display: var(--rl-d, block); padding: inherit; align-items: inherit; justify-content: inherit;
     text-align: inherit; white-space: pre; pointer-events: none; color: var(--rl-c); -webkit-text-fill-color: var(--rl-c); }
-  [data-rolling]::before { content: attr(data-out); opacity: calc(1 - var(--rl, 1)); translate: 0 calc(var(--rl, 1) * -0.42em); }
-  [data-rolling]::after { content: attr(data-in); opacity: var(--rl, 1); translate: 0 calc((1 - var(--rl, 1)) * 0.42em); }
-  [data-rolling="tick"]::before { content: none; }
-  [data-rolling="tick"]::after { opacity: 1; translate: none; }
+  [data-rolling]::before { content: attr(data-out); opacity: calc(1 - var(--rl, 1)); translate: 0 calc(var(--rl, 1) * -0.5em); }
+  [data-rolling]::after { content: attr(data-in); opacity: var(--rl, 1); translate: 0 calc((1 - var(--rl, 1)) * 0.5em); }
+  [data-rolling][data-dir="down"]::before { translate: 0 calc(var(--rl, 1) * 0.5em); }
+  [data-rolling][data-dir="down"]::after { translate: 0 calc((1 - var(--rl, 1)) * -0.5em); }
 `;
 
 // The design language, one set of numbers for every card and popup (docs/DESIGN.md 5):
@@ -2137,25 +2142,31 @@ const Motion = {
     const tooSoon = el.__mrT && now - el.__mrT < ROLL_MIN_GAP;
     el.__mrT = now;
     if (tooSoon || old === val || !el.getClientRects().length) return;
-    const tick = tickParts(old, val);
-    el.style.setProperty("--rl-c", getComputedStyle(el).color);
-    el.setAttribute("data-rolling", tick ? "tick" : "slide");
+    // a number rolls the way it went: down when it falls, up otherwise (words always roll up)
+    const num = tickParts(old, val);
+    const cs = getComputedStyle(el);
+    el.style.setProperty("--rl-c", cs.color);
+    el.toggleAttribute("data-rl-rel", cs.position === "static");
+    // the drawn values sit where the text does: in its padding, and centred the way a flex pill centres it
+    el.style.setProperty("--rl-d", /flex/.test(cs.display) ? "flex" : "block");
+    el.setAttribute("data-dir", num && num.nb < num.na ? "down" : "up");
+    el.setAttribute("data-rolling", "slide");
     el.setAttribute("data-out", old);
-    el.setAttribute("data-in", tick ? old : val);
+    el.setAttribute("data-in", val);
     el.style.setProperty("--rl", "0");
-    el.__mr = this.start(new MotionAnim(0, 1, tick ? MOTION.value : MOTION.roll, 0, (x) => {
-      if (tick) el.setAttribute("data-in", tick.sa.replace("#", (tick.na + (tick.nb - tick.na) * clamp(x)).toFixed(tick.dec)));
-      else el.style.setProperty("--rl", x.toFixed(3));
-    }, () => this.endRoll(el)));
+    el.__mr = this.start(new MotionAnim(0, 1, MOTION.roll, 0, (x) => el.style.setProperty("--rl", x.toFixed(3)), () => this.endRoll(el)));
   },
   endRoll(el) {
     if (el.__mr) el.__mr.dead = true;
     el.__mr = null;
     el.removeAttribute("data-rolling");
+    el.removeAttribute("data-rl-rel");
+    el.removeAttribute("data-dir");
     el.removeAttribute("data-out");
     el.removeAttribute("data-in");
     el.style.removeProperty("--rl");
     el.style.removeProperty("--rl-c");
+    el.style.removeProperty("--rl-d");
   },
 
   // ---------- Appear ----------
@@ -18306,7 +18317,7 @@ class SavvyRoomHeaderCard extends SavvyCard {
     const ids = areaLights(h, c.area).filter((id) => !asItems(c.exclude).some((i) => i.entity === id));
     if (!ids.length) return null;
     const on = ids.filter((id) => h.states[id]?.state === "on").length;
-    const value = on ? `${on} on` : "Off";
+    const value = on ? `${on} on` : "All off";     // the home header's words
     return {
       key: "lights", icon: on ? "mdi:lightbulb" : "mdi:lightbulb-outline", value, caption: "Lights", aria: `Lights, ${value}`,
       color: on ? LIGHT_COLOR : "var(--secondary-text-color)", dim: !on,

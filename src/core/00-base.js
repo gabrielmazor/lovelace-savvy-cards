@@ -201,16 +201,21 @@ const watchKeyboard = (host) => {
   host.addEventListener("pointerdown", sync);
 };
 
-// The roll: while a value changes, the real text hides and its two pseudo-elements draw the
-// old words leaving and the new ones arriving (Motion.roll drives --rl from 0 to 1).
+// The roll: while a value changes, the real text hides (it already holds the new value, so the layout is final)
+// and two pseudo-elements draw the old value leaving and the new one arriving, each clipped to the element's
+// own box: nothing moves, resizes or spills. A number rolls the way it went, up when it grows and down when it
+// falls, like an odometer (Motion.roll drives --rl from 0 to 1). An element that is not positioned gets
+// position: relative for the moment (data-rl-rel); one that is (a pinned pill, a badge) keeps its own.
 const ROLL_CSS = `
-  [data-rolling] { position: relative; color: transparent !important; -webkit-text-fill-color: transparent !important; }
-  [data-rolling]::before, [data-rolling]::after { position: absolute; inset: 0; display: block; overflow: inherit; text-overflow: inherit;
+  [data-rolling] { color: transparent !important; -webkit-text-fill-color: transparent !important; }
+  [data-rolling][data-rl-rel] { position: relative; }
+  [data-rolling]::before, [data-rolling]::after { position: absolute; inset: 0; box-sizing: border-box; overflow: hidden; text-overflow: clip;
+    display: var(--rl-d, block); padding: inherit; align-items: inherit; justify-content: inherit;
     text-align: inherit; white-space: pre; pointer-events: none; color: var(--rl-c); -webkit-text-fill-color: var(--rl-c); }
-  [data-rolling]::before { content: attr(data-out); opacity: calc(1 - var(--rl, 1)); translate: 0 calc(var(--rl, 1) * -0.42em); }
-  [data-rolling]::after { content: attr(data-in); opacity: var(--rl, 1); translate: 0 calc((1 - var(--rl, 1)) * 0.42em); }
-  [data-rolling="tick"]::before { content: none; }
-  [data-rolling="tick"]::after { opacity: 1; translate: none; }
+  [data-rolling]::before { content: attr(data-out); opacity: calc(1 - var(--rl, 1)); translate: 0 calc(var(--rl, 1) * -0.5em); }
+  [data-rolling]::after { content: attr(data-in); opacity: var(--rl, 1); translate: 0 calc((1 - var(--rl, 1)) * 0.5em); }
+  [data-rolling][data-dir="down"]::before { translate: 0 calc(var(--rl, 1) * 0.5em); }
+  [data-rolling][data-dir="down"]::after { translate: 0 calc((1 - var(--rl, 1)) * -0.5em); }
 `;
 
 // The design language, one set of numbers for every card and popup (docs/DESIGN.md 5):

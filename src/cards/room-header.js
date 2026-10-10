@@ -120,7 +120,7 @@ class SavvyRoomHeaderCard extends SavvyCard {
     const ids = areaLights(h, c.area).filter((id) => !asItems(c.exclude).some((i) => i.entity === id));
     if (!ids.length) return null;
     const on = ids.filter((id) => h.states[id]?.state === "on").length;
-    const value = on ? `${on} on` : "Off";
+    const value = on ? `${on} on` : "All off";     // the home header's words
     return {
       key: "lights", icon: on ? "mdi:lightbulb" : "mdi:lightbulb-outline", value, caption: "Lights", aria: `Lights, ${value}`,
       color: on ? LIGHT_COLOR : "var(--secondary-text-color)", dim: !on,

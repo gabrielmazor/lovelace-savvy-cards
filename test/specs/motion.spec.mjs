@@ -107,17 +107,22 @@ export default async function ({ browser, base, check }) {
       begun.length === 4 && gaps.every((g) => g > 5) && begun[3] - begun[0] < 360, JSON.stringify(begun));
     await settle(page);
 
-    // ---- Roll: a count ticks, words slide; the real text is final at once
-    const tick = await afterChange(page, () => window.__savvy.text(window.v, "40 on"), () => ({ text: window.v.textContent, mode: window.v.getAttribute("data-rolling"), shown: window.v.getAttribute("data-in") }), 800);
-    const shown = tick.map((s) => Number(String(s.shown).match(/\d+/)?.[0])).filter(Number.isFinite);
-    check(`${tag} roll: a count ticks through its numbers while the text itself is final at once`,
-      tick[0].text === "40 on" && tick[0].mode === "tick" && shown.some((n) => n > 10 && n < 40) && tick[tick.length - 1].mode === null && tick[tick.length - 1].text === "40 on",
-      JSON.stringify(tick.slice(0, 3)));
+    // ---- Roll: a number rolls the way it went (up when it grows), in place; the real text is final at once
+    const before = await page.evaluate(() => { const q = window.v.getBoundingClientRect(); return [q.x, q.y]; });
+    const tick = await afterChange(page, () => window.__savvy.text(window.v, "40 on"), () => { const q = window.v.getBoundingClientRect();
+      return { text: window.v.textContent, mode: window.v.getAttribute("data-rolling"), dir: window.v.getAttribute("data-dir"), in: window.v.getAttribute("data-in"), at: [q.x, q.y] }; }, 800);
+    check(`${tag} roll: a number rolls up as it grows, in place, while the text itself is final at once`,
+      tick[0].text === "40 on" && tick[0].mode === "slide" && tick[0].dir === "up" && tick[0].in === "40 on" && tick.every((s) => s.at[0] === before[0] && s.at[1] === before[1])
+      && tick[tick.length - 1].mode === null && tick[tick.length - 1].text === "40 on", JSON.stringify({ before, first: tick.slice(0, 2) }));
+    await page.waitForTimeout(300);
+    const down = await afterChange(page, () => window.__savvy.text(window.v, "12 on"), () => ({ dir: window.v.getAttribute("data-dir") }), 200);
+    check(`${tag} roll: a number that falls rolls down`, down[0].dir === "down", JSON.stringify(down.slice(0, 1)));
+    await page.waitForTimeout(500);
     await page.waitForTimeout(300);
     const slide = await afterChange(page, () => window.__savvy.text(window.v, "Off"), () => ({ mode: window.v.getAttribute("data-rolling"), rl: window.v.style.getPropertyValue("--rl"), out: window.v.getAttribute("data-out") }), 800);
     const rls = slide.map((s) => Number(s.rl)).filter((n) => Number.isFinite(n) && n > 0 && n < 1);
     check(`${tag} roll: words slide (old out, new in) and clean up afterwards`,
-      slide[0].mode === "slide" && slide[0].out === "40 on" && rls.length > 3 && slide[slide.length - 1].mode === null, JSON.stringify(slide.slice(0, 2)));
+      slide[0].mode === "slide" && slide[0].out === "12 on" && rls.length > 3 && slide[slide.length - 1].mode === null, JSON.stringify(slide.slice(0, 2)));
 
     // a value that changes every frame (a drag) never rolls more than once
     await page.waitForTimeout(400);
@@ -187,7 +192,7 @@ export default async function ({ browser, base, check }) {
       }, 1200);
     const orbSeen = [0, 1].map((i) => new Set(run.map((s) => s.orbs[i])).size);
     check(`${tag} lights card: switching the room off slides the orbs' colours (not a jump)`, orbSeen.every((n) => n >= 4), `${orbSeen}`);
-    check(`${tag} lights card: the pill slides too, and its count and words roll`, new Set(run.map((s) => s.pill)).size >= 4 && run.some((s) => s.count === "slide" || s.count === "tick"), `${new Set(run.map((s) => s.pill)).size}`);
+    check(`${tag} lights card: the pill slides too, and its count and words roll`, new Set(run.map((s) => s.pill)).size >= 4 && run.some((s) => s.count === "slide"), `${new Set(run.map((s) => s.pill)).size}`);
     check(`${tag} lights card: the text is final at once ("${run[0].text}" / "${run[0].pillText}")`, run[0].text === "All off" && run[0].pillText === "Lights off", `${run[0].text} / ${run[0].pillText}`);
     check(`${tag} lights card: the orbs cascade (they do not all start in the same frame)`, (() => {
       const startOf = (i) => run.findIndex((s) => s.orbs[i] !== run[0].orbs[i]);

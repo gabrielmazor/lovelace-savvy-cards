@@ -10,6 +10,12 @@
 - **Media: switching between sounds no longer jumps.** The row that leaves goes at once instead of fading while
   the next one fades in, every sound row is the same height, and the picker's highlight shows as soon as the
   picker appears.
+- **A changing label never moves the layout.** While a value changes, the old one leaves and the new one arrives in
+  the label's own place: a pinned pill (the health popup's issue count) keeps its spot, the text keeps its
+  padding and centring, and a longer old value is trimmed to the label instead of spilling over its neighbours.
+- **Numbers roll like an odometer:** up when they grow, down when they fall, instead of counting through every
+  value in between (which changed the label's width on each step).
+- **Room header: the lights chip says "All off"** when every light is off, as the home header does.
 - **Lights card: the ceiling light comes first,** before the rest by name. A light named Ceiling is first on a card with
   no `order`; with one, your listed lights come first, then the ceiling.
 

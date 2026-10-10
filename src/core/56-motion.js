@@ -147,25 +147,31 @@ const Motion = {
     const tooSoon = el.__mrT && now - el.__mrT < ROLL_MIN_GAP;
     el.__mrT = now;
     if (tooSoon || old === val || !el.getClientRects().length) return;
-    const tick = tickParts(old, val);
-    el.style.setProperty("--rl-c", getComputedStyle(el).color);
-    el.setAttribute("data-rolling", tick ? "tick" : "slide");
+    // a number rolls the way it went: down when it falls, up otherwise (words always roll up)
+    const num = tickParts(old, val);
+    const cs = getComputedStyle(el);
+    el.style.setProperty("--rl-c", cs.color);
+    el.toggleAttribute("data-rl-rel", cs.position === "static");
+    // the drawn values sit where the text does: in its padding, and centred the way a flex pill centres it
+    el.style.setProperty("--rl-d", /flex/.test(cs.display) ? "flex" : "block");
+    el.setAttribute("data-dir", num && num.nb < num.na ? "down" : "up");
+    el.setAttribute("data-rolling", "slide");
     el.setAttribute("data-out", old);
-    el.setAttribute("data-in", tick ? old : val);
+    el.setAttribute("data-in", val);
     el.style.setProperty("--rl", "0");
-    el.__mr = this.start(new MotionAnim(0, 1, tick ? MOTION.value : MOTION.roll, 0, (x) => {
-      if (tick) el.setAttribute("data-in", tick.sa.replace("#", (tick.na + (tick.nb - tick.na) * clamp(x)).toFixed(tick.dec)));
-      else el.style.setProperty("--rl", x.toFixed(3));
-    }, () => this.endRoll(el)));
+    el.__mr = this.start(new MotionAnim(0, 1, MOTION.roll, 0, (x) => el.style.setProperty("--rl", x.toFixed(3)), () => this.endRoll(el)));
   },
   endRoll(el) {
     if (el.__mr) el.__mr.dead = true;
     el.__mr = null;
     el.removeAttribute("data-rolling");
+    el.removeAttribute("data-rl-rel");
+    el.removeAttribute("data-dir");
     el.removeAttribute("data-out");
     el.removeAttribute("data-in");
     el.style.removeProperty("--rl");
     el.style.removeProperty("--rl-c");
+    el.style.removeProperty("--rl-d");
   },
 
   // ---------- Appear ----------
