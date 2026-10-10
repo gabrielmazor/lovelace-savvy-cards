@@ -34,6 +34,9 @@ npm install --no-save @mdi/js       # the icons, once
 node site/build.mjs --serve         # http://localhost:8080
 ```
 
+The link preview (`assets/og.jpg`, with the touch icon `assets/icon-180.png`) is drawn from the real cards;
+redraw it after the cards' look changes: `PLAYWRIGHT=$(npm root -g)/playwright node site/og.mjs`.
+
 | File | What it holds |
 |---|---|
 | `assets/house.js` | The house: rooms, devices, people, playlists with drawn covers |
