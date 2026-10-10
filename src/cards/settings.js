@@ -76,6 +76,7 @@ class SavvySettingsCard extends SavvyCard {
   }
 
   _update() {
+    syncDesign(this);      // it holds the dashboard's design, and wears it too
     const el = this._el;
     if (!el) return;
     this.toggleAttribute("dark", !!this._hass?.themes?.darkMode);
