@@ -89,6 +89,13 @@
     media_duration: t.dur, media_position: position, media_position_updated_at: new Date().toISOString(),
   });
 
+  // the house's modes, and each room's own moments next to Sync, Basic and Manual
+  const HOME_MODES = ["Daytime", "Evening", "Night", "Sleep", "Away", "Basic", "Manual"];
+  const ROOM_EXTRAS = {
+    living_room: ["Watching TV", "Music", "Reading"], kitchen: ["Cooking", "Dining"], office: ["Focus", "Calls"],
+    bedroom: ["Reading", "Watching TV", "Sleep"], bathroom: ["Shower", "Relax"], toilet: ["Night"],
+  };
+
   // the rooms, in the order the dashboard lists them
   const ROOM_LIST = [
     ["living_room", "Living Room", "mdi:sofa"], ["kitchen", "Kitchen", "mdi:silverware-fork-knife"], ["office", "Office", "mdi:desk"],
@@ -162,13 +169,14 @@
     light("light.toilet_night_light", "Toilet Night Light", "toilet", DIM, true, { pct: 15, icon: "mdi:weather-night" });
 
     // ---- helpers: the house's mode and each room's, and whether a room's lights run themselves
-    add("input_select.home_mode", "Evening", { friendly_name: "Home Mode", options: ["Home", "Evening", "Night", "Away", "Guests"] }, {});
-    const MODES = { living_room: ["Auto", "Relax", "Movie", "Reading", "Party"], kitchen: ["Auto", "Cooking", "Dinner", "Clean"], office: ["Auto", "Focus", "Calls", "Off"],
-      bedroom: ["Auto", "Wind Down", "Sleep", "Wake Up"], bathroom: ["Auto", "Bright", "Night"], toilet: ["Auto", "Night"] };
-    const NOW = { living_room: "Movie", kitchen: "Auto", office: "Focus", bedroom: "Wind Down", bathroom: "Auto", toilet: "Night" };
+    // the house's mode, and each room's: Sync follows the house, Basic is plain light, Manual leaves the lights
+    // alone, and each room has its own moments. hass.js turns a mode into light (see ROOM_LIGHTS there).
+    add("input_select.home_mode", "Evening", { friendly_name: "Home Mode", options: HOME_MODES }, {});
+    const NOW = { living_room: "Watching TV", kitchen: "Sync", office: "Focus", bedroom: "Sync", bathroom: "Sync", toilet: "Sync" };
     for (const [a, name] of ROOM_LIST) {
-      add(`input_select.${a}_mode`, NOW[a], { friendly_name: `${name} Mode`, options: MODES[a] }, { area: a });
-      add(`input_boolean.${a}_auto_lights`, a === "bathroom" ? "off" : "on", { friendly_name: `${name} Auto Lights`, icon: "mdi:lightbulb-auto" }, { area: a });
+      add(`input_select.${a}_mode`, NOW[a], { friendly_name: `${name} Mode`, options: ["Sync", "Basic", "Manual", ...ROOM_EXTRAS[a]] }, { area: a });
+      // the room's lights master switch: on while any of its lights is on; switching it runs the room's mode or turns all off
+      add(`input_boolean.${a}_lights`, "on", { friendly_name: `${name} Lights`, icon: "mdi:lightbulb-group" }, { area: a });
     }
     add("input_boolean.living_room_screen_sync", "on", { friendly_name: "Screen Sync", icon: "mdi:television-ambient-light" }, { area: "living_room" });
     add("input_button.kitchen_radio_jazz", ago(20 * HOUR), { friendly_name: "Jazz Radio", icon: "mdi:radio" }, { area: "kitchen" });
@@ -356,5 +364,5 @@
     return [f(5), f(3), f(1)];
   };
 
-  window.SavvyDemo = Object.assign(window.SavvyDemo || {}, { makeHouse, hsToRgb, art, PLAYLISTS, nowPlaying, ROOM_LIST });
+  window.SavvyDemo = Object.assign(window.SavvyDemo || {}, { makeHouse, hsToRgb, art, PLAYLISTS, nowPlaying, ROOM_LIST, HOME_MODES, ROOM_EXTRAS });
 })();

@@ -85,12 +85,13 @@
     window.scrollTo({ top: 0 });
   }
 
-  // Home Assistant's sections view: columns of 320 to 500 px, at most the view's max_columns
-  const COL_MIN = 320, GAP = 24;
+  // the page's columns: the view's max_columns (three) on a desktop, one on a phone, always the full width
+  const DESKTOP = 768;
   const layout = new ResizeObserver(([e]) => fit(e.target));
   function fit(grid) {
+    if (!grid.isConnected) return layout.unobserve(grid);      // a page that was just left
     const w = grid.parentElement.clientWidth;
-    const cols = Math.max(1, Math.min(grid.__max, Math.floor((w + GAP) / (COL_MIN + GAP))));
+    const cols = w >= DESKTOP ? grid.__max : 1;
     grid.style.setProperty("--cols", cols);
     for (const box of grid.children) {
       const span = Math.min(box.__span, cols);

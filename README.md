@@ -136,6 +136,13 @@ lit colour light, like the room tile), and shows nothing when it is idle. Turn t
 them with `design: { state_glow: false }` in the settings card. The cards also have smooth, tactile
 animations, light and dark themes, and honour reduced motion.
 
+### Plain
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/plain-light.png"><img src="docs/images/plain-dark.png" width="760" alt="The Savvy cards in the plain design"></picture>
+
+The default design, shown here so the two below can be compared with it: the same three cards in your
+theme's own card colours, with no blur, grain or extra edge.
+
 ### Glass
 
 <picture><source media="(prefers-color-scheme: light)" srcset="docs/images/glass-light.png"><img src="docs/images/glass-dark.png" width="760" alt="The Savvy cards in the glass design"></picture>

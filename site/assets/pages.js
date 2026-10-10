@@ -25,7 +25,7 @@
     ignore: { entities: ["binary_sensor.living_room_camera_person", "binary_sensor.kitchen_camera_motion"] },
     room_order: ROOMS.map((r) => r.id),
     rooms: Object.fromEntries(ROOMS.map((r) => [r.id, {
-      page: page(slug(r.id)), control: `input_select.${r.id}_mode`, light_state: `input_boolean.${r.id}_auto_lights`,
+      page: page(slug(r.id)), control: `input_select.${r.id}_mode`, light_state: `input_boolean.${r.id}_lights`,
       ...(r.id === "living_room" ? { temperature: "sensor.living_room_ac_room_temperature" } : {}),
     }])),
     layout: "full",

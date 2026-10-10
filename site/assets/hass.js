@@ -31,7 +31,9 @@
       const changed = state !== cur.state;
       house.states[id] = { ...cur, state, attributes, last_changed: changed ? now() : cur.last_changed, last_updated: now() };
       publish();
+      if (changed) react(id, cur.state, state);
     };
+    let react = () => {};      // the house's own logic (modes, room switches), set up below
     // many changes in one task reach the cards as one new hass
     const publish = () => {
       if (queued) return;
@@ -280,6 +282,117 @@
       },
     };
     SERVICES.switch = SERVICES.input_boolean = { turn_on: onOff(true), turn_off: onOff(false), toggle };
+
+    // ---- the house's lighting: what each mode means in each room, the rooms' master switches, the TVs
+    // Each room's lights by the part they play: main (the ceiling), lamps, accents (strips, glows), night.
+    const ROOM_LIGHTS = {
+      living_room: { main: ["light.living_room_ceiling"], lamps: ["light.living_room_arc_lamp", "light.living_room_sconces"],
+        accents: ["light.living_room_light_bar", "light.living_room_tv_glow", "light.living_room_candle"], night: [] },
+      kitchen: { main: ["light.kitchen_ceiling"], lamps: ["light.kitchen_pendant", "light.kitchen_passage"], accents: ["light.kitchen_counter_strip", "light.kitchen_plinth"], night: [] },
+      office: { main: ["light.office_ceiling"], lamps: ["light.office_shelf_lamps", "light.office_task_lamp"], accents: ["light.office_screen_glow", "light.office_desk_strip"], night: [], extra: ["light.office_key_light"] },
+      bedroom: { main: ["light.bedroom_ceiling"], lamps: ["light.bedroom_left_bedside", "light.bedroom_right_bedside"], accents: [], night: [] },
+      bathroom: { main: ["light.bathroom_ceiling"], lamps: ["light.bathroom_mirror"], accents: [], night: ["light.bathroom_night_strip"] },
+      toilet: { main: ["light.toilet_ceiling"], lamps: [], accents: [], night: ["light.toilet_night_light"] },
+    };
+    const roomLights = (room) => { const r = ROOM_LIGHTS[room]; return [...r.main, ...r.lamps, ...r.accents, ...r.night, ...(r.extra || [])]; };
+    const WARM = { pct: 45, k: 2400 }, OFF = 0;
+    // a look: by part ({ main, lamps, accents, night }) and by light (overrides); 0 is off, 1 is on, { pct, k | hs } a level
+    const parts = (room, look) => {
+      const r = ROOM_LIGHTS[room], out = {};
+      for (const part of ["main", "lamps", "accents", "night", "extra"]) for (const id of r[part] || []) out[id] = look[part] ?? 0;
+      return { ...out, ...(look.lights || {}) };
+    };
+    // the house's modes, as a room in Sync lives them
+    const HOME_LOOK = {
+      Daytime: {}, Away: {}, Sleep: { night: { pct: 8, k: 2200 } },
+      Evening: { main: { pct: 55, k: 2700 }, lamps: WARM, accents: { pct: 35, hs: [30, 60] } },
+      Night: { lamps: { pct: 18, k: 2200 }, accents: { pct: 12, hs: [28, 70] }, night: { pct: 15, k: 2200 } },
+      Basic: { main: { pct: 80, k: 3500 } },
+    };
+    // each room's own moments
+    const ROOM_LOOK = {
+      living_room: {
+        "Watching TV": { lamps: OFF, lights: { "light.living_room_arc_lamp": { pct: 15, k: 2200 }, "light.living_room_tv_glow": { pct: 60, hs: [262, 75] }, "light.living_room_light_bar": { pct: 20, hs: [220, 70] } } },
+        Music: { lamps: { pct: 30, k: 2400 }, lights: { "light.living_room_light_bar": { pct: 70, hs: [300, 80] }, "light.living_room_tv_glow": { pct: 60, hs: [190, 80] }, "light.living_room_candle": 1 } },
+        Reading: { main: { pct: 40, k: 3500 }, lights: { "light.living_room_arc_lamp": { pct: 85, k: 4000 } } },
+      },
+      kitchen: {
+        Cooking: { main: 1, lamps: { pct: 70, k: 4000 }, lights: { "light.kitchen_pendant": { pct: 100, k: 4000 }, "light.kitchen_counter_strip": { pct: 90, hs: [40, 25] } } },
+        Dining: { lights: { "light.kitchen_pendant": { pct: 45, k: 2400 }, "light.kitchen_counter_strip": { pct: 25, hs: [32, 55] }, "light.kitchen_plinth": { pct: 20, hs: [28, 85] } } },
+      },
+      office: {
+        Focus: { main: { pct: 80, k: 4500 }, lights: { "light.office_task_lamp": { pct: 100, k: 5000 }, "light.office_screen_glow": { pct: 30, k: 5000 } } },
+        Calls: { main: { pct: 40, k: 4000 }, lights: { "light.office_key_light": { pct: 80, k: 4800 }, "light.office_task_lamp": { pct: 70, k: 4200 }, "light.office_screen_glow": { pct: 60, hs: [205, 60] } } },
+      },
+      bedroom: {
+        Reading: { lights: { "light.bedroom_left_bedside": { pct: 70, k: 3200 } } },
+        "Watching TV": { lamps: { pct: 10, k: 2200 } },
+        Sleep: {},
+      },
+      bathroom: { Shower: { main: 1, lamps: { pct: 100, k: 4000 } }, Relax: { lamps: { pct: 25, k: 2400 }, night: { pct: 40, hs: [200, 60] } } },
+      toilet: { Night: { night: { pct: 15, k: 2200 } } },
+    };
+    const homeMode = () => get("input_select.home_mode")?.state;
+    const roomMode = (room) => get(`input_select.${room}_mode`)?.state;
+    // what a room's mode asks of its lights now: null leaves them as they are (Manual, or Sync while the house is Manual)
+    const lookFor = (room) => {
+      const mode = roomMode(room);
+      if (mode === "Manual") return null;
+      if (mode === "Basic") return parts(room, HOME_LOOK.Basic);
+      if (mode === "Sync") { const h = homeMode(); return h === "Manual" ? null : parts(room, HOME_LOOK[h] || {}); }
+      return parts(room, ROOM_LOOK[room]?.[mode] || {});
+    };
+    const setLight = (id, v) => {
+      const members = get(id)?.attributes.entity_id || [];
+      for (const x of [id, ...members]) {
+        if (!get(x)) continue;
+        if (!v) lightOff(x);                 // always queued: an "on" may still be on its way
+        else lightOn(x, v === 1 ? {} : { brightness_pct: v.pct, ...(v.k ? { color_temp_kelvin: v.k } : {}), ...(v.hs ? { hs_color: v.hs } : {}) });
+      }
+    };
+    const applyRoom = (room, look = lookFor(room)) => { if (look) for (const [id, v] of Object.entries(look)) setLight(id, v); };
+    // the master switch: on while any of the room's lights is on (kept in step after every change)
+    let switchesQueued = false;
+    const syncSwitches = () => {
+      if (switchesQueued) return;
+      switchesQueued = true;
+      setTimeout(() => {
+        switchesQueued = false;
+        for (const room of Object.keys(ROOM_LIGHTS)) {
+          const id = `input_boolean.${room}_lights`, on = roomLights(room).some((l) => get(l)?.state === "on");
+          if (get(id) && (get(id).state === "on") !== on) { house.states[id] = { ...get(id), state: on ? "on" : "off", last_changed: now(), last_updated: now() }; publish(); }
+        }
+      }, 220);
+    };
+    // switching the master: on runs the room's mode (plain light when the mode would leave it dark), off turns all off
+    const roomSwitch = (id, on) => {
+      const room = id.replace(/^input_boolean\.|_lights$/g, "");
+      if (!ROOM_LIGHTS[room]) return false;
+      if (!on) { for (const l of roomLights(room)) setLight(l, 0); return true; }
+      const look = lookFor(room), lit = look && Object.values(look).some(Boolean);
+      applyRoom(room, lit ? look : parts(room, HOME_LOOK.Basic));
+      return true;
+    };
+    const switchFn = (want) => (id) => (roomSwitch(id, want ?? get(id).state !== "on") ? patch(id, { state: (want ?? get(id).state !== "on") ? "on" : "off" }) : (want == null ? toggle(id) : onOff(want)(id)));
+    SERVICES.input_boolean = { turn_on: switchFn(true), turn_off: switchFn(false), toggle: switchFn(null) };
+    // a TV that comes on puts its room in Watching TV; off again, the room goes back to Sync
+    const TV_ROOMS = { "media_player.living_room_tv": "living_room", "media_player.bedroom_tv": "bedroom" };
+    react = (id, was, now_) => {
+      if (id.startsWith("light.")) return syncSwitches();
+      if (id === "input_select.home_mode") { for (const room of Object.keys(ROOM_LIGHTS)) if (roomMode(room) === "Sync") applyRoom(room); return; }
+      const m = /^input_select\.(.+)_mode$/.exec(id);
+      if (m && ROOM_LIGHTS[m[1]]) return applyRoom(m[1]);
+      const room = TV_ROOMS[id];
+      if (room) {
+        const off = (s) => ["off", "standby", "unavailable"].includes(s);
+        const sel = `input_select.${room}_mode`;
+        if (off(was) && !off(now_) && roomMode(room) !== "Manual") patch(sel, { state: "Watching TV" });
+        else if (!off(was) && off(now_) && roomMode(room) === "Watching TV") patch(sel, { state: "Sync" });
+      }
+    };
+    // the house starts as its modes say
+    for (const room of Object.keys(ROOM_LIGHTS)) applyRoom(room);
+    syncSwitches();
 
     // ---- the house lives: rooms drift toward their targets, the power meter moves
     setInterval(() => {

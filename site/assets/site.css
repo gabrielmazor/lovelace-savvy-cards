@@ -69,9 +69,8 @@ main { max-width: 1440px; margin: 0 auto; padding: 20px 20px 32px; }
 
 /* Home Assistant's sections view: equal columns, a section spans some of them, and inside a section a grid
    of 12 cells per column, cards as wide as their grid options say, packed densely like Home Assistant packs them */
-.sections { display: grid; grid-template-columns: repeat(var(--cols, 1), minmax(0, 1fr)); gap: 24px; align-items: start;
-  max-width: calc(var(--cols, 1) * 500px + (var(--cols, 1) - 1) * 24px); margin: 0 auto; }
-.section { display: grid; grid-template-columns: repeat(var(--cells, 12), minmax(0, 1fr)); gap: 8px; min-width: 0; align-content: start; grid-auto-flow: row dense; }
+.sections { display: grid; grid-template-columns: repeat(var(--cols, 1), minmax(0, 1fr)); gap: 24px; align-items: start; }
+.section { --row-height: 56px; --row-gap: 8px; display: grid; grid-template-columns: repeat(var(--cells, 12), minmax(0, 1fr)); gap: 8px; min-width: 0; align-content: start; grid-auto-flow: row dense; }
 .section > * { min-width: 0; grid-column: span 12; }
 .card-error { padding: 14px 16px; border-radius: 16px; background: rgb(224 102 102 / 0.12); color: #e06666; font-size: 13px; }
 
