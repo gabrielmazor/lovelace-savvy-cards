@@ -34,6 +34,14 @@ export default async function ({ browser, base, check }) {
   const own = await open(2);
   check("a list of its own: only those, by the names given", own.length === 1 && own[0].t === "Film", JSON.stringify(own.map((o) => o.t)));
 
+  // scene names written "Room // Name": the menu shows the name only
+  const names = await page.evaluate(() => {
+    const n = { "scene.t1": "Living Room // Movie", "scene.t2": "living room // movie night", "scene.t3": "Kitchen // Cooking", "scene.t4": "Living Room - Reading" };
+    window.setStates(Object.fromEntries(Object.entries(n).map(([id, f]) => [id, { entity_id: id, state: "2026-10-10T10:00:00Z", attributes: { friendly_name: f } }])));
+    return Object.keys(n).map((id) => window.__savvy.itemName(window.hass, id, "living_room"));
+  });
+  check("scene names lose the room and the separator", JSON.stringify(names) === JSON.stringify(["Movie", "Movie night", "Cooking", "Reading"]), JSON.stringify(names));
+
   check("no errors", errors.length === 0, errors.join(" | "));
   await page.close();
 }

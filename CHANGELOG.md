@@ -12,6 +12,8 @@
   - Room activity: Include, Aggregate sensors and the light level words.
   - Every card (but the headers and titles): Round to grid rows (`grid_snap`).
 - **Lights card: the scenes menu has two columns,** so long scene names fit.
+- **Lights card: scene names without the room.** "Living Room // Movie" shows as Movie: the room's name and the
+  separator after it (`//`, `-`, `:`, `|`) come off, and a name in lower case starts with a capital.
 
 ## 0.20.5
 

@@ -114,6 +114,24 @@ function shortName(hass, id, area) {
   return name;
 }
 
+// A scene's (or any item's) name as a room shows it: the room's name and the separator after it come off the
+// front ("Living Room // Movie", "Living Room - Movie" read "Movie"), and what is left of a "Room // Name"
+// pattern from another room too. The room is the one given, else the entity's own area.
+function itemName(hass, id, area) {
+  const st = hass.states[id];
+  const raw = st?.attributes.friendly_name || title((id.split(".")[1] || id));
+  let out = raw;
+  for (const a of [area, entityArea(hass, id)].filter(Boolean)) {
+    const name = areaInfo(hass, a).name;
+    if (name) out = out.replace(new RegExp(`^\\s*${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*(?:[/:|·•–—-]+\\s*)*`, "i"), "");
+  }
+  if (out.includes("//")) out = out.slice(out.lastIndexOf("//") + 2);
+  out = out.trim();
+  // a name written all in lower case ("living room // movie") starts with a capital, the way a menu reads
+  if (out && out === out.toLowerCase()) out = out[0].toUpperCase() + out.slice(1);
+  return out || raw;
+}
+
 // A config value that may be one id, a list, {entity, …} objects, or false.
 function asItems(v) {
   if (v === false || v == null) return [];

@@ -924,7 +924,8 @@ class LightsCard extends HTMLElement {
       haptic("light");
       h.callService(d, d === "button" || d === "input_button" ? "press" : "turn_on", {}, { entity_id: v });
     } });
-    const options = list.map((x) => ({ value: x.entity, label: x.name || shortName(h, x.entity, area),
+    // "Living Room // Movie" reads "Movie": the room and the separator come off
+    const options = list.map((x) => ({ value: x.entity, label: x.name || itemName(h, x.entity, area),
       icon: x.icon || h.states[x.entity]?.attributes.icon || "mdi:palette", color: "rgb(245 184 61)" }));
     haptic("light");
     // two columns: scene names are often long
