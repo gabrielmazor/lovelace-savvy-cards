@@ -25,7 +25,7 @@ body.light {
 }
 
 * { box-sizing: border-box; }
-html { background: var(--page); }
+html { background: var(--page); touch-action: manipulation; }   /* no double-tap zoom: a tap is a tap */
 body { margin: 0; background: var(--page); color: var(--fg); font: 15px/1.5 var(--sans); -webkit-font-smoothing: antialiased; min-height: 100vh;
   padding-bottom: env(safe-area-inset-bottom, 0px); }
 a { color: inherit; }

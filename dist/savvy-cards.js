@@ -213,15 +213,15 @@ const watchKeyboard = (host) => {
 // falls, like an odometer (Motion.roll drives --rl from 0 to 1). An element that is not positioned gets
 // position: relative for the moment (data-rl-rel); one that is (a pinned pill, a badge) keeps its own.
 const ROLL_CSS = `
-  [data-rolling] { color: transparent !important; -webkit-text-fill-color: transparent !important; }
-  [data-rolling][data-rl-rel] { position: relative; }
-  [data-rolling]::before, [data-rolling]::after { position: absolute; inset: 0; box-sizing: border-box; overflow: hidden; text-overflow: clip;
+  [data-rolling="slide"] { color: transparent !important; -webkit-text-fill-color: transparent !important; }
+  [data-rolling="slide"][data-rl-rel] { position: relative; }
+  [data-rolling="slide"]::before, [data-rolling="slide"]::after { position: absolute; inset: 0; box-sizing: border-box; overflow: hidden; text-overflow: clip;
     display: var(--rl-d, block); padding: inherit; align-items: inherit; justify-content: inherit;
     text-align: inherit; white-space: pre; pointer-events: none; color: var(--rl-c); -webkit-text-fill-color: var(--rl-c); }
-  [data-rolling]::before { content: attr(data-out); opacity: calc(1 - var(--rl, 1)); translate: 0 calc(var(--rl, 1) * -0.5em); }
-  [data-rolling]::after { content: attr(data-in); opacity: var(--rl, 1); translate: 0 calc((1 - var(--rl, 1)) * 0.5em); }
-  [data-rolling][data-dir="down"]::before { translate: 0 calc(var(--rl, 1) * 0.5em); }
-  [data-rolling][data-dir="down"]::after { translate: 0 calc((1 - var(--rl, 1)) * -0.5em); }
+  [data-rolling="slide"]::before { content: attr(data-out); opacity: calc(1 - var(--rl, 1)); translate: 0 calc(var(--rl, 1) * -0.5em); }
+  [data-rolling="slide"]::after { content: attr(data-in); opacity: var(--rl, 1); translate: 0 calc((1 - var(--rl, 1)) * 0.5em); }
+  [data-rolling="slide"][data-dir="down"]::before { translate: 0 calc(var(--rl, 1) * 0.5em); }
+  [data-rolling="slide"][data-dir="down"]::after { translate: 0 calc((1 - var(--rl, 1)) * -0.5em); }
 `;
 
 // The design language, one set of numbers for every card and popup (docs/DESIGN.md 5):
@@ -2144,21 +2144,64 @@ const Motion = {
     if (tooSoon || old === val || !el.getClientRects().length) return;
     // a number rolls the way it went: down when it falls, up otherwise (words always roll up)
     const num = tickParts(old, val);
+    const down = !!num && num.nb < num.na;
+    if (this.rollPart(el, old, val, down)) return;
     const cs = getComputedStyle(el);
     el.style.setProperty("--rl-c", cs.color);
     el.toggleAttribute("data-rl-rel", cs.position === "static");
     // the drawn values sit where the text does: in its padding, and centred the way a flex pill centres it
     el.style.setProperty("--rl-d", /flex/.test(cs.display) ? "flex" : "block");
-    el.setAttribute("data-dir", num && num.nb < num.na ? "down" : "up");
+    el.setAttribute("data-dir", down ? "down" : "up");
     el.setAttribute("data-rolling", "slide");
     el.setAttribute("data-out", old);
     el.setAttribute("data-in", val);
     el.style.setProperty("--rl", "0");
     el.__mr = this.start(new MotionAnim(0, 1, MOTION.roll, 0, (x) => el.style.setProperty("--rl", x.toFixed(3)), () => this.endRoll(el)));
   },
+
+  // Only what changed rolls: "2 on" to "4 on" rolls the 2 into a 4 and " on" stays where it is; "17%" to
+  // "19%" rolls the 7. Words change whole ("Playing" to "Paused", "1 on" to "All off"). The text after the
+  // change slides only when the changed part takes more or less room. It is drawn in a shadow root on the
+  // element, so the element's own text (what is read and selected) is the new value throughout; at the end
+  // the shadow root only shows that text again. Elements that cannot hold one, or that lay their text out
+  // as flex items, roll whole. -> true when it rolled
+  rollPart(el, old, val, down) {
+    const parts = rollParts(old, val);
+    if (!parts) return false;
+    if (!PART_HOSTS.has(el.localName) || (el.shadowRoot && !el.__rs)) return false;
+    const cs = getComputedStyle(el);
+    if (/flex|grid/.test(cs.display)) return false;
+    const sr = el.__rs || (el.__rs = el.attachShadow({ mode: "open" }));
+    const span = (cls, t) => { const n = document.createElement("span"); if (cls) n.className = cls; n.textContent = t; return n; };
+    const style = document.createElement("style");
+    style.textContent = `.m { display: inline-block; position: relative; vertical-align: bottom; clip-path: inset(-0.7em 0 -0.7em 0); white-space: pre; }
+      .o { position: absolute; left: 0; top: 0; white-space: pre; } .n { display: inline-block; white-space: pre; }`;
+    const mid = span("m", ""), o = span("o", parts.oldMid), n = span("n", parts.newMid);
+    mid.append(n, o);
+    sr.replaceChildren(style, span("", parts.pre), mid, span("", parts.suf));
+    const ow = o.getBoundingClientRect().width, nw = n.getBoundingClientRect().width;
+    const sign = down ? 1 : -1;      // up: the old leaves upwards and the new comes from below
+    el.setAttribute("data-rolling", "part");
+    el.setAttribute("data-dir", down ? "down" : "up");
+    el.setAttribute("data-out", old);
+    el.setAttribute("data-in", val);
+    const paint = (x) => {
+      const t = clamp(x);
+      mid.style.width = `${(ow + (nw - ow) * t).toFixed(2)}px`;
+      o.style.opacity = (1 - t).toFixed(3);
+      o.style.translate = `0 ${(sign * t * 0.5).toFixed(3)}em`;
+      n.style.opacity = t.toFixed(3);
+      n.style.translate = `0 ${(-sign * (1 - t) * 0.5).toFixed(3)}em`;
+    };
+    paint(0);
+    el.__mr = this.start(new MotionAnim(0, 1, MOTION.roll, 0, paint, () => this.endRoll(el)));
+    return true;
+  },
   endRoll(el) {
     if (el.__mr) el.__mr.dead = true;
     el.__mr = null;
+    // a partial roll's shadow root shows the element's own text again
+    if (el.__rs) el.__rs.replaceChildren(document.createElement("slot"));
     el.removeAttribute("data-rolling");
     el.removeAttribute("data-rl-rel");
     el.removeAttribute("data-dir");
@@ -2372,6 +2415,27 @@ function tintDiff(els, before) {
 }
 
 // "3 of 6 on" -> "2 of 6 on": the same words around a different number ticks
+// The elements a partial roll can draw in (the ones that may hold a shadow root).
+const PART_HOSTS = new Set(["span", "div", "p", "h1", "h2", "h3", "h4", "h5", "h6", "section", "header", "footer", "article", "aside", "main", "nav", "blockquote"]);
+// What two values share at the start and the end, and what changed between: { pre, oldMid, newMid, suf }, or null
+// when nothing is shared (the whole value rolls). A change that touches letters takes whole words, so a word
+// never rolls a few of its letters ("Playing" to "Paused" changes the word); digits change on their own, like an
+// odometer ("17%" to "19%" rolls the 7, "22.0" to "22.5" the last digit).
+function rollParts(a, b) {
+  let p = 0;
+  while (p < a.length && p < b.length && a[p] === b[p]) p++;
+  let s = 0;
+  while (s < a.length - p && s < b.length - p && a[a.length - 1 - s] === b[b.length - 1 - s]) s++;
+  const letters = /\p{L}/u;
+  if (letters.test(a.slice(p, a.length - s)) || letters.test(b.slice(p, b.length - s))) {
+    // widen to whole words: back to a space before, on to a space after
+    while (p > 0 && !/\s/.test(a[p - 1])) p--;
+    while (s > 0 && !/\s/.test(a[a.length - s])) s--;
+  }
+  if (!p && !s) return null;
+  return { pre: a.slice(0, p), oldMid: a.slice(p, a.length - s), newMid: b.slice(p, b.length - s), suf: a.slice(a.length - s) };
+}
+
 function tickParts(a, b) {
   const ma = NUM_RE.exec(a), mb = NUM_RE.exec(b);
   if (!ma || !mb) return null;
@@ -5848,6 +5912,8 @@ const SETTINGS_RULES = {
   ],
   "savvy-vacuum-card": [
     glowRule,
+    // the rooms it cleans, in the dashboard's room order; a card's own `rooms` list keeps its own
+    { path: "room_order", label: "Room order", get: (s, c) => (c.room_order !== undefined || Array.isArray(c.rooms) ? undefined : s.room_order), src: "room_order" },
     { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
   ],
   "savvy-climate-card": [
@@ -21627,10 +21693,15 @@ class VacuumCard extends HTMLElement {
     this._config = { battery_warn: 20, battery_critical: 10, map: true, rooms: "auto", routines: "auto",
       modes: "auto", dock: "auto", maintenance: "auto", stats: "auto", ...config };
     this._disc = null;
+    // the room order arrives with the dashboard's settings, often after the rooms were read: read them again
+    const orderKey = JSON.stringify(this._config.room_order || null);
+    const reorder = this._orderKey !== undefined && orderKey !== this._orderKey;
+    this._orderKey = orderKey;
     if (this._root) {
       this._build();
       if (this._hass) this._update();
     }
+    if (reorder && this._hass && !this._compact) this._loadRooms();
   }
 
   set hass(hass) {
@@ -21747,8 +21818,17 @@ class VacuumCard extends HTMLElement {
         const found = list.find((r) => r.id === w.id || r.id === w.area || r.name.toLowerCase() === String(w.id).toLowerCase());
         return found ? { ...found, ...(w.name ? { name: w.name } : {}), ...(w.icon ? { icon: w.icon } : {}) } : null;
       }).filter(Boolean);
-    } else if (list && mode === "area") {
-      list.sort((a, b) => a.name.localeCompare(b.name));
+    } else if (list) {
+      // the dashboard's room order (the settings card's room_order, or the card's own), then the rest by name;
+      // a robot's own segments are matched to rooms by name
+      // the config as it is now: the settings' order may have arrived while the rooms were being read
+      const order = Array.isArray(this._config.room_order) ? this._config.room_order : [];
+      const rank = (r) => {
+        let i = order.indexOf(r.id);
+        if (i < 0) i = order.findIndex((a) => (h.areas?.[a]?.name || title(a)).toLowerCase() === r.name.toLowerCase());
+        return i < 0 ? Infinity : i;
+      };
+      if (order.length || mode === "area") list.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
     }
     this._rooms = { mode, list: list || [] };
     this._roomsLoading = false;

@@ -201,6 +201,8 @@ const SETTINGS_RULES = {
   ],
   "savvy-vacuum-card": [
     glowRule,
+    // the rooms it cleans, in the dashboard's room order; a card's own `rooms` list keeps its own
+    { path: "room_order", label: "Room order", get: (s, c) => (c.room_order !== undefined || Array.isArray(c.rooms) ? undefined : s.room_order), src: "room_order" },
     { path: "exclude", label: "Ignored", kind: "union", get: (s) => s.ignore?.entities, src: "ignore" },
   ],
   "savvy-climate-card": [

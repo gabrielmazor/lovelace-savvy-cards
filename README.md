@@ -908,6 +908,7 @@ hold "Clean N rooms" to start, so neither happens by accident.
 | `map` | `popup`, `inline`, `off`, or an image/camera entity | `popup` | Where the map shows. |
 | `map_max_height` | number (px) | none | Cap the map's height. |
 | `rooms` | `auto`, `off`, or list | `auto` | Your areas when mapped, else the robot's rooms. A list limits, orders or renames. |
+| `room_order` | list of areas | settings', then by name | The rooms in this order (the [settings card](#savvy-settings)'s `room_order` fills it in); the robot's own rooms are matched by name. A `rooms` list keeps its own order. |
 | `routines` | `auto`, `off`, or list | `auto` | Your app routines. A list is `[{ entity, name, icon }]`. |
 | `modes`, `dock`, `maintenance`, `stats` | `auto` or `off` | `auto` | `off` hides a part. |
 | `hide_modes` | list | none | Mode selects to leave out. |

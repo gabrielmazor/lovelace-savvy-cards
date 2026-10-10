@@ -10,6 +10,12 @@
 - **Media: switching between sounds no longer jumps.** The row that leaves goes at once instead of fading while
   the next one fades in, every sound row is the same height, and the picker's highlight shows as soon as the
   picker appears.
+- **Only what changed moves.** When a label changes, the part it shares with the old value stays still and only
+  the difference rolls: "2 on" to "4 on" rolls the digit while "on" stays; "17%" to "19%" rolls the 7. Words
+  change whole ("Playing" to "Paused", "1 on" to "All off"). The shared text slides only when the changed part
+  takes more or less room. The label's own text is the new value throughout.
+- **Vacuum: rooms in the dashboard's order.** The settings card's `room_order` now orders the vacuum's rooms too
+  (a card's own `room_order` or `rooms` list wins); a robot's own rooms are matched by name.
 - **A changing label never moves the layout.** While a value changes, the old one leaves and the new one arrives in
   the label's own place: a pinned pill (the health popup's issue count) keeps its spot, the text keeps its
   padding and centring, and a longer old value is trimmed to the label instead of spilling over its neighbours.

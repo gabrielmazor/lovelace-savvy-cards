@@ -433,10 +433,15 @@ class VacuumCard extends HTMLElement {
     this._config = { battery_warn: 20, battery_critical: 10, map: true, rooms: "auto", routines: "auto",
       modes: "auto", dock: "auto", maintenance: "auto", stats: "auto", ...config };
     this._disc = null;
+    // the room order arrives with the dashboard's settings, often after the rooms were read: read them again
+    const orderKey = JSON.stringify(this._config.room_order || null);
+    const reorder = this._orderKey !== undefined && orderKey !== this._orderKey;
+    this._orderKey = orderKey;
     if (this._root) {
       this._build();
       if (this._hass) this._update();
     }
+    if (reorder && this._hass && !this._compact) this._loadRooms();
   }
 
   set hass(hass) {
@@ -553,8 +558,17 @@ class VacuumCard extends HTMLElement {
         const found = list.find((r) => r.id === w.id || r.id === w.area || r.name.toLowerCase() === String(w.id).toLowerCase());
         return found ? { ...found, ...(w.name ? { name: w.name } : {}), ...(w.icon ? { icon: w.icon } : {}) } : null;
       }).filter(Boolean);
-    } else if (list && mode === "area") {
-      list.sort((a, b) => a.name.localeCompare(b.name));
+    } else if (list) {
+      // the dashboard's room order (the settings card's room_order, or the card's own), then the rest by name;
+      // a robot's own segments are matched to rooms by name
+      // the config as it is now: the settings' order may have arrived while the rooms were being read
+      const order = Array.isArray(this._config.room_order) ? this._config.room_order : [];
+      const rank = (r) => {
+        let i = order.indexOf(r.id);
+        if (i < 0) i = order.findIndex((a) => (h.areas?.[a]?.name || title(a)).toLowerCase() === r.name.toLowerCase());
+        return i < 0 ? Infinity : i;
+      };
+      if (order.length || mode === "area") list.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
     }
     this._rooms = { mode, list: list || [] };
     this._roomsLoading = false;

@@ -110,9 +110,17 @@ export default async function ({ browser, base, check }) {
     // ---- Roll: a number rolls the way it went (up when it grows), in place; the real text is final at once
     const before = await page.evaluate(() => { const q = window.v.getBoundingClientRect(); return [q.x, q.y]; });
     const tick = await afterChange(page, () => window.__savvy.text(window.v, "40 on"), () => { const q = window.v.getBoundingClientRect();
-      return { text: window.v.textContent, mode: window.v.getAttribute("data-rolling"), dir: window.v.getAttribute("data-dir"), in: window.v.getAttribute("data-in"), at: [q.x, q.y] }; }, 800);
+      const suf = window.v.shadowRoot ? [...window.v.shadowRoot.children].filter((c) => c.localName === "span").at(-1) : null;
+      return { text: window.v.textContent, mode: window.v.getAttribute("data-rolling"), dir: window.v.getAttribute("data-dir"), in: window.v.getAttribute("data-in"), at: [q.x, q.y],
+        suf: suf?.textContent ?? null, sufX: suf ? Math.round(suf.getBoundingClientRect().x * 10) / 10 : null }; }, 800);
+    // from "10 on": only the 1 becomes a 4; "0 on" stays where it is, like an odometer
+    const sufs = tick.filter((s) => s.suf && s.suf.endsWith(" on")).map((s) => s.sufX);
+    // it only slides by the room the changed digit gains or loses (a "4" is wider than a "1"), steadily, never back
+    const steady = sufs.every((x, i) => !i || x >= sufs[i - 1]) && sufs.at(-1) - sufs[0] < 6;
+    check(`${tag} roll: only the digits that change roll; the rest stays put, sliding only by the room they gain`, sufs.length > 2 && steady, JSON.stringify(sufs));
+    // only what changed rolls: the number, while " on" stays where it is (drawn in the element's shadow root)
     check(`${tag} roll: a number rolls up as it grows, in place, while the text itself is final at once`,
-      tick[0].text === "40 on" && tick[0].mode === "slide" && tick[0].dir === "up" && tick[0].in === "40 on" && tick.every((s) => s.at[0] === before[0] && s.at[1] === before[1])
+      tick[0].text === "40 on" && tick[0].mode === "part" && tick[0].dir === "up" && tick[0].in === "40 on" && tick.every((s) => s.at[0] === before[0] && s.at[1] === before[1])
       && tick[tick.length - 1].mode === null && tick[tick.length - 1].text === "40 on", JSON.stringify({ before, first: tick.slice(0, 2) }));
     await page.waitForTimeout(300);
     const down = await afterChange(page, () => window.__savvy.text(window.v, "12 on"), () => ({ dir: window.v.getAttribute("data-dir") }), 200);

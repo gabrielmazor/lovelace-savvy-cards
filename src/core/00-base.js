@@ -207,15 +207,15 @@ const watchKeyboard = (host) => {
 // falls, like an odometer (Motion.roll drives --rl from 0 to 1). An element that is not positioned gets
 // position: relative for the moment (data-rl-rel); one that is (a pinned pill, a badge) keeps its own.
 const ROLL_CSS = `
-  [data-rolling] { color: transparent !important; -webkit-text-fill-color: transparent !important; }
-  [data-rolling][data-rl-rel] { position: relative; }
-  [data-rolling]::before, [data-rolling]::after { position: absolute; inset: 0; box-sizing: border-box; overflow: hidden; text-overflow: clip;
+  [data-rolling="slide"] { color: transparent !important; -webkit-text-fill-color: transparent !important; }
+  [data-rolling="slide"][data-rl-rel] { position: relative; }
+  [data-rolling="slide"]::before, [data-rolling="slide"]::after { position: absolute; inset: 0; box-sizing: border-box; overflow: hidden; text-overflow: clip;
     display: var(--rl-d, block); padding: inherit; align-items: inherit; justify-content: inherit;
     text-align: inherit; white-space: pre; pointer-events: none; color: var(--rl-c); -webkit-text-fill-color: var(--rl-c); }
-  [data-rolling]::before { content: attr(data-out); opacity: calc(1 - var(--rl, 1)); translate: 0 calc(var(--rl, 1) * -0.5em); }
-  [data-rolling]::after { content: attr(data-in); opacity: var(--rl, 1); translate: 0 calc((1 - var(--rl, 1)) * 0.5em); }
-  [data-rolling][data-dir="down"]::before { translate: 0 calc(var(--rl, 1) * 0.5em); }
-  [data-rolling][data-dir="down"]::after { translate: 0 calc((1 - var(--rl, 1)) * -0.5em); }
+  [data-rolling="slide"]::before { content: attr(data-out); opacity: calc(1 - var(--rl, 1)); translate: 0 calc(var(--rl, 1) * -0.5em); }
+  [data-rolling="slide"]::after { content: attr(data-in); opacity: var(--rl, 1); translate: 0 calc((1 - var(--rl, 1)) * 0.5em); }
+  [data-rolling="slide"][data-dir="down"]::before { translate: 0 calc(var(--rl, 1) * 0.5em); }
+  [data-rolling="slide"][data-dir="down"]::after { translate: 0 calc((1 - var(--rl, 1)) * -0.5em); }
 `;
 
 // The design language, one set of numbers for every card and popup (docs/DESIGN.md 5):
