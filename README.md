@@ -550,6 +550,7 @@ for warmth and colour. The pill at the top switches the room, or an entity of yo
 | `chips` | chips | none | Extra chips under the lights. |
 | `layout` | `full` or `compact` | `full` | `compact`: toggles, no sliders or swatches. To change a lamp's brightness, hold its row until it clicks, then swipe right to brighten or left to dim, one step per swipe (never to off). Held and let go, it opens its details. |
 | `bump_step` | number (%) | `10` | The step a compact row's swipe brightens or dims by. |
+| `scenes` | `auto` or list | none | A small button beside the pill that lists the room's scenes; one tap runs one. `auto`: the area's scenes. A list picks them (and scripts or buttons): `[{ entity, name, icon }]` or ids. |
 | `state_glow` | boolean | `true` | A soft glow in the card's corner in what it is doing (a lit light, a locked door, music playing). `false` keeps the card plain. |
 | `title_path` | string | none | Title link: tapping the title opens this page. Only the words are the link. |
 

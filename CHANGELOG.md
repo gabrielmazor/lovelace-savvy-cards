@@ -10,6 +10,8 @@
 - **Media: switching between sounds no longer jumps.** The row that leaves goes at once instead of fading while
   the next one fades in, every sound row is the same height, and the picker's highlight shows as soon as the
   picker appears.
+- **Lights card: scenes, one tap away (optional).** `scenes: auto` adds a small button beside the pill that lists
+  the room's scenes in a menu; a tap runs one. A list picks your own scenes, scripts or buttons, with their names.
 - **Lights card, compact: brightness by a deliberate hold and swipe.** The compact rows have no slider, so a quick drag
   changes nothing. Hold a row until it clicks, then swipe right to brighten or left to dim, one step per swipe
   (`bump_step`, 10% by default), never down to off; held and let go, it opens the light's details.

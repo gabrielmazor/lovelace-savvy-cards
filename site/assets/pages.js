@@ -64,7 +64,8 @@
     office: ["light.office_ceiling", "light.office_shelf_lamps", "light.office_screen_glow", "light.office_desk_strip", "light.office_task_lamp", "light.office_key_light"],
     bedroom: ["light.bedroom_ceiling", "light.bedroom_left_bedside", "light.bedroom_right_bedside"],
   };
-  const lights = (area, extra = {}) => ["savvy-lights-card", { area, columns: 2, ...(ORDER[area] ? { order: ORDER[area] } : {}), ...extra }];
+  // every lights card has the room's scenes beside its pill (rooms with none show no button)
+  const lights = (area, extra = {}) => ["savvy-lights-card", { area, columns: 2, scenes: "auto", ...(ORDER[area] ? { order: ORDER[area] } : {}), ...extra }];
   const climate = (area, extra = {}) => ["savvy-climate-card", { area, hvac_modes: MODES, default_hvac_mode: "cool", name: "Climate", grid_options: { rows: "auto" }, ...extra }];
   const SLEEP_TIMER = { entity: "timer.bedroom_ac_sleep", presets: ["30", "60", "120", "240", "480"] };
 

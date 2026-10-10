@@ -13295,6 +13295,10 @@ header { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 2
   font-size: 13px; line-height: 16px; font-weight: 600; letter-spacing: -0.006em;
 }
 .master ha-icon { --mdc-icon-size: 18px; display: flex; }
+/* the room's scenes, one tap away: a small key beside the pill that lists them */
+.scenes { flex: none; display: grid; place-items: center; width: var(--c-s); height: var(--c-s); border-radius: 11px;
+  background: var(--well); color: var(--secondary-text-color); }
+.scenes ha-icon { --mdc-icon-size: 18px; display: flex; }
 .master[data-on] { background: rgb(var(--amber) / 0.14); color: var(--amber-text); }
 
 /* ---- the lights: one row per lamp, and the row is the control ----
@@ -13513,6 +13517,7 @@ class LightsCard extends HTMLElement {
     clearTimeout(this._wantTimer);
     Clock.remove(this._job);
     this._list?.sheet.close(true);
+    this._scenePicker?.close();
     clearTimeout(this._tapTimer);
     this._io?.disconnect();
     this._watchOutside(false);
@@ -13607,6 +13612,7 @@ class LightsCard extends HTMLElement {
             <span class="name" id="title"></span>
             <span class="count" id="count"></span>
           </div>
+          <button class="scenes" id="scenes" aria-label="Scenes" aria-haspopup="listbox" hidden><ha-icon icon="mdi:palette-outline"></ha-icon></button>
           <button class="master" id="master">
             <ha-icon id="masterIcon" icon="mdi:lightbulb-group"></ha-icon><span id="masterText"></span>
           </button>
@@ -13642,7 +13648,7 @@ class LightsCard extends HTMLElement {
     const $ = (id) => this._root.getElementById(id);
     this._el = {
       card: this._root.querySelector("ha-card"), header: $("header"), title: $("title"),
-      count: $("count"), master: $("master"), masterIcon: $("masterIcon"), masterText: $("masterText"),
+      count: $("count"), master: $("master"), masterIcon: $("masterIcon"), masterText: $("masterText"), scenes: $("scenes"),
       grid: $("grid"), empty: $("empty"), chips: $("chips"),
       scrim: $("scrim"), sheet: $("sheet"), sheetName: $("sheetName"), sheetMode: $("sheetMode"),
       tempRow: $("tempRow"), tempSlider: $("tempSlider"), tempTrack: $("tempTrack"), tempKnob: $("tempKnob"), tempPct: $("tempPct"),
@@ -13655,6 +13661,7 @@ class LightsCard extends HTMLElement {
 
     linkTitle(this._root, this._el.title, titlePathOf(this._config), (el, onTap) => this._press(el, onTap));
     this._press(this._el.master, () => this._masterTap(), () => this._masterHold());
+    this._press(this._el.scenes, () => this._sceneMenu(), () => this._sceneMenu());
     this._el.scrim.addEventListener("pointerdown", (e) => { e.stopPropagation(); this._closeSheet(); });
     this._root.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && this._open) { e.stopPropagation(); this._closeSheet(); }
@@ -14035,6 +14042,31 @@ class LightsCard extends HTMLElement {
   }
 
   // hold: toggle.hold_action, else more-info on the pill's entity, else the list of lights
+  // `scenes`: auto (the room's scenes) or a list ({ entity, name, icon }, or just the id); scripts and buttons too
+  _sceneList() {
+    const h = this._hass, c = this._config;
+    if (!c.scenes || !h) return [];
+    if (c.scenes === true || c.scenes === "auto") {
+      return (c.areas || []).flatMap((a) => pick(h, areaEntities(h, a), { domains: "scene" })).map((entity) => ({ entity }));
+    }
+    return [].concat(c.scenes).map((x) => (typeof x === "string" ? { entity: x } : x)).filter((x) => x?.entity && h.states[x.entity]);
+  }
+
+  _sceneMenu() {
+    const list = this._sceneList();
+    if (!list.length) return;
+    const h = this._hass, area = this._config.areas?.[0];
+    this._scenePicker = this._scenePicker || new ModePicker(this, { onPick: (id, v) => {
+      const d = domainOf(v);
+      haptic("light");
+      h.callService(d, d === "button" || d === "input_button" ? "press" : "turn_on", {}, { entity_id: v });
+    } });
+    const options = list.map((x) => ({ value: x.entity, label: x.name || shortName(h, x.entity, area),
+      icon: x.icon || h.states[x.entity]?.attributes.icon || "mdi:palette", color: "rgb(245 184 61)" }));
+    haptic("light");
+    this._scenePicker.open(this._el.scenes, this._el.card, { entity: list[0].entity, value: null, options, columns: options.length > 4 ? 3 : 2 }, "Scenes");
+  }
+
   _masterHold() {
     const t = this._config.toggle;
     if (t.hold_action) return runAction(this, this._hass, t.hold_action, { entity: t.entity, list: () => this._listLights() });
@@ -14224,6 +14256,7 @@ class LightsCard extends HTMLElement {
     stateGlow(c, el.card, glowRgb, ids.length ? 0.55 + 0.45 * (litIds.length / ids.length) : 0.55);
     // the pill says what the room's lights ARE doing, not what tapping it would do
     text(el.masterText, c.toggle.name || (lit ? "Lights on" : "Lights off"));
+    el.scenes.hidden = !this._sceneList().length;
     attr(el.masterIcon, "icon", c.toggle.icon || (lit ? "mdi:toggle-switch" : "mdi:toggle-switch-off"));
     attr(el.master, "aria-label", master
       ? `Room lights ${master.state}. Double tap to turn every light off.`
@@ -14538,6 +14571,8 @@ const EDITOR = defineEditor("savvy-lights-card", (hass, c) => [
   { name: "lights", label: "Lights", type: "list", helper: "Only these lights, in this order. `power`: a smart plug a light sits behind.",
     item: [{ name: "entity", label: "Light", selector: { entity: { domain: "light" } } }, { name: "power", label: "Behind this plug", selector: { entity: { domain: "switch" } } }],
     add: { selector: { entity: { domain: "light" } }, label: "Add a light" } },
+  { ...S.select("scenes", "Scenes", [{ value: "", label: "Off" }, { value: "auto", label: "The room's scenes" }]),
+    helper: "A small button beside the pill that lists the room's scenes; one tap runs one. In YAML it can also be a list of scenes, scripts or buttons." },
   S.chips(),
 ]);
 
