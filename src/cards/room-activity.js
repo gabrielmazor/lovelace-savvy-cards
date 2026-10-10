@@ -1423,6 +1423,11 @@ const EDITOR = defineEditor("savvy-room-activity-card", (hass, c) => [
     { name: "history", label: "", selector: { object: {} }, helper: "false turns it off; { hours: 24, ranges: [6, 24, 72] }" },
   ]),
   S.chips("chips", "Custom chips", "Toggles become chips; a door or a number takes its place with the rest."),
+  { name: "include", label: "Include", helper: "Entities with no area, shown with this room (a lock, a door contact).", selector: { entity: { multiple: true } } },
+  S.aggregate(),
+  { type: "expandable", name: "lux_labels", title: "Light level words", schema: [
+    S.grid({ ...S.number("dark", "Dark below", 0, 10000, 1, "lx"), helper: "Default 10" }, { ...S.number("dim", "Dim below", 0, 10000, 1, "lx"), helper: "Default 150" }),
+  ] },
 ]);
 
 registerCard("savvy-room-activity-card", SavvyRoomActivityCard, "Room activity",

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.20.6
+
+- **Every option is in the visual editor.** Options that were YAML-only now have fields:
+  - Lights: Scenes (Off, The room's scenes, or Pick them: a list of scenes, scripts or buttons with their own
+    names and icons) and the compact swipe step.
+  - Vacuum: Rooms and Routines (Automatic, Hidden, or Pick them, as a list) and its own Room order.
+  - Climate: the temperature colour stops.
+  - Room header: its row of rooms (each with a name, icon and page) and Aggregate sensors.
+  - Room tile, section title and home header: Aggregate sensors.
+  - Room activity: Include, Aggregate sensors and the light level words.
+  - Every card (but the headers and titles): Round to grid rows (`grid_snap`).
+- **Lights card: the scenes menu has two columns,** so long scene names fit.
+
 ## 0.20.5
 
 - **Presence shows a person, not a house,** everywhere: badges, chips and rows for occupancy and presence sensors

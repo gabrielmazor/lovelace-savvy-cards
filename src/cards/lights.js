@@ -927,7 +927,8 @@ class LightsCard extends HTMLElement {
     const options = list.map((x) => ({ value: x.entity, label: x.name || shortName(h, x.entity, area),
       icon: x.icon || h.states[x.entity]?.attributes.icon || "mdi:palette", color: "rgb(245 184 61)" }));
     haptic("light");
-    this._scenePicker.open(this._el.scenes, this._el.card, { entity: list[0].entity, value: null, options, columns: options.length > 4 ? 3 : 2 }, "Scenes");
+    // two columns: scene names are often long
+    this._scenePicker.open(this._el.scenes, this._el.card, { entity: list[0].entity, value: null, options, columns: 2 }, "Scenes");
   }
 
   _masterHold() {
@@ -1434,8 +1435,16 @@ const EDITOR = defineEditor("savvy-lights-card", (hass, c) => [
   { name: "lights", label: "Lights", type: "list", helper: "Only these lights, in this order. `power`: a smart plug a light sits behind.",
     item: [{ name: "entity", label: "Light", selector: { entity: { domain: "light" } } }, { name: "power", label: "Behind this plug", selector: { entity: { domain: "switch" } } }],
     add: { selector: { entity: { domain: "light" } }, label: "Add a light" } },
-  { ...S.select("scenes", "Scenes", [{ value: "", label: "Off" }, { value: "auto", label: "The room's scenes" }]),
-    helper: "A small button beside the pill that lists the room's scenes; one tap runs one. In YAML it can also be a list of scenes, scripts or buttons." },
+  ...S.pickable(c, "scenes", "Scenes", "A small button beside the pill that lists scenes; one tap runs one.", {
+    options: [{ value: "", label: "Off" }, { value: "auto", label: "The room's scenes" }],
+    list: {
+      helper: "Scenes, scripts or buttons, in this order. Name and icon are optional.",
+      item: [{ name: "entity", label: "Scene", selector: { entity: { domain: ["scene", "script", "button", "input_button"] } } },
+        S.grid(S.text("name", "Name"), S.icon("icon", "Icon"))],
+      add: { selector: { entity: { domain: ["scene", "script", "button", "input_button"] } }, label: "Add a scene" },
+    },
+  }),
+  { ...S.number("bump_step", "Swipe step", 1, 50, 1, "%"), helper: "Compact layout: hold a light, then swipe right or left to change its brightness by this much." },
   S.chips(),
 ]);
 

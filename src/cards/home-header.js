@@ -365,6 +365,7 @@ const EDITOR = defineEditor("savvy-home-header-card", (hass, c) => [
   { name: "room_order", label: "Room order", type: "list", helper: "The order of the rooms in the popups: listed first, in this order; the rest follow by name. A chip can have its own.",
     initial: (h) => (h ? allAreas(h).map((a) => a.id) : []), add: { selector: { area: {} }, label: "Add a room" },
     summary: (a, h) => ({ title: areaInfo(h, a).name, sub: a }) },
+  S.aggregate(),
   autoSection("lights", "counts the lights that are on."),
   autoSection("climate", "the average indoor temperature."),
   autoSection("media", "counts what's playing."),

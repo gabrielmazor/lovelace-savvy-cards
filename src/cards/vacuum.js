@@ -555,7 +555,9 @@ class VacuumCard extends HTMLElement {
     if (list && Array.isArray(c.rooms)) {
       const want = c.rooms.map((r) => (typeof r === "object" ? r : { id: r }));
       list = want.map((w) => {
-        const found = list.find((r) => r.id === w.id || r.id === w.area || r.name.toLowerCase() === String(w.id).toLowerCase());
+        // an area picked in the editor also finds the robot's own room of the same name
+        const areaName = w.area ? (h.areas?.[w.area]?.name || "").toLowerCase() : "";
+        const found = list.find((r) => r.id === w.id || r.id === w.area || r.name.toLowerCase() === String(w.id).toLowerCase() || (areaName && r.name.toLowerCase() === areaName));
         return found ? { ...found, ...(w.name ? { name: w.name } : {}), ...(w.icon ? { icon: w.icon } : {}) } : null;
       }).filter(Boolean);
     } else if (list) {
@@ -1673,7 +1675,7 @@ class VacuumCard extends HTMLElement {
   }
 }
 
-const EDITOR = defineEditor("savvy-vacuum-card", () => {
+const EDITOR = defineEditor("savvy-vacuum-card", (hass, c) => {
   const part = (name, label, helper) => ({ name, label, helper, selector: { select: { mode: "dropdown", options: [
     { value: "auto", label: "Automatic" }, { value: "off", label: "Hidden" }] } } });
   return [
@@ -1688,8 +1690,26 @@ const EDITOR = defineEditor("savvy-vacuum-card", () => {
         selector: { select: { mode: "dropdown", custom_value: true, options: [
           { value: "popup", label: "Popup (a Map button)" }, { value: "inline", label: "In the card" }, { value: "off", label: "Hidden" }] } } },
       S.number("map_max_height", "Map height", 120, 1200, 10, "px"),
-      part("rooms", "Rooms", "Your areas when mapped, else the robot's own rooms. A custom list is YAML: rooms: [kitchen, …]"),
-      part("routines", "Routines", "Your app routines. A custom list is YAML: routines: [{entity, name, icon}]"),
+      ...S.pickable(c, "rooms", "Rooms", "Your areas when mapped, else the robot's own rooms.", {
+        options: [{ value: "", label: "Automatic" }, { value: "off", label: "Hidden" }],
+        list: {
+          helper: "Only these rooms, in this order: one of your areas, or the robot's own room by its name. Name and icon are optional.",
+          item: [S.area("area", "Area"), S.text("id", "Or the robot's room", "Its name or number in the robot's app."), S.grid(S.text("name", "Name"), S.icon("icon", "Icon"))],
+          add: { selector: { area: {} }, label: "Add a room", make: (a) => ({ area: a }) },
+          summary: (o, h) => (typeof o === "string" ? { title: h?.areas?.[o]?.name || o, sub: o } : { title: o.name || (o.area && h?.areas?.[o.area]?.name) || o.id || o.area || "Room", sub: o.area || o.id || "" }),
+        },
+      }),
+      ...S.pickable(c, "routines", "Routines", "Your app routines.", {
+        options: [{ value: "", label: "Automatic" }, { value: "off", label: "Hidden" }],
+        list: {
+          helper: "Only these, in this order: a button, script or scene each. Name and icon are optional.",
+          item: [{ name: "entity", label: "Routine", selector: { entity: { domain: ["button", "script", "scene", "input_button"] } } }, S.grid(S.text("name", "Name"), S.icon("icon", "Icon"))],
+          add: { selector: { entity: { domain: ["button", "script", "scene", "input_button"] } }, label: "Add a routine" },
+        },
+      }),
+      { name: "room_order", label: "Room order", type: "list", helper: "The rooms in this order; the rest follow by name. Empty: the Savvy settings' order. A list of rooms above keeps its own order.",
+        empty: "No order of its own: the Savvy settings', then by name.", add: { selector: { area: {} }, label: "Add a room" },
+        summary: (a, h) => ({ title: h?.areas?.[a]?.name || a, sub: a }) },
       part("modes", "Modes"), part("dock", "Dock"), part("maintenance", "Maintenance"), part("stats", "Statistics"),
       { name: "hide_modes", label: "Hidden modes", selector: { select: { multiple: true, custom_value: true, options: [] } } },
       { name: "exclude", label: "Exclude", selector: { entity: { multiple: true } } },

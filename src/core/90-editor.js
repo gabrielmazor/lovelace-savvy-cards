@@ -57,11 +57,12 @@ const EDITOR_CSS = `
 `;
 
 // Drop keys the user cleared, so the YAML stays as short as the choices made.
-const cleanConfig = (obj) => {
+// keep: options whose empty list means something (a "Pick them" list you are about to fill)
+const cleanConfig = (obj, keep) => {
   const out = {};
   for (const [k, v] of Object.entries(obj)) {
     if (v === undefined || v === "" || v === null) continue;
-    if (Array.isArray(v) && !v.length) continue;
+    if (Array.isArray(v) && !v.length && !keep?.has(k)) continue;
     out[k] = v;
   }
   return out;
@@ -149,7 +150,7 @@ class SavvyEditor extends HTMLElement {
     // an option equal to its default is left out, so the YAML stays as short as the choices
     const out = this.tidy({ ...config });
     for (const [k, v] of this._defaults || []) if (out[k] === v) delete out[k];
-    this._config = cleanConfig(out);
+    this._config = cleanConfig(out, this._keepEmpty);
     // HA answers config-changed with setConfig, but the forms mustn't show stale values
     // meanwhile (or where nothing answers)
     const shown = this._shown(), shownKey = JSON.stringify(shown);
@@ -170,6 +171,10 @@ class SavvyEditor extends HTMLElement {
     this._defaults = new Map();
     const collect = (list) => list.forEach((e) => { if (e.name && e.default !== undefined) this._defaults.set(e.name, e.default); if (e.schema && !e.name) collect(e.schema); });
     collect(schema.filter((e) => e.type !== "list"));
+    // a pickable option's list stays even while empty (S.pickable)
+    this._keepEmpty = new Set();
+    const keeps = (list) => list.forEach((e) => { if (e.name?.endsWith("__from")) this._keepEmpty.add(e.name.slice(0, -6)); if (e.schema && !e.name) keeps(e.schema); });
+    keeps(schema);
     // consecutive scalar entries share one ha-form; each list gets its own editor
     const groups = [];
     for (const entry of schema) {
@@ -401,13 +406,37 @@ const GLOW_FIELD = { name: "state_glow", label: "State glow", helper: "A soft gl
 const DESIGN_FIELD = { name: "design", label: "Design", helper: "Empty: the dashboard's setting (Savvy settings, Design). Glass is frosted; matte is solid and tactile; both light a tile from its icon.",
   selector: { select: { mode: "dropdown", options: [{ value: "glass", label: "Glass" }, { value: "matte", label: "Matte" }, { value: "plain", label: "Plain" }] } } };
 
+// Rounding a card up to whole grid rows (grid_snap): every card but the settings card, the headers and the titles,
+// which always take the height they need.
+const SNAP_FIELD = { name: "grid_snap", label: "Round to grid rows", helper: "Off: the card is as tall as it needs and ends with the card beside it. On: its height rounds up to whole rows of the sections grid.",
+  selector: { boolean: {} }, default: false };
+const NO_SNAP = new Set(["savvy-settings-card", "savvy-home-header-card", "savvy-room-header-card", "savvy-section-title-card"]);
+
+// The "<option>__from" dropdowns of S.pickable write their option here, then leave: Automatic and Off are
+// the option's own words, Pick them turns it into a list (kept when it is one already).
+const pickTidy = (config) => {
+  for (const k of Object.keys(config)) {
+    if (!k.endsWith("__from")) continue;
+    const name = k.slice(0, -6), v = config[k];
+    delete config[k];
+    if (v === "pick") config[name] = Array.isArray(config[name]) ? config[name] : [];
+    else if (v === "" || v == null) delete config[name];
+    else config[name] = v;
+  }
+  return config;
+};
+
 const defineEditor = (type, schemaFn, tidy) => {
   const name = `${type}-editor`;
   if (!customElements.get(name)) {
     customElements.define(name, class extends SavvyEditor {
       get cardType() { return type; }
-      schema(hass, config) { const s = schemaFn(hass, config); const t = GLOW_CARDS.has(type) ? [...s, GLOW_FIELD] : s; return type === "savvy-settings-card" ? t : [...t, DESIGN_FIELD]; }
-      tidy(config) { return tidy ? tidy(config) : config; }
+      schema(hass, config) {
+        const s = schemaFn(hass, config);
+        const t = GLOW_CARDS.has(type) ? [...s, GLOW_FIELD] : s;
+        return type === "savvy-settings-card" ? t : [...t, ...(NO_SNAP.has(type) ? [] : [SNAP_FIELD]), DESIGN_FIELD];
+      }
+      tidy(config) { const c = pickTidy(config); return tidy ? tidy(c) : c; }
     });
   }
   return name;
@@ -430,6 +459,22 @@ const S = {
   titleLine: () => ({ name: "title", label: "Title", helper: "A line at the top of the card. Empty: none.", selector: { text: {} } }),
   color: (name = "color", label = "Colour") => ({ name, label, selector: { text: {} }, helper: "An HA colour name (blue, amber…) or a hex like #F5B83D" }),
   grid: (...schema) => ({ type: "grid", name: "", schema }),
+  // An option that is automatic, off, or a list you pick: a dropdown (its value read from the config, never
+  // written as its own key), and while it is a list, the list's editor under it.
+  //   options: the dropdown's other choices ({ value, label }; "" is unset); list: the list editor's spec
+  pickable: (c, name, label, helper, { options, list }) => {
+    const v = c?.[name];
+    const cur = Array.isArray(v) ? "pick" : v === true ? "auto" : v === false ? "off" : (v ?? "");
+    return [
+      { name: `${name}__from`, label, helper, default: cur,
+        selector: { select: { mode: "dropdown", options: [...options, { value: "pick", label: "Pick them" }] } } },
+      ...(Array.isArray(v) ? [{ name, label: `${label}: your list`, type: "list", empty: "Nothing picked yet: add below.", ...list }] : []),
+    ];
+  },
+  // merging a room's sensors of a kind into one (presence and motion, doors…), as the settings card offers
+  aggregate: () => ({ name: "aggregate", label: "Aggregate sensors", helper: "Show a room's sensors of these kinds once: occupied if any one is. Empty: the Savvy settings'. In YAML, true means presence.",
+    selector: { select: { multiple: true, options: [{ value: "presence", label: "Presence and motion" }, { value: "door", label: "Doors" }, { value: "window", label: "Windows" },
+      { value: "leak", label: "Leaks" }, { value: "smoke", label: "Smoke" }, { value: "gas", label: "Gas" }] } } }),
   section: (label, schema, expanded = false) => ({ type: "expandable", name: "", title: label, expanded, schema }),
   // the one chip spec, as a list editor
   chips: (name = "chips", label = "Custom chips", helper = "Extra entities shown as chips, each with its own actions.") => ({

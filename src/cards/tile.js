@@ -606,6 +606,7 @@ const EDITOR = defineEditor("savvy-room-tile", (hass, c) => [
   ...badgeSchema(),
   S.bool("animations", "Animations", "The drop's movement and glow, badges popping in, text rolling. Off keeps the tile still. The settings card can turn them off for every room tile.", true),
   S.section("Actions", [S.action("tap_action", "Tap action"), S.action("double_tap_action", "Double tap action"), S.action("hold_action", "Hold action")]),
+  S.aggregate(),
 ]);
 
 registerCard("savvy-room-tile", SavvyRoomTile, "Room tile",

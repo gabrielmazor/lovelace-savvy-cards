@@ -1858,6 +1858,11 @@ const EDITOR = defineEditor("savvy-climate-card", (hass, c) => {
       { name: "show_state", label: "Show band", selector: { boolean: {} } },
     ] },
     S.grid(S.text("state_name", "Band label"), S.text("humidity_color", "Humidity colour")),
+    { name: "temperature_scale", label: "Temperature colours", type: "list", helper: "Colour stops for the temperature: from each value up, this colour. Empty: blue to red.",
+      empty: "The default scale: blue to red.",
+      item: [S.grid(S.number("value", "From", -50, 100, 0.5, "°"), S.color("color", "Colour"))],
+      addButton: { label: "Add a colour stop", make: (items) => ({ value: items.length ? Number(items[items.length - 1].value || 0) + 4 : 18, color: "#57B8FF" }) },
+      summary: (o) => ({ title: `From ${o.value ?? "?"}°`, sub: o.color || "" }) },
     S.chips(),
   ];
 });

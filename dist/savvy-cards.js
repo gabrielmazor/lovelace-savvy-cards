@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.20.5 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.20.6 | MIT License | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.20.5";
+const SAVVY_VERSION = "0.20.6";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -5291,11 +5291,12 @@ const EDITOR_CSS = `
 `;
 
 // Drop keys the user cleared, so the YAML stays as short as the choices made.
-const cleanConfig = (obj) => {
+// keep: options whose empty list means something (a "Pick them" list you are about to fill)
+const cleanConfig = (obj, keep) => {
   const out = {};
   for (const [k, v] of Object.entries(obj)) {
     if (v === undefined || v === "" || v === null) continue;
-    if (Array.isArray(v) && !v.length) continue;
+    if (Array.isArray(v) && !v.length && !keep?.has(k)) continue;
     out[k] = v;
   }
   return out;
@@ -5383,7 +5384,7 @@ class SavvyEditor extends HTMLElement {
     // an option equal to its default is left out, so the YAML stays as short as the choices
     const out = this.tidy({ ...config });
     for (const [k, v] of this._defaults || []) if (out[k] === v) delete out[k];
-    this._config = cleanConfig(out);
+    this._config = cleanConfig(out, this._keepEmpty);
     // HA answers config-changed with setConfig, but the forms mustn't show stale values
     // meanwhile (or where nothing answers)
     const shown = this._shown(), shownKey = JSON.stringify(shown);
@@ -5404,6 +5405,10 @@ class SavvyEditor extends HTMLElement {
     this._defaults = new Map();
     const collect = (list) => list.forEach((e) => { if (e.name && e.default !== undefined) this._defaults.set(e.name, e.default); if (e.schema && !e.name) collect(e.schema); });
     collect(schema.filter((e) => e.type !== "list"));
+    // a pickable option's list stays even while empty (S.pickable)
+    this._keepEmpty = new Set();
+    const keeps = (list) => list.forEach((e) => { if (e.name?.endsWith("__from")) this._keepEmpty.add(e.name.slice(0, -6)); if (e.schema && !e.name) keeps(e.schema); });
+    keeps(schema);
     // consecutive scalar entries share one ha-form; each list gets its own editor
     const groups = [];
     for (const entry of schema) {
@@ -5635,13 +5640,37 @@ const GLOW_FIELD = { name: "state_glow", label: "State glow", helper: "A soft gl
 const DESIGN_FIELD = { name: "design", label: "Design", helper: "Empty: the dashboard's setting (Savvy settings, Design). Glass is frosted; matte is solid and tactile; both light a tile from its icon.",
   selector: { select: { mode: "dropdown", options: [{ value: "glass", label: "Glass" }, { value: "matte", label: "Matte" }, { value: "plain", label: "Plain" }] } } };
 
+// Rounding a card up to whole grid rows (grid_snap): every card but the settings card, the headers and the titles,
+// which always take the height they need.
+const SNAP_FIELD = { name: "grid_snap", label: "Round to grid rows", helper: "Off: the card is as tall as it needs and ends with the card beside it. On: its height rounds up to whole rows of the sections grid.",
+  selector: { boolean: {} }, default: false };
+const NO_SNAP = new Set(["savvy-settings-card", "savvy-home-header-card", "savvy-room-header-card", "savvy-section-title-card"]);
+
+// The "<option>__from" dropdowns of S.pickable write their option here, then leave: Automatic and Off are
+// the option's own words, Pick them turns it into a list (kept when it is one already).
+const pickTidy = (config) => {
+  for (const k of Object.keys(config)) {
+    if (!k.endsWith("__from")) continue;
+    const name = k.slice(0, -6), v = config[k];
+    delete config[k];
+    if (v === "pick") config[name] = Array.isArray(config[name]) ? config[name] : [];
+    else if (v === "" || v == null) delete config[name];
+    else config[name] = v;
+  }
+  return config;
+};
+
 const defineEditor = (type, schemaFn, tidy) => {
   const name = `${type}-editor`;
   if (!customElements.get(name)) {
     customElements.define(name, class extends SavvyEditor {
       get cardType() { return type; }
-      schema(hass, config) { const s = schemaFn(hass, config); const t = GLOW_CARDS.has(type) ? [...s, GLOW_FIELD] : s; return type === "savvy-settings-card" ? t : [...t, DESIGN_FIELD]; }
-      tidy(config) { return tidy ? tidy(config) : config; }
+      schema(hass, config) {
+        const s = schemaFn(hass, config);
+        const t = GLOW_CARDS.has(type) ? [...s, GLOW_FIELD] : s;
+        return type === "savvy-settings-card" ? t : [...t, ...(NO_SNAP.has(type) ? [] : [SNAP_FIELD]), DESIGN_FIELD];
+      }
+      tidy(config) { const c = pickTidy(config); return tidy ? tidy(c) : c; }
     });
   }
   return name;
@@ -5664,6 +5693,22 @@ const S = {
   titleLine: () => ({ name: "title", label: "Title", helper: "A line at the top of the card. Empty: none.", selector: { text: {} } }),
   color: (name = "color", label = "Colour") => ({ name, label, selector: { text: {} }, helper: "An HA colour name (blue, amber…) or a hex like #F5B83D" }),
   grid: (...schema) => ({ type: "grid", name: "", schema }),
+  // An option that is automatic, off, or a list you pick: a dropdown (its value read from the config, never
+  // written as its own key), and while it is a list, the list's editor under it.
+  //   options: the dropdown's other choices ({ value, label }; "" is unset); list: the list editor's spec
+  pickable: (c, name, label, helper, { options, list }) => {
+    const v = c?.[name];
+    const cur = Array.isArray(v) ? "pick" : v === true ? "auto" : v === false ? "off" : (v ?? "");
+    return [
+      { name: `${name}__from`, label, helper, default: cur,
+        selector: { select: { mode: "dropdown", options: [...options, { value: "pick", label: "Pick them" }] } } },
+      ...(Array.isArray(v) ? [{ name, label: `${label}: your list`, type: "list", empty: "Nothing picked yet: add below.", ...list }] : []),
+    ];
+  },
+  // merging a room's sensors of a kind into one (presence and motion, doors…), as the settings card offers
+  aggregate: () => ({ name: "aggregate", label: "Aggregate sensors", helper: "Show a room's sensors of these kinds once: occupied if any one is. Empty: the Savvy settings'. In YAML, true means presence.",
+    selector: { select: { multiple: true, options: [{ value: "presence", label: "Presence and motion" }, { value: "door", label: "Doors" }, { value: "window", label: "Windows" },
+      { value: "leak", label: "Leaks" }, { value: "smoke", label: "Smoke" }, { value: "gas", label: "Gas" }] } } }),
   section: (label, schema, expanded = false) => ({ type: "expandable", name: "", title: label, expanded, schema }),
   // the one chip spec, as a list editor
   chips: (name = "chips", label = "Custom chips", helper = "Extra entities shown as chips, each with its own actions.") => ({
@@ -10259,6 +10304,11 @@ const EDITOR = defineEditor("savvy-climate-card", (hass, c) => {
       { name: "show_state", label: "Show band", selector: { boolean: {} } },
     ] },
     S.grid(S.text("state_name", "Band label"), S.text("humidity_color", "Humidity colour")),
+    { name: "temperature_scale", label: "Temperature colours", type: "list", helper: "Colour stops for the temperature: from each value up, this colour. Empty: blue to red.",
+      empty: "The default scale: blue to red.",
+      item: [S.grid(S.number("value", "From", -50, 100, 0.5, "°"), S.color("color", "Colour"))],
+      addButton: { label: "Add a colour stop", make: (items) => ({ value: items.length ? Number(items[items.length - 1].value || 0) + 4 : 18, color: "#57B8FF" }) },
+      summary: (o) => ({ title: `From ${o.value ?? "?"}°`, sub: o.color || "" }) },
     S.chips(),
   ];
 });
@@ -12592,6 +12642,7 @@ const EDITOR = defineEditor("savvy-home-header-card", (hass, c) => [
   { name: "room_order", label: "Room order", type: "list", helper: "The order of the rooms in the popups: listed first, in this order; the rest follow by name. A chip can have its own.",
     initial: (h) => (h ? allAreas(h).map((a) => a.id) : []), add: { selector: { area: {} }, label: "Add a room" },
     summary: (a, h) => ({ title: areaInfo(h, a).name, sub: a }) },
+  S.aggregate(),
   autoSection("lights", "counts the lights that are on."),
   autoSection("climate", "the average indoor temperature."),
   autoSection("media", "counts what's playing."),
@@ -14064,7 +14115,8 @@ class LightsCard extends HTMLElement {
     const options = list.map((x) => ({ value: x.entity, label: x.name || shortName(h, x.entity, area),
       icon: x.icon || h.states[x.entity]?.attributes.icon || "mdi:palette", color: "rgb(245 184 61)" }));
     haptic("light");
-    this._scenePicker.open(this._el.scenes, this._el.card, { entity: list[0].entity, value: null, options, columns: options.length > 4 ? 3 : 2 }, "Scenes");
+    // two columns: scene names are often long
+    this._scenePicker.open(this._el.scenes, this._el.card, { entity: list[0].entity, value: null, options, columns: 2 }, "Scenes");
   }
 
   _masterHold() {
@@ -14571,8 +14623,16 @@ const EDITOR = defineEditor("savvy-lights-card", (hass, c) => [
   { name: "lights", label: "Lights", type: "list", helper: "Only these lights, in this order. `power`: a smart plug a light sits behind.",
     item: [{ name: "entity", label: "Light", selector: { entity: { domain: "light" } } }, { name: "power", label: "Behind this plug", selector: { entity: { domain: "switch" } } }],
     add: { selector: { entity: { domain: "light" } }, label: "Add a light" } },
-  { ...S.select("scenes", "Scenes", [{ value: "", label: "Off" }, { value: "auto", label: "The room's scenes" }]),
-    helper: "A small button beside the pill that lists the room's scenes; one tap runs one. In YAML it can also be a list of scenes, scripts or buttons." },
+  ...S.pickable(c, "scenes", "Scenes", "A small button beside the pill that lists scenes; one tap runs one.", {
+    options: [{ value: "", label: "Off" }, { value: "auto", label: "The room's scenes" }],
+    list: {
+      helper: "Scenes, scripts or buttons, in this order. Name and icon are optional.",
+      item: [{ name: "entity", label: "Scene", selector: { entity: { domain: ["scene", "script", "button", "input_button"] } } },
+        S.grid(S.text("name", "Name"), S.icon("icon", "Icon"))],
+      add: { selector: { entity: { domain: ["scene", "script", "button", "input_button"] } }, label: "Add a scene" },
+    },
+  }),
+  { ...S.number("bump_step", "Swipe step", 1, 50, 1, "%"), helper: "Compact layout: hold a light, then swipe right or left to change its brightness by this much." },
   S.chips(),
 ]);
 
@@ -18373,6 +18433,11 @@ const EDITOR = defineEditor("savvy-room-activity-card", (hass, c) => [
     { name: "history", label: "", selector: { object: {} }, helper: "false turns it off; { hours: 24, ranges: [6, 24, 72] }" },
   ]),
   S.chips("chips", "Custom chips", "Toggles become chips; a door or a number takes its place with the rest."),
+  { name: "include", label: "Include", helper: "Entities with no area, shown with this room (a lock, a door contact).", selector: { entity: { multiple: true } } },
+  S.aggregate(),
+  { type: "expandable", name: "lux_labels", title: "Light level words", schema: [
+    S.grid({ ...S.number("dark", "Dark below", 0, 10000, 1, "lx"), helper: "Default 10" }, { ...S.number("dim", "Dim below", 0, 10000, 1, "lx"), helper: "Default 150" }),
+  ] },
 ]);
 
 registerCard("savvy-room-activity-card", SavvyRoomActivityCard, "Room activity",
@@ -18585,6 +18650,12 @@ const EDITOR = defineEditor("savvy-room-header-card", (hass, c) => [
     initial: (h, cfg) => (h ? areasOf(h, cfg) : []), add: { selector: { area: {} }, label: "Add a room" },
     summary: (a, h) => ({ title: areaInfo(h, a).name, sub: a }) },
   { name: "exclude_rooms", label: "Exclude rooms", selector: { area: { multiple: true } } },
+  S.aggregate(),
+  { name: "rooms", label: "Rooms row", type: "list", helper: "The row of other rooms: these, in this order, each with its own name, icon and page. Empty: every room, by the Savvy settings' order.",
+    empty: "Every room, found for you.",
+    item: [S.area("area", "Area"), S.grid(S.text("name", "Name"), S.icon("icon", "Icon")), S.nav("navigation_path", "Page", "Empty: the room pages pattern from the Savvy settings.")],
+    add: { selector: { area: {} }, label: "Add a room", make: (a) => ({ area: a }) },
+    summary: (o, h) => ({ title: o.name || h?.areas?.[o.area]?.name || o.area || "Room", sub: o.navigation_path || o.area || "" }) },
 ]);
 
 registerCard("savvy-room-header-card", SavvyRoomHeaderCard, "Room header",
@@ -19241,6 +19312,7 @@ const EDITOR = defineEditor("savvy-section-title-card", (hass, c) => [
     selector: { entity: { domain: ["sensor", "climate"] } } },
   ...badgeSchema(),
   S.section("Title actions", [S.action("tap_action", "Tap action"), S.action("hold_action", "Hold action")]),
+  S.aggregate(),
 ]);
 
 registerCard("savvy-section-title-card", SavvySectionTitleCard, "Section title",
@@ -21370,6 +21442,7 @@ const EDITOR = defineEditor("savvy-room-tile", (hass, c) => [
   ...badgeSchema(),
   S.bool("animations", "Animations", "The drop's movement and glow, badges popping in, text rolling. Off keeps the tile still. The settings card can turn them off for every room tile.", true),
   S.section("Actions", [S.action("tap_action", "Tap action"), S.action("double_tap_action", "Double tap action"), S.action("hold_action", "Hold action")]),
+  S.aggregate(),
 ]);
 
 registerCard("savvy-room-tile", SavvyRoomTile, "Room tile",
@@ -21935,7 +22008,9 @@ class VacuumCard extends HTMLElement {
     if (list && Array.isArray(c.rooms)) {
       const want = c.rooms.map((r) => (typeof r === "object" ? r : { id: r }));
       list = want.map((w) => {
-        const found = list.find((r) => r.id === w.id || r.id === w.area || r.name.toLowerCase() === String(w.id).toLowerCase());
+        // an area picked in the editor also finds the robot's own room of the same name
+        const areaName = w.area ? (h.areas?.[w.area]?.name || "").toLowerCase() : "";
+        const found = list.find((r) => r.id === w.id || r.id === w.area || r.name.toLowerCase() === String(w.id).toLowerCase() || (areaName && r.name.toLowerCase() === areaName));
         return found ? { ...found, ...(w.name ? { name: w.name } : {}), ...(w.icon ? { icon: w.icon } : {}) } : null;
       }).filter(Boolean);
     } else if (list) {
@@ -23053,7 +23128,7 @@ class VacuumCard extends HTMLElement {
   }
 }
 
-const EDITOR = defineEditor("savvy-vacuum-card", () => {
+const EDITOR = defineEditor("savvy-vacuum-card", (hass, c) => {
   const part = (name, label, helper) => ({ name, label, helper, selector: { select: { mode: "dropdown", options: [
     { value: "auto", label: "Automatic" }, { value: "off", label: "Hidden" }] } } });
   return [
@@ -23068,8 +23143,26 @@ const EDITOR = defineEditor("savvy-vacuum-card", () => {
         selector: { select: { mode: "dropdown", custom_value: true, options: [
           { value: "popup", label: "Popup (a Map button)" }, { value: "inline", label: "In the card" }, { value: "off", label: "Hidden" }] } } },
       S.number("map_max_height", "Map height", 120, 1200, 10, "px"),
-      part("rooms", "Rooms", "Your areas when mapped, else the robot's own rooms. A custom list is YAML: rooms: [kitchen, …]"),
-      part("routines", "Routines", "Your app routines. A custom list is YAML: routines: [{entity, name, icon}]"),
+      ...S.pickable(c, "rooms", "Rooms", "Your areas when mapped, else the robot's own rooms.", {
+        options: [{ value: "", label: "Automatic" }, { value: "off", label: "Hidden" }],
+        list: {
+          helper: "Only these rooms, in this order: one of your areas, or the robot's own room by its name. Name and icon are optional.",
+          item: [S.area("area", "Area"), S.text("id", "Or the robot's room", "Its name or number in the robot's app."), S.grid(S.text("name", "Name"), S.icon("icon", "Icon"))],
+          add: { selector: { area: {} }, label: "Add a room", make: (a) => ({ area: a }) },
+          summary: (o, h) => (typeof o === "string" ? { title: h?.areas?.[o]?.name || o, sub: o } : { title: o.name || (o.area && h?.areas?.[o.area]?.name) || o.id || o.area || "Room", sub: o.area || o.id || "" }),
+        },
+      }),
+      ...S.pickable(c, "routines", "Routines", "Your app routines.", {
+        options: [{ value: "", label: "Automatic" }, { value: "off", label: "Hidden" }],
+        list: {
+          helper: "Only these, in this order: a button, script or scene each. Name and icon are optional.",
+          item: [{ name: "entity", label: "Routine", selector: { entity: { domain: ["button", "script", "scene", "input_button"] } } }, S.grid(S.text("name", "Name"), S.icon("icon", "Icon"))],
+          add: { selector: { entity: { domain: ["button", "script", "scene", "input_button"] } }, label: "Add a routine" },
+        },
+      }),
+      { name: "room_order", label: "Room order", type: "list", helper: "The rooms in this order; the rest follow by name. Empty: the Savvy settings' order. A list of rooms above keeps its own order.",
+        empty: "No order of its own: the Savvy settings', then by name.", add: { selector: { area: {} }, label: "Add a room" },
+        summary: (a, h) => ({ title: h?.areas?.[a]?.name || a, sub: a }) },
       part("modes", "Modes"), part("dock", "Dock"), part("maintenance", "Maintenance"), part("stats", "Statistics"),
       { name: "hide_modes", label: "Hidden modes", selector: { select: { multiple: true, custom_value: true, options: [] } } },
       { name: "exclude", label: "Exclude", selector: { entity: { multiple: true } } },

@@ -320,6 +320,7 @@ const EDITOR = defineEditor("savvy-section-title-card", (hass, c) => [
     selector: { entity: { domain: ["sensor", "climate"] } } },
   ...badgeSchema(),
   S.section("Title actions", [S.action("tap_action", "Tap action"), S.action("hold_action", "Hold action")]),
+  S.aggregate(),
 ]);
 
 registerCard("savvy-section-title-card", SavvySectionTitleCard, "Section title",

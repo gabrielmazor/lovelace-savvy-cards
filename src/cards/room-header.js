@@ -202,6 +202,12 @@ const EDITOR = defineEditor("savvy-room-header-card", (hass, c) => [
     initial: (h, cfg) => (h ? areasOf(h, cfg) : []), add: { selector: { area: {} }, label: "Add a room" },
     summary: (a, h) => ({ title: areaInfo(h, a).name, sub: a }) },
   { name: "exclude_rooms", label: "Exclude rooms", selector: { area: { multiple: true } } },
+  S.aggregate(),
+  { name: "rooms", label: "Rooms row", type: "list", helper: "The row of other rooms: these, in this order, each with its own name, icon and page. Empty: every room, by the Savvy settings' order.",
+    empty: "Every room, found for you.",
+    item: [S.area("area", "Area"), S.grid(S.text("name", "Name"), S.icon("icon", "Icon")), S.nav("navigation_path", "Page", "Empty: the room pages pattern from the Savvy settings.")],
+    add: { selector: { area: {} }, label: "Add a room", make: (a) => ({ area: a }) },
+    summary: (o, h) => ({ title: o.name || h?.areas?.[o.area]?.name || o.area || "Room", sub: o.navigation_path || o.area || "" }) },
 ]);
 
 registerCard("savvy-room-header-card", SavvyRoomHeaderCard, "Room header",

@@ -64,9 +64,10 @@ export default async function ({ browser, base, check }) {
     ed.setConfig({ type: "custom:savvy-vacuum-card", entity: "vacuum.robot" });
     ed.hass = window.hass;
     await new Promise((r) => setTimeout(r, 50));
-    return [...ed.shadowRoot.querySelectorAll(".stub-field")].map((f) => f.dataset.name);
+    // an option that is automatic, off or a picked list is edited through its "<option>__from" dropdown
+    return [...ed.shadowRoot.querySelectorAll(".stub-field")].map((f) => f.dataset.name.replace(/__from$/, ""));
   });
-  const want = ["entity", "name", "layout", "start", "start_name", "navigation_path", "map", "map_max_height", "rooms", "routines", "modes", "dock", "maintenance", "stats", "hide_modes", "exclude", "battery_warn", "battery_critical"];
+  const want = ["entity", "name", "layout", "start", "start_name", "navigation_path", "map", "map_max_height", "rooms", "routines", "modes", "dock", "maintenance", "stats", "hide_modes", "exclude", "battery_warn", "battery_critical", "room_order"];
   check("editor exposes every option", want.every((w) => fields.includes(w)), JSON.stringify(fields.filter((f) => !want.includes(f))) + " missing: " + JSON.stringify(want.filter((w) => !fields.includes(w))));
   await page.close();
 }
