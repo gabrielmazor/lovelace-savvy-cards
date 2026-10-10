@@ -26,7 +26,9 @@ export default async function ({ browser, base, check }) {
       segs: [...r.querySelectorAll("#sources .seg")].filter(vis).map((x) => x.textContent.trim() + (x.hasAttribute("data-sel") ? "*" : "")),
       sound: [...r.querySelectorAll("#speakers .seg")].filter(vis).map((x) => x.textContent.trim() + (x.hasAttribute("data-sel") ? "*" : "")),
       row: row ? row.querySelector(".n").textContent : "", pct: row?.querySelector(".pct")?.textContent,
-      lines: row ? [...row.querySelectorAll(".via")].filter(vis).map((v) => v.textContent.trim()) : [],
+      // the switches under a sound row: their full meaning is in their labels, the words on them are short
+      lines: row ? [...row.querySelectorAll(".via")].filter(vis).map((v) => v.getAttribute("aria-label")) : [],
+      words: row ? [...row.querySelectorAll(".via")].filter(vis).map((v) => v.textContent.trim()) : [],
       keys: row ? [...row.querySelectorAll(".transport [data-k]")].filter(vis).map((b) => b.dataset.k) : [],
       pill: r.querySelector("#sources .sel").style.transform,
     };
@@ -46,7 +48,7 @@ export default async function ({ browser, base, check }) {
   check("the TV leads the picker, its input after it; the playing input holds the selector", arc.segs.join() === "TV,Streamer*", JSON.stringify(arc));
   check("no volume under what you watch: sound is at the bottom", !arc.watchBar, JSON.stringify(arc));
   check("eARC: the soundbar's row is up, says it carries the TV's sound, one bar (34%)", arc.row === "Soundbar" && arc.pct === "34%" && /Sound output for TV/.test(arc.lines[0] || "") && arc.bars.length === 1, JSON.stringify(arc));
-  check("...with its full transport and power, and its source", arc.keys.join() === "prev,play,next,power" && arc.lines.some((l) => /Source · TV/.test(l)), JSON.stringify(arc));
+  check("...with its full transport and power, and its source", arc.keys.join() === "prev,play,next,power" && arc.lines.some((l) => /^Source: TV/.test(l)) && arc.words.join() === "TV · HDMI ARC,TV", JSON.stringify(arc));
   check("...and the soundbar stays in the picker (no TV speakers entry while the sound is out)", arc.sound.join() === "Soundbar*,Speaker", JSON.stringify(arc));
   check("the streamer's own level (90%) is never shown", !arc.bars.includes("90%"), JSON.stringify(arc.bars));
 
@@ -57,7 +59,7 @@ export default async function ({ browser, base, check }) {
 
   // the soundbar's source: a list to pick from
   await page.evaluate(() => { window.log.length = 0; });
-  const src = await page.evaluate(() => { const b = [...window.cards.at(-1).shadowRoot.querySelectorAll(".via")].find((x) => /Source/.test(x.textContent) && x.getClientRects().length); const q = b.getBoundingClientRect(); return [q.x + q.width / 2, q.y + q.height / 2]; });
+  const src = await page.evaluate(() => { const b = [...window.cards.at(-1).shadowRoot.querySelectorAll('.via[data-line="source"]')].find((x) => x.getClientRects().length); const q = b.getBoundingClientRect(); return [q.x + q.width / 2, q.y + q.height / 2]; });
   await page.mouse.click(...src);
   await page.waitForTimeout(500);
   const opt = await page.evaluate(() => { const all = [...document.querySelectorAll("*")].flatMap((e) => (e.shadowRoot ? [...e.shadowRoot.querySelectorAll("button")] : [])); const o = all.find((x) => x.textContent.trim() === "Bluetooth" && x.getClientRects().length); if (!o) return null; const q = o.getBoundingClientRect(); return [q.x + q.width / 2, q.y + q.height / 2]; });
@@ -91,7 +93,7 @@ export default async function ({ browser, base, check }) {
   await mount({ ...both, video_output: BAR });
   await page.waitForTimeout(800);
   const plain = await read();
-  check("another brand, soundbar configured and on: the soundbar carries it, a plain line", plain.row === "Soundbar" && plain.pct === "34%" && /Sound output for TV$/.test(plain.lines[0] || ""), JSON.stringify(plain));
+  check("another brand, soundbar configured and on: the soundbar carries it, a plain line", plain.row === "Soundbar" && plain.pct === "34%" && /^Sound output for TV: this box$/.test(plain.lines[0] || "") && plain.words[0] === "Plays TV", JSON.stringify(plain));
   await page.evaluate((BAR) => window.setStates({ [BAR]: { state: "off", attributes: window.hass.states[BAR].attributes } }), BAR);
   await page.waitForTimeout(800);
   const barOff = await read();

@@ -116,12 +116,14 @@ const STYLE = `${BASE_CSS}
   button.via .chev { --mdc-icon-size: 16px; color: var(--secondary-text-color); margin-inline-start: -6px; }
   @media (hover: hover) { button.via:hover { background: var(--well); } }
   .via + .vol { margin-top: 4px; }
-  /* under a sound row: the screen it carries, its source; each a line in the rows' columns */
-  .lines { display: flex; flex-wrap: wrap; align-items: center; column-gap: 6px; margin-top: 8px; }
-  .lines .via { margin-top: 0; }
-  .lines .via:not([hidden]) ~ .via > ha-icon:first-child { width: auto; }
-  .lines .via:not([hidden]) ~ button.via { padding-inline-start: 8px; }
-  .lines + .vol { margin-top: 4px; }
+  /* under a sound row, starting where its name does: two small switches, the screen it carries and its source */
+  .lines { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 0 calc(var(--b-m) + 10px); }
+  .lines .via { margin: 0; height: var(--c-s); box-sizing: border-box; gap: 6px; padding: 0 9px 0 8px; border-radius: 10px; background: var(--well); max-width: 100%; }
+  .lines .via > ha-icon:first-child { width: auto; --mdc-icon-size: 16px; }
+  .lines button.via .chev { margin-inline-start: -2px; }
+  .lines + .vol { margin-top: 6px; }
+  /* every sound row is as tall as its play key, so switching between them never moves the card */
+  #audioBand .row .meta { min-height: var(--c-l); display: flex; flex-direction: column; justify-content: center; }
   .vol .bar { position: absolute; left: 0; right: 0; top: 50%; height: 5px; margin-top: -2.5px; border-radius: 99px; background: color-mix(in oklab, var(--primary-text-color) 10%, transparent); overflow: hidden; transform-origin: 50% 50%; }
   .vol .mute { flex: none; display: grid; place-items: center; width: var(--b-m); height: 32px; border-radius: 10px; color: var(--secondary-text-color); }
   .vol .mute ha-icon { --mdc-icon-size: 19px; display: flex; }
@@ -333,15 +335,19 @@ class SavvyMediaCard extends SavvyCard {
   }
 
   _measure() {
+    let snapped = false;
     const slide = (box, idx, x, w) => {
       const sel = box?.querySelectorAll(".seg:not([hidden])")[idx || 0];
-      if (!sel) return;
+      if (!sel || !sel.offsetWidth) return;
       const first = this._first || w.x === 0;
       x[first ? "snap" : "to"](sel.offsetLeft);
       w[first ? "snap" : "to"](sel.offsetWidth);
+      if (first) snapped = true;
     };
     slide(this._el?.sources, this._pickedIdx, this._sp.pill, this._sp.pillW);
     slide(this._el?.speakers, this._spkIdx, this._sp.spk, this._sp.spkW);
+    // a snap moves nothing the frame loop steps: a picker that just appeared is painted at once
+    if (snapped) requestAnimationFrame(() => this._paintAll(null));
   }
 
   // A volume bar. Nothing moves until a drag is clearly sideways, so a press, or a finger
@@ -851,7 +857,11 @@ class SavvyMediaCard extends SavvyCard {
       this._lines(row.querySelector(".lines"), cfg, carriers.get(cfg.__key));
       this._mountVolume(row, cfg, key);
     }
-    for (const [key, node] of el.audioBand.__rows || []) Motion.show(node, key === slug(shown?.__key || ""));
+    // one row at a time: the one leaving goes at once, so the band never holds two rows and jumps in height
+    for (const [key, node] of el.audioBand.__rows || []) {
+      if (key === slug(shown?.__key || "")) Motion.show(node, true);
+      else if (!node.hidden) { Motion.show(node, true); node.hidden = true; }
+    }
   }
 
   // Under a sound row: whose sound it is carrying (a button when the screen can switch its output),
@@ -875,14 +885,18 @@ class SavvyMediaCard extends SavvyCard {
       attr(b.querySelector("ha-icon"), "icon", icon);
       text(b.querySelector("span"), words);
     };
-    // order: the sound it carries first, then its source
+    // short words on the switches, the full meaning in their labels: the screen's sound first, then the source
     const choice = screen && this._soundChoice(screen);
     const screenName = screen && (screen.name || shortName(h, screen.entity, c.area));
-    line("sound", !!screen, "mdi:television", screen ? `Sound output for ${screenName}${choice?.current ? ` · ${choice.current.label}` : ""}` : "",
-      choice ? (anchor) => this._soundMenu(anchor, screen) : null);
+    const out = choice?.current?.label;
+    // on the TV's own row its name is already above: the switch says only where its sound goes
+    const soundWords = !screen ? "" : cfg.__tv ? out || "Speakers" : out ? `${screenName} · ${out}` : `Plays ${screenName}`;
+    line("sound", !!screen, "mdi:television", soundWords, choice ? (anchor) => this._soundMenu(anchor, screen) : null);
+    attr(box.querySelector('[data-line="sound"]'), "aria-label", screen ? `Sound output for ${screenName}: ${out || "this box"}${choice ? ". Change" : ""}` : null);
     const sources = !cfg.__tv && this._isOn(cfg) ? st?.attributes.source_list || [] : [];
     const src = st?.attributes.source;
-    line("source", sources.length > 1, "mdi:import", `Source · ${src || "None"}`, (anchor) => this._sourceMenu(anchor, cfg));
+    line("source", sources.length > 1, "mdi:import", src || "Source", (anchor) => this._sourceMenu(anchor, cfg));
+    attr(box.querySelector('[data-line="source"]'), "aria-label", `Source: ${src || "none"}. Change`);
     box.hidden = ![...box.children].some((n) => !n.hidden);
   }
 

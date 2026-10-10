@@ -94,9 +94,9 @@ export default async function ({ browser, base, check }) {
   // the sound line is in the row carrying the TV's sound, at the bottom
   const lg = () => page.evaluate(() => { const r = window.cards.at(-1).shadowRoot, vis = (e) => !!e && !e.hidden && e.getClientRects().length > 0;
     const row = [...r.querySelectorAll("#audioBand .player")].find(vis), b = row.querySelector('.via[data-line="sound"]'); b.scrollIntoView({ block: "center" }); const q = b.getBoundingClientRect();
-    return { row: row.querySelector(".n").textContent, tag: b.tagName, t: b.textContent.trim(), x: q.x + q.width / 2, y: q.y + q.height / 2, vol: row.querySelector(".vol .pct")?.textContent }; });
+    return { row: row.querySelector(".n").textContent, tag: b.tagName, t: b.getAttribute("aria-label"), words: b.textContent.trim(), x: q.x + q.width / 2, y: q.y + q.height / 2, vol: row.querySelector(".vol .pct")?.textContent }; });
   const v1 = await lg();
-  check("media/LG: the soundbar's row carries the TV's sound, its line a button naming the output", v1.row === "Speaker" && v1.tag === "BUTTON" && /Sound output for TV · HDMI ARC/.test(v1.t), JSON.stringify(v1));
+  check("media/LG: the soundbar's row carries the TV's sound, its line a button naming the output", v1.row === "Speaker" && v1.tag === "BUTTON" && /^Sound output for TV: HDMI ARC/.test(v1.t) && v1.words === "TV · HDMI ARC", JSON.stringify(v1));
   await page.evaluate(() => { window.log.length = 0; });
   await page.mouse.click(v1.x, v1.y);
   await page.waitForTimeout(700);

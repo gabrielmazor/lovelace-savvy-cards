@@ -668,17 +668,18 @@ picking an input switches the TV to it.
 
 **Every sound sits at the bottom, under Audio.** The TV's own speakers (its volume) while it plays through them,
 the soundbar, the speakers: one row at a time, with a picker when there are two or more. The soundbar is always
-there with its transport, power, volume and source (tap "Source" to switch it: TV, HDMI, Bluetooth, whatever it
-lists). The row carrying the TV's sound says so ("Sound output for TV"), so you always know which bar moves what
-you hear; the picker starts on it while the TV is on. When the TV sends its sound to the soundbar you name in
+there with its transport, power and volume. Under its name sit two small switches: the TV's sound (`TV · HDMI ARC`,
+on the row carrying it, so you always know which bar moves what you hear) and the box's own source (`Optical`,
+`Bluetooth`, whatever it lists; tap to switch it). The picker starts on the row carrying the TV's sound while the
+TV is on. When the TV sends its sound to the soundbar you name in
 `video_output` (eARC), that row is the soundbar's, with its real level; when the TV plays through itself, it is
 the TV's. One box never shows two bars. Nothing is guessed: without `video_output` the TV plays through itself.
 `screen_frame: true` puts the screen on its own row above its inputs instead.
 
 <picture><source media="(prefers-color-scheme: light)" srcset="docs/images/media-light.png"><img src="docs/images/media-dark.png" width="460" alt="Savvy media card with artwork"></picture>
 
-**Switch where the TV's sound goes.** On an LG TV (the webOS integration) the "Sound output for TV" line is a
-button: tap it for TV speaker, HDMI ARC, Optical, Bluetooth and the rest, the current one marked. On its own
+**Switch where the TV's sound goes.** On an LG TV (the webOS integration) the `TV · …` switch under the row
+carrying the TV's sound opens its outputs: TV speaker, HDMI ARC, Optical, Bluetooth and the rest, the current one marked. On its own
 speaker the row is the TV's; on ARC or optical it is the soundbar's. Any other TV whose integration
 has a select entity for its sound output works the same with `sound_select`.
 

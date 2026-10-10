@@ -4,6 +4,12 @@
 
 - **Presence shows a person, not a house,** everywhere: badges, chips and rows for occupancy and presence sensors
   use the same figure as motion, crossed out while nobody is there. A sensor with an icon of its own keeps it.
+- **Media: the sound row's switches are short and line up.** The TV's sound output and the box's source are two
+  small buttons on one line under the name (`TV · HDMI ARC`, `Optical/HDMI ARC`), each with its full meaning
+  for screen readers, instead of two long lines that wrapped out of line.
+- **Media: switching between sounds no longer jumps.** The row that leaves goes at once instead of fading while
+  the next one fades in, every sound row is the same height, and the picker's highlight shows as soon as the
+  picker appears.
 - **Lights card: the ceiling light comes first,** before the rest by name. A light named Ceiling is first on a card with
   no `order`; with one, your listed lights come first, then the ceiling.
 
