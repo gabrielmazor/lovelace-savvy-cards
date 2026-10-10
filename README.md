@@ -535,7 +535,7 @@ for warmth and colour. The pill at the top switches the room, or an entity of yo
 | `area` | area or list | **required** (or `lights`) | The room, or several for one card across rooms. |
 | `lights` | list | discovered | Only these lights, in this order. An item is an entity id or `{ entity, power }`, where `power` is a smart plug the light sits behind. |
 | `title` | string | the area's name | Card title. |
-| `order` | list of lights | by name | Listed lights come first, in this order. With none, the card takes the `order` of the first lights card for the same room that has one, wherever it is on the dashboard (the editor says which, with an **Unlink** button). |
+| `order` | list of lights | the ceiling, then by name | Listed lights come first, in this order; then the ceiling light ("Ceiling" in its name), then the rest by name. With no `order`, the ceiling is the first light. With none, the card takes the `order` of the first lights card for the same room that has one, wherever it is on the dashboard (the editor says which, with an **Unlink** button). |
 | `sync_order` | boolean | `true` | `false`: never take another card's order. |
 | `featured` | list of lights | none | Lights that get a wide tile. |
 | `include` | list of lights | none | Lights to show besides the area's, such as one an integration files as a setting or diagnostic entity, which discovery skips. |

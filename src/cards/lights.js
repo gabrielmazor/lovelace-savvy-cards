@@ -31,6 +31,8 @@ const MOTION = {
 // Light capabilities, read from the entity rather than assumed.
 const DIMMABLE = new Set(["brightness", "color_temp", "hs", "xy", "rgb", "rgbw", "rgbww", "white"]);
 const HUE_MODES = new Set(["hs", "xy", "rgb", "rgbw", "rgbww"]);
+// a room's ceiling light, by its name or id (English or Hebrew): the first light on every lights card
+const CEILING = /ceiling|\u05ea\u05e7\u05e8\u05d4/i;
 const modesOf = (st) => new Set(st?.attributes.supported_color_modes || []);
 const canDim = (st) => [...modesOf(st)].some((m) => DIMMABLE.has(m));
 const canTemp = (st) => modesOf(st).has("color_temp");
@@ -404,15 +406,17 @@ class LightsCard extends HTMLElement {
     return [...this._found, ...also].filter((id) => !exclude.has(id) && h.states[id]);
   }
 
-  // An explicit order leads; then featured lights; then the rest by name. Anything the
-  // order doesn't mention keeps its natural place behind it.
+  // An explicit order leads; then the ceiling light (the room's main light, first on a card with no order);
+  // then featured lights; then the rest by name. Anything the order doesn't mention keeps its natural place behind it.
   _ordered() {
     const c = this._config, h = this._hass;
     const ids = this._discover();
     const rank = new Map(c.order.map((id, i) => [id, i]));
     const feat = new Set(c.featured);
+    const ceiling = (id) => CEILING.test(`${h.states[id]?.attributes.friendly_name || ""} ${id}`);
     const weight = (id) => {
       if (rank.has(id)) return rank.get(id) - 1000;
+      if (ceiling(id)) return -2;
       if (feat.has(id)) return -1;
       return 0;
     };

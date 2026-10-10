@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.20.5
+
+- **Presence shows a person, not a house,** everywhere: badges, chips and rows for occupancy and presence sensors
+  use the same figure as motion, crossed out while nobody is there. A sensor with an icon of its own keeps it.
+- **Lights card: the ceiling light comes first,** before the rest by name. A light named Ceiling is first on a card with
+  no `order`; with one, your listed lights come first, then the ceiling.
+
 ## 0.20.4
 
 - **Heights, rethought: no more empty space under cards.** 0.20.2 rounded every card up to whole grid rows, which
