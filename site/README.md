@@ -10,9 +10,9 @@ real home.
 
 - **The home page:** the home header, a tile per room, people. Tap a room to open it.
 - **A page per room** (living room, kitchen, office, bedroom, bathroom, toilet): lights, climate, media,
-  covers, locks, cameras, scenes and the room's activity.
+  covers, locks, cameras and the room's activity.
 - **Lights:** tap one to switch it, drag sideways to dim it, hold it for its details. Each room has a master
-  switch for its lights.
+  switch for its lights, and the palette button beside it lists the room's scenes.
 - **Modes:** change the home mode (Daytime, Evening, Night, Sleep, Away) and every room in Sync follows;
   give a room its own mode (Cooking, Dining, Watching TV, Music, Focus...) and its lights change with it.
   Turn a TV on and its room goes to Watching TV.

@@ -156,6 +156,16 @@
       "scene.office_focus": { "light.office_task_lamp": { pct: 100, k: 5500 }, "light.office_ceiling": { pct: 80 }, "light.office_screen_glow": { pct: 30, k: 5000 }, "light.office_key_light": 0 },
       "scene.office_calls": { "light.office_task_lamp": { pct: 70, k: 4200 }, "light.office_ceiling": { pct: 40 }, "light.office_key_light": { pct: 80, k: 4800 }, "light.office_screen_glow": { pct: 70, hs: [205, 60] } },
       "scene.office_evening": { "light.office_ceiling": 0, "light.office_task_lamp": { pct: 30, k: 2700 }, "light.office_desk_strip": { pct: 40, hs: [30, 70] }, "light.office_key_light": 0 },
+      "scene.kitchen_cooking": { "light.kitchen_ceiling": { pct: 100 }, "light.kitchen_pendant": { pct: 100, k: 4000 }, "light.kitchen_counter_strip": { pct: 90, hs: [40, 25] }, "light.kitchen_passage": { pct: 70, k: 4000 } },
+      "scene.kitchen_dinner": { "light.kitchen_ceiling": 0, "light.kitchen_pendant": { pct: 45, k: 2400 }, "light.kitchen_counter_strip": { pct: 25, hs: [32, 55] }, "light.kitchen_plinth": { pct: 20, hs: [28, 85] }, "light.kitchen_passage": 0 },
+      "scene.kitchen_late_snack": { "light.kitchen_ceiling": 0, "light.kitchen_pendant": 0, "light.kitchen_passage": 0, "light.kitchen_counter_strip": { pct: 30, hs: [30, 60] }, "light.kitchen_plinth": { pct: 15, hs: [28, 85] } },
+      "scene.bedroom_reading": { "light.bedroom_ceiling": 0, "light.bedroom_left_bedside": { pct: 70, k: 3200 }, "light.bedroom_right_bedside": 0 },
+      "scene.bedroom_relax": { "light.bedroom_ceiling": 0, "light.bedroom_left_bedside": { pct: 20, k: 2200 }, "light.bedroom_right_bedside": { pct: 20, k: 2200 } },
+      "scene.bedroom_wake_up": { "light.bedroom_ceiling": { pct: 60 }, "light.bedroom_left_bedside": { pct: 80, k: 4000 }, "light.bedroom_right_bedside": { pct: 80, k: 4000 } },
+      "scene.bathroom_bright": { "light.bathroom_ceiling": 1, "light.bathroom_mirror": { pct: 100, k: 4000 }, "light.bathroom_night_strip": 0 },
+      "scene.bathroom_bath": { "light.bathroom_ceiling": 0, "light.bathroom_mirror": { pct: 25, k: 2400 }, "light.bathroom_night_strip": { pct: 40, hs: [200, 60] } },
+      "scene.toilet_night": { "light.toilet_ceiling": 0, "light.toilet_night_light": { pct: 15 } },
+      "scene.toilet_bright": { "light.toilet_ceiling": 1, "light.toilet_night_light": 0 },
     };
     const runScene = (id) => {
       patch(id, { state: now() });

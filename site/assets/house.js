@@ -249,6 +249,16 @@
     scene("scene.office_focus", "Focus", "office", "mdi:target", 2 * HOUR);
     scene("scene.office_calls", "Calls", "office", "mdi:video");
     scene("scene.office_evening", "Evening", "office", "mdi:weather-sunset");
+    scene("scene.kitchen_cooking", "Cooking", "kitchen", "mdi:chef-hat", 5 * HOUR);
+    scene("scene.kitchen_dinner", "Dinner", "kitchen", "mdi:silverware-fork-knife", 26 * HOUR);
+    scene("scene.kitchen_late_snack", "Late snack", "kitchen", "mdi:cookie");
+    scene("scene.bedroom_reading", "Reading", "bedroom", "mdi:book-open-variant", 22 * HOUR);
+    scene("scene.bedroom_relax", "Relax", "bedroom", "mdi:candle");
+    scene("scene.bedroom_wake_up", "Wake up", "bedroom", "mdi:weather-sunset-up", 14 * HOUR);
+    scene("scene.bathroom_bright", "Bright", "bathroom", "mdi:white-balance-sunny", 13 * HOUR);
+    scene("scene.bathroom_bath", "Bath", "bathroom", "mdi:bathtub");
+    scene("scene.toilet_night", "Night", "toilet", "mdi:weather-night", 9 * HOUR);
+    scene("scene.toilet_bright", "Bright", "toilet", "mdi:white-balance-sunny");
 
     // ---- security: a smart lock on its own device (no area), the alarm, a plug that powers the lock's bridge
     device("dev_front_door", "Front Door", null, { manufacturer: "Lockly", model: "Smart Lock" });

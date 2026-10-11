@@ -136,7 +136,7 @@
   };
   const ROOM_PAGES = [
     roomPage("living_room", [
-      { cards: [subtitle("Lights", "lights"), lights("living_room", { title: "Lights" }), ["savvy-scene-card", { area: "living_room", title: "Scenes", layout: "compact" }]] },
+      { cards: [subtitle("Lights", "lights"), lights("living_room", { title: "Lights" })] },
       { cards: [subtitle("Climate", "climate"), climate("living_room", { hvac_modes: [...MODES, "fan_only"] })] },
       { cards: [subtitle("Media", "media"), ["savvy-media-card", { ...LIVING_MEDIA, chips: SCREEN_SYNC }]] },
       camera("living_room"),
@@ -155,7 +155,7 @@
       ] },
     ]),
     roomPage("office", [
-      { cards: [subtitle("Lights", "lights"), lights("office", { title: "Lights" }), ["savvy-scene-card", { area: "office", title: "Scenes" }]] },
+      { cards: [subtitle("Lights", "lights"), lights("office", { title: "Lights" })] },
       { cards: [subtitle("Climate", "climate"), climate("office")] },
       { cards: [
         subtitle("Appliances"),
@@ -195,7 +195,7 @@
   const DOMAIN_PAGES = [
     {
       id: "lights", title: "Lights", nav: "Lights", group: "domains", max_columns: 3,
-      sections: [homeHeader, ...ROOMS.map((r) => ({ cards: [["savvy-lights-card", { area: r.id, columns: 2, title: r.name, title_path: page(slug(r.id)) }]] }))],
+      sections: [homeHeader, ...ROOMS.map((r) => ({ cards: [["savvy-lights-card", { area: r.id, columns: 2, scenes: "auto", title: r.name, title_path: page(slug(r.id)) }]] }))],
     },
     {
       id: "climate", title: "Climate", nav: "Climate", group: "domains", max_columns: 3,
