@@ -14,6 +14,8 @@
 - **Lights card: the scenes menu has two columns,** so long scene names fit.
 - **Lights card: scene names without the room.** "Living Room // Movie" shows as Movie: the room's name and the
   separator after it (`//`, `-`, `:`, `|`) come off, and a name in lower case starts with a capital.
+- **Lights card, compact: brightness shows as light.** A lit lamp's row glows from its icon and fades out, reaching
+  further and shining stronger the brighter the lamp, where it used to fill the whole row whatever the level.
 
 ## 0.20.5
 

@@ -25,6 +25,10 @@ export default async function ({ browser, base, check }) {
     return page.evaluate(() => ({ calls: window.log.filter((l) => l.startsWith("light.")), info: [...window.info] }));
   };
 
+  // the row shows the level as a glow that reaches further the brighter the lamp (not a full wash once it is on)
+  const v = await page.evaluate((ID) => [...window.cards.at(-1).shadowRoot.querySelectorAll(".light")].find((x) => x.__entity === ID).style.getPropertyValue("--v"), ID);
+  check("compact: the glow follows the brightness (78%)", Math.abs(Number(v) - 0.784) < 0.01, v);
+
   const quick = await gesture(60, 120);
   check("compact: a quick sideways drag changes nothing (no slider)", quick.calls.length === 0 && quick.info.length === 0, JSON.stringify(quick));
   const up = await gesture(650, 120);

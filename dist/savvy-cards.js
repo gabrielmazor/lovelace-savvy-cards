@@ -13450,6 +13450,18 @@ ha-card[data-compact] .orb ha-icon, ha-card[data-compact] .orb savvy-state-icon 
 ha-card[data-compact] .meta .n { font-size: 13.5px; line-height: 18px; }
 ha-card[data-compact] .d, ha-card[data-compact] .light[data-on] .d[data-num] { font-size: 12.5px; font-weight: 500; letter-spacing: -0.004em; min-width: 0; }
 ha-card[data-compact] .grid { gap: 4px; }
+/* compact has no slider, so the level is light, not a bar: a glow spills from the lamp's icon and fades out,
+   reaching further and shining stronger the brighter the lamp (a dim lamp keeps a small glow by its icon) */
+ha-card[data-compact] .lvl {
+  background: linear-gradient(90deg, rgb(var(--lc, var(--amber)) / calc(var(--lvl-a1) * 1.25)) 0%,
+    rgb(var(--lc, var(--amber)) / calc(var(--lvl-a1) * 0.55)) 40%, rgb(var(--lc, var(--amber)) / 0) 100%);
+  box-shadow: none; transform-origin: 0 50%;
+  transform: scaleX(calc(0.22 + 0.78 * var(--v, 0)));
+  opacity: calc(0.45 + 0.55 * var(--v, 0));
+  transition: transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 420ms ease;
+}
+ha-card[data-compact] .light:not([data-on]) .lvl { opacity: 0; }
+@media (prefers-reduced-motion: reduce) { ha-card[data-compact] .lvl { transition: none; } }
 
 /* ---- sliders ---- */
 .slider { position: relative; height: 28px; touch-action: pan-y; cursor: grab; }
@@ -14456,8 +14468,8 @@ class LightsCard extends HTMLElement {
       attr(node, "aria-valuemax", "100");
     } else {
       if (this._bars.has(key)) this._bars.get(key).value.to(0);
-      // a lamp that only switches (or a compact row): lit means full, so on reads at a glance
-      put(node, "--v", on && !dead ? "1" : "0");
+      // a lamp that only switches: lit means full, so on reads at a glance; a compact row's glow follows the level
+      put(node, "--v", on && !dead ? (this._compact && canDim(st) ? level.toFixed(3) : "1") : "0");
     }
     // featured lights get the wider tile: the ones you reach for
     const wide = !this._compact && Number(this._config.columns) !== 1 && this._config.featured.includes(id);
