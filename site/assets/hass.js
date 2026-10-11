@@ -54,7 +54,15 @@
         language: "en",
         locale: { language: "en", number_format: "language", time_format: "language" },
         config: { unit_system: { temperature: "°C", length: "km" }, time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone, currency: "EUR" },
-        formatEntityState: (st, state) => { const v = state ?? st.state; return WORDS[v] || title(v); },
+        // as Home Assistant words a state: a number with its unit ("7,200 W", "38%", "21.5 °C"), a word title-cased
+        formatEntityState: (st, state) => {
+          const v = state ?? st.state, unit = st.attributes?.unit_of_measurement, n = Number(v);
+          if (v !== "" && Number.isFinite(n) && !st.entity_id.startsWith("input_")) {
+            const text = n.toLocaleString("en", { maximumFractionDigits: 2 });
+            return unit ? `${text}${unit === "%" ? "" : " "}${unit}` : text;
+          }
+          return WORDS[v] || title(v);
+        },
         callService: visitorCall,
         callWS,
         callApi: async () => { throw new Error("Not available in the demo"); },
@@ -99,7 +107,9 @@
     });
     const lightOff = (id) => later(160, () => patch(id, { state: "off", attributes: { brightness: null, color_mode: null } }));
 
-    // a cover travels: its position moves a little at a time, as a motor does
+    // a cover travels: its position moves a little at a time, as a motor does. The driveway gate takes as long as
+    // the gate in the driveway camera's footage (13 s each way), so the two move together.
+    const SLOW = { "cover.driveway_gate": 13000 };
     const travel = (id, to) => {
       const a = get(id).attributes;
       clearInterval(house.__travel?.[id]);
@@ -108,9 +118,10 @@
       if (pos === to) return;
       patch(id, { state: to > pos ? "opening" : "closing" });
       house.__travel[id] = setInterval(() => {
-        pos += Math.sign(to - pos) * Math.min(4, Math.abs(to - pos));
+        pos += Math.sign(to - pos) * Math.min(SLOW[id] ? 100 / (SLOW[id] / 120) : 4, Math.abs(to - pos));
+        pos = Math.round(pos * 100) / 100;
         const done = pos === to;
-        patch(id, { state: done ? (to === 0 ? "closed" : "open") : (to > pos ? "opening" : "closing"), attributes: { current_position: pos } });
+        patch(id, { state: done ? (to === 0 ? "closed" : "open") : (to > pos ? "opening" : "closing"), attributes: { current_position: Math.round(pos) } });
         if (done) clearInterval(house.__travel[id]);
       }, 120);
     };
@@ -303,6 +314,9 @@
       bedroom: { main: ["light.bedroom_ceiling"], lamps: ["light.bedroom_left_bedside", "light.bedroom_right_bedside"], accents: [], night: [] },
       bathroom: { main: ["light.bathroom_ceiling"], lamps: ["light.bathroom_mirror"], accents: [], night: ["light.bathroom_night_strip"] },
       toilet: { main: ["light.toilet_ceiling"], lamps: [], accents: [], night: ["light.toilet_night_light"] },
+      // outside, the paths are the main light; the floodlight is only ever switched by hand
+      garden: { main: ["light.garden_path_lights"], lamps: [], accents: ["light.garden_string_lights", "light.garden_pond_light"], night: [], extra: ["light.garden_floodlight"] },
+      garage: { main: ["light.garage_ceiling"], lamps: ["light.garage_workbench"], accents: [], night: [] },
     };
     const roomLights = (room) => { const r = ROOM_LIGHTS[room]; return [...r.main, ...r.lamps, ...r.accents, ...r.night, ...(r.extra || [])]; };
     const WARM = { pct: 45, k: 2400 }, OFF = 0;
@@ -341,6 +355,11 @@
       },
       bathroom: { Shower: { main: 1, lamps: { pct: 100, k: 4000 } }, Relax: { lamps: { pct: 25, k: 2400 }, night: { pct: 40, hs: [200, 60] } } },
       toilet: { Night: { night: { pct: 15, k: 2200 } } },
+      garden: {
+        Party: { main: { pct: 70 }, lights: { "light.garden_string_lights": { pct: 90, hs: [35, 75] }, "light.garden_pond_light": { pct: 80, hs: [190, 80] } } },
+        Night: { main: { pct: 15 }, lights: { "light.garden_pond_light": { pct: 25, hs: [210, 70] } } },
+      },
+      garage: { Working: { main: 1, lamps: { pct: 100, k: 5000 } } },
     };
     const homeMode = () => get("input_select.home_mode")?.state;
     const roomMode = (room) => get(`input_select.${room}_mode`)?.state;
@@ -481,6 +500,21 @@
       },
       // the toilet
       () => { sense("binary_sensor.toilet_motion", true); later(25000, () => sense("binary_sensor.toilet_motion", false)); return 26000; },
+      // a delivery: the driveway gate opens, and closes again behind the van
+      () => {
+        if (get("cover.driveway_gate").state !== "closed") return 0;
+        go("cover", "open_cover", {}, "cover.driveway_gate");
+        later(22000, () => go("cover", "close_cover", {}, "cover.driveway_gate"));
+        return 36000;
+      },
+      // the garden gets its water, and someone checks on it
+      () => {
+        sense("binary_sensor.garden_motion", true);
+        later(2000, () => go("switch", "turn_on", {}, "switch.garden_irrigation"));
+        later(30000, () => sense("binary_sensor.garden_motion", false));
+        later(45000, () => go("switch", "turn_off", {}, "switch.garden_irrigation"));
+        return 46000;
+      },
       // Maya reads in bed for a while
       () => {
         const tv = tvOn();

@@ -9,8 +9,10 @@ real home.
 ## What you can try
 
 - **The home page:** the home header, a tile per room, people. Tap a room to open it.
-- **A page per room** (living room, kitchen, office, bedroom, bathroom, toilet): lights, climate, media,
-  covers, locks, cameras and the room's activity.
+- **A page per room** (living room, kitchen, office, bedroom, bathroom, toilet, garden, garage): lights,
+  climate, media, covers, locks, cameras and the room's activity.
+- **The driveway camera follows the gate:** open the Driveway Gate (Garage or Security) and it slides open on
+  camera, in step with the card.
 - **Lights:** tap one to switch it, drag sideways to dim it, hold it for its details. Each room has a master
   switch for its lights, and the palette button beside it lists the room's scenes.
 - **Modes:** change the home mode (Daytime, Evening, Night, Sleep, Away) and every room in Sync follows;

@@ -3,6 +3,19 @@
 // attribute first, else one by domain, device class and state, as Home Assistant picks it).
 // Icons come from window.ICONS, a map of mdi names to SVG paths built with the site.
 (() => {
+  // No zoom by gesture on the demo. Every shadow root a card makes gets "pan only" for touch (an element that asks
+  // for less, a slider's pan-y or none, keeps it: its own rule is more specific), and Safari's pinch is refused.
+  const NO_ZOOM = new CSSStyleSheet();
+  NO_ZOOM.replaceSync(":host, * { touch-action: pan-x pan-y; }");
+  const attach = Element.prototype.attachShadow;
+  Element.prototype.attachShadow = function (init) {
+    const root = attach.call(this, init);
+    root.adoptedStyleSheets = [...root.adoptedStyleSheets, NO_ZOOM];
+    return root;
+  };
+  for (const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+  document.addEventListener("touchmove", (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+
   const FALLBACK = "mdi:circle-outline";
   const path = (name) => (window.ICONS && (window.ICONS[name] || window.ICONS[FALLBACK])) || "";
   const svg = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true" style="width:var(--mdc-icon-size,24px);height:var(--mdc-icon-size,24px);display:block"><path fill="currentColor" d="${path(name)}"/></svg>`;
@@ -140,6 +153,11 @@
     living_room: { src: "assets/cams/living_room.mp4", room: "living_room",
       lamp: { map: "assets/cams/living_room_lamp.png", light: "light.living_room_arc_lamp", kelvin: 2700 } },
     kitchen: { src: "assets/cams/kitchen.mp4", room: "kitchen" },
+    garden: { src: "assets/cams/garden.mp4" },
+    // the driveway's footage is one gate opening and closing (sped up to the demo gate's 13 s each way): the camera
+    // shows the part that matches the Driveway Gate, where it is now
+    driveway: { src: "assets/cams/driveway.mp4", loop: false,
+      gate: { cover: "cover.driveway_gate", opening: [0, 13], open: [13.05, 13.9], closing: [14, 26.2], closed: [26.3, 27.85] } },
   };
   // a lamp's colour at a colour temperature, near enough (Tanner Helland's fit), 0..1 a channel
   const kelvinRgb = (k) => {
@@ -155,6 +173,24 @@
     const b = st.attributes.brightness;
     return b == null ? 1 : Math.max(0.02, Math.min(1, b / 255));
   };
+  // keep the gate's footage on the moment that matches the gate: its travel while it moves, open or shut while
+  // it stands
+  function followGate(v, gate, hass) {
+    const st = hass?.states[gate.cover];
+    if (!st || !v.duration) return;
+    const pos = (st.attributes.current_position ?? (st.state === "open" ? 100 : 0)) / 100, t = v.currentTime;
+    const span = gate[st.state] || gate.closed;
+    if (st.state === "opening" || st.state === "closing") {
+      const want = st.state === "opening" ? span[0] + pos * (span[1] - span[0]) : span[0] + (1 - pos) * (span[1] - span[0]);
+      if (t < span[0] - 0.05 || t > span[1] + 0.3 || Math.abs(t - want) > 1.2) v.currentTime = want;
+      v.playbackRate = 1;
+    } else {
+      // standing: its short still stretch, slowed down and looped (only the leaves move)
+      v.playbackRate = 0.3;
+      if (t < span[0] || t > span[1] || v.ended) v.currentTime = span[0];
+    }
+    if (v.paused) v.play().catch(() => {});
+  }
   // the share of a room's light that is on, its lamps weighted by brightness (the lamp in the shot left out)
   const roomLight = (hass, area, skip) => {
     if (!hass) return 1;
@@ -213,12 +249,24 @@
     _footage(g, w, h, feed) {
       let v = this._video;
       if (!v) {
-        v = this._video = Object.assign(document.createElement("video"), { src: pickSrc(feed.src), muted: true, loop: true, playsInline: true, autoplay: true, preload: "auto" });
+        v = this._video = Object.assign(document.createElement("video"), { src: pickSrc(feed.src), muted: true, loop: feed.loop !== false, playsInline: true, autoplay: true, preload: "auto" });
         v.setAttribute("muted", ""); v.setAttribute("playsinline", "");
-        v.currentTime = Math.random() * 6;   // two cards on the same camera are not in lockstep
+        if (!feed.gate) v.currentTime = Math.random() * 6;   // two cards on the same camera are not in lockstep
       }
-      if (v.paused) v.play().catch(() => {});
-      if (v.readyState < 2 || !v.videoWidth) return false;
+      if (feed.gate) followGate(v, feed.gate, this.hass);
+      else if (v.paused) v.play().catch(() => {});
+      // not ready (loading, or a seek): the last frame shown stays, or the camera's still until the first one
+      if (v.readyState < 2 || !v.videoWidth || v.seeking) {
+        if (this._snap) { g.globalCompositeOperation = "source-over"; g.globalAlpha = 1; g.drawImage(this._snap, 0, 0, w, h); return true; }
+        const pic = this._st?.attributes.entity_picture;
+        if (pic && !this._poster) { this._poster = new Image(); this._poster.src = pic; }
+        if (this._poster?.complete && this._poster.naturalWidth) {
+          const p = this._poster, ps = Math.max(w / p.naturalWidth, h / p.naturalHeight);
+          g.drawImage(p, (p.naturalWidth - w / ps) / 2, (p.naturalHeight - h / ps) / 2, w / ps, h / ps, 0, 0, w, h);
+          return true;
+        }
+        return false;
+      }
       const vw = v.videoWidth, vh = v.videoHeight, s = Math.max(w / vw, h / vh);
       const sw = w / s, sh = h / s, sx = (vw - sw) / 2, sy = (vh - sh) / 2;
       g.globalCompositeOperation = "source-over"; g.globalAlpha = 1;
@@ -241,14 +289,22 @@
           g.drawImage(lampLayer(m, this._lvl, tint), sx * f, sy * f, sw * f, sh * f, 0, 0, w, h);
         }
       }
-      // the rest of the room's light: a lift when it is bright, a sink into the dark when all is off
+      // the rest of the room's light: a lift when it is bright, a sink into the dark when all is off (outside
+      // cameras see the day, not the lamps)
+      if (!feed.room) { g.globalCompositeOperation = "source-over"; g.globalAlpha = 1; this._keep(g.canvas); return true; }
       const want = roomLight(hass, feed.room, feed.lamp?.light);
       this._amb = this._amb == null ? want : this._amb + (want - this._amb) * 0.15;
       if (this._amb > 0.02) { g.globalCompositeOperation = "lighter"; g.globalAlpha = 0.22 * this._amb; g.drawImage(c2(g), 0, 0); }
       const dark = Math.round(255 * (0.62 + 0.38 * Math.min(1, this._amb * 2)));
       g.globalCompositeOperation = "multiply"; g.globalAlpha = 1; g.fillStyle = `rgb(${dark},${dark},${dark})`; g.fillRect(0, 0, w, h);
       g.globalCompositeOperation = "source-over"; g.globalAlpha = 1;
+      this._keep(g.canvas);
       return true;
+    }
+    _keep(c) {
+      const s = this._snap || (this._snap = document.createElement("canvas"));
+      if (s.width !== c.width || s.height !== c.height) { s.width = c.width; s.height = c.height; }
+      s.getContext("2d").drawImage(c, 0, 0);
     }
     _loop() {
       if (this._raf || !this.isConnected) return;

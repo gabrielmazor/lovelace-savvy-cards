@@ -1,4 +1,4 @@
-// The demo house: six rooms, the lights, climate, media, locks, cameras, appliances, people,
+// The demo house: six rooms, a garden and a garage, the lights, climate, media, locks, cameras, appliances, people,
 // energy and health data the cards read, shaped the way Home Assistant hands them over
 // (states, and the entity, device and area registries).
 //   window.SavvyDemo.makeHouse() -> { states, entities, devices, areas, entries }
@@ -86,12 +86,14 @@
   const ROOM_EXTRAS = {
     living_room: ["Watching TV", "Music", "Reading"], kitchen: ["Cooking", "Dining"], office: ["Focus", "Calls"],
     bedroom: ["Reading", "Watching TV", "Sleep"], bathroom: ["Shower", "Relax"], toilet: ["Night"],
+    garden: ["Party", "Night"], garage: ["Working"],
   };
 
   // the rooms, in the order the dashboard lists them
   const ROOM_LIST = [
     ["living_room", "Living Room", "mdi:sofa"], ["kitchen", "Kitchen", "mdi:silverware-fork-knife"], ["office", "Office", "mdi:desk"],
     ["bedroom", "Bedroom", "mdi:bed-king"], ["bathroom", "Bathroom", "mdi:shower"], ["toilet", "Toilet", "mdi:toilet"],
+    ["garden", "Garden", "mdi:flower"], ["garage", "Garage", "mdi:garage"],
   ];
 
   function makeHouse() {
@@ -159,16 +161,24 @@
     light("light.bathroom_night_strip", "Bathroom Night Strip", "bathroom", ["hs"], false, { icon: "mdi:led-strip" });
     light("light.toilet_ceiling", "Toilet Ceiling", "toilet", ONOFF, false, { icon: "mdi:ceiling-light" });
     light("light.toilet_night_light", "Toilet Night Light", "toilet", DIM, true, { pct: 15, icon: "mdi:weather-night" });
+    // garden: paths, a string of bulbs over the table, the pond, and a floodlight for the back
+    light("light.garden_path_lights", "Garden Path Lights", "garden", DIM, true, { pct: 40, icon: "mdi:outdoor-lamp" });
+    light("light.garden_string_lights", "Garden String Lights", "garden", ["hs"], true, { pct: 60, hs: [35, 70], icon: "mdi:string-lights" });
+    light("light.garden_pond_light", "Garden Pond Light", "garden", COLOR, false, { icon: "mdi:spotlight" });
+    light("light.garden_floodlight", "Garden Floodlight", "garden", ONOFF, false, { icon: "mdi:light-flood-down" });
+    // garage: the ceiling, and a bright lamp over the workbench
+    light("light.garage_ceiling", "Garage Ceiling", "garage", ONOFF, false, { icon: "mdi:ceiling-light" });
+    light("light.garage_workbench", "Garage Workbench", "garage", TEMP, false, { icon: "mdi:desk-lamp" });
 
     // ---- helpers: the house's mode and each room's, and whether a room's lights run themselves
     // the house's mode, and each room's: Sync follows the house, Basic is plain light, Manual leaves the lights
     // alone, and each room has its own moments. hass.js turns a mode into light (see ROOM_LIGHTS there).
     add("input_select.home_mode", "Evening", { friendly_name: "Home Mode", options: HOME_MODES }, {});
-    const NOW = { living_room: "Watching TV", kitchen: "Sync", office: "Focus", bedroom: "Sync", bathroom: "Sync", toilet: "Sync" };
+    const NOW = { living_room: "Watching TV", kitchen: "Sync", office: "Focus", bedroom: "Sync", bathroom: "Sync", toilet: "Sync", garden: "Sync", garage: "Manual" };
     for (const [a, name] of ROOM_LIST) {
       add(`input_select.${a}_mode`, NOW[a], { friendly_name: `${name} Mode`, options: ["Sync", "Basic", "Manual", ...ROOM_EXTRAS[a]] }, { area: a });
       // the room's lights master switch: on while any of its lights is on; switching it runs the room's mode or turns all off
-      add(`input_boolean.${a}_lights`, "on", { friendly_name: `${name} Lights`, icon: "mdi:lightbulb-group" }, { area: a });
+      add(`input_boolean.${a}_lights`, a === "garage" ? "off" : "on", { friendly_name: `${name} Lights`, icon: "mdi:lightbulb-group" }, { area: a });
     }
     add("input_boolean.living_room_screen_sync", "on", { friendly_name: "Screen Sync", icon: "mdi:television-ambient-light" }, { area: "living_room" });
     add("input_button.kitchen_radio_jazz", ago(20 * HOUR), { friendly_name: "Jazz Radio", icon: "mdi:radio" }, { area: "kitchen" });
@@ -184,8 +194,8 @@
 
     // ---- sensors in every room
     const sensor = (id, v, name, area, dc, unit, extra = {}) => add(id, v, { friendly_name: name, device_class: dc, unit_of_measurement: unit, state_class: "measurement", ...extra }, { area });
-    const temps = { living_room: 23.6, kitchen: 24.9, office: 20.6, bedroom: 21.5, bathroom: 24.2, toilet: 22.8 };
-    const hums = { living_room: 47, kitchen: 53, office: 42, bedroom: 51, bathroom: 68, toilet: 55 };
+    const temps = { living_room: 23.6, kitchen: 24.9, office: 20.6, bedroom: 21.5, bathroom: 24.2, toilet: 22.8, garden: 17.2, garage: 15.8 };
+    const hums = { living_room: 47, kitchen: 53, office: 42, bedroom: 51, bathroom: 68, toilet: 55, garden: 64, garage: 58 };
     for (const [a, t] of Object.entries(temps)) {
       sensor(`sensor.${a}_temperature`, t, `${areas[a].name} Temperature`, a, "temperature", "°C");
       sensor(`sensor.${a}_humidity`, hums[a], `${areas[a].name} Humidity`, a, "humidity", "%");
@@ -207,6 +217,9 @@
     bin("binary_sensor.bathroom_motion", "off", "Bathroom Motion", "bathroom", "motion", 35 * MIN);
     bin("binary_sensor.bathroom_leak", "off", "Bathroom Leak", "bathroom", "moisture", 20 * HOUR);
     bin("binary_sensor.toilet_motion", "off", "Toilet Motion", "toilet", "motion", 15 * MIN);
+    bin("binary_sensor.garden_motion", "off", "Garden Motion", "garden", "motion", 25 * MIN);
+    bin("binary_sensor.garden_gate", "off", "Garden Gate", "garden", "door", 3 * HOUR);
+    bin("binary_sensor.garage_motion", "off", "Garage Motion", "garage", "motion", 5 * HOUR);
 
     // ---- batteries
     const batt = (id, v, name, area) => add(id, v, { friendly_name: name, device_class: "battery", unit_of_measurement: "%" }, { area, category: "diagnostic" });
@@ -267,6 +280,17 @@
     add("camera.kitchen", "streaming", { friendly_name: "Kitchen", entity_picture: "assets/cams/kitchen.jpg" }, { area: "kitchen", platform: "frigate" });
     bin("binary_sensor.living_room_camera_person", "off", "Living Room Camera Person", "living_room", "occupancy", 70 * MIN);
     bin("binary_sensor.kitchen_camera_motion", "on", "Kitchen Camera Motion", "kitchen", "motion", 2 * MIN);
+
+    // ---- outside: the garden's camera, the driveway's (no room of its own), the garage door and the driveway gate,
+    // the car charger and the garden's watering
+    add("camera.garden", "streaming", { friendly_name: "Garden", entity_picture: "assets/cams/garden.jpg" }, { area: "garden", platform: "frigate" });
+    add("camera.driveway", "streaming", { friendly_name: "Driveway", entity_picture: "assets/cams/driveway.jpg" }, { platform: "frigate" });
+    add("cover.garage_door", "closed", { friendly_name: "Garage Door", device_class: "garage", current_position: 0, supported_features: 15 }, { area: "garage", changed: 9 * HOUR });
+    add("cover.driveway_gate", "closed", { friendly_name: "Driveway Gate", device_class: "gate", current_position: 0, supported_features: 15 }, { area: "garage", changed: 2 * HOUR });
+    add("switch.garage_ev_charger", "on", { friendly_name: "Car Charger", icon: "mdi:ev-station" }, { area: "garage", changed: 3 * HOUR });
+    add("sensor.garage_ev_charger_power", 7200, { friendly_name: "Car Charger Power", device_class: "power", unit_of_measurement: "W", state_class: "measurement" }, { area: "garage" });
+    add("switch.garden_irrigation", "off", { friendly_name: "Garden Watering", icon: "mdi:sprinkler-variant" }, { area: "garden", changed: 14 * HOUR });
+    add("sensor.garden_soil_moisture", 38, { friendly_name: "Soil Moisture", device_class: "moisture", unit_of_measurement: "%", state_class: "measurement" }, { area: "garden" });
 
     // ---- people
     add("person.maya", "home", { friendly_name: "Maya", source: "device_tracker.maya_phone", entity_picture: face("#5a8fd6"), user_id: "person.maya" }, { changed: 3 * HOUR + 10 * MIN });

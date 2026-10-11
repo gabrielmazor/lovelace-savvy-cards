@@ -25,7 +25,10 @@ body.light {
 }
 
 * { box-sizing: border-box; }
-html { background: var(--page); touch-action: manipulation; }   /* no double-tap zoom: a tap is a tap */
+html { background: var(--page); }
+/* a dashboard, not a document: no double-tap zoom and no pinch zoom, anywhere (scrolling stays). touch-action does
+   not reach into a card's shadow root, so ha-shim.js gives every shadow root the same rule */
+html, body, * { touch-action: pan-x pan-y; }
 body { margin: 0; background: var(--page); color: var(--fg); font: 15px/1.5 var(--sans); -webkit-font-smoothing: antialiased; min-height: 100vh;
   padding-bottom: env(safe-area-inset-bottom, 0px); }
 a { color: inherit; }

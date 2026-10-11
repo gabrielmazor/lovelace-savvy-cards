@@ -126,7 +126,7 @@
   function intro() {
     const box = document.createElement("div");
     box.className = "intro";
-    box.innerHTML = `<p><b>A live demo.</b> Every card here is the real Savvy Cards code, running on a made-up house of six rooms. Tap a light, drag it sideways to dim it, hold anything for its details, change the A/C, skip a song. Nothing is connected to a real home.</p>
+    box.innerHTML = `<p><b>A live demo.</b> Every card here is the real Savvy Cards code, running on a made-up house of six rooms, a garden and a garage. Tap a light, drag it sideways to dim it, hold anything for its details, change the A/C, skip a song. Nothing is connected to a real home.</p>
       <a class="btn" href="https://github.com/gabrielmazor/lovelace-savvy-cards#install" target="_blank" rel="noopener">Install with HACS</a>`;
     return box;
   }

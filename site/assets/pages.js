@@ -183,6 +183,24 @@
     roomPage("toilet", [
       { cards: [subtitle("Lights", "lights"), lights("toilet", { title: "Lights" })] },
     ]),
+    roomPage("garden", [
+      { cards: [subtitle("Lights", "lights"), lights("garden", { title: "Lights" })] },
+      camera("garden"),
+      { cards: [
+        subtitle("Watering"),
+        entity({ color: "blue", entity: "switch.garden_irrigation" }),
+        entity({ color: "green", entity: "sensor.garden_soil_moisture" }),
+      ] },
+    ]),
+    roomPage("garage", [
+      { cards: [subtitle("Lights", "lights"), lights("garage", { title: "Lights" })] },
+      { cards: [subtitle("Doors", "security"), ["savvy-cover-card", { area: "garage", title: "Doors" }]] },
+      { cards: [
+        subtitle("Charging"),
+        entity({ color: "green", entity: "switch.garage_ev_charger" }),
+        entity({ color: "amber", entity: "sensor.garage_ev_charger_power", name: "Charging power" }),
+      ] },
+    ]),
   ];
 
   // ---- the domain pages the home header's chips open
@@ -223,10 +241,12 @@
         homeHeader,
         { cards: [["savvy-lock-card", { entity: "lock.front_door", layout: "full", battery_warn: 40, unlocked_warn: 5, camera_view: "hidden" }]] },
         { cards: [["savvy-camera-card", { area: "kitchen", grid_options: { columns: "full" }, recordings: "inline", columns: "auto",
-          cameras: [{ entity: "camera.living_room", area: "living_room" }, { entity: "camera.kitchen", area: "kitchen" }] }]] },
+          cameras: [{ entity: "camera.driveway", name: "Driveway" }, { entity: "camera.living_room", area: "living_room" }, { entity: "camera.kitchen", area: "kitchen" },
+            { entity: "camera.garden", area: "garden" }] }]] },
+        { cards: [["savvy-cover-card", { area: "garage", title: "Gate and garage" }]] },
         { cards: [["savvy-room-activity-card", { name: "Home", layout: "full", alarm: "none",
           chips: [{ entity: "sensor.people_home" }, { entity: "sensor.people_asleep" }, { entity: "switch.lock_bridge_plug" }] }]] },
-        ...["living_room", "kitchen", "office", "bathroom", "toilet"].map((a) => ({ cards: [["savvy-room-activity-card", { area: a, alarm: "" }]] })),
+        ...["living_room", "kitchen", "office", "bathroom", "toilet", "garden", "garage"].map((a) => ({ cards: [["savvy-room-activity-card", { area: a, alarm: "" }]] })),
       ],
     },
     {
