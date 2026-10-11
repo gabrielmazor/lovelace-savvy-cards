@@ -518,7 +518,8 @@
         case "vacuum/get_segments": return { segments: [] };
         case "frontend/get_user_data": return { value: userData[m.key] ?? null };
         case "frontend/set_user_data": userData[m.key] = m.value; return null;
-        case "auth/sign_path": return { path: m.path };
+        // a Frigate review's thumbnail is a frame of the camera's own footage
+        case "auth/sign_path": { const r = /clips\/review\/thumb-(\w+?)-(r\d)\./.exec(m.path); return { path: r ? `assets/cams/${r[1]}-${r[2]}.jpg` : m.path }; }
         case "frigate/reviews/get": return frigateReviews(m);
         case "frigate/events/get": return [];
         case "frigate/recordings/get": return [];
@@ -620,7 +621,7 @@
       const t = Date.now() / 1000, cam = (m.cameras || [])[0] || "living_room";
       return [
         { id: "r1", camera: cam, start_time: t - 300, end_time: t - 240, severity: "alert", has_been_reviewed: false, thumb_path: "", data: { objects: ["person"] } },
-        { id: "r2", camera: cam, start_time: t - 7200, end_time: t - 7150, severity: "detection", has_been_reviewed: true, thumb_path: "", data: { objects: ["cat"] } },
+        { id: "r2", camera: cam, start_time: t - 7200, end_time: t - 7150, severity: "detection", has_been_reviewed: true, thumb_path: "", data: { objects: ["person"] } },
       ];
     }
 

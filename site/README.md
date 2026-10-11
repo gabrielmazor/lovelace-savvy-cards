@@ -18,6 +18,8 @@ real home.
   Turn a TV on and its room goes to Watching TV.
 - **Media:** pick what you watch, skip a song, move the volume, switch the soundbar's source.
 - **Climate, security, admin:** set the A/C, lock a door, look through the cameras and system health.
+- **The living room camera follows the lights:** the lamp in the footage is the Arc Lamp. Switch it, dim it or
+  change its warmth and the room on camera changes with it.
 - **Light and dark:** the switch at the top right.
 
 Everything answers the way a house would, a moment after you tap, and every card on the page follows.
@@ -46,6 +48,7 @@ redraw it after the cards' look changes: `PLAYWRIGHT=$(npm root -g)/playwright n
 | `assets/house.js` | The house: rooms, devices, people, playlists with drawn covers |
 | `assets/hass.js` | The fake Home Assistant: services, modes and room lighting, the residents' own moments, history, energy, logbook, Frigate |
 | `assets/pages.js` | Every page and every card's config; the settings the cards share |
-| `assets/ha-shim.js` | `ha-card`, `ha-icon`, `ha-state-icon`, and the drawn camera feeds |
+| `assets/ha-shim.js` | `ha-card`, `ha-icon`, `ha-state-icon`, and the camera feeds (the living room's lamp relit from the house) |
+| `assets/cams/` | The camera loops (MP4 and WebM), stills and review thumbnails, and the living room lamp's light map. Footage from [Mixkit](https://mixkit.co) under the Mixkit Free License |
 | `assets/app.js` | Navigation, theme, the details panel, and the sections layout (three columns, one on a phone) |
 | `assets/site.css` | The site's look, and the theme variables the cards read |

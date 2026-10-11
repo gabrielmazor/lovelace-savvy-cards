@@ -7,16 +7,6 @@
   const MIN = 60000, HOUR = 60 * MIN;
   const ago = (ms) => new Date(Date.now() - ms).toISOString();
 
-  // A camera still: a calm drawing of a room, so the camera tiles have something to show.
-  const still = (sky, wall, floor, label) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='640' height='360' viewBox='0 0 640 360'>
-<defs><linearGradient id='w' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='${wall}'/><stop offset='1' stop-color='${floor}'/></linearGradient>
-<linearGradient id='s' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='${sky}'/><stop offset='1' stop-color='${wall}'/></linearGradient></defs>
-<rect width='640' height='360' fill='url(#w)'/><rect x='380' y='54' width='170' height='150' rx='6' fill='url(#s)' opacity='.9'/>
-<rect x='380' y='54' width='170' height='150' rx='6' fill='none' stroke='#000' stroke-opacity='.25' stroke-width='6'/>
-<path d='M0 262 L640 238 L640 360 L0 360 Z' fill='#000' fill-opacity='.22'/>
-<rect x='70' y='196' width='230' height='70' rx='14' fill='#000' fill-opacity='.28'/><rect x='84' y='170' width='202' height='40' rx='12' fill='#000' fill-opacity='.2'/>
-<text x='20' y='34' font-family='ui-monospace,Menlo,monospace' font-size='15' fill='#fff' fill-opacity='.7'>${label}</text></svg>`)}`;
-
   // Album art for what is playing.
   const art = (a, b) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'><defs>
 <radialGradient id='g' cx='.75' cy='.2' r='.9'><stop offset='0' stop-color='${a}'/><stop offset='1' stop-color='${b}'/></radialGradient></defs>
@@ -273,8 +263,8 @@
     add("sensor.people_asleep", 0, { friendly_name: "People Asleep", icon: "mdi:sleep", state_class: "measurement" }, {});
 
     // ---- cameras: two through Frigate
-    add("camera.living_room", "streaming", { friendly_name: "Living Room", entity_picture: still("#f3c98b", "#5b4a3a", "#2d241c", "LIVING ROOM") }, { area: "living_room", platform: "frigate" });
-    add("camera.kitchen", "streaming", { friendly_name: "Kitchen", entity_picture: still("#bfe3d0", "#3f5a4c", "#1f2a24", "KITCHEN") }, { area: "kitchen", platform: "frigate" });
+    add("camera.living_room", "streaming", { friendly_name: "Living Room", entity_picture: "assets/cams/living_room.jpg" }, { area: "living_room", platform: "frigate" });
+    add("camera.kitchen", "streaming", { friendly_name: "Kitchen", entity_picture: "assets/cams/kitchen.jpg" }, { area: "kitchen", platform: "frigate" });
     bin("binary_sensor.living_room_camera_person", "off", "Living Room Camera Person", "living_room", "occupancy", 70 * MIN);
     bin("binary_sensor.kitchen_camera_motion", "on", "Kitchen Camera Motion", "kitchen", "motion", 2 * MIN);
 
