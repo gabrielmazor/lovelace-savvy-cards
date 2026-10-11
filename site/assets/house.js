@@ -275,11 +275,9 @@
     add("sensor.people_home", 2, { friendly_name: "People Home", icon: "mdi:home-account", state_class: "measurement" }, {});
     add("sensor.people_asleep", 0, { friendly_name: "People Asleep", icon: "mdi:sleep", state_class: "measurement" }, {});
 
-    // ---- cameras: two through Frigate
-    add("camera.living_room", "streaming", { friendly_name: "Living Room", entity_picture: "assets/cams/living_room.jpg" }, { area: "living_room", platform: "frigate" });
-    add("camera.kitchen", "streaming", { friendly_name: "Kitchen", entity_picture: "assets/cams/kitchen.jpg" }, { area: "kitchen", platform: "frigate" });
+    // ---- cameras through Frigate: the living room's (the kitchen's is waiting for better footage)
+    add("camera.living_room", "streaming", { friendly_name: "Living Room", entity_picture: "assets/cams/living_room_eve.jpg" }, { area: "living_room", platform: "frigate" });
     bin("binary_sensor.living_room_camera_person", "off", "Living Room Camera Person", "living_room", "occupancy", 70 * MIN);
-    bin("binary_sensor.kitchen_camera_motion", "on", "Kitchen Camera Motion", "kitchen", "motion", 2 * MIN);
 
     // ---- outside: the garden's camera, the driveway's (no room of its own), the garage door and the driveway gate,
     // the car charger and the garden's watering

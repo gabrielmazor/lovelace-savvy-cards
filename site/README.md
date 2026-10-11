@@ -20,8 +20,10 @@ real home.
   Turn a TV on and its room goes to Watching TV.
 - **Media:** pick what you watch, skip a song, move the volume, switch the soundbar's source.
 - **Climate, security, admin:** set the A/C, lock a door, look through the cameras and system health.
-- **The living room camera follows the lights:** the lamp in the footage is the Arc Lamp. Switch it, dim it or
-  change its warmth and the room on camera changes with it.
+- **The living room camera follows the lights:** a ceiling-corner view of the room, lit live by its six lights:
+  the window lamp and the candle in the shot, the ceiling and the sconces, and the light bar and TV glow off to
+  the left, which wash the sofas in their colour (the TV flickers while it plays). Switch, dim or recolour any
+  of them and the room on camera follows; in Daytime it is the room by day.
 - **Light and dark:** the switch at the top right.
 
 Everything answers the way a house would, a moment after you tap, and every card on the page follows.
@@ -52,6 +54,6 @@ redraw it after the cards' look changes: `PLAYWRIGHT=$(npm root -g)/playwright n
 | `assets/hass.js` | The fake Home Assistant: services, modes and room lighting, the residents' own moments, history, energy, logbook, Frigate |
 | `assets/pages.js` | Every page and every card's config; the settings the cards share |
 | `assets/ha-shim.js` | `ha-card`, `ha-icon`, `ha-state-icon`, and the camera feeds (the living room's lamp relit from the house) |
-| `assets/cams/` | The camera loops (MP4 and WebM), stills and review thumbnails, and the living room lamp's light map. Footage from [Mixkit](https://mixkit.co) under the Mixkit Free License |
+| `assets/cams/` | The garden and driveway loops (MP4 and WebM), the living room's empty-room photo and its window mask, stills and review thumbnails. From [Mixkit](https://mixkit.co) footage under the Mixkit Free License |
 | `assets/app.js` | Navigation, theme, the details panel, and the sections layout (three columns, one on a phone) |
 | `assets/site.css` | The site's look, and the theme variables the cards read |

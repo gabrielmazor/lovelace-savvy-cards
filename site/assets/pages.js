@@ -22,7 +22,7 @@
     pages: { home: page("home"), lights: page("lights"), climate: page("climate"), media: page("media"), security: page("security"), health: page("admin"), room: page("{slug}") },
     house: { control: "input_select.home_mode", weather: "weather.home", security: "lock.front_door", tap: "list" },
     health: { watchman: WATCHMAN, battery_threshold: 20, warn_above: 10, group_by: "hub", watchman_last_run: "sensor.watchman_last_report" },
-    ignore: { entities: ["binary_sensor.living_room_camera_person", "binary_sensor.kitchen_camera_motion"] },
+    ignore: { entities: ["binary_sensor.living_room_camera_person"] },
     room_order: ROOMS.map((r) => r.id),
     rooms: Object.fromEntries(ROOMS.map((r) => [r.id, {
       page: page(slug(r.id)), control: `input_select.${r.id}_mode`, light_state: `input_boolean.${r.id}_lights`,
@@ -145,7 +145,6 @@
       { cards: [subtitle("Lights", "lights"), lights("kitchen", { title: "Lights" })] },
       { cards: [subtitle("Media", "media"), ["savvy-media-card", { area: "kitchen", name: "Media", volume_step: 1, tts: speak("media_player.kitchen_speaker"),
         presets: [{ entity: "input_button.kitchen_radio_jazz", name: "Jazz radio" }, { entity: "input_button.kitchen_radio_news", name: "Morning news" }] }]] },
-      camera("kitchen"),
       { cards: [
         subtitle("Appliances"),
         ["savvy-vacuum-card", { entity: VACUUM, start: "button.robot_vacuum", rooms: "auto", battery_warn: 40, battery_critical: 20 }],
@@ -241,7 +240,7 @@
         homeHeader,
         { cards: [["savvy-lock-card", { entity: "lock.front_door", layout: "full", battery_warn: 40, unlocked_warn: 5, camera_view: "hidden" }]] },
         { cards: [["savvy-camera-card", { area: "kitchen", grid_options: { columns: "full" }, recordings: "inline", columns: "auto",
-          cameras: [{ entity: "camera.driveway", name: "Driveway" }, { entity: "camera.living_room", area: "living_room" }, { entity: "camera.kitchen", area: "kitchen" },
+          cameras: [{ entity: "camera.driveway", name: "Driveway" }, { entity: "camera.living_room", area: "living_room" },
             { entity: "camera.garden", area: "garden" }] }]] },
         { cards: [["savvy-cover-card", { area: "garage", title: "Gate and garage" }]] },
         { cards: [["savvy-room-activity-card", { name: "Home", layout: "full", alarm: "none",

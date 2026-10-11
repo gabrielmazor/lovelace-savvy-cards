@@ -144,15 +144,25 @@
     for (let i = 0; i < 14; i++) { const p = ((t * 0.8 + i / 14) % 1); g.fillStyle = `rgba(200,230,255,${0.5 * (1 - p)})`; g.beginPath(); g.arc(w * 0.7 + Math.cos(i) * 90 * p, h * 0.8 - Math.sin(Math.PI * p) * 70, 2, 0, 7); g.fill(); }
   }
 
-  // Real footage for the rooms that have it: a short loop filmed by a fixed camera. In the living room the footage
-  // follows the house: the lamp in the shot is the Arc Lamp. Its light was measured from the same camera with the
-  // lamp off and on (cams/living_room_lamp.png: how much of each pixel stays when the lamp is off, gamma-encoded),
-  // so the frame is multiplied by that map, opened up as far as the lamp's brightness, tinted by its warmth.
-  // The room's other lights lift the whole picture a little; with everything off it sinks into the dark.
+  // What the cameras see: a short loop filmed by a fixed camera, or a room on a photo lit live by the house. A loop
+  // indoors follows the room's lights a little (brighter with more on, dark with all off); outside it is the day.
   const FEEDS = {
-    living_room: { src: "assets/cams/living_room.mp4", room: "living_room",
-      lamp: { map: "assets/cams/living_room_lamp.png", light: "light.living_room_arc_lamp", kelvin: 2700 } },
-    kitchen: { src: "assets/cams/kitchen.mp4", room: "kitchen" },
+    // the living room: the empty room from a ceiling corner (cams/living_room_room.jpg, daylight), lit by the house.
+    // At night each lamp throws its own light (where it falls, in its colour, as bright as it is): the window lamp
+    // and the candle in the shot, the ceiling and the sconces over the room, the light bar and the TV off to the
+    // left, washing the sofas in their colour (the TV flickers while it plays). By day it is the room as filmed.
+    living_room: { photo: "assets/cams/living_room_room.jpg", glass: "assets/cams/living_room_glass.png", room: "living_room",
+      relight: {
+        w: 1280, h: 720, ambient: [0.19, 0.2, 0.27], night_glass: [0.18, 0.24, 0.42],
+        lights: [
+          { id: "light.living_room_ceiling", spots: [[0.15], [0.75, 640, 160, 720]] },
+          { id: "light.living_room_sconces", spots: [[0.5, 600, 90, 420]] },
+          { id: "light.living_room_arc_lamp", spots: [[1.3, 718, 70, 270], [0.55, 718, 260, 300]], glow: [718, 52, 34, 0.55] },
+          { id: "light.living_room_candle", spots: [[0.95, 232, 214, 95]], glow: [232, 205, 9, 0.9], flicker: "candle" },
+          { id: "light.living_room_light_bar", spots: [[1.1, -160, 430, 820]] },
+          { id: "light.living_room_tv_glow", spots: [[1.25, -220, 320, 820]], flicker: "tv", tv: "media_player.living_room_tv" },
+        ],
+      } },
     garden: { src: "assets/cams/garden.mp4" },
     // the driveway's footage is one gate opening and closing (sped up to the demo gate's 13 s each way): the camera
     // shows the part that matches the Driveway Gate, where it is now
@@ -191,46 +201,94 @@
     }
     if (v.paused) v.play().catch(() => {});
   }
-  // the share of a room's light that is on, its lamps weighted by brightness (the lamp in the shot left out)
-  const roomLight = (hass, area, skip) => {
+  // the share of a room's light that is on, its lamps weighted by brightness
+  const roomLight = (hass, area) => {
     if (!hass) return 1;
-    const ids = Object.values(hass.entities || {}).filter((e) => e.area_id === area && e.entity_id.startsWith("light.") && !e.hidden && e.entity_id !== skip).map((e) => e.entity_id);
+    const ids = Object.values(hass.entities || {}).filter((e) => e.area_id === area && e.entity_id.startsWith("light.") && !e.hidden).map((e) => e.entity_id);
     return ids.length ? ids.reduce((n, id) => n + lightLevel(hass, id), 0) / ids.length : 1;
   };
-  const MAPS = {};
-  function lampMap(url) {
-    if (MAPS[url]) return MAPS[url];
-    const m = (MAPS[url] = { ready: false });
-    const img = new Image();
-    img.onload = () => {
-      const w = 480, h = 270, c = document.createElement("canvas");
-      c.width = w; c.height = h;
-      const g = c.getContext("2d");
-      g.drawImage(img, 0, 0, w, h);
-      const px = g.getImageData(0, 0, w, h).data, keep = new Float32Array(w * h * 3);
-      for (let i = 0, j = 0; i < px.length; i += 4) for (let k = 0; k < 3; k++) keep[j++] = (px[i + k] / 255) ** 2.2;   // linear: the light that stays
-      Object.assign(m, { ready: true, w, h, keep, canvas: c, g, data: g.createImageData(w, h), key: "" });
-    };
-    img.src = url;
-    return m;
-  }
-  // the multiply layer for a level and a tint: the light that stays, plus the lamp's share of the rest
-  function lampLayer(m, level, tint) {
-    const key = `${level.toFixed(3)}|${tint.map((v) => v.toFixed(2)).join()}`;
-    if (m.key === key) return m.canvas;
-    const out = m.data.data, keep = m.keep;
-    for (let i = 0, j = 0; i < out.length; i += 4) {
-      for (let k = 0; k < 3; k++, j++) { const s = keep[j]; out[i + k] = 255 * Math.min(1, s + (1 - s) * level * tint[k]) ** (1 / 2.2); }
-      out[i + 3] = 255;
-    }
-    m.g.putImageData(m.data, 0, 0);
-    m.key = key;
-    return m.canvas;
-  }
 
   const c2 = (g) => g.canvas;   // the frame drawn so far, drawn again to lift it
   // H.264 where the browser has it, VP9 (the same footage, a .webm beside it) where it does not
   const pickSrc = (mp4) => (document.createElement("video").canPlayType('video/mp4; codecs="avc1.4D401F"') ? mp4 : mp4.replace(/\.mp4$/, ".webm"));
+  // A lit room from a daylight photo: the photo times a light map. The map is the night (a dim blue room, deep blue
+  // glass) plus each lamp's light where it falls, in its colour, as bright as the lamp; it never goes above the
+  // daylight photo. Worked out on a small grid and stretched (light is soft), only when a light moves.
+  const lightRgb = (st) => {
+    const a = st?.attributes || {};
+    let c = a.rgb_color ? a.rgb_color.map((v) => v / 255) : a.hs_color ? hsRgb(a.hs_color[0], a.hs_color[1] / 100) : kelvinRgb(a.color_temp_kelvin || 2700);
+    const top = Math.max(...c, 0.01);
+    return c.map((v) => v / top);
+  };
+  const hsRgb = (h, sat) => {
+    const f = (n) => { const k = (n + h / 60) % 6; return 1 - sat * Math.max(0, Math.min(k, 4 - k, 1)); };
+    return [f(5), f(3), f(1)];
+  };
+  const RELIT = {};
+  function relightKit(feed) {
+    const key = feed.photo;
+    if (RELIT[key]) return RELIT[key];
+    const r = feed.relight, gw = 320, gh = 180, n = gw * gh;
+    const kit = (RELIT[key] = { ready: false, gw, gh, cur: {}, key: "" });
+    const photo = new Image(), glassImg = new Image();
+    let left = 2;
+    const done = () => {
+      if (--left) return;
+      const c = document.createElement("canvas"); c.width = gw; c.height = gh;
+      const g = c.getContext("2d");
+      g.drawImage(glassImg, 0, 0, gw, gh);
+      const px = g.getImageData(0, 0, gw, gh).data, glass = new Float32Array(n);
+      for (let i = 0; i < n; i++) glass[i] = px[i * 4] / 255;
+      // each lamp's reach: a sum of soft pools (amount, x, y, radius in photo pixels), or a flat share
+      const sx = r.w / gw, sy = r.h / gh;
+      const reach = r.lights.map((l) => {
+        const f = new Float32Array(n);
+        for (const sp of l.spots) {
+          if (sp.length === 1) { for (let i = 0; i < n; i++) f[i] += sp[0]; continue; }
+          const [amt, cx, cy, rad] = sp, r2 = rad * rad;
+          for (let y = 0, i = 0; y < gh; y++) for (let x = 0; x < gw; x++, i++) {
+            const dx = (x + 0.5) * sx - cx, dy = (y + 0.5) * sy - cy;
+            f[i] += amt * Math.exp(-(dx * dx + dy * dy) / r2);
+          }
+        }
+        for (let i = 0; i < n; i++) f[i] *= 1 - 0.85 * glass[i];   // glass is not lit by a lamp
+        return f;
+      });
+      Object.assign(kit, { ready: true, photo, glass, reach, canvas: c, g, data: g.createImageData(gw, gh) });
+    };
+    photo.onload = done; glassImg.onload = done;
+    photo.src = feed.photo; glassImg.src = feed.glass;
+    return kit;
+  }
+  // the light map for now: returns the grid canvas (or null by day, when the photo stands as filmed)
+  function relightMap(kit, feed, hass, t) {
+    const r = feed.relight, day = hass?.states["input_select.home_mode"]?.state === "Daytime";
+    const lv = [], col = [];
+    for (const l of r.lights) {
+      const st = hass?.states[l.id];
+      const want = lightLevel(hass, l.id);
+      const cur = (kit.cur[l.id] = kit.cur[l.id] == null ? want : kit.cur[l.id] + (want - kit.cur[l.id]) * 0.25);
+      let v = Math.abs(want - cur) < 0.004 ? (kit.cur[l.id] = want) : cur;
+      if (v > 0 && l.flicker === "candle") v *= 0.84 + 0.1 * Math.sin(t * 11.3) + 0.06 * Math.sin(t * 23.7 + 1.3);
+      if (v > 0 && l.flicker === "tv" && ["on", "playing", "paused"].includes(hass?.states[l.tv]?.state)) v *= 0.72 + 0.18 * Math.sin(t * 5.1) + 0.1 * Math.sin(t * 17.9 + 0.7);
+      lv.push(v); col.push(lightRgb(st));
+    }
+    if (day) return null;
+    const key = lv.map((v) => v.toFixed(3)).join() + col.map((c) => c.map((x) => x.toFixed(2)).join()).join();
+    if (key === kit.key) return kit.canvas;
+    kit.key = key;
+    const n = kit.gw * kit.gh, out = kit.data.data, a = r.ambient, ng = r.night_glass;
+    for (let i = 0; i < n; i++) {
+      const gl = kit.glass[i];
+      let R = a[0] * (1 - gl) + ng[0] * gl, G = a[1] * (1 - gl) + ng[1] * gl, B = a[2] * (1 - gl) + ng[2] * gl;
+      for (let k = 0; k < lv.length; k++) { if (!lv[k]) continue; const f = lv[k] * kit.reach[k][i], c = col[k]; R += f * c[0]; G += f * c[1]; B += f * c[2]; }
+      out[i * 4] = Math.min(255, R * 255); out[i * 4 + 1] = Math.min(255, G * 255); out[i * 4 + 2] = Math.min(255, B * 255); out[i * 4 + 3] = 255;
+    }
+    kit.g.putImageData(kit.data, 0, 0);
+    kit.lv = lv; kit.col = col;
+    return kit.canvas;
+  }
+
   customElements.define("ha-camera-stream", class extends HTMLElement {
     constructor() {
       super();
@@ -247,6 +305,7 @@
     disconnectedCallback() { this._io?.disconnect(); cancelAnimationFrame(this._raf); this._raf = 0; this._video?.pause(); }
     // the footage, cropped to fill like a camera view, then relit by the house; false until the first frame is in
     _footage(g, w, h, feed) {
+      if (feed.photo) return this._room(g, w, h, feed);
       let v = this._video;
       if (!v) {
         v = this._video = Object.assign(document.createElement("video"), { src: pickSrc(feed.src), muted: true, loop: feed.loop !== false, playsInline: true, autoplay: true, preload: "auto" });
@@ -258,47 +317,60 @@
       // not ready (loading, or a seek): the last frame shown stays, or the camera's still until the first one
       if (v.readyState < 2 || !v.videoWidth || v.seeking) {
         if (this._snap) { g.globalCompositeOperation = "source-over"; g.globalAlpha = 1; g.drawImage(this._snap, 0, 0, w, h); return true; }
-        const pic = this._st?.attributes.entity_picture;
-        if (pic && !this._poster) { this._poster = new Image(); this._poster.src = pic; }
-        if (this._poster?.complete && this._poster.naturalWidth) {
-          const p = this._poster, ps = Math.max(w / p.naturalWidth, h / p.naturalHeight);
-          g.drawImage(p, (p.naturalWidth - w / ps) / 2, (p.naturalHeight - h / ps) / 2, w / ps, h / ps, 0, 0, w, h);
-          return true;
-        }
-        return false;
+        return this._still(g, w, h);
       }
       const vw = v.videoWidth, vh = v.videoHeight, s = Math.max(w / vw, h / vh);
       const sw = w / s, sh = h / s, sx = (vw - sw) / 2, sy = (vh - sh) / 2;
       g.globalCompositeOperation = "source-over"; g.globalAlpha = 1;
       g.drawImage(v, sx, sy, sw, sh, 0, 0, w, h);
       const hass = this.hass;
-      // the lamp in the shot: its light, as bright and as warm as the lamp, eased like a real bulb
-      if (feed.lamp) {
-        const m = lampMap(feed.lamp.map);
-        const want = lightLevel(hass, feed.lamp.light);
-        this._lvl = this._lvl == null ? want : this._lvl + (want - this._lvl) * 0.22;
-        if (Math.abs(want - this._lvl) < 0.004) this._lvl = want;
-        if (m.ready) {
-          const st = hass?.states[feed.lamp.light], k = st?.attributes.color_temp_kelvin || feed.lamp.kelvin;
-          const own = kelvinRgb(feed.lamp.kelvin), at = kelvinRgb(k);
-          // the same light, shifted in colour: as bright to the eye (a channel above full just stays full)
-          let tint = at.map((x, i) => x / Math.max(0.05, own[i]));
-          const luma = 0.3 * tint[0] + 0.59 * tint[1] + 0.11 * tint[2]; tint = tint.map((x) => x / luma);
-          const f = m.w / vw;
-          g.globalCompositeOperation = "multiply";
-          g.drawImage(lampLayer(m, this._lvl, tint), sx * f, sy * f, sw * f, sh * f, 0, 0, w, h);
-        }
-      }
       // the rest of the room's light: a lift when it is bright, a sink into the dark when all is off (outside
       // cameras see the day, not the lamps)
       if (!feed.room) { g.globalCompositeOperation = "source-over"; g.globalAlpha = 1; this._keep(g.canvas); return true; }
-      const want = roomLight(hass, feed.room, feed.lamp?.light);
+      const want = roomLight(hass, feed.room);
       this._amb = this._amb == null ? want : this._amb + (want - this._amb) * 0.15;
       if (this._amb > 0.02) { g.globalCompositeOperation = "lighter"; g.globalAlpha = 0.22 * this._amb; g.drawImage(c2(g), 0, 0); }
       const dark = Math.round(255 * (0.62 + 0.38 * Math.min(1, this._amb * 2)));
       g.globalCompositeOperation = "multiply"; g.globalAlpha = 1; g.fillStyle = `rgb(${dark},${dark},${dark})`; g.fillRect(0, 0, w, h);
       g.globalCompositeOperation = "source-over"; g.globalAlpha = 1;
       this._keep(g.canvas);
+      return true;
+    }
+    // the camera's still (its entity picture), until the feed has a frame
+    _still(g, w, h) {
+      const pic = this._st?.attributes.entity_picture;
+      if (pic && !this._poster) { this._poster = new Image(); this._poster.src = pic; }
+      if (!this._poster?.complete || !this._poster.naturalWidth) return false;
+      const p = this._poster, ps = Math.max(w / p.naturalWidth, h / p.naturalHeight);
+      g.globalCompositeOperation = "source-over"; g.globalAlpha = 1;
+      g.drawImage(p, (p.naturalWidth - w / ps) / 2, (p.naturalHeight - h / ps) / 2, w / ps, h / ps, 0, 0, w, h);
+      return true;
+    }
+    // a room on a photo, lit by the house (see relightMap)
+    _room(g, w, h, feed) {
+      const kit = relightKit(feed);
+      if (!kit.ready) return this._still(g, w, h);
+      const p = kit.photo, s = Math.max(w / p.naturalWidth, h / p.naturalHeight);
+      const sw = w / s, sh = h / s, sx = (p.naturalWidth - sw) / 2, sy = (p.naturalHeight - sh) / 2;
+      g.globalCompositeOperation = "source-over"; g.globalAlpha = 1;
+      g.drawImage(p, sx, sy, sw, sh, 0, 0, w, h);
+      const map = relightMap(kit, feed, this.hass, performance.now() / 1000);
+      if (map) {
+        const f = kit.gw / p.naturalWidth;
+        g.globalCompositeOperation = "multiply"; g.imageSmoothingQuality = "high";
+        g.drawImage(map, sx * f, sy * f, sw * f, sh * f, 0, 0, w, h);
+        // the lamps themselves glow: a shade lit from inside, a flame
+        g.globalCompositeOperation = "lighter";
+        feed.relight.lights.forEach((l, k) => {
+          if (!l.glow || !(kit.lv?.[k] > 0)) return;
+          const [gx, gy, gr, amt] = l.glow, c = kit.col[k], X = (gx - sx) * s, Y = (gy - sy) * s, R = gr * s;
+          const grad = g.createRadialGradient(X, Y, 0, X, Y, R);
+          const rgb = c.map((v) => Math.round(255 * (0.6 + 0.4 * v))).join(",");
+          grad.addColorStop(0, `rgba(${rgb},${(amt * kit.lv[k]).toFixed(3)})`); grad.addColorStop(1, `rgba(${rgb},0)`);
+          g.fillStyle = grad; g.fillRect(X - R, Y - R, R * 2, R * 2);
+        });
+      }
+      g.globalCompositeOperation = "source-over"; g.globalAlpha = 1;
       return true;
     }
     _keep(c) {

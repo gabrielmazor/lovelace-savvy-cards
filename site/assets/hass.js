@@ -464,10 +464,9 @@
         const tv = tvOn();
         if (tv) go("media_player", "turn_off", {}, "media_player.living_room_tv");
         later(4000, () => sense("binary_sensor.living_room_presence", false));
-        later(6000, () => { sense("binary_sensor.kitchen_motion", true); sense("binary_sensor.kitchen_camera_motion", true); });
+        later(6000, () => sense("binary_sensor.kitchen_motion", true));
         later(9000, () => setMode("kitchen", "Cooking", "Sync"));
         later(70000, () => setMode("kitchen", "Dining", "Cooking"));
-        later(80000, () => sense("binary_sensor.kitchen_camera_motion", false));
         later(125000, () => { setMode("kitchen", "Sync", "Dining"); sense("binary_sensor.kitchen_motion", false); });
         later(128000, () => { sense("binary_sensor.living_room_presence", true); if (tv) go("media_player", "turn_on", {}, "media_player.living_room_tv"); });
         return 130000;
