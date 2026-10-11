@@ -45,7 +45,8 @@ redraw it after the cards' look changes: `PLAYWRIGHT=$(npm root -g)/playwright n
 
 | File | What it holds |
 |---|---|
-| `assets/house.js` | The house: rooms, devices, people, playlists with drawn covers |
+| `assets/house.js` | The house: rooms, devices, people, and what the players play |
+| `assets/covers.js`, `assets/covers/` | The parody records' and shows' covers: Mixkit stock frames with the sleeve's type set over them |
 | `assets/hass.js` | The fake Home Assistant: services, modes and room lighting, the residents' own moments, history, energy, logbook, Frigate |
 | `assets/pages.js` | Every page and every card's config; the settings the cards share |
 | `assets/ha-shim.js` | `ha-card`, `ha-icon`, `ha-state-icon`, and the camera feeds (the living room's lamp relit from the house) |

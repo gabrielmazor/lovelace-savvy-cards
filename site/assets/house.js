@@ -16,12 +16,12 @@
   const face = (c) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='88' height='88'><rect width='88' height='88' fill='${c}'/>
 <circle cx='44' cy='34' r='15' fill='#fff' fill-opacity='.85'/><ellipse cx='44' cy='78' rx='26' ry='22' fill='#fff' fill-opacity='.85'/></svg>`)}`;
 
-  // What the players play: parodies of well-known records and shows, each with a cover drawn in covers.js (nothing
-  // is copied), and how long each runs. An album covers.js does not know gets a generated cover.
+  // What the players play: parodies of well-known records and shows, each with its cover (see covers.js), and how
+  // long each runs. An album covers.js does not know gets a generated cover.
   const hash = (s) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
   const cover = (album, [a, b, c], kind = "music") => {
-    const drawn = window.SavvyDemo?.COVERS?.[album];
-    if (drawn) return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400' viewBox='0 0 400 400'>${drawn}</svg>`)}`;
+    const photo = window.SavvyDemo?.COVERS?.[album];
+    if (photo) return photo;
     const h = hash(album), shapes = [];
     for (let i = 0; i < 5; i++) {
       const x = 40 + ((h >> (i * 3)) % 320), y = 40 + ((h >> (i * 5 + 1)) % 260), r = 30 + ((h >> (i * 2 + 2)) % 90);
