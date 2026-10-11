@@ -1181,7 +1181,7 @@ class LightsCard extends HTMLElement {
         <span class="end">
           <button class="power" hidden><ha-icon icon="mdi:power"></ha-icon></button>
           <button class="swatch" hidden><i></i></button>
-          <ha-icon class="gone" icon="mdi:wifi-off" hidden></ha-icon>
+          <ha-icon class="gone" icon="mdi:link-variant-off" hidden></ha-icon>
           <span class="d"></span>
         </span>`;
       cache.set(key, node);

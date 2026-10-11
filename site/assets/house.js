@@ -26,10 +26,12 @@
   const face = (c) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='88' height='88'><rect width='88' height='88' fill='${c}'/>
 <circle cx='44' cy='34' r='15' fill='#fff' fill-opacity='.85'/><ellipse cx='44' cy='78' rx='26' ry='22' fill='#fff' fill-opacity='.85'/></svg>`)}`;
 
-  // What the players play: real titles, a cover drawn for each album or show, and how long each runs.
-  // Covers are generated (no artwork is copied): a palette and a composition per album, and its name.
+  // What the players play: parodies of well-known records and shows, each with a cover drawn in covers.js (nothing
+  // is copied), and how long each runs. An album covers.js does not know gets a generated cover.
   const hash = (s) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
   const cover = (album, [a, b, c], kind = "music") => {
+    const drawn = window.SavvyDemo?.COVERS?.[album];
+    if (drawn) return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400' viewBox='0 0 400 400'>${drawn}</svg>`)}`;
     const h = hash(album), shapes = [];
     for (let i = 0; i < 5; i++) {
       const x = 40 + ((h >> (i * 3)) % 320), y = 40 + ((h >> (i * 5 + 1)) % 260), r = 30 + ((h >> (i * 2 + 2)) % 90);
@@ -51,35 +53,35 @@
   const SPACES = ["#2f3e46", "#0f1416", "#84a98c"], BLUE = ["#2b4c7e", "#0d1b2a", "#a9c7e8"], LULL = ["#f5b83d", "#3a2a55", "#ffd9a0"];
   const PLAYLISTS = {
     "media_player.living_room_streamer": [
-      track("Good News About Hell", "Severance · Season 1, Episode 1", "Severance", 3360, ["#2c6e8f", "#0a1a24", "#bfe3f0"], { kind: "tv", app: "Apple TV+" }),
-      track("Failure's Contagious", "Slow Horses · Season 1, Episode 1", "Slow Horses", 2880, ["#6b705c", "#1c1d18", "#d4a373"], { kind: "tv", app: "Apple TV+" }),
-      track("System", "The Bear · Season 1, Episode 1", "The Bear", 1680, ["#1d3557", "#0b0f19", "#e63946"], { kind: "tv", app: "Hulu" }),
-      track("Anjin", "Shōgun · Episode 1", "Shōgun", 4200, ["#7f1d1d", "#120606", "#f5d0a9"], { kind: "tv", app: "Hulu" }),
-      track("Pilot", "Ted Lasso · Season 1, Episode 1", "Ted Lasso", 1800, ["#f2c14e", "#1f4e8c", "#ffffff"], { kind: "tv", app: "Apple TV+" }),
+      track("Good News About Uptime", "Serverance · Season 1, Episode 1", "Serverance", 3360, ["#2c6e8f", "#0a1a24", "#bfe3f0"], { kind: "tv", app: "Apple TV+" }),
+      track("Latency's Contagious", "Slow Houses · Season 1, Episode 1", "Slow Houses", 2880, ["#6b705c", "#1c1d18", "#d4a373"], { kind: "tv", app: "Apple TV+" }),
+      track("On Tap", "The Beer · Season 1, Episode 1", "The Beer", 1680, ["#1d3557", "#0b0f19", "#e63946"], { kind: "tv", app: "Hulu" }),
+      track("Plug-in", "Shōfun · Episode 1", "Shōfun", 4200, ["#7f1d1d", "#120606", "#f5d0a9"], { kind: "tv", app: "Hulu" }),
+      track("Pilot Light", "Ted Lasagne · Season 1, Episode 1", "Ted Lasagne", 1800, ["#f2c14e", "#1f4e8c", "#ffffff"], { kind: "tv", app: "Apple TV+" }),
     ],
     "media_player.kitchen_speaker": [
-      track("So What", "Miles Davis", "Kind of Blue", 562, KOB),
-      track("Blue in Green", "Miles Davis", "Kind of Blue", 337, KOB),
-      track("Take Five", "The Dave Brubeck Quartet", "Time Out", 324, TIMEOUT),
-      track("Naima", "John Coltrane", "Giant Steps", 261, GIANT),
-      track("Waltz for Debby", "Bill Evans Trio", "Waltz for Debby", 420, DEBBY),
-      track("Freddie Freeloader", "Miles Davis", "Kind of Blue", 586, KOB),
+      track("So What Now", "Smiles Davis", "Kinda Blue", 562, KOB),
+      track("Blue in Greenish", "Smiles Davis", "Kinda Blue", 337, KOB),
+      track("Take Five More Minutes", "The Dave Brewbeck Quartet", "Time In", 324, TIMEOUT),
+      track("Naptime", "Joan Coldtrain", "Giant Stairs", 261, GIANT),
+      track("Waltz for Debbie", "Bill Evens Trio", "Waltz for Debbie", 420, DEBBY),
+      track("Freddie Firmware", "Smiles Davis", "Kinda Blue", 586, KOB),
     ],
     "media_player.bedroom_speaker": [
-      track("An Ending (Ascent)", "Brian Eno", "Apollo", 266, APOLLO),
-      track("1/1", "Brian Eno", "Ambient 1: Music for Airports", 1021, AIRPORTS),
-      track("Says", "Nils Frahm", "Spaces", 529, SPACES),
-      track("On the Nature of Daylight", "Max Richter", "The Blue Notebooks", 380, BLUE),
+      track("A Restart (Ascent)", "Brian Ego", "Apollo 404", 266, APOLLO),
+      track("0/1", "Brian Ego", "Ambient 1: Music for Airplane Mode", 1021, AIRPORTS),
+      track("Says Who", "Nils Fram", "Spacebar", 529, SPACES),
+      track("On the Nature of Daylight Saving", "Max Righter", "The Blue Notifications", 380, BLUE),
     ],
     "media_player.bathroom_speaker": [
-      track("Here Comes the Sun", "The Beatles", "Abbey Road", 185, ["#3d6b8f", "#14202b", "#f2d16b"]),
-      track("Lovely Day", "Bill Withers", "Menagerie", 254, ["#d98b3a", "#2a1a0e", "#f5e1b8"]),
-      track("Dreams", "Fleetwood Mac", "Rumours", 257, ["#8a7a6a", "#1e1a16", "#e8dccb"]),
-      track("September", "Earth, Wind & Fire", "The Best of Earth, Wind & Fire", 215, ["#c0392b", "#1a0b08", "#f1c40f"]),
+      track("Here Comes the Sun Sensor", "The Beadles", "Abbey Toad", 185, ["#3d6b8f", "#14202b", "#f2d16b"]),
+      track("Lovely Day (Forecast)", "Bill Weathers", "Partly Cloudy", 254, ["#d98b3a", "#2a1a0e", "#f5e1b8"]),
+      track("Streams", "Fleetwood Mic", "Roomours", 257, ["#8a7a6a", "#1e1a16", "#e8dccb"]),
+      track("21st Night of Setup", "Earth, Wind & Wi-Fi", "The Best of Earth, Wind & Wi-Fi", 215, ["#c0392b", "#1a0b08", "#f1c40f"]),
     ],
     "media_player.bedroom_tv": [
-      track("The Dundies", "The Office · Season 2, Episode 1", "The Office", 1320, ["#4a6fa5", "#141c2b", "#e0e6ef"], { kind: "tv", app: "Peacock" }),
-      track("Diversity Day", "The Office · Season 1, Episode 2", "The Office", 1320, ["#4a6fa5", "#141c2b", "#e0e6ef"], { kind: "tv", app: "Peacock" }),
+      track("The Dongles", "The Offline · Season 2, Episode 1", "The Offline", 1320, ["#4a6fa5", "#141c2b", "#e0e6ef"], { kind: "tv", app: "Peacock" }),
+      track("Router Reset Day", "The Offline · Season 1, Episode 2", "The Offline", 1320, ["#4a6fa5", "#141c2b", "#e0e6ef"], { kind: "tv", app: "Peacock" }),
     ],
   };
   // the attributes a player shows for a track, at a position (seconds)
