@@ -16,6 +16,10 @@
   separator after it (`//`, `-`, `:`, `|`) come off, and a name in lower case starts with a capital.
 - **Lights card, compact: brightness shows as light.** A lit lamp's row glows from its icon and fades out, reaching
   further and shining stronger the brighter the lamp, where it used to fill the whole row whatever the level.
+- **Lights card: an unreachable lamp shows a small offline mark** at the end of its row instead of the word
+  Unavailable (screen readers still hear it).
+- **Lights card: a lamp that only switches says On, never 0%.** Its brightness is empty after it was off, and the
+  card read that as 0.
 
 ## 0.20.5
 

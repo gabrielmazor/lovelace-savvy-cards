@@ -13439,6 +13439,8 @@ header { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 2
 }
 .power[data-on] { color: var(--lit-text); }
 .power ha-icon { --mdc-icon-size: 18px; display: flex; }
+.gone { flex: none; display: flex; --mdc-icon-size: 16px; color: var(--secondary-text-color); padding-inline: 6px 2px; }
+.gone[hidden] { display: none; }
 ha-card[data-glass] .light, ha-card[data-matte] .light { --lx: 26px; --ly: 50%; }   /* the middle of the icon: padding 12 + half the 28 orb */
 /* a lamp that only switches has no level to show: lit, it fills the row like one at full brightness */
 .light:not([data-dim]) .lvl { transition: transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1); }
@@ -13651,8 +13653,8 @@ class LightsCard extends HTMLElement {
 
   _level(st) {
     if (!st || st.state !== "on") return 0;
-    const b = Number(st.attributes.brightness);
-    return Number.isFinite(b) ? clamp(b / 255) : 1;
+    const b = st.attributes.brightness;
+    return b != null && Number.isFinite(Number(b)) ? clamp(Number(b) / 255) : 1;
   }
 
   // The colour a lit lamp is actually showing, pulled into a legible band.
@@ -14385,6 +14387,7 @@ class LightsCard extends HTMLElement {
         <span class="end">
           <button class="power" hidden><ha-icon icon="mdi:power"></ha-icon></button>
           <button class="swatch" hidden><i></i></button>
+          <ha-icon class="gone" icon="mdi:wifi-off" hidden></ha-icon>
           <span class="d"></span>
         </span>`;
       cache.set(key, node);
@@ -14415,6 +14418,9 @@ class LightsCard extends HTMLElement {
     // everything else says what the lamp is doing
     node.__live = dim && !dead && on && st?.state === "on" && this._config.state_detail !== false;
     const d = node.querySelector(".d");
+    // an unreachable lamp says so with a small offline mark instead of a word (the label still says it)
+    node.querySelector(".gone").hidden = !dead;
+    d.hidden = dead;
     if (!node.__live) text(d, this._subtitle(st, { dead, on }));
     attr(d, "data-num", node.__live || /^\d+%$/.test(d.textContent) ? "" : null);
     attr(node, "data-dim", dim && !dead ? "" : null);
@@ -14505,8 +14511,9 @@ class LightsCard extends HTMLElement {
     if (dead) return "Unavailable";
     if (!on) return "Off";
     if (this._config.state_detail === false) return "On";
-    const b = Number(st.attributes.brightness);
-    return Number.isFinite(b) ? `${Math.round(clamp(b / 255) * 100)}%` : "On";
+    // a lamp that only switches has no level (Home Assistant leaves brightness empty, never 0): it is just on
+    const b = st.attributes.brightness;
+    return canDim(st) && b != null && Number.isFinite(Number(b)) ? `${Math.round(clamp(Number(b) / 255) * 100)}%` : "On";
   }
 
   _chips() {
