@@ -20,6 +20,9 @@
   Unavailable (screen readers still hear it).
 - **Lights card: a lamp that only switches says On, never 0%.** Its brightness is empty after it was off, and the
   card read that as 0.
+- **Camera card: a menu for many cameras.** Past four cameras, or when a camera's name would not fit its tab,
+  the tabs become one button that names the camera and its place ("3 of 5") and opens the home mode's picker.
+  `selector: tabs | menu` chooses, also in the editor.
 
 ## 0.20.5
 

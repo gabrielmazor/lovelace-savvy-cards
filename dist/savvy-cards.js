@@ -6682,6 +6682,16 @@ ${DESIGN_CSS}
 }
 .pill span { overflow: hidden; text-overflow: ellipsis; }
 .pill[aria-selected="true"] { color: var(--primary-text-color); }
+/* many cameras, or names too long for their tabs: one button that lists them (the home mode's picker) */
+.camsel {
+  display: flex; align-items: center; gap: 8px; min-width: 0; height: 36px; padding: 0 10px 0 12px; border-radius: 13px;
+  background: var(--well); color: var(--primary-text-color); --mdc-icon-size: 18px;
+  font-size: 13px; line-height: 18px; font-weight: 600; letter-spacing: -0.006em; transform-origin: 50% 50%;
+}
+.camsel .cn { flex: 1; min-width: 0; text-align: start; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.camsel .cc { flex: none; font-size: 12px; font-weight: 500; color: var(--secondary-text-color); white-space: nowrap; }
+.camsel .chev { flex: none; color: var(--secondary-text-color); }
+:host([grid]) .camsel { display: none; }
 
 /* ---------- timeline ---------- */
 .tlhead { display: flex; align-items: center; gap: 4px; min-width: 0; }
@@ -7001,6 +7011,9 @@ class SavvyCameraCard extends HTMLElement {
           <span class="ind" id="ind"></span>
           ${cams.map((c, i) => `<button class="pill" role="tab" data-i="${i}"><ha-icon></ha-icon><span></span></button>`).join("")}
         </div>
+        <button class="camsel" id="camSel" aria-haspopup="listbox" aria-expanded="false" hidden>
+          <ha-icon class="ci"></ha-icon><span class="cn"></span><span class="cc"></span><ha-icon class="chev" icon="mdi:chevron-down"></ha-icon>
+        </button>
         <button class="recbtn" id="recBtn" aria-haspopup="dialog" ${popup ? "" : "hidden"}>
           <ha-icon icon="mdi:history"></ha-icon><span class="rl">Recordings</span><span class="rsum" id="recSum"></span>
           <ha-icon icon="mdi:chevron-right"></ha-icon>
@@ -7035,7 +7048,7 @@ class SavvyCameraCard extends HTMLElement {
 
     const $ = (id) => this._root.getElementById(id);
     const ids = ["stage", "track", "dots", "ctrl", "pp", "ppIcon", "bar", "fill", "knob", "ctime", "snd", "sync", "live",
-      "pills", "ind", "prev", "next", "dayname", "daysum", "tl", "hours", "act", "actPath", "future", "marks",
+      "pills", "camSel", "ind", "prev", "next", "dayname", "daysum", "tl", "hours", "act", "actPath", "future", "marks",
       "now", "playhead", "bubble", "bt", "bz", "legend", "filters", "reviews", "note", "rec", "recBtn", "recSum", "holder"];
     this._el = Object.fromEntries(ids.map((id) => [id, $(id)]));
     this._el.card = this._root.querySelector("ha-card");
@@ -7074,6 +7087,7 @@ class SavvyCameraCard extends HTMLElement {
     this._wireTimeline();
     this._wireBar();
     this._el.pillBtns.forEach((b, i) => this._press(b, () => this._select(i)));
+    this._press(this._el.camSel, () => this._camMenu());
     this._press(this._el.prev, () => this._stepDay(1));
     this._press(this._el.next, () => this._stepDay(-1));
     this._press(this._el.live, () => this._goLive());
@@ -7084,6 +7098,7 @@ class SavvyCameraCard extends HTMLElement {
     this._ro?.disconnect();
     this._ro = new ResizeObserver(() => {
       this._layout();
+      this._fitSelector();
       this._pillReady = false;
       this._fitRows();
       this._renderActivity();
@@ -7236,6 +7251,51 @@ class SavvyCameraCard extends HTMLElement {
   _tileTap(i) {
     if (this._mode === "play") return this._togglePlay();
     this._moreInfo(this._config.cameras[i].entity);
+  }
+
+  // The camera list as a menu: the home mode's picker, two columns (camera names run long).
+  _camMenu() {
+    const h = this._hass, cams = this._config.cameras;
+    this._camPicker = this._camPicker || new ModePicker(this, { onPick: (id, v) => this._select(Number(v)) });
+    const options = cams.map((c, i) => ({ value: String(i), label: this._camName(c), icon: c.icon || h.areas?.[c.area]?.icon || "mdi:cctv" }));
+    this._camPicker.open(this._el.camSel, this._el.card, { entity: "camera", value: String(this._index), options, columns: 2 }, "Cameras");
+  }
+
+  // Tabs or a menu. selector: tabs | menu | auto (the default): a menu past four cameras, or when a name would
+  // not fit its tab at this width (the tabs share the row equally).
+  _wantsMenu() {
+    const cams = this._config.cameras, sel = this._config.selector || "auto";
+    if (cams.length < 2) return false;
+    if (sel === "menu" || sel === "tabs") return sel === "menu";
+    if (cams.length > 4) return true;
+    const pill = this._el.pillBtns[0], row = this._el.pills.hidden ? this._el.camSel : this._el.pills;
+    const avail = row?.clientWidth;
+    if (!pill || !avail) return !!this._menu;
+    const c = (this._measure = this._measure || document.createElement("canvas").getContext("2d"));
+    c.font = getComputedStyle(pill).font;
+    const icon = getComputedStyle(pill.querySelector("ha-icon")).display !== "none" ? 22 : 0;
+    const need = Math.max(...cams.map((x) => c.measureText(this._camName(x)).width)) + icon + 18;
+    const slot = (avail - 6 - 2 * (cams.length - 1)) / cams.length;
+    return need > slot;
+  }
+
+  _fitSelector() {
+    if (!this._el?.camSel || this._grid) return;
+    const menu = this._wantsMenu(), many = this._config.cameras.length > 1;
+    this._menu = menu;
+    this._el.pills.hidden = !many || menu;
+    this._el.camSel.hidden = !many || !menu;
+    if (!menu) this._pillReady = false;
+    this._labelSelector();
+  }
+
+  _labelSelector() {
+    const el = this._el, c = this._config.cameras[this._index];
+    if (!el.camSel || el.camSel.hidden || !c) return;
+    attr(el.camSel.querySelector(".ci"), "icon", c.icon || this._hass.areas?.[c.area]?.icon || "mdi:cctv");
+    text(el.camSel.querySelector(".cn"), this._camName(c));
+    text(el.camSel.querySelector(".cc"), `${this._index + 1} of ${this._config.cameras.length}`);
+    attr(el.camSel, "aria-label", `Camera: ${this._camName(c)}, ${this._index + 1} of ${this._config.cameras.length}. Choose another`);
   }
 
   _select(i, { fromSwipe = false } = {}) {
@@ -8136,6 +8196,8 @@ class SavvyCameraCard extends HTMLElement {
       if (dot) attr(dot, "data-on", i === this._index ? "" : null);
     });
 
+    if (this._menu == null) this._fitSelector();
+    else this._labelSelector();
     const pill = el.pillBtns[this._index];
     if (this._pillReady && pill?.offsetWidth) {
       this._indX.to(pill.offsetLeft, MOTION.pill);
@@ -8450,6 +8512,8 @@ const EDITOR = defineEditor("savvy-camera-card", (hass, c) => [
   S.grid(S.select("recordings", "Recordings", [{ value: "popup", label: "In a popup" }, { value: "inline", label: "In the card" }]),
     { name: "columns", label: "Columns", selector: { select: { mode: "dropdown", options: [{ value: "auto", label: "By width" }, "1", "2", "3", "4"] } } }),
   S.grid(S.number("days", "Recording days", 1, 30), S.text("aspect_ratio", "Aspect ratio")),
+  { name: "selector", label: "Camera switcher", helper: "Automatic: tabs, or a menu past four cameras or when the names don't fit their tabs.",
+    selector: { select: { mode: "dropdown", options: [{ value: "auto", label: "Automatic" }, { value: "tabs", label: "Tabs" }, { value: "menu", label: "Menu" }] } } },
   S.bool("audio_button", "Sound button", "A speaker button on cameras that have sound. It always starts muted; one tap turns the sound on.", true),
   { type: "expandable", name: "frigate", title: "Frigate", schema: [
     { name: "instance", label: "Instance", helper: "Frigate's MQTT client id; 'frigate' unless you changed it. Found by itself when the cameras come from Frigate.", selector: { text: {} } },

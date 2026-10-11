@@ -784,6 +784,7 @@ camera popup of the lock card). The sound only exists if your camera sends it.
 | `frigate` | `false` or object | found | `false` turns Frigate off; `{ instance }` names another instance. |
 | `recordings` | `popup`, `inline` or `false` | `popup` | Where the timeline and reviews live. |
 | `columns` | number or `auto` | by width | Cameras side by side (`1`: one at a time). |
+| `selector` | `auto`, `tabs` or `menu` | `auto` | How you switch cameras one at a time. `auto`: tabs, or a menu (the home mode's picker) past four cameras or when a camera's name would not fit its tab at the card's width. |
 | `days` | number | `7` | Days of recordings offered. |
 | `aspect_ratio` | string | `16/9` | The tiles' shape. |
 | `audio_button` | boolean | `true` | A speaker button on a camera that has sound. Everything starts muted and one tap turns the sound on. It goes back to muted when the picture restarts, the card leaves the screen, a popup closes or the tab is hidden. `false` removes the button. |
