@@ -22,7 +22,7 @@ const base = `http://localhost:${server.address().port}/`;
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined });
 const page = await browser.newPage({ viewport: { width: 1200, height: 630 }, deviceScaleFactor: 2, colorScheme: "dark" });
-await page.goto(`${base}?p=home`);
+await page.goto(`${base}?p=home&still`);
 await page.waitForTimeout(2500);
 
 await page.evaluate(() => {

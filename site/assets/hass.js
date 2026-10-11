@@ -55,7 +55,7 @@
         locale: { language: "en", number_format: "language", time_format: "language" },
         config: { unit_system: { temperature: "°C", length: "km" }, time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone, currency: "EUR" },
         formatEntityState: (st, state) => { const v = state ?? st.state; return WORDS[v] || title(v); },
-        callService,
+        callService: visitorCall,
         callWS,
         callApi: async () => { throw new Error("Not available in the demo"); },
         connection: { subscribeMessage: async () => () => {}, subscribeEvents: async () => () => {} },
@@ -408,6 +408,92 @@
       patch("sensor.house_power", { state: String(Math.round(780 + lightsOn * 34 + Math.random() * 120)) });
     }, 8000);
 
+    // ---- the people live here too: now and then someone moves between rooms, uses a device, and the room's mode
+    // follows. One moment at a time, with quiet in between, and none starts while the visitor is busy with a card.
+    // (?still in the address stops it, for screenshots.)
+    const still = /[?&]still\b/.test(location.search);
+    const go = (domain, service, data, id) => callService(domain, service, data, { entity_id: id });
+    const sense = (id, on) => patch(id, { state: on ? "on" : "off" });
+    // a room's mode, only from what it was (a visitor's choice, or Manual, is left alone)
+    const setMode = (room, to, from) => { const m = roomMode(room); if (m !== "Manual" && (!from || m === from)) go("input_select", "select_option", { option: to }, `input_select.${room}_mode`); };
+    const person = (who, home) => {
+      patch(`person.${who}`, { state: home ? "home" : "not_home" });
+      patch(`device_tracker.${who}_phone`, { state: home ? "home" : "not_home" });
+      patch("sensor.people_home", { state: String(["maya", "ben"].filter((p) => get(`person.${p}`).state === "home").length) });
+    };
+    const throughDoor = (t, after) => {
+      later(t, () => go("lock", "unlock", {}, "lock.front_door"));
+      later(t + 1500, () => sense("binary_sensor.front_door_contact", true));
+      later(t + 5000, () => sense("binary_sensor.front_door_contact", false));
+      later(t + 6500, () => { go("lock", "lock", {}, "lock.front_door"); after(); });
+    };
+    const tvOn = () => get("media_player.living_room_tv").state !== "off";
+    // each moment: what happens, second by second; it returns how long it lasts
+    const MOMENTS = [
+      // Maya leaves the TV to cook; dinner; back to the sofa
+      () => {
+        const tv = tvOn();
+        if (tv) go("media_player", "turn_off", {}, "media_player.living_room_tv");
+        later(4000, () => sense("binary_sensor.living_room_presence", false));
+        later(6000, () => { sense("binary_sensor.kitchen_motion", true); sense("binary_sensor.kitchen_camera_motion", true); });
+        later(9000, () => setMode("kitchen", "Cooking", "Sync"));
+        later(70000, () => setMode("kitchen", "Dining", "Cooking"));
+        later(80000, () => sense("binary_sensor.kitchen_camera_motion", false));
+        later(125000, () => { setMode("kitchen", "Sync", "Dining"); sense("binary_sensor.kitchen_motion", false); });
+        later(128000, () => { sense("binary_sensor.living_room_presence", true); if (tv) go("media_player", "turn_on", {}, "media_player.living_room_tv"); });
+        return 130000;
+      },
+      // Ben takes a call in the office
+      () => { setMode("office", "Calls", "Focus"); later(75000, () => setMode("office", "Focus", "Calls")); return 76000; },
+      // a shower
+      () => {
+        sense("binary_sensor.bathroom_motion", true);
+        later(3000, () => setMode("bathroom", "Shower", "Sync"));
+        later(50000, () => setMode("bathroom", "Sync", "Shower"));
+        later(56000, () => sense("binary_sensor.bathroom_motion", false));
+        return 57000;
+      },
+      // the thermostat, a little cooler, then back
+      () => {
+        const id = "climate.living_room_ac", t = get(id).attributes.temperature;
+        go("climate", "set_temperature", { temperature: t - 0.5 }, id);
+        later(60000, () => { if (get(id).attributes.temperature === t - 0.5) go("climate", "set_temperature", { temperature: t }, id); });
+        return 8000;
+      },
+      // Ben goes out for a walk, and comes back
+      () => {
+        if (get("person.ben").state !== "home") return 0;
+        sense("binary_sensor.office_presence", false);
+        throughDoor(5000, () => later(2000, () => person("ben", false)));
+        throughDoor(150000, () => person("ben", true));
+        later(160000, () => sense("binary_sensor.office_presence", true));
+        return 162000;
+      },
+      // the toilet
+      () => { sense("binary_sensor.toilet_motion", true); later(25000, () => sense("binary_sensor.toilet_motion", false)); return 26000; },
+      // Maya reads in bed for a while
+      () => {
+        const tv = tvOn();
+        if (tv) go("media_player", "turn_off", {}, "media_player.living_room_tv");
+        later(4000, () => sense("binary_sensor.living_room_presence", false));
+        later(8000, () => { sense("binary_sensor.bedroom_presence", true); setMode("bedroom", "Reading", "Sync"); });
+        later(95000, () => { setMode("bedroom", "Sync", "Reading"); sense("binary_sensor.bedroom_presence", false); });
+        later(100000, () => { sense("binary_sensor.living_room_presence", true); if (tv) go("media_player", "turn_on", {}, "media_player.living_room_tv"); });
+        return 102000;
+      },
+    ];
+    let visitorAt = 0, queue = [];
+    const visitorBusy = () => Date.now() - visitorAt < 60000 || document.hidden;
+    const nextMoment = () => {
+      if (visitorBusy()) return later(10000, nextMoment);
+      if (!queue.length) queue = MOMENTS.map((m) => [Math.random(), m]).sort((a, b) => a[0] - b[0]).map(([, m]) => m);
+      const lasts = queue.shift()();
+      later(lasts + 15000 + Math.random() * 20000, nextMoment);
+    };
+    if (!still) later(12000, nextMoment);
+    // what a visitor asks for (the cards, the details panel) holds the house's own life back for a minute
+    const visitorCall = (...a) => { visitorAt = Date.now(); return callService(...a); };
+
     // ---- websocket: history, statistics, the logbook, Frigate, the registry, the dashboard
     async function callWS(m) {
       switch (m.type) {
@@ -539,7 +625,7 @@
       detach(card) { cards.delete(card); },
       setDark(v) { dark = !!v; build(); },
       state: get,
-      callService,
+      callService: visitorCall,
     };
   }
 

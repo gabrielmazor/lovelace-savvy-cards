@@ -23,6 +23,10 @@ real home.
 Everything answers the way a house would, a moment after you tap, and every card on the page follows.
 Reload the page to start over.
 
+The house lives on its own too, gently: every minute or so someone moves between rooms, cooks, takes a call,
+showers, reads in bed or goes out for a walk, and the rooms' presence and modes follow. It holds back for a
+minute whenever you use a card. Add `&still` to the address to stop it.
+
 ## Changing the demo
 
 The demo is the real card code from `dist/`, running on a fake Home Assistant in `assets/hass.js`.
@@ -40,7 +44,7 @@ redraw it after the cards' look changes: `PLAYWRIGHT=$(npm root -g)/playwright n
 | File | What it holds |
 |---|---|
 | `assets/house.js` | The house: rooms, devices, people, playlists with drawn covers |
-| `assets/hass.js` | The fake Home Assistant: services, modes and room lighting, history, energy, logbook, Frigate |
+| `assets/hass.js` | The fake Home Assistant: services, modes and room lighting, the residents' own moments, history, energy, logbook, Frigate |
 | `assets/pages.js` | Every page and every card's config; the settings the cards share |
 | `assets/ha-shim.js` | `ha-card`, `ha-icon`, `ha-state-icon`, and the drawn camera feeds |
 | `assets/app.js` | Navigation, theme, the details panel, and the sections layout (three columns, one on a phone) |
