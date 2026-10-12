@@ -1843,4 +1843,6 @@ desktop widths. See [CHANGELOG.md](CHANGELOG.md) for what changed in each versio
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+[PolyForm Noncommercial 1.0.0](LICENSE): free for personal and other noncommercial use. Using it
+commercially (for example, installing it for paying clients) needs permission. Versions up to 0.20.5 were
+released under the MIT License and stay under it.

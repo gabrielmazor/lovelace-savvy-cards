@@ -2,6 +2,8 @@
 
 ## 0.20.6
 
+- **License: PolyForm Noncommercial 1.0.0** from this version on: free for personal and other noncommercial use;
+  commercial use needs permission. Versions up to 0.20.5 stay under the MIT License.
 - **Every option is in the visual editor.** Options that were YAML-only now have fields:
   - Lights: Scenes (Off, The room's scenes, or Pick them: a list of scenes, scripts or buttons with their own
     names and icons) and the compact swipe step.

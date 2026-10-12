@@ -1,4 +1,4 @@
-/*! Savvy Cards v0.20.6 | MIT License | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.20.6 | PolyForm Noncommercial 1.0.0 | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
 const SAVVY_VERSION = "0.20.6";

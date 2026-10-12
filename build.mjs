@@ -10,7 +10,7 @@ const version = readFileSync(join(root, "VERSION"), "utf8").trim();
 const list = (dir) => readdirSync(join(root, dir)).filter((f) => f.endsWith(".js")).sort();
 
 const parts = [
-  `/*! Savvy Cards v${version} | MIT License | built from src/ by build.mjs, do not edit */`,
+  `/*! Savvy Cards v${version} | PolyForm Noncommercial 1.0.0 | built from src/ by build.mjs, do not edit */`,
   "(() => {",
   '"use strict";',
   `const SAVVY_VERSION = ${JSON.stringify(version)};`,
