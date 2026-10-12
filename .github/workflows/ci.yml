@@ -25,5 +25,7 @@ jobs:
   hacs:
     runs-on: ubuntu-latest
     steps:
+      # license: HACS's store wants an OSI-approved license; PolyForm Noncommercial is not one by design.
+      # Installing it as a custom repository is not affected.
       - uses: hacs/action@main
-        with: { category: plugin }
+        with: { category: plugin, ignore: license }
