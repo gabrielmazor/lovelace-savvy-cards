@@ -16853,7 +16853,9 @@ const NAV_STYLE = `${BASE_CSS}
   :host([inline]) .bar { position: relative; left: auto; width: auto; padding-top: 0; border: 1px solid var(--line); border-radius: var(--radius); }
   /* on the page itself: the layer that carries the bar, above the dashboard and below Home Assistant's dialogs */
   :host(.savvy-nav-layer) { position: fixed; top: 0; left: 0; width: 0; height: 0; z-index: 4; }
-  .in { display: flex; flex-wrap: wrap; align-items: center; column-gap: 14px; row-gap: 2px; padding: 8px 16px 6px; max-width: 1360px; margin: 0 auto; }
+  .in { display: flex; flex-wrap: wrap; align-items: center; column-gap: 14px; row-gap: 2px; padding: 8px 16px 6px; max-width: 1360px; margin: 0 auto; box-sizing: border-box; }
+  /* on a wide screen: as wide as the dashboard's sections, its edges on theirs */
+  .bar[data-fit] .in { max-width: none; width: var(--in-w); margin: 0 0 0 var(--in-x); }
   .brand { display: flex; align-items: center; gap: 10px; min-width: 0; height: 44px; flex: 1 1 auto; }
   .menu { flex: none; width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; margin-inline-start: -6px;
     color: var(--secondary-text-color); --mdc-icon-size: 22px; cursor: pointer; }
@@ -17131,6 +17133,14 @@ class SavvyNavCard extends SavvyCard {
     if (root && this._ro && this._watched !== root) { this._ro.observe(root); this._watched = root; }
     put(layer, "--nav-left", `${Math.max(0, Math.round(r.left))}px`);
     put(layer, "--nav-w", `${Math.round(root ? r.width : document.documentElement.clientWidth)}px`);
+    // the bar's content spans what the card spans in the dashboard (its section, across the full width)
+    const me = this.getBoundingClientRect(), barLeft = Math.max(0, Math.round(r.left)), barW = root ? r.width : document.documentElement.clientWidth;
+    const fit = barW >= 820 && me.width >= 600 && me.width <= barW + 1;
+    attr(this._el.bar, "data-fit", fit ? "" : null);
+    if (fit) {
+      put(layer, "--in-w", `${Math.round(me.width)}px`);
+      put(layer, "--in-x", `${Math.max(0, Math.round(me.left) - barLeft)}px`);
+    }
     const top = parseFloat(getComputedStyle(this._el.bar).paddingTop) || 0;
     put(this, "--nav-h", `${Math.max(0, Math.round(this._el.bar.offsetHeight - top))}px`);
   }

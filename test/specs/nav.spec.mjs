@@ -79,6 +79,23 @@ export default async function ({ browser, base, check }) {
   await page.waitForTimeout(300);
   check("divider: true draws one too, one line only and none at the ends", (await seps()) === "Home | Lights", await seps());
 
+  // a wide dashboard: the bar's content spans the sections (the card's own width), its edges on theirs
+  const fit = await page.evaluate(async () => {
+    const r = window.huiRoot, n = window.nav;
+    r.style.width = "1500px";
+    const box = document.createElement("div");
+    box.style.cssText = "margin-left: 90px; width: 1320px;";
+    r.insertBefore(box, n); box.appendChild(n);
+    n.hass = window.hass;
+    await new Promise((res) => setTimeout(res, 400));
+    const inn = window.navRoot().querySelector(".in").getBoundingClientRect(), me = n.getBoundingClientRect();
+    const out = { inLeft: Math.round(inn.left), inW: Math.round(inn.width), meLeft: Math.round(me.left), meW: Math.round(me.width) };
+    r.style.width = ""; r.insertBefore(n, box); box.remove(); n.hass = window.hass;
+    await new Promise((res) => setTimeout(res, 300));
+    return out;
+  });
+  check("on a wide dashboard the bar is as wide as the sections, on their edges", Math.abs(fit.inLeft - fit.meLeft) <= 1 && Math.abs(fit.inW - fit.meW) <= 1 && fit.meW === 1320, JSON.stringify(fit));
+
   // the dashboard menu (⋮): Home Assistant's own entries, run by its page; only when asked; admin: administrators only
   const more = () => page.evaluate(() => { const b = window.navRoot().querySelector(".more"); return !!b && !b.hidden && b.getBoundingClientRect().width > 0; });
   check("no menu unless asked", !(await more()));

@@ -11,6 +11,8 @@
   opens Home Assistant's own dialog. `dashboard_menu: admin` shows the button to administrators only.
 - **Settings card: a Navigation bar section.** The bar's name, icon, subtitle, pages and options, set once for every
   navigation bar on the dashboard: each page then needs only `type: custom:savvy-nav-card`. A bar's own options win.
+- **Navigation bar: as wide as the dashboard on a wide screen.** Its name and links line up with the edges of the
+  sections below, where they used to stop at a fixed width in the middle of a large screen.
 - **Navigation bar editor: "Add a page" adds a page** to fill in, where it used to ask for an entity.
 
 ## 0.20.6
