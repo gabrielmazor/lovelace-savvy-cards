@@ -23,6 +23,10 @@
 - **Camera card: a menu for many cameras.** Past four cameras, or when a camera's name would not fit its tab,
   the tabs become one button that names the camera and its place ("3 of 5") and opens the home mode's picker.
   `selector: tabs | menu` chooses, also in the editor.
+- **New: navigation bar** (`custom:savvy-nav-card`). The dashboard's own bar at the top of the screen: its name
+  and a row of links to its pages (the dashboard's views by default), the current one marked. It stays at the
+  top while scrolling and hides Home Assistant's header while it is there (back in edit mode, and with
+  `?savvy_header`). A button opens Home Assistant's sidebar.
 
 ## 0.20.5
 

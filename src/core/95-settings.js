@@ -364,6 +364,17 @@ function collectViews(conf) {
     .map((v) => ({ path: v.path, title: typeof v.title === "string" ? v.title : "" }));
 }
 
+// every view, for a navigation bar: its path (its place in the list when it has no path of its own), title and
+// icon, and whether it is left out of navigation (a subview, or `visible: false`)
+function collectNav(conf) {
+  return (Array.isArray(conf?.views) ? conf.views : []).map((v, i) => ({
+    path: typeof v?.path === "string" && v.path ? v.path : String(i),
+    title: typeof v?.title === "string" ? v.title : "",
+    icon: typeof v?.icon === "string" ? v.icon : "",
+    hidden: !!v?.subview || v?.visible === false,
+  }));
+}
+
 // the one view a name belongs to: by its path first, else by its title. Two different views: no guess.
 function findView(views, names) {
   const want = new Set(names.map(slugOf).filter(Boolean));
@@ -418,6 +429,7 @@ const SettingsStore = {
   settings: null,
   found: 0,
   views: [],            // the dashboard's views with a path
+  nav: [],              // every view, for navigation (collectNav)
   orders: {},           // `type|area` -> the first card's order
   live: null,           // the settings card on this page that publishes while it is edited
   hass: null,
@@ -439,7 +451,7 @@ const SettingsStore = {
   _writeCache() {
     try {
       if (this.settings || this.views.length || Object.keys(this.orders).length) {
-        localStorage.setItem(this._key(), JSON.stringify({ settings: this.settings, found: this.found, views: this.views, orders: this.orders }));
+        localStorage.setItem(this._key(), JSON.stringify({ settings: this.settings, found: this.found, views: this.views, orders: this.orders, nav: this.nav }));
       } else localStorage.removeItem(this._key());
     } catch (err) { /* storage can be blocked: the cards still work from the fetch */ }
   },
@@ -455,14 +467,17 @@ const SettingsStore = {
     this.settings = c?.settings || null;
     this.found = c?.found || 0;
     this.views = Array.isArray(c?.views) ? c.views : [];
+    this.nav = Array.isArray(c?.nav) ? c.nav : [];
     this.orders = c?.orders && typeof c.orders === "object" ? c.orders : {};
   },
 
   // what the dashboard says about itself changed: its views and the orders its cards hold
-  setDashboard(views, orders) {
-    if (JSON.stringify(views) === JSON.stringify(this.views) && JSON.stringify(orders) === JSON.stringify(this.orders)) return false;
+  setDashboard(views, orders, nav = this.nav) {
+    if (JSON.stringify(views) === JSON.stringify(this.views) && JSON.stringify(orders) === JSON.stringify(this.orders)
+      && JSON.stringify(nav) === JSON.stringify(this.nav)) return false;
     this.views = views;
     this.orders = orders;
+    this.nav = nav;
     return true;
   },
 
@@ -563,7 +578,7 @@ const SettingsStore = {
     if (!conf || typeof conf !== "object") return;
     this._fetchedAt = Date.now();
     const cards = findSettingsCards(conf);
-    const dash = this.setDashboard(collectViews(conf), collectOrders(conf));
+    const dash = this.setDashboard(collectViews(conf), collectOrders(conf), collectNav(conf));
     // the settings card on this page is the freshest source while it is there
     if (this.live) {
       this.found = Math.max(cards.length, 1);
@@ -584,7 +599,7 @@ const SettingsStore = {
 
   // test pages reset it between runs
   reset() {
-    this.settings = null; this.found = 0; this.views = []; this.orders = {}; this.live = null; this.hass = null; this.cards.clear(); this.subs.clear();
+    this.settings = null; this.found = 0; this.views = []; this.nav = []; this.orders = {}; this.live = null; this.hass = null; this.cards.clear(); this.subs.clear();
     this._path = undefined; this._fetched = false; this._fetchedAt = 0;
   },
 };

@@ -176,6 +176,7 @@ Turn it on with `design: { style: matte }` in the [settings card](#savvy-setting
 
 | Card | What it shows | Type |
 |---|---|---|
+| [Navigation bar](#navigation-bar) | The dashboard's own bar at the top, in place of Home Assistant's header | `custom:savvy-nav-card` |
 | [Home header](#home-header) | Mode, weather, health cog and four counting chips | `custom:savvy-home-header-card` |
 | [Room header](#room-header) | A room's mode, temperature, badges and a row to other rooms | `custom:savvy-room-header-card` |
 | [Section title](#section-title) | A title, or a room's name with its badges | `custom:savvy-section-title-card` |
@@ -203,6 +204,53 @@ Each card below follows the same layout: what it is, a picture, every option in 
 config that works, and a full example. Types in the tables: *entity* is an entity id, *action* is a
 Home Assistant action (`tap_action: { action: navigate, navigation_path: /lovelace/x }`), *chips* is the
 [chip format](#chips). Options shared by several cards are described once in [Shared options](#shared-options).
+
+---
+
+### Navigation bar
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/images/nav-light.png"><img src="docs/images/nav-dark.png" width="520" alt="Savvy navigation bar"></picture>
+
+The dashboard's own bar across the top of the screen: a name with its icon, and a row of links to the
+dashboard's pages, the current one marked. It stays at the top while the page scrolls and spans the
+dashboard (not Home Assistant's sidebar). On a phone the links are a row of their own that scrolls sideways;
+on a wide screen they sit beside the name. Put it first in a view, across the full width; in a sections view,
+in its own section with `column_span` set to the full width.
+
+By default it hides Home Assistant's own header while it is on screen, so the bar takes its place. The header
+comes back in edit mode (so you can always edit the dashboard), with `?savvy_header` in the address, and on
+any view without a nav card. A menu button opens Home Assistant's sidebar, which the hidden header would
+otherwise open. Hiding the header reaches into Home Assistant's own page: it works on today's dashboards and
+fails quietly (the header simply stays) if a later Home Assistant builds its page differently.
+To hide the header for some users only, or the sidebar too, use [kiosk-mode](https://github.com/NemesisRE/kiosk-mode)
+with `hide_header: false` here.
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `title` | string | the home's name | The name on the bar. |
+| `icon` | icon | `mdi:home-outline` | Its icon. |
+| `subtitle` | string | none | A small word beside the name. |
+| `pages` | list | the dashboard's views | The links: `{ path, name, icon }`, and `"---"` for a divider. `path` is a view's path (`living-room`) or an address (`/lovelace/living-room`). Without it: every view of the dashboard in its order, subviews and hidden views left out. |
+| `hide_header` | boolean | `true` | Hide Home Assistant's header while the bar is on screen. |
+| `menu_button` | boolean | with `hide_header` | A button that opens Home Assistant's sidebar. |
+| `icons` | boolean | `false` | An icon before each page's name. |
+| `auto_hide` | boolean | `false` | Slides away while scrolling down, back on the way up. |
+
+```yaml
+type: custom:savvy-nav-card
+```
+
+```yaml
+type: custom:savvy-nav-card
+title: Our home
+pages:
+  - { path: home, name: Home }
+  - "---"
+  - { path: living-room, name: Living Room }
+  - { path: kitchen, name: Kitchen }
+  - "---"
+  - { path: lights, name: Lights }
+```
 
 ---
 

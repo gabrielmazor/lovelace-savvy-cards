@@ -410,7 +410,7 @@ const DESIGN_FIELD = { name: "design", label: "Design", helper: "Empty: the dash
 // which always take the height they need.
 const SNAP_FIELD = { name: "grid_snap", label: "Round to grid rows", helper: "Off: the card is as tall as it needs and ends with the card beside it. On: its height rounds up to whole rows of the sections grid.",
   selector: { boolean: {} }, default: false };
-const NO_SNAP = new Set(["savvy-settings-card", "savvy-home-header-card", "savvy-room-header-card", "savvy-section-title-card"]);
+const NO_SNAP = new Set(["savvy-settings-card", "savvy-home-header-card", "savvy-room-header-card", "savvy-section-title-card", "savvy-nav-card"]);
 
 // The "<option>__from" dropdowns of S.pickable write their option here, then leave: Automatic and Off are
 // the option's own words, Pick them turns it into a list (kept when it is one already).
