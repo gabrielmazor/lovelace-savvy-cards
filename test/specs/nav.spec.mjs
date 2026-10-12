@@ -110,6 +110,12 @@ export default async function ({ browser, base, check }) {
   });
   await page.waitForTimeout(300);
   check("admin: not for someone who is not an administrator", !(await more()));
+  await page.evaluate(() => { window.nav.setConfig({ ...window.nav._rawConfig, dashboard_menu: undefined, edit_button: true }); window.nav.hass = { ...window.hass, user: { ...(window.hass.user || {}), is_admin: false } }; });
+  await page.waitForTimeout(300);
+  const oldHidden = !(await more());
+  await page.evaluate(() => { window.nav.hass = { ...window.hass, user: { ...(window.hass.user || {}), is_admin: true } }; });
+  await page.waitForTimeout(300);
+  check("0.20.7's edit_button: the menu, for administrators only", oldHidden && (await more()));
   await page.evaluate(() => { window.nav.setConfig({ ...window.nav._rawConfig, dashboard_menu: true }); window.nav.hass = { ...window.hass, user: { ...(window.hass.user || {}), is_admin: false } }; });
   await page.waitForTimeout(300);
   check("true: everyone sees it", await more());

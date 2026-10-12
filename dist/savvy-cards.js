@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.20.7 | PolyForm Noncommercial 1.0.0 | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.20.8 | PolyForm Noncommercial 1.0.0 | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.20.7";
+const SAVVY_VERSION = "0.20.8";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -16912,6 +16912,8 @@ class SavvyNavCard extends SavvyCard {
   setConfig(config) {
     this._config = { hide_header: true, icons: false, auto_hide: false, ...(config || {}) };
     if (this._config.menu_button === undefined) this._config.menu_button = this._config.hide_header !== false;
+    // 0.20.7's edit button: the menu, for administrators
+    if (this._config.dashboard_menu === undefined && this._config.edit_button) this._config.dashboard_menu = "admin";
     if (this._el) this._build();
   }
 

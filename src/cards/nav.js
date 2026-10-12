@@ -102,6 +102,8 @@ class SavvyNavCard extends SavvyCard {
   setConfig(config) {
     this._config = { hide_header: true, icons: false, auto_hide: false, ...(config || {}) };
     if (this._config.menu_button === undefined) this._config.menu_button = this._config.hide_header !== false;
+    // 0.20.7's edit button: the menu, for administrators
+    if (this._config.dashboard_menu === undefined && this._config.edit_button) this._config.dashboard_menu = "admin";
     if (this._el) this._build();
   }
 
