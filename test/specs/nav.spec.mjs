@@ -69,6 +69,38 @@ export default async function ({ browser, base, check }) {
   await page.evaluate(() => { history.replaceState(null, "", "/lovelace/lights"); window.dispatchEvent(new CustomEvent("location-changed")); });
   await page.waitForTimeout(300);
 
+  // lines between groups of pages: "---", or `divider: true` on the page before; never at an end or doubled
+  const seps = () => page.evaluate(() => [...window.navRoot().querySelector(".links").children].map((n) => n.classList.contains("sep") ? "|" : n.textContent.trim()).join(" "));
+  check("a line between the groups", (await seps()) === "Home Living Room | Lights", await seps());
+  await page.evaluate(() => {
+    window.nav.setConfig({ title: "Our home", pages: ["---", { path: "/lovelace/home", name: "Home", divider: true }, "---", { path: "/lovelace/lights", name: "Lights", divider: true }] });
+    window.nav.hass = window.hass;
+  });
+  await page.waitForTimeout(300);
+  check("divider: true draws one too, one line only and none at the ends", (await seps()) === "Home | Lights", await seps());
+
+  // the edit button: only when asked, only for administrators; it opens the dashboard's edit mode
+  const more = () => page.evaluate(() => { const b = window.navRoot().querySelector(".more"); return b && !b.hidden && b.getBoundingClientRect().width > 0; });
+  check("no edit button unless asked", !(await more()));
+  await page.evaluate(() => {
+    window.nav.setConfig({ title: "Our home", edit_button: true, pages: [{ path: "/lovelace/home", name: "Home" }, { path: "/lovelace/lights", name: "Lights" }] });
+    window.nav.hass = { ...window.hass, user: { ...(window.hass.user || {}), is_admin: false } };
+  });
+  await page.waitForTimeout(300);
+  check("not for someone who is not an administrator", !(await more()));
+  await page.evaluate(() => {
+    window.huiRoot.lovelace.setEditMode = (on) => { window.huiRoot.lovelace.editMode = on; };
+    window.nav.hass = { ...window.hass, user: { ...(window.hass.user || {}), is_admin: true } };
+  });
+  await page.waitForTimeout(300);
+  check("an administrator sees it", await more());
+  const dots = await page.evaluate(() => { const r = window.navRoot().querySelector(".more").getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
+  await page.mouse.click(...dots);
+  await page.waitForTimeout(400);
+  check("it opens edit mode, and the header comes back", (await page.evaluate(() => window.huiRoot.lovelace.editMode)) && (await headerShown()));
+  await page.evaluate(() => { window.huiRoot.lovelace.editMode = false; window.nav.hass = window.hass; });
+  await page.waitForTimeout(300);
+
   // the dashboard's own views by default, the hidden ones left out
   await page.evaluate(() => {
     const S = window.__savvy.SettingsStore;

@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.20.6 | PolyForm Noncommercial 1.0.0 | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.20.7 | PolyForm Noncommercial 1.0.0 | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.20.6";
+const SAVVY_VERSION = "0.20.7";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -5569,7 +5569,7 @@ class SavvyListEditor extends HTMLElement {
       row.innerHTML = `<div class="sv-item-head"><span class="t"></span>
         <button class="sv-ibtn" data-a="up" aria-label="Move up"><ha-icon icon="mdi:arrow-up"></ha-icon></button>
         <button class="sv-ibtn" data-a="down" aria-label="Move down"><ha-icon icon="mdi:arrow-down"></ha-icon></button>
-        ${spec.item ? '<button class="sv-ibtn" data-a="edit" aria-label="Edit"><ha-icon icon="mdi:pencil"></ha-icon></button>' : ""}
+        ${spec.item && !spec.fixed?.(item) ? '<button class="sv-ibtn" data-a="edit" aria-label="Edit"><ha-icon icon="mdi:pencil"></ha-icon></button>' : ""}
         <button class="sv-ibtn" data-a="remove" aria-label="Remove"><ha-icon icon="mdi:close"></ha-icon></button></div>`;
       const t = row.querySelector(".t");
       t.textContent = s.title;
@@ -5585,7 +5585,7 @@ class SavvyListEditor extends HTMLElement {
         else if (a === "edit") { this._openIdx = this._openIdx === i ? -1 : i; this._render(); return; }
         this._emit();
       });
-      if (spec.item && this._openIdx === i) {
+      if (spec.item && !spec.fixed?.(item) && this._openIdx === i) {
         const body = document.createElement("div");
         body.className = "sv-item-body";
         const form = document.createElement("ha-form");
@@ -5625,6 +5625,14 @@ class SavvyListEditor extends HTMLElement {
     });
     // add: an entity picker (or whatever selector the spec asks for)
     const add = root.querySelector(".sv-add");
+    // a list that starts empty can start from what the card would show by itself
+    if (spec.prefill && !this._items.length) {
+      const b = document.createElement("button");
+      b.className = "sv-prefill";
+      b.textContent = spec.prefill.label;
+      b.addEventListener("click", () => { this._items = spec.prefill.make(this._hass); this._openIdx = -1; this._emit(); });
+      add.appendChild(b);
+    }
     if (spec.addButton) {
       const b = document.createElement("button");
       b.className = "sv-prefill";
@@ -16783,12 +16791,14 @@ registerCard("savvy-media-card", SavvyMediaCard, "Media",
 //
 //   type: custom:savvy-nav-card
 //   title: Our home            icon: mdi:home-outline       (title: the home's name in Home Assistant)
-//   pages: [{ path: living-room, name: Living Room, icon: mdi:sofa }, "---", ...]   (default: the views)
+//   pages: [{ path: living-room, name: Living Room, icon: mdi:sofa, divider: true }, "---", ...]   (default: the views)
+//                              a line between pages: "---", or `divider: true` on the page before it
 //   hide_header: true          Home Assistant's own header is hidden while this card is on screen; it is
 //                              there in edit mode, and with ?savvy_header in the address
 //   menu_button: true          a button that opens Home Assistant's sidebar (the header's, when it is hidden)
 //   icons: false               an icon before each page's name
 //   auto_hide: false           slides away while scrolling down, back on the way up
+//   edit_button: false         a ⋮ button that puts the dashboard in edit mode, for administrators only
 //
 // Hiding the header reaches into Home Assistant's own page (its `hui-root`): it works on the dashboards of
 // today and is written to fail quietly (the header simply stays) if Home Assistant changes.
@@ -16821,12 +16831,15 @@ const NAV_STYLE = `${BASE_CSS}
   .brand { display: flex; align-items: center; gap: 10px; min-width: 0; height: 44px; flex: 1 1 auto; }
   .menu { flex: none; width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; margin-inline-start: -6px;
     color: var(--secondary-text-color); --mdc-icon-size: 22px; cursor: pointer; }
+  .more { flex: none; order: 2; width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; margin-inline-end: -6px;
+    color: var(--secondary-text-color); --mdc-icon-size: 22px; cursor: pointer; }
+  :host([inline]) .more { display: none; }
   .mark { flex: none; width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center;
     background: color-mix(in oklab, rgb(var(--amber, 245 184 61)) 14%, transparent); color: rgb(245 184 61); --mdc-icon-size: 20px; }
   .name { min-width: 0; font-size: 17px; line-height: 22px; font-weight: 650; letter-spacing: -0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sub { flex: none; font-size: 12.5px; font-weight: 500; color: var(--secondary-text-color); }
   /* the pages: one row that scrolls sideways on a phone, its ends fading */
-  .links { flex: 1 1 100%; display: flex; align-items: center; gap: 2px; overflow-x: auto; scrollbar-width: none; min-width: 0;
+  .links { order: 3; flex: 1 1 100%; display: flex; align-items: center; gap: 2px; overflow-x: auto; scrollbar-width: none; min-width: 0;
     margin: 0 -16px; padding: 0 16px 4px; overscroll-behavior-x: contain; touch-action: pan-x pan-y;
     -webkit-mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
     mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%); }
@@ -16840,7 +16853,7 @@ const NAV_STYLE = `${BASE_CSS}
   @container (min-width: 820px) {
     .in { flex-wrap: nowrap; padding: 8px 20px; }
     .brand { flex: none; max-width: 32%; }
-    .links { flex: 1 1 auto; margin: 0; padding: 0 0 0 8px; justify-content: flex-end; }
+    .links { order: 1; flex: 1 1 auto; margin: 0; padding: 0 0 0 8px; justify-content: flex-end; }
   }
 `;
 // the theme the card sees, handed to the bar on the page (a theme can be set on a view, not on the page)
@@ -16927,14 +16940,16 @@ class SavvyNavCard extends SavvyCard {
             <button class="menu" aria-label="Open the sidebar" hidden><ha-icon icon="mdi:menu"></ha-icon></button>
             <span class="mark"><ha-icon class="logo"></ha-icon></span><span class="name"></span><span class="sub"></span>
           </div>
+          <button class="more" aria-label="Edit dashboard" title="Edit dashboard" hidden><ha-icon icon="mdi:dots-vertical"></ha-icon></button>
           <div class="links" role="list"></div>
         </div></nav></div>`;
     const wrap = tmp.firstElementChild, q = (sel) => wrap.querySelector(sel);
     this._el = { card: root.querySelector("ha-card"), home: root.getElementById("home"), spacer: root.getElementById("spacer"), wrap,
-      bar: q(".bar"), menu: q(".menu"), icon: q(".logo"), name: q(".name"), sub: q(".sub"), links: q(".links") };
+      bar: q(".bar"), menu: q(".menu"), more: q(".more"), icon: q(".logo"), name: q(".name"), sub: q(".sub"), links: q(".links") };
     this._resetMotion();
     this._linkNodes = new Map();
     this._pressable(this._el.menu, { onTap: () => this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true })), haptic: "light" });
+    this._pressable(this._el.more, { onTap: () => this._edit(), haptic: "light" });
     this._ro?.disconnect();
     this._ro = new ResizeObserver(() => this._place());
     this._watched = null;
@@ -16944,13 +16959,29 @@ class SavvyNavCard extends SavvyCard {
     this._place();
   }
 
+  // the dashboard's edit mode, as Home Assistant's own menu starts it (its header comes back with it)
+  _edit() {
+    const lovelace = upTo(this, "hui-root")?.lovelace;
+    if (typeof lovelace?.setEditMode !== "function") return;
+    lovelace.setEditMode(true);
+    requestAnimationFrame(() => this._header());
+  }
+
   // the pages, from the config or the dashboard's views
   _pages() {
     const own = this._config.pages;
     if (Array.isArray(own) && own.length) {
-      return own.map((p) => (p === "---" || p?.separator ? { sep: true }
-        : typeof p === "string" ? { path: p, name: title(String(p).split("/").pop().replace(/-/g, " ")) }
-        : { path: p.path || p.navigation_path, name: p.name || p.title || "", icon: p.icon })).filter((p) => p.sep || p.path);
+      const out = [];
+      for (const p of own) {
+        if (p === "---" || p?.separator) out.push({ sep: true });
+        else if (typeof p === "string") out.push({ path: p, name: title(String(p).split("/").pop().replace(/-/g, " ")) });
+        else if (p?.path || p?.navigation_path) {
+          out.push({ path: p.path || p.navigation_path, name: p.name || p.title || "", icon: p.icon });
+          if (p.divider) out.push({ sep: true });
+        }
+      }
+      // never a line at either end, nor two together
+      return out.filter((p, i) => !p.sep || (i > 0 && i < out.length - 1 && !out[i - 1].sep));
     }
     return (SettingsStore.nav || []).filter((v) => !v.hidden).map((v) => ({ path: viewUrl(v.path), name: v.title || title(v.path.replace(/-/g, " ")), icon: v.icon }));
   }
@@ -16968,6 +16999,7 @@ class SavvyNavCard extends SavvyCard {
     text(el.sub, c.subtitle || "");
     el.sub.hidden = !c.subtitle;
     el.menu.hidden = !c.menu_button;
+    el.more.hidden = !(c.edit_button && this._hass.user?.is_admin === true);
 
     const pages = this._pages(), here = location.pathname.replace(/\/+$/, "");
     const keep = new Set();
@@ -17099,13 +17131,20 @@ const NAV_EDITOR = defineEditor("savvy-nav-card", (hass, c) => [
   S.grid(S.text("title", "Name", "The home's name in Home Assistant when empty."), S.icon("icon", "Icon")),
   S.text("subtitle", "Subtitle"),
   { name: "pages", label: "Pages", type: "list", helper: "Empty: the dashboard's own pages, in its order (subviews and hidden views left out).",
-    add: { label: "Add a page", make: () => ({ path: "", name: "" }) },
+    addButton: { label: "Add a page", make: () => ({ path: "", name: "" }) },
+    prefill: { label: "Start from the dashboard's pages", make: () => (SettingsStore.nav || []).filter((v) => !v.hidden)
+      .map((v) => cleanConfig({ path: v.path, name: v.title || title(v.path.replace(/-/g, " ")), icon: v.icon })) },
+    fixed: (p) => p === "---" || !!p?.separator,
+    summary: (p) => (p === "---" || p?.separator ? { title: "Line" }
+      : { title: p?.name || p?.path || "New page", sub: [p?.path, p?.divider && "a line after it"].filter(Boolean).join(" · ") }),
     item: [
       S.grid({ name: "name", label: "Name", selector: { text: {} } }, { name: "icon", label: "Icon", selector: { icon: {} } }),
       { name: "path", label: "Page", helper: "A view's path (living-room) or a full address (/lovelace/living-room).", selector: { navigation: {} } },
+      { name: "divider", label: "A line after it", helper: "Sets the pages after it apart, as a group.", selector: { boolean: {} } },
     ] },
   S.bool("hide_header", "Hide Home Assistant's header", "While this card is on screen. It comes back in edit mode, and with ?savvy_header in the address.", true),
   S.grid(S.bool("menu_button", "Sidebar button", "Opens Home Assistant's sidebar.", true), S.bool("icons", "Page icons", "", false)),
+  S.bool("edit_button", "Edit button", "A ⋮ button that opens the dashboard's edit mode. Only administrators see it.", false),
   S.bool("auto_hide", "Hide while scrolling down", "Slides away on the way down, back on the way up.", false),
 ]);
 

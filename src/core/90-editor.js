@@ -317,7 +317,7 @@ class SavvyListEditor extends HTMLElement {
       row.innerHTML = `<div class="sv-item-head"><span class="t"></span>
         <button class="sv-ibtn" data-a="up" aria-label="Move up"><ha-icon icon="mdi:arrow-up"></ha-icon></button>
         <button class="sv-ibtn" data-a="down" aria-label="Move down"><ha-icon icon="mdi:arrow-down"></ha-icon></button>
-        ${spec.item ? '<button class="sv-ibtn" data-a="edit" aria-label="Edit"><ha-icon icon="mdi:pencil"></ha-icon></button>' : ""}
+        ${spec.item && !spec.fixed?.(item) ? '<button class="sv-ibtn" data-a="edit" aria-label="Edit"><ha-icon icon="mdi:pencil"></ha-icon></button>' : ""}
         <button class="sv-ibtn" data-a="remove" aria-label="Remove"><ha-icon icon="mdi:close"></ha-icon></button></div>`;
       const t = row.querySelector(".t");
       t.textContent = s.title;
@@ -333,7 +333,7 @@ class SavvyListEditor extends HTMLElement {
         else if (a === "edit") { this._openIdx = this._openIdx === i ? -1 : i; this._render(); return; }
         this._emit();
       });
-      if (spec.item && this._openIdx === i) {
+      if (spec.item && !spec.fixed?.(item) && this._openIdx === i) {
         const body = document.createElement("div");
         body.className = "sv-item-body";
         const form = document.createElement("ha-form");
@@ -373,6 +373,14 @@ class SavvyListEditor extends HTMLElement {
     });
     // add: an entity picker (or whatever selector the spec asks for)
     const add = root.querySelector(".sv-add");
+    // a list that starts empty can start from what the card would show by itself
+    if (spec.prefill && !this._items.length) {
+      const b = document.createElement("button");
+      b.className = "sv-prefill";
+      b.textContent = spec.prefill.label;
+      b.addEventListener("click", () => { this._items = spec.prefill.make(this._hass); this._openIdx = -1; this._emit(); });
+      add.appendChild(b);
+    }
     if (spec.addButton) {
       const b = document.createElement("button");
       b.className = "sv-prefill";

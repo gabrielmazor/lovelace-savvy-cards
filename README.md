@@ -230,11 +230,12 @@ with `hide_header: false` here.
 | `title` | string | the home's name | The name on the bar. |
 | `icon` | icon | `mdi:home-outline` | Its icon. |
 | `subtitle` | string | none | A small word beside the name. |
-| `pages` | list | the dashboard's views | The links: `{ path, name, icon }`, and `"---"` for a divider. `path` is a view's path (`living-room`) or an address (`/lovelace/living-room`). Without it: every view of the dashboard in its order, subviews and hidden views left out. |
+| `pages` | list | the dashboard's views | The links: `{ path, name, icon }`. A line between groups of pages: `"---"`, or `divider: true` on the page before it. In the visual editor, "Start from the dashboard's pages" fills the list to add lines to. `path` is a view's path (`living-room`) or an address (`/lovelace/living-room`). Without it: every view of the dashboard in its order, subviews and hidden views left out. |
 | `hide_header` | boolean | `true` | Hide Home Assistant's header while the bar is on screen. |
 | `menu_button` | boolean | with `hide_header` | A button that opens Home Assistant's sidebar. |
 | `icons` | boolean | `false` | An icon before each page's name. |
 | `auto_hide` | boolean | `false` | Slides away while scrolling down, back on the way up. |
+| `edit_button` | boolean | `false` | A ⋮ button that opens the dashboard's edit mode. Only administrators see it. |
 
 ```yaml
 type: custom:savvy-nav-card
@@ -243,6 +244,7 @@ type: custom:savvy-nav-card
 ```yaml
 type: custom:savvy-nav-card
 title: Our home
+edit_button: true
 pages:
   - { path: home, name: Home }
   - "---"

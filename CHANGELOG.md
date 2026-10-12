@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.20.7
+
+- **Navigation bar: lines between groups of pages.** `"---"` in `pages`, or `divider: true` on the page before the
+  line. In the visual editor, "Start from the dashboard's pages" fills the list with the dashboard's views, and
+  each page has "A line after it".
+- **Navigation bar: an edit button.** `edit_button: true` adds a ⋮ button that opens the dashboard's edit mode,
+  as Home Assistant's own menu does. Only administrators see it.
+- **Navigation bar editor: "Add a page" adds a page** to fill in, where it used to ask for an entity.
+
 ## 0.20.6
 
 - **License: PolyForm Noncommercial 1.0.0** from this version on: free for personal and other noncommercial use;
