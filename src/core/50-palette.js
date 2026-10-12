@@ -154,3 +154,15 @@ const toRgb = (css) => {
   const n = out.match(/[\d.]+/g);
   return n ? n.slice(0, 3).map(Number) : [245, 184, 61];
 };
+
+// The climate card's temperature colours, value to colour, blended between the stops (in sRGB). The graph card's
+// temperature preset is the same scale, so a room reads the same colour on both. Humidity is one colour.
+const CLIMATE_TEMP_SCALE = [
+  { value: 18, color: "#4F93DE" },
+  { value: 22, color: "#4FB3C9" },
+  { value: 25, color: "#7FC47A" },
+  { value: 28, color: "#E8B44F" },
+  { value: 31, color: "#EE8247" },
+  { value: 34, color: "#E8484F" },
+];
+const CLIMATE_HUMIDITY_COLOR = "#4FB8C9";

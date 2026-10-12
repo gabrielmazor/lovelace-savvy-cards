@@ -15,7 +15,7 @@
 //     - entity: sensor.server_cpu
 //       thresholds: [{ value: 0, level: good }, { value: 60, level: warn }, { value: 85, level: bad }]
 //     - entity: sensor.living_room_temperature
-//       thresholds: temperature            a preset: blue, teal, green, amber, red (also humidity, battery)
+//       thresholds: temperature            a preset: the climate card's colours (also humidity, battery)
 //       smooth: true                       blend through the colours between the thresholds
 //     - entity: sensor.power
 //       thresholds: [{ value: 0, color: blue }, { value: 500, color: orange }, { value: 2000, color: "#e53935" }]
@@ -35,28 +35,29 @@ function levelOf(value, thresholds) {
 }
 
 // ---- colour scales: thresholds with a level (good / warn / bad) or any colour, hard steps or smooth ----
-// Presets are written in °C; a Fahrenheit sensor gets the same scale converted. A preset below its first
-// stop keeps the first colour (the -1000 stop).
+// Presets are written in °C; a Fahrenheit sensor gets the same scale converted. Temperature and humidity are
+// the climate card's own: its blue-to-red, blended the way it blends (sRGB), and its one humidity colour.
 const SCALE_PRESETS = {
-  temperature: { smooth: true, stops: [[-1000, "blue"], [12, "teal"], [18, "green"], [25, "amber"], [30, "red"]] },
-  humidity: { stops: [[-1000, "amber"], [30, "green"], [60, "amber"], [70, "red"]] },
+  temperature: { smooth: true, mix: "srgb", stops: CLIMATE_TEMP_SCALE.map((s) => [s.value, s.color]) },
+  humidity: { stops: [[-1000, CLIMATE_HUMIDITY_COLOR]] },
   battery: { stops: [[-1000, "red"], [15, "amber"], [40, "green"]] },
 };
 
 // -> { stops: [{ v, c }] sorted ascending, smooth } | null. c is a CSS colour.
 function scaleOf(item, unit) {
-  let raw = item.thresholds, smooth = item.smooth;
+  let raw = item.thresholds, smooth = item.smooth, mix = "oklab";
   if (typeof raw === "string") {
     const p = SCALE_PRESETS[raw.trim().toLowerCase()];
     if (!p) return null;
     const f = /f/i.test(String(unit || "")) && raw.trim().toLowerCase() === "temperature";
     raw = p.stops.map(([v, c]) => ({ value: f && v > -1000 ? v * 9 / 5 + 32 : v, color: c }));
     if (smooth === undefined) smooth = !!p.smooth;
+    if (p.mix) mix = p.mix;
   }
   if (!Array.isArray(raw) || !raw.length) return null;
   const stops = raw.map((t) => ({ v: Number(t.value), c: t.color ? colorOf(t.color) : t.level ? `var(--lvl-${t.level})` : "" }))
     .filter((t) => Number.isFinite(t.v)).sort((a, b) => a.v - b.v);
-  return stops.length ? { stops, smooth: !!smooth } : null;
+  return stops.length ? { stops, smooth: !!smooth, mix } : null;
 }
 
 // The colour a reading has on the scale: hard steps by default (below the first stop: none), a blend
@@ -72,7 +73,7 @@ function scaleColor(scale, v) {
   const a = st[i], b = st[i + 1];
   if (!a.c || !b.c || a.c === b.c) return a.c || b.c;
   const t = (v - a.v) / (b.v - a.v);
-  return t <= 0.001 ? a.c : t >= 0.999 ? b.c : `color-mix(in oklab, ${b.c} ${(t * 100).toFixed(1)}%, ${a.c})`;
+  return t <= 0.001 ? a.c : t >= 0.999 ? b.c : `color-mix(in ${scale.mix || "oklab"}, ${b.c} ${(t * 100).toFixed(1)}%, ${a.c})`;
 }
 
 const STYLE = `${BASE_CSS}

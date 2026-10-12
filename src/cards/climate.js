@@ -30,15 +30,8 @@ const MOTION = {
 
 
 // value to color, interpolated between stops so a rising temperature shifts smoothly
-const TEMP_SCALE = [
-  { value: 18, color: "#4F93DE" },
-  { value: 22, color: "#4FB3C9" },
-  { value: 25, color: "#7FC47A" },
-  { value: 28, color: "#E8B44F" },
-  { value: 31, color: "#EE8247" },
-  { value: 34, color: "#E8484F" },
-];
-const HUMIDITY_COLOR = "#4FB8C9";
+const TEMP_SCALE = CLIMATE_TEMP_SCALE;
+const HUMIDITY_COLOR = CLIMATE_HUMIDITY_COLOR;
 
 const HVAC = {
   off:       { icon: "mdi:power", color: null },

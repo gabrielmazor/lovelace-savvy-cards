@@ -1564,9 +1564,10 @@ that value. `color` is an HA colour name (`blue`, `orange`, `deep-orange`...), a
 `level` is the old `good` / `warn` / `bad`, and still works. Below the first threshold the graph keeps
 its own colour.
 
-A preset writes the whole scale for you: `thresholds: temperature` runs blue, teal, green, amber, red
-(set in °C, converted for a °F sensor and smooth by default), `humidity` is amber when dry, green, amber and red
-when damp, and `battery` is red, amber, green. In the editor, the Colour scale list has the preset select and an
+A preset writes the whole scale for you: `thresholds: temperature` is the climate card's own scale, blue at
+18°C through teal, green, amber and orange to red at 34°C, blended between (set in °C, converted for a °F
+sensor, smooth by default), so a room reads the same colour on both cards. `humidity` is the climate card's
+humidity colour, and `battery` is red, amber, green. In the editor, the Colour scale list has the preset select and an
 Add threshold button.
 
 Minimum:

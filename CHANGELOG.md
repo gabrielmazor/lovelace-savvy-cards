@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.20.10
+
+- **Graph card: the temperature and humidity presets are the climate card's.** `thresholds: temperature` is now
+  the climate card's scale: blue at 18°C, teal at 22, green at 25, amber at 28, orange at 31, red at 34, blended
+  between the way the climate card blends, so a reading has the same colour on both cards. `thresholds: humidity`
+  is the climate card's humidity colour. The battery preset is unchanged.
+
 ## 0.20.9
 
 - **Navigation bar: on the sections' edges.** On a wide screen its house icon starts exactly on the left edge of the

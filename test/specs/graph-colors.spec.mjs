@@ -59,6 +59,7 @@ export default async function ({ browser, base, check }) {
         const t = window.readTile(el);
         out[k] = { tile: t.tile, stops: t.stops, tileRgb: t.tile ? window.rgb(t.tile) : null, stopRgb: t.stops.map(window.rgb), dot: t.dot };
       }
+      out.temperatureValue = Number(window.hass?.states?.["sensor.living_room_temperature"]?.state ?? NaN);
       return out;
     });
 
@@ -79,7 +80,17 @@ export default async function ({ browser, base, check }) {
     check(`${tag} no thresholds and no colour: the accent as before`, r.plain.tile === "" && r.plain.stops.every((s) => /accent/.test(s)), JSON.stringify(r.plain));
     check(`${tag} the temperature preset is smooth and runs blue to red (cold below, warm above)`,
       /color-mix/.test(r.temperature.tile) && r.temperature.stopRgb.length >= 12 && r.temperature.stopRgb[0][0] > r.temperature.stopRgb.at(-1)[0], JSON.stringify([r.temperature.tile, r.temperature.stopRgb.length]));
-    check(`${tag} smooth: false on a preset gives hard steps in the preset's colours`, !/color-mix/.test(r.hard.tile) && /--(green|amber)-color/.test(r.hard.tile), r.hard.tile);
+    check(`${tag} smooth: false on a preset gives hard steps in the preset's colours`, !/color-mix/.test(r.hard.tile) && /^#[0-9A-F]{6}$/i.test(r.hard.tile), r.hard.tile);
+    // the climate card's colours: its stops, blended in sRGB the way it blends them
+    const clim = [[18, [0x4F, 0x93, 0xDE]], [22, [0x4F, 0xB3, 0xC9]], [25, [0x7F, 0xC4, 0x7A]], [28, [0xE8, 0xB4, 0x4F]], [31, [0xEE, 0x82, 0x47]], [34, [0xE8, 0x48, 0x4F]]];
+    const climAt = (v) => {
+      if (v <= clim[0][0]) return clim[0][1];
+      for (let i = 1; i < clim.length; i++) if (v <= clim[i][0]) { const [a, ca] = clim[i - 1], [b, cb] = clim[i], t = (v - a) / (b - a); return ca.map((x, k) => x + (cb[k] - x) * t); }
+      return clim.at(-1)[1];
+    };
+    check(`${tag} the temperature preset is the climate card's: the same colour for the same reading`, near(r.temperature.tileRgb, climAt(r.temperatureValue), 3),
+      JSON.stringify([r.temperatureValue, r.temperature.tileRgb, climAt(r.temperatureValue)]));
+    check(`${tag} the humidity preset is the climate card's humidity colour`, near(r.humidity.tileRgb, [0x4F, 0xB8, 0xC9], 2), JSON.stringify(r.humidity.tileRgb));
     check(`${tag} the temperature preset in °F lands on the same colour as °C`, near(r.fahrenheit.tileRgb, r.temperature.tileRgb, 10), JSON.stringify([r.fahrenheit.tileRgb, r.temperature.tileRgb]));
     check(`${tag} the humidity preset is stepped and the battery preset too`, !/color-mix/.test(r.humidity.tile) && !/color-mix/.test(r.battery.tile) && /--[a-z-]+-color/.test(r.battery.tile), JSON.stringify([r.humidity.tile, r.battery.tile]));
 
