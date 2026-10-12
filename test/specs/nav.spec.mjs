@@ -89,12 +89,15 @@ export default async function ({ browser, base, check }) {
     n.hass = window.hass;
     await new Promise((res) => setTimeout(res, 400));
     const inn = window.navRoot().querySelector(".in").getBoundingClientRect(), me = n.getBoundingClientRect();
-    const out = { inLeft: Math.round(inn.left), inW: Math.round(inn.width), meLeft: Math.round(me.left), meW: Math.round(me.width) };
+    const mark = window.navRoot().querySelector(".mark").getBoundingClientRect(), bar = window.navRoot().querySelector(".bar").getBoundingClientRect();
+    const out = { inLeft: Math.round(inn.left), inW: Math.round(inn.width), meLeft: Math.round(me.left), meW: Math.round(me.width), mark: Math.round(mark.left), barH: Math.round(bar.height) };
     r.style.width = ""; r.insertBefore(n, box); box.remove(); n.hass = window.hass;
     await new Promise((res) => setTimeout(res, 300));
     return out;
   });
-  check("on a wide dashboard the bar is as wide as the sections, on their edges", Math.abs(fit.inLeft - fit.meLeft) <= 1 && Math.abs(fit.inW - fit.meW) <= 1 && fit.meW === 1320, JSON.stringify(fit));
+  check("on a wide dashboard the bar is as wide as the sections, on their edges", Math.abs(fit.inLeft + fit.inW - (fit.meLeft + fit.meW)) <= 1 && fit.meW === 1320, JSON.stringify(fit));
+  check("its house icon starts on the sections' edge, the sidebar button in the margin before it", Math.abs(fit.mark - fit.meLeft) <= 1 && fit.inLeft < fit.meLeft, JSON.stringify(fit));
+  check("and it is as tall as Home Assistant's header, so its line meets the sidebar's", fit.barH === 56, JSON.stringify(fit));
 
   // the dashboard menu (⋮): Home Assistant's own entries, run by its page; only when asked; admin: administrators only
   const more = () => page.evaluate(() => { const b = window.navRoot().querySelector(".more"); return !!b && !b.hidden && b.getBoundingClientRect().width > 0; });

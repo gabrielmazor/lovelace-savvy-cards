@@ -1,7 +1,7 @@
-/*! Savvy Cards v0.20.8 | PolyForm Noncommercial 1.0.0 | built from src/ by build.mjs, do not edit */
+/*! Savvy Cards v0.20.9 | PolyForm Noncommercial 1.0.0 | built from src/ by build.mjs, do not edit */
 (() => {
 "use strict";
-const SAVVY_VERSION = "0.20.8";
+const SAVVY_VERSION = "0.20.9";
 
 // ===== core/00-base.js =====
 // ---------------------------------------------------------------------------------------
@@ -16855,7 +16855,7 @@ const NAV_STYLE = `${BASE_CSS}
   :host(.savvy-nav-layer) { position: fixed; top: 0; left: 0; width: 0; height: 0; z-index: 4; }
   .in { display: flex; flex-wrap: wrap; align-items: center; column-gap: 14px; row-gap: 2px; padding: 8px 16px 6px; max-width: 1360px; margin: 0 auto; box-sizing: border-box; }
   /* on a wide screen: as wide as the dashboard's sections, its edges on theirs */
-  .bar[data-fit] .in { max-width: none; width: var(--in-w); margin: 0 0 0 var(--in-x); }
+  .bar[data-fit] .in { max-width: none; width: var(--in-w); margin: 0 0 0 var(--in-x); padding-inline: 0; }
   .brand { display: flex; align-items: center; gap: 10px; min-width: 0; height: 44px; flex: 1 1 auto; }
   .menu { flex: none; width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; margin-inline-start: -6px;
     color: var(--secondary-text-color); --mdc-icon-size: 22px; cursor: pointer; }
@@ -16879,7 +16879,10 @@ const NAV_STYLE = `${BASE_CSS}
   .sep { flex: none; width: 1px; height: 18px; margin: 0 8px; background: var(--line); }
   /* wide: one line, the pages beside the name */
   @container (min-width: 820px) {
-    .in { flex-wrap: nowrap; padding: 8px 20px; }
+    /* Home Assistant's header height, so the bar's line meets the sidebar's */
+    .bar { border-bottom-color: var(--divider-color, var(--line)); }
+    .in { flex-wrap: nowrap; padding: 0 20px; height: calc(var(--hh, 56px) - 1px); }
+    .brand { height: 100%; }
     .brand { flex: none; max-width: 32%; }
     .links { order: 1; flex: 1 1 auto; margin: 0; padding: 0 0 0 8px; justify-content: flex-end; }
   }
@@ -16975,7 +16978,7 @@ class SavvyNavCard extends SavvyCard {
         </div></nav></div>`;
     const wrap = tmp.firstElementChild, q = (sel) => wrap.querySelector(sel);
     this._el = { card: root.querySelector("ha-card"), home: root.getElementById("home"), spacer: root.getElementById("spacer"), wrap,
-      bar: q(".bar"), menu: q(".menu"), more: q(".more"), icon: q(".logo"), name: q(".name"), sub: q(".sub"), links: q(".links") };
+      bar: q(".bar"), menu: q(".menu"), more: q(".more"), mark: q(".mark"), icon: q(".logo"), name: q(".name"), sub: q(".sub"), links: q(".links") };
     this._resetMotion();
     this._linkNodes = new Map();
     this._pressable(this._el.menu, { onTap: () => this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true })), haptic: "light" });
@@ -17068,7 +17071,7 @@ class SavvyNavCard extends SavvyCard {
     attr(el.icon, "icon", c.icon || "mdi:home-outline");
     text(el.sub, c.subtitle || "");
     el.sub.hidden = !c.subtitle;
-    el.menu.hidden = !c.menu_button;
+    if (el.menu.hidden !== !c.menu_button) { el.menu.hidden = !c.menu_button; requestAnimationFrame(() => this._place()); }
     el.more.hidden = !this._menuShown();
 
     const pages = this._pages(), here = location.pathname.replace(/\/+$/, "");
@@ -17135,14 +17138,23 @@ class SavvyNavCard extends SavvyCard {
     if (root && this._ro && this._watched !== root) { this._ro.observe(root); this._watched = root; }
     put(layer, "--nav-left", `${Math.max(0, Math.round(r.left))}px`);
     put(layer, "--nav-w", `${Math.round(root ? r.width : document.documentElement.clientWidth)}px`);
-    // the bar's content spans what the card spans in the dashboard (its section, across the full width)
-    const me = this.getBoundingClientRect(), barLeft = Math.max(0, Math.round(r.left)), barW = root ? r.width : document.documentElement.clientWidth;
+    // the bar's content spans the dashboard's sections, their outer edges (else the card's own place)
+    const grid = upTo(this, "hui-sections-view")?.shadowRoot?.querySelector(".container");
+    const gr = grid?.getBoundingClientRect();
+    const me = gr && gr.width > 0 ? gr : this.getBoundingClientRect(), barLeft = Math.max(0, Math.round(r.left)), barW = root ? r.width : document.documentElement.clientWidth;
     const fit = barW >= 820 && me.width >= 600 && me.width <= barW + 1;
     attr(this._el.bar, "data-fit", fit ? "" : null);
     if (fit) {
-      put(layer, "--in-w", `${Math.round(me.width)}px`);
-      put(layer, "--in-x", `${Math.max(0, Math.round(me.left) - barLeft)}px`);
+      // the house icon on the sections' edge: the sidebar button, when shown, hangs in the margin before it
+      const x = Math.max(0, Math.round(me.left) - barLeft);
+      const lead = this._el.menu.hidden ? 0 : Math.round(this._el.mark.getBoundingClientRect().left - this._el.mark.parentNode.getBoundingClientRect().left);
+      const hang = lead > 0 && lead <= x ? lead : 0;
+      put(layer, "--in-w", `${Math.round(me.width) + hang}px`);
+      put(layer, "--in-x", `${x - hang}px`);
     }
+    // Home Assistant's header height (its theme can change it; inside hui-root it reads 0 while hidden)
+    const hh = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--header-height")) || 56;
+    put(layer, "--hh", `${hh}px`);
     const top = parseFloat(getComputedStyle(this._el.bar).paddingTop) || 0;
     put(this, "--nav-h", `${Math.max(0, Math.round(this._el.bar.offsetHeight - top))}px`);
   }

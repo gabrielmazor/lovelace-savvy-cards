@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.20.9
+
+- **Navigation bar: on the sections' edges.** On a wide screen its house icon starts exactly on the left edge of the
+  dashboard's sections and its last link ends on the right one (the sidebar button, when shown, sits in the margin
+  before the icon). It used to start a little inside them.
+- **Navigation bar: its line meets the sidebar's.** On a wide screen the bar is as tall as Home Assistant's header,
+  and its bottom line is the sidebar's divider colour, so the two read as one line.
+
 ## 0.20.8
 
 - **Navigation bar: Home Assistant's dashboard menu.** `dashboard_menu: true` adds a ⋮ button with the menu Home
