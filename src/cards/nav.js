@@ -11,7 +11,10 @@
 //   menu_button: true          a button that opens Home Assistant's sidebar (the header's, when it is hidden)
 //   icons: false               an icon before each page's name
 //   auto_hide: false           slides away while scrolling down, back on the way up
-//   edit_button: false         a ⋮ button that puts the dashboard in edit mode, for administrators only
+//   dashboard_menu: false      a ⋮ button with Home Assistant's dashboard menu (search, Assist, edit dashboard...);
+//                              true for everyone, admin for administrators only
+//
+// Every option can also come from the settings card (its Navigation bar section): a nav card's own wins.
 //
 // Hiding the header reaches into Home Assistant's own page (its `hui-root`): it works on the dashboards of
 // today and is written to fail quietly (the header simply stays) if Home Assistant changes.
@@ -153,7 +156,7 @@ class SavvyNavCard extends SavvyCard {
             <button class="menu" aria-label="Open the sidebar" hidden><ha-icon icon="mdi:menu"></ha-icon></button>
             <span class="mark"><ha-icon class="logo"></ha-icon></span><span class="name"></span><span class="sub"></span>
           </div>
-          <button class="more" aria-label="Edit dashboard" title="Edit dashboard" hidden><ha-icon icon="mdi:dots-vertical"></ha-icon></button>
+          <button class="more" aria-label="Dashboard menu" title="Dashboard menu" aria-haspopup="menu" hidden><ha-icon icon="mdi:dots-vertical"></ha-icon></button>
           <div class="links" role="list"></div>
         </div></nav></div>`;
     const wrap = tmp.firstElementChild, q = (sel) => wrap.querySelector(sel);
@@ -162,7 +165,7 @@ class SavvyNavCard extends SavvyCard {
     this._resetMotion();
     this._linkNodes = new Map();
     this._pressable(this._el.menu, { onTap: () => this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true })), haptic: "light" });
-    this._pressable(this._el.more, { onTap: () => this._edit(), haptic: "light" });
+    this._pressable(this._el.more, { onTap: () => this._openMenu(), haptic: null });
     this._ro?.disconnect();
     this._ro = new ResizeObserver(() => this._place());
     this._watched = null;
@@ -172,12 +175,52 @@ class SavvyNavCard extends SavvyCard {
     this._place();
   }
 
-  // the dashboard's edit mode, as Home Assistant's own menu starts it (its header comes back with it)
-  _edit() {
-    const lovelace = upTo(this, "hui-root")?.lovelace;
-    if (typeof lovelace?.setEditMode !== "function") return;
-    lovelace.setEditMode(true);
-    requestAnimationFrame(() => this._header());
+  // Home Assistant's dashboard menu: the same entries its header's ⋮ has (outside edit mode), each run by
+  // Home Assistant's own page, so a dialog opens just as it would from there
+  _menuItems() {
+    const root = upTo(this, "hui-root"), h = this._hass;
+    if (!root || !h) return [];
+    const admin = h.user?.is_admin === true, kiosk = !!h.kioskMode, yaml = !!root._yamlMode;
+    const has = (fn) => typeof root[fn] === "function";
+    const L = (key, en) => { const t = h.localize?.(key); return t && t !== key ? t : en; };
+    const all = [
+      { fn: "_showQuickBar", icon: "mdi:magnify", key: "ui.panel.lovelace.menu.search_home_assistant", en: "Search Home Assistant", show: !kiosk },
+      { fn: "_showVoiceCommandDialog", icon: "mdi:comment-processing-outline", key: "ui.panel.lovelace.menu.assist_tooltip", en: "Assist",
+        show: (h.config?.components || []).includes("conversation") },
+      { fn: "_addDevice", icon: "mdi:devices", key: "ui.panel.lovelace.menu.add_device", en: "Add device", show: admin && !kiosk },
+      { fn: "_createAutomation", icon: "mdi:robot", key: "ui.panel.lovelace.menu.create_automation", en: "Create automation", show: admin && !kiosk },
+      { fn: "_createArea", icon: "mdi:sofa", key: "ui.panel.lovelace.menu.create_area", en: "Create area", show: admin && !kiosk },
+      { fn: "_addPerson", icon: "mdi:account", key: "ui.panel.lovelace.menu.add_person", en: "Add person", show: admin && !kiosk },
+      { fn: "_handleRefresh", icon: "mdi:refresh", key: "ui.common.refresh", en: "Refresh", show: yaml },
+      { fn: "_handleUnusedEntities", icon: "mdi:shape", key: "ui.panel.lovelace.unused_entities.title", en: "Unused entities", show: yaml },
+      { fn: "_handleReloadResources", icon: "mdi:refresh", key: "ui.panel.lovelace.menu.reload_resources", en: "Reload resources", show: root._resourceMode === "yaml" },
+      { fn: "_enableEditMode", icon: "mdi:pencil", key: "ui.panel.lovelace.menu.configure_ui", en: "Edit dashboard",
+        show: admin && !kiosk && !h.config?.recovery_mode && !root.noEdit, fallback: () => root.lovelace?.setEditMode?.(true) },
+    ];
+    return all.filter((i) => i.show && (has(i.fn) || (i.fallback && typeof root.lovelace?.setEditMode === "function")))
+      .map((i) => ({ value: i.fn, label: L(i.key, i.en), icon: i.icon, run: () => (has(i.fn) ? root[i.fn]() : i.fallback()) }));
+  }
+
+  _openMenu() {
+    const items = this._menuItems();
+    if (!items.length) return;
+    this._menu = this._menu || new ModePicker(this, { onPick: (id, v) => {
+      const item = this._menuList?.find((i) => i.value === v);
+      if (!item) return;
+      try { item.run(); } catch (err) { /* Home Assistant changed: nothing happens */ }
+      // the edit mode brings Home Assistant's header back
+      requestAnimationFrame(() => this._header());
+    } });
+    this._menuList = items;
+    this._menu.open(this._el.more, this._el.more, { entity: "menu", value: null, options: items.map(({ value, label, icon }) => ({ value, label, icon })), columns: 1 });
+  }
+
+  // who sees the ⋮: true, everyone with something in it; admin, administrators only
+  _menuShown() {
+    const m = this._config.dashboard_menu;
+    if (!m || m === "false") return false;
+    if (m === "admin" && this._hass?.user?.is_admin !== true) return false;
+    return this._menuItems().length > 0;
   }
 
   // the pages, from the config or the dashboard's views
@@ -212,7 +255,7 @@ class SavvyNavCard extends SavvyCard {
     text(el.sub, c.subtitle || "");
     el.sub.hidden = !c.subtitle;
     el.menu.hidden = !c.menu_button;
-    el.more.hidden = !(c.edit_button && this._hass.user?.is_admin === true);
+    el.more.hidden = !this._menuShown();
 
     const pages = this._pages(), here = location.pathname.replace(/\/+$/, "");
     const keep = new Set();
@@ -343,21 +386,10 @@ function syncHeader(root) {
 const NAV_EDITOR = defineEditor("savvy-nav-card", (hass, c) => [
   S.grid(S.text("title", "Name", "The home's name in Home Assistant when empty."), S.icon("icon", "Icon")),
   S.text("subtitle", "Subtitle"),
-  { name: "pages", label: "Pages", type: "list", helper: "Empty: the dashboard's own pages, in its order (subviews and hidden views left out).",
-    addButton: { label: "Add a page", make: () => ({ path: "", name: "" }) },
-    prefill: { label: "Start from the dashboard's pages", make: () => (SettingsStore.nav || []).filter((v) => !v.hidden)
-      .map((v) => cleanConfig({ path: v.path, name: v.title || title(v.path.replace(/-/g, " ")), icon: v.icon })) },
-    fixed: (p) => p === "---" || !!p?.separator,
-    summary: (p) => (p === "---" || p?.separator ? { title: "Line" }
-      : { title: p?.name || p?.path || "New page", sub: [p?.path, p?.divider && "a line after it"].filter(Boolean).join(" · ") }),
-    item: [
-      S.grid({ name: "name", label: "Name", selector: { text: {} } }, { name: "icon", label: "Icon", selector: { icon: {} } }),
-      { name: "path", label: "Page", helper: "A view's path (living-room) or a full address (/lovelace/living-room).", selector: { navigation: {} } },
-      { name: "divider", label: "A line after it", helper: "Sets the pages after it apart, as a group.", selector: { boolean: {} } },
-    ] },
+  navPagesList("pages"),
   S.bool("hide_header", "Hide Home Assistant's header", "While this card is on screen. It comes back in edit mode, and with ?savvy_header in the address.", true),
   S.grid(S.bool("menu_button", "Sidebar button", "Opens Home Assistant's sidebar.", true), S.bool("icons", "Page icons", "", false)),
-  S.bool("edit_button", "Edit button", "A ⋮ button that opens the dashboard's edit mode. Only administrators see it.", false),
+  NAV_MENU_FIELD,
   S.bool("auto_hide", "Hide while scrolling down", "Slides away on the way down, back on the way up.", false),
 ]);
 

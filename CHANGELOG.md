@@ -5,8 +5,12 @@
 - **Navigation bar: lines between groups of pages.** `"---"` in `pages`, or `divider: true` on the page before the
   line. In the visual editor, "Start from the dashboard's pages" fills the list with the dashboard's views, and
   each page has "A line after it".
-- **Navigation bar: an edit button.** `edit_button: true` adds a ⋮ button that opens the dashboard's edit mode,
-  as Home Assistant's own menu does. Only administrators see it.
+- **Navigation bar: Home Assistant's dashboard menu.** `dashboard_menu: true` adds a ⋮ button with the menu Home
+  Assistant's header has: search, Assist, and for administrators Add device, Create automation, Create area, Add
+  person and Edit dashboard (on YAML dashboards also Refresh, Unused entities and Reload resources). Each entry
+  opens Home Assistant's own dialog. `dashboard_menu: admin` shows the button to administrators only.
+- **Settings card: a Navigation bar section.** The bar's name, icon, subtitle, pages and options, set once for every
+  navigation bar on the dashboard: each page then needs only `type: custom:savvy-nav-card`. A bar's own options win.
 - **Navigation bar editor: "Add a page" adds a page** to fill in, where it used to ask for an entity.
 
 ## 0.20.6

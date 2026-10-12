@@ -15,7 +15,7 @@
 
 const SETTINGS_TYPE = "custom:savvy-settings-card";
 const SETTINGS_REFRESH_MS = 5 * 60 * 1000;
-const SETTINGS_SECTIONS = ["pages", "house", "health", "ignore", "rooms", "design"];
+const SETTINGS_SECTIONS = ["pages", "house", "health", "ignore", "rooms", "design", "nav"];
 
 // What a card can keep from people who are not administrators: the health cog in the home header, and
 // the count badge on it. Everyone sees everything unless it is listed. A card can only hide itself: it
@@ -99,6 +99,10 @@ const HOME_CHIPS = ["lights", "climate", "media", "security"];
 //   kind "union": the settings' list is added to the card's own (unless the card says false)
 //   kind "pin":   the room's light helper is pinned first in the badge row
 const SETTINGS_RULES = {
+  // the navigation bar: the settings card's Navigation bar section, for every nav card on the dashboard
+  "savvy-nav-card": [["title", "Name"], ["icon", "Icon"], ["subtitle", "Subtitle"], ["pages", "Pages"], ["hide_header", "Hide the header"],
+    ["menu_button", "Sidebar button"], ["dashboard_menu", "Dashboard menu"], ["icons", "Page icons"], ["auto_hide", "Hide while scrolling"]]
+    .map(([k, label]) => ({ path: k, label, get: glob("nav", k), src: "nav" })),
   "savvy-home-header-card": [
     animRule,
     { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },

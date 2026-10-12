@@ -528,3 +528,18 @@ const badgeSchema = ({ pinnedLabel = "Pinned", pinnedHelp = "Always shown, first
   { name: "include", label: "Include", helper: "Entities to treat as if they were in this area (a lock with no area).", selector: { entity: { multiple: true } } },
   { name: "exclude", label: "Exclude", selector: { entity: { multiple: true } } },
 ];
+
+// ---- the navigation bar's fields: its card's editor and the settings card's Navigation bar section ----
+const navPagesList = (name) => ({ name, label: "Pages", type: "list", helper: "Empty: the dashboard's own pages, in its order (subviews and hidden views left out).",
+  addButton: { label: "Add a page", make: () => ({ path: "", name: "" }) },
+  prefill: { label: "Start from the dashboard's pages", make: () => (SettingsStore.nav || []).filter((v) => !v.hidden)
+    .map((v) => cleanConfig({ path: v.path, name: v.title || title(v.path.replace(/-/g, " ")), icon: v.icon })) },
+  fixed: (p) => p === "---" || !!p?.separator,
+  summary: (p) => (p === "---" || p?.separator ? { title: "Line" }
+    : { title: p?.name || p?.path || "New page", sub: [p?.path, p?.divider && "a line after it"].filter(Boolean).join(" · ") }),
+  item: [
+    S.grid({ name: "name", label: "Name", selector: { text: {} } }, { name: "icon", label: "Icon", selector: { icon: {} } }),
+    { name: "path", label: "Page", helper: "A view's path (living-room) or a full address (/lovelace/living-room).", selector: { navigation: {} } },
+    { name: "divider", label: "A line after it", helper: "Sets the pages after it apart, as a group.", selector: { boolean: {} } },
+  ] });
+const NAV_MENU_FIELD = S.select("dashboard_menu", "Dashboard menu (⋮)", [{ value: "", label: "Off" }, { value: "true", label: "Everyone" }, { value: "admin", label: "Administrators only" }]);

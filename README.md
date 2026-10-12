@@ -217,6 +217,9 @@ dashboard (not Home Assistant's sidebar). On a phone the links are a row of thei
 on a wide screen they sit beside the name. Put it first in a view, across the full width; in a sections view,
 in its own section with `column_span` set to the full width.
 
+Every option can also live in the settings card's **Navigation bar** section (`nav:` in YAML), once for the
+whole dashboard: each page then needs only `type: custom:savvy-nav-card`, and a bar's own options win.
+
 By default it hides Home Assistant's own header while it is on screen, so the bar takes its place. The header
 comes back in edit mode (so you can always edit the dashboard), with `?savvy_header` in the address, and on
 any view without a nav card. A menu button opens Home Assistant's sidebar, which the hidden header would
@@ -235,7 +238,7 @@ with `hide_header: false` here.
 | `menu_button` | boolean | with `hide_header` | A button that opens Home Assistant's sidebar. |
 | `icons` | boolean | `false` | An icon before each page's name. |
 | `auto_hide` | boolean | `false` | Slides away while scrolling down, back on the way up. |
-| `edit_button` | boolean | `false` | A ⋮ button that opens the dashboard's edit mode. Only administrators see it. |
+| `dashboard_menu` | `true`, `admin` | off | A ⋮ button with Home Assistant's own dashboard menu: search, Assist, and for administrators the Add entries and Edit dashboard, as its header has them. `admin`: only administrators see the button. |
 
 ```yaml
 type: custom:savvy-nav-card
@@ -244,7 +247,7 @@ type: custom:savvy-nav-card
 ```yaml
 type: custom:savvy-nav-card
 title: Our home
-edit_button: true
+dashboard_menu: admin
 pages:
   - { path: home, name: Home }
   - "---"

@@ -109,6 +109,8 @@ const PICKER_CSS = `
   .sv-pick[data-matte]:not([dark]) { box-shadow: 0 14px 34px -18px rgb(60 50 30 / 0.35); }
   .sv-pick[data-wide] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .sv-pick[data-wider] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  /* a menu: one column, as wide as its words, lined up with the button that opened it */
+  .sv-pick[data-one] { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .sv-pick[data-up] { transform-origin: var(--ox, 50%) 100%; }
   .sv-pick .cap { grid-column: 1 / -1; padding: 2px 4px 3px; font-size: 10.5px; line-height: 13px; font-weight: 650;
     letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); opacity: 0.8; }
@@ -182,8 +184,10 @@ class ModePicker {
   // Width follows the card; it opens below the chip, or above it near the bottom of the screen.
   place(anchor, bounds) {
     const a = anchor.getBoundingClientRect(), b = (bounds || anchor).getBoundingClientRect();
-    const width = Math.max(200, Math.min(520, b.width - 8));
-    let left = Math.max(b.left + 4, Math.min(a.left + a.width / 2 - width / 2, b.right - width - 4));
+    const one = this.maxCols === 1;
+    this.el.toggleAttribute("data-one", one);
+    const width = one ? 260 : Math.max(200, Math.min(520, b.width - 8));
+    let left = one ? a.right - width + 4 : Math.max(b.left + 4, Math.min(a.left + a.width / 2 - width / 2, b.right - width - 4));
     left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
     put(this.el, "width", `${Math.round(width)}px`);
     put(this.el, "left", `${Math.round(left)}px`);

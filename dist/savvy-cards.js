@@ -4703,6 +4703,8 @@ const PICKER_CSS = `
   .sv-pick[data-matte]:not([dark]) { box-shadow: 0 14px 34px -18px rgb(60 50 30 / 0.35); }
   .sv-pick[data-wide] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .sv-pick[data-wider] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  /* a menu: one column, as wide as its words, lined up with the button that opened it */
+  .sv-pick[data-one] { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .sv-pick[data-up] { transform-origin: var(--ox, 50%) 100%; }
   .sv-pick .cap { grid-column: 1 / -1; padding: 2px 4px 3px; font-size: 10.5px; line-height: 13px; font-weight: 650;
     letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); opacity: 0.8; }
@@ -4776,8 +4778,10 @@ class ModePicker {
   // Width follows the card; it opens below the chip, or above it near the bottom of the screen.
   place(anchor, bounds) {
     const a = anchor.getBoundingClientRect(), b = (bounds || anchor).getBoundingClientRect();
-    const width = Math.max(200, Math.min(520, b.width - 8));
-    let left = Math.max(b.left + 4, Math.min(a.left + a.width / 2 - width / 2, b.right - width - 4));
+    const one = this.maxCols === 1;
+    this.el.toggleAttribute("data-one", one);
+    const width = one ? 260 : Math.max(200, Math.min(520, b.width - 8));
+    let left = one ? a.right - width + 4 : Math.max(b.left + 4, Math.min(a.left + a.width / 2 - width / 2, b.right - width - 4));
     left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
     put(this.el, "width", `${Math.round(width)}px`);
     put(this.el, "left", `${Math.round(left)}px`);
@@ -5781,6 +5785,21 @@ const badgeSchema = ({ pinnedLabel = "Pinned", pinnedHelp = "Always shown, first
   { name: "exclude", label: "Exclude", selector: { entity: { multiple: true } } },
 ];
 
+// ---- the navigation bar's fields: its card's editor and the settings card's Navigation bar section ----
+const navPagesList = (name) => ({ name, label: "Pages", type: "list", helper: "Empty: the dashboard's own pages, in its order (subviews and hidden views left out).",
+  addButton: { label: "Add a page", make: () => ({ path: "", name: "" }) },
+  prefill: { label: "Start from the dashboard's pages", make: () => (SettingsStore.nav || []).filter((v) => !v.hidden)
+    .map((v) => cleanConfig({ path: v.path, name: v.title || title(v.path.replace(/-/g, " ")), icon: v.icon })) },
+  fixed: (p) => p === "---" || !!p?.separator,
+  summary: (p) => (p === "---" || p?.separator ? { title: "Line" }
+    : { title: p?.name || p?.path || "New page", sub: [p?.path, p?.divider && "a line after it"].filter(Boolean).join(" · ") }),
+  item: [
+    S.grid({ name: "name", label: "Name", selector: { text: {} } }, { name: "icon", label: "Icon", selector: { icon: {} } }),
+    { name: "path", label: "Page", helper: "A view's path (living-room) or a full address (/lovelace/living-room).", selector: { navigation: {} } },
+    { name: "divider", label: "A line after it", helper: "Sets the pages after it apart, as a group.", selector: { boolean: {} } },
+  ] });
+const NAV_MENU_FIELD = S.select("dashboard_menu", "Dashboard menu (⋮)", [{ value: "", label: "Off" }, { value: "true", label: "Everyone" }, { value: "admin", label: "Administrators only" }]);
+
 // ===== core/95-settings.js =====
 // ---------------------------------------------------------------------------------------
 // core/settings: the pages, entities and helpers a dashboard repeats on every card, set once
@@ -5799,7 +5818,7 @@ const badgeSchema = ({ pinnedLabel = "Pinned", pinnedHelp = "Always shown, first
 
 const SETTINGS_TYPE = "custom:savvy-settings-card";
 const SETTINGS_REFRESH_MS = 5 * 60 * 1000;
-const SETTINGS_SECTIONS = ["pages", "house", "health", "ignore", "rooms", "design"];
+const SETTINGS_SECTIONS = ["pages", "house", "health", "ignore", "rooms", "design", "nav"];
 
 // What a card can keep from people who are not administrators: the health cog in the home header, and
 // the count badge on it. Everyone sees everything unless it is listed. A card can only hide itself: it
@@ -5883,6 +5902,10 @@ const HOME_CHIPS = ["lights", "climate", "media", "security"];
 //   kind "union": the settings' list is added to the card's own (unless the card says false)
 //   kind "pin":   the room's light helper is pinned first in the badge row
 const SETTINGS_RULES = {
+  // the navigation bar: the settings card's Navigation bar section, for every nav card on the dashboard
+  "savvy-nav-card": [["title", "Name"], ["icon", "Icon"], ["subtitle", "Subtitle"], ["pages", "Pages"], ["hide_header", "Hide the header"],
+    ["menu_button", "Sidebar button"], ["dashboard_menu", "Dashboard menu"], ["icons", "Page icons"], ["auto_hide", "Hide while scrolling"]]
+    .map(([k, label]) => ({ path: k, label, get: glob("nav", k), src: "nav" })),
   "savvy-home-header-card": [
     animRule,
     { path: "aggregate", label: "Aggregate sensors", get: (s) => s.aggregate, src: "aggregate" },
@@ -16798,7 +16821,10 @@ registerCard("savvy-media-card", SavvyMediaCard, "Media",
 //   menu_button: true          a button that opens Home Assistant's sidebar (the header's, when it is hidden)
 //   icons: false               an icon before each page's name
 //   auto_hide: false           slides away while scrolling down, back on the way up
-//   edit_button: false         a ⋮ button that puts the dashboard in edit mode, for administrators only
+//   dashboard_menu: false      a ⋮ button with Home Assistant's dashboard menu (search, Assist, edit dashboard...);
+//                              true for everyone, admin for administrators only
+//
+// Every option can also come from the settings card (its Navigation bar section): a nav card's own wins.
 //
 // Hiding the header reaches into Home Assistant's own page (its `hui-root`): it works on the dashboards of
 // today and is written to fail quietly (the header simply stays) if Home Assistant changes.
@@ -16940,7 +16966,7 @@ class SavvyNavCard extends SavvyCard {
             <button class="menu" aria-label="Open the sidebar" hidden><ha-icon icon="mdi:menu"></ha-icon></button>
             <span class="mark"><ha-icon class="logo"></ha-icon></span><span class="name"></span><span class="sub"></span>
           </div>
-          <button class="more" aria-label="Edit dashboard" title="Edit dashboard" hidden><ha-icon icon="mdi:dots-vertical"></ha-icon></button>
+          <button class="more" aria-label="Dashboard menu" title="Dashboard menu" aria-haspopup="menu" hidden><ha-icon icon="mdi:dots-vertical"></ha-icon></button>
           <div class="links" role="list"></div>
         </div></nav></div>`;
     const wrap = tmp.firstElementChild, q = (sel) => wrap.querySelector(sel);
@@ -16949,7 +16975,7 @@ class SavvyNavCard extends SavvyCard {
     this._resetMotion();
     this._linkNodes = new Map();
     this._pressable(this._el.menu, { onTap: () => this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true })), haptic: "light" });
-    this._pressable(this._el.more, { onTap: () => this._edit(), haptic: "light" });
+    this._pressable(this._el.more, { onTap: () => this._openMenu(), haptic: null });
     this._ro?.disconnect();
     this._ro = new ResizeObserver(() => this._place());
     this._watched = null;
@@ -16959,12 +16985,52 @@ class SavvyNavCard extends SavvyCard {
     this._place();
   }
 
-  // the dashboard's edit mode, as Home Assistant's own menu starts it (its header comes back with it)
-  _edit() {
-    const lovelace = upTo(this, "hui-root")?.lovelace;
-    if (typeof lovelace?.setEditMode !== "function") return;
-    lovelace.setEditMode(true);
-    requestAnimationFrame(() => this._header());
+  // Home Assistant's dashboard menu: the same entries its header's ⋮ has (outside edit mode), each run by
+  // Home Assistant's own page, so a dialog opens just as it would from there
+  _menuItems() {
+    const root = upTo(this, "hui-root"), h = this._hass;
+    if (!root || !h) return [];
+    const admin = h.user?.is_admin === true, kiosk = !!h.kioskMode, yaml = !!root._yamlMode;
+    const has = (fn) => typeof root[fn] === "function";
+    const L = (key, en) => { const t = h.localize?.(key); return t && t !== key ? t : en; };
+    const all = [
+      { fn: "_showQuickBar", icon: "mdi:magnify", key: "ui.panel.lovelace.menu.search_home_assistant", en: "Search Home Assistant", show: !kiosk },
+      { fn: "_showVoiceCommandDialog", icon: "mdi:comment-processing-outline", key: "ui.panel.lovelace.menu.assist_tooltip", en: "Assist",
+        show: (h.config?.components || []).includes("conversation") },
+      { fn: "_addDevice", icon: "mdi:devices", key: "ui.panel.lovelace.menu.add_device", en: "Add device", show: admin && !kiosk },
+      { fn: "_createAutomation", icon: "mdi:robot", key: "ui.panel.lovelace.menu.create_automation", en: "Create automation", show: admin && !kiosk },
+      { fn: "_createArea", icon: "mdi:sofa", key: "ui.panel.lovelace.menu.create_area", en: "Create area", show: admin && !kiosk },
+      { fn: "_addPerson", icon: "mdi:account", key: "ui.panel.lovelace.menu.add_person", en: "Add person", show: admin && !kiosk },
+      { fn: "_handleRefresh", icon: "mdi:refresh", key: "ui.common.refresh", en: "Refresh", show: yaml },
+      { fn: "_handleUnusedEntities", icon: "mdi:shape", key: "ui.panel.lovelace.unused_entities.title", en: "Unused entities", show: yaml },
+      { fn: "_handleReloadResources", icon: "mdi:refresh", key: "ui.panel.lovelace.menu.reload_resources", en: "Reload resources", show: root._resourceMode === "yaml" },
+      { fn: "_enableEditMode", icon: "mdi:pencil", key: "ui.panel.lovelace.menu.configure_ui", en: "Edit dashboard",
+        show: admin && !kiosk && !h.config?.recovery_mode && !root.noEdit, fallback: () => root.lovelace?.setEditMode?.(true) },
+    ];
+    return all.filter((i) => i.show && (has(i.fn) || (i.fallback && typeof root.lovelace?.setEditMode === "function")))
+      .map((i) => ({ value: i.fn, label: L(i.key, i.en), icon: i.icon, run: () => (has(i.fn) ? root[i.fn]() : i.fallback()) }));
+  }
+
+  _openMenu() {
+    const items = this._menuItems();
+    if (!items.length) return;
+    this._menu = this._menu || new ModePicker(this, { onPick: (id, v) => {
+      const item = this._menuList?.find((i) => i.value === v);
+      if (!item) return;
+      try { item.run(); } catch (err) { /* Home Assistant changed: nothing happens */ }
+      // the edit mode brings Home Assistant's header back
+      requestAnimationFrame(() => this._header());
+    } });
+    this._menuList = items;
+    this._menu.open(this._el.more, this._el.more, { entity: "menu", value: null, options: items.map(({ value, label, icon }) => ({ value, label, icon })), columns: 1 });
+  }
+
+  // who sees the ⋮: true, everyone with something in it; admin, administrators only
+  _menuShown() {
+    const m = this._config.dashboard_menu;
+    if (!m || m === "false") return false;
+    if (m === "admin" && this._hass?.user?.is_admin !== true) return false;
+    return this._menuItems().length > 0;
   }
 
   // the pages, from the config or the dashboard's views
@@ -16999,7 +17065,7 @@ class SavvyNavCard extends SavvyCard {
     text(el.sub, c.subtitle || "");
     el.sub.hidden = !c.subtitle;
     el.menu.hidden = !c.menu_button;
-    el.more.hidden = !(c.edit_button && this._hass.user?.is_admin === true);
+    el.more.hidden = !this._menuShown();
 
     const pages = this._pages(), here = location.pathname.replace(/\/+$/, "");
     const keep = new Set();
@@ -17130,21 +17196,10 @@ function syncHeader(root) {
 const NAV_EDITOR = defineEditor("savvy-nav-card", (hass, c) => [
   S.grid(S.text("title", "Name", "The home's name in Home Assistant when empty."), S.icon("icon", "Icon")),
   S.text("subtitle", "Subtitle"),
-  { name: "pages", label: "Pages", type: "list", helper: "Empty: the dashboard's own pages, in its order (subviews and hidden views left out).",
-    addButton: { label: "Add a page", make: () => ({ path: "", name: "" }) },
-    prefill: { label: "Start from the dashboard's pages", make: () => (SettingsStore.nav || []).filter((v) => !v.hidden)
-      .map((v) => cleanConfig({ path: v.path, name: v.title || title(v.path.replace(/-/g, " ")), icon: v.icon })) },
-    fixed: (p) => p === "---" || !!p?.separator,
-    summary: (p) => (p === "---" || p?.separator ? { title: "Line" }
-      : { title: p?.name || p?.path || "New page", sub: [p?.path, p?.divider && "a line after it"].filter(Boolean).join(" · ") }),
-    item: [
-      S.grid({ name: "name", label: "Name", selector: { text: {} } }, { name: "icon", label: "Icon", selector: { icon: {} } }),
-      { name: "path", label: "Page", helper: "A view's path (living-room) or a full address (/lovelace/living-room).", selector: { navigation: {} } },
-      { name: "divider", label: "A line after it", helper: "Sets the pages after it apart, as a group.", selector: { boolean: {} } },
-    ] },
+  navPagesList("pages"),
   S.bool("hide_header", "Hide Home Assistant's header", "While this card is on screen. It comes back in edit mode, and with ?savvy_header in the address.", true),
   S.grid(S.bool("menu_button", "Sidebar button", "Opens Home Assistant's sidebar.", true), S.bool("icons", "Page icons", "", false)),
-  S.bool("edit_button", "Edit button", "A ⋮ button that opens the dashboard's edit mode. Only administrators see it.", false),
+  NAV_MENU_FIELD,
   S.bool("auto_hide", "Hide while scrolling down", "Slides away on the way down, back on the way up.", false),
 ]);
 
@@ -19828,6 +19883,7 @@ registerCard("savvy-section-title-card", SavvySectionTitleCard, "Section title",
 //   ignore: { entities: [], areas: [] }   entities leave every card's auto-discovery; areas leave the home header chips
 //   room_order: [area ids]   the rooms' order in the popups and the room header's row; the rest follow by name
 //   rooms:  { living_room: { name, icon, page, control, light_state, temperature, humidity, include, exclude } }
+//   nav:    { title, icon, subtitle, pages, hide_header, menu_button, dashboard_menu, icons, auto_hide }   every navigation bar's
 //   layout: full | compact
 
 const STYLE = `${BASE_CSS}
@@ -19922,7 +19978,7 @@ const byOrder = (order) => {
 };
 const toRoomList = (rooms, order) => Object.entries(rooms || {}).map(([area, v]) => ({ area, ...(v && typeof v === "object" ? v : {}) })).sort(byOrder(order));
 const fromRoomList = (list) => Object.fromEntries((list || []).filter((i) => i && i.area).map(({ area, ...rest }) => [area, cleanConfig(rest)]));
-const withoutList = (c) => { const { rooms_list, ...rest } = c || {}; return rest; };
+const withoutList = (c) => { const { rooms_list, nav_pages, ...rest } = c || {}; return rest; };
 
 class SettingsEditor extends SavvyEditor {
   get cardType() { return null; }
@@ -19930,12 +19986,12 @@ class SettingsEditor extends SavvyEditor {
   setConfig(config) {
     const same = this._config && JSON.stringify(cleanConfig({ ...config })) === JSON.stringify(withoutList(this._config));
     if (same) return;
-    this._config = { ...config, rooms_list: toRoomList(config?.rooms, config?.room_order) };
+    this._config = { ...config, rooms_list: toRoomList(config?.rooms, config?.room_order), nav_pages: config?.nav?.pages };
     this._render();
   }
 
   _emit(config) {
-    let { rooms_list, ...rest } = config;
+    let { rooms_list, nav_pages, ...rest } = config;
     // a new room order re-orders the Rooms entries with it
     if (rooms_list && JSON.stringify(rest.room_order || []) !== JSON.stringify(this._config?.room_order || [])) {
       rooms_list = [...rooms_list].sort(byOrder(rest.room_order));
@@ -19946,8 +20002,14 @@ class SettingsEditor extends SavvyEditor {
       const map = fromRoomList(rooms_list);
       if (Object.keys(map).length) out.rooms = map; else delete out.rooms;
     }
+    // the navigation bar's pages live in nav.pages; the editor shows them as a list of their own
+    if (nav_pages !== undefined) {
+      const nav = { ...(out.nav || {}) };
+      if (Array.isArray(nav_pages) && nav_pages.length) nav.pages = nav_pages; else delete nav.pages;
+      if (Object.keys(nav).length) out.nav = nav; else delete out.nav;
+    }
     super._emit(out);
-    this._config = { ...this._config, rooms_list: rooms_list ?? toRoomList(this._config.rooms, this._config.room_order) };
+    this._config = { ...this._config, rooms_list: rooms_list ?? toRoomList(this._config.rooms, this._config.room_order), nav_pages: out.nav?.pages };
     if (this._reorder) { this._reorder = false; this._render(); }
   }
 
@@ -19997,6 +20059,15 @@ class SettingsEditor extends SavvyEditor {
         S.nav("health", "System health page"),
         S.text("room", "Room pages", `A pattern: /lovelace/{slug} (the room with dashes) or {area} (its id).${found.room ? ` Found automatically: ${found.room}.` : " Each room's page is also found by its name."}`),
       ] },
+      { type: "expandable", name: "nav", title: "Navigation bar", schema: [
+        S.grid(S.text("title", "Name", "The home's name in Home Assistant when empty."), S.icon("icon", "Icon")),
+        S.text("subtitle", "Subtitle"),
+        S.bool("hide_header", "Hide Home Assistant's header", "While a navigation bar is on screen. It comes back in edit mode, and with ?savvy_header in the address.", true),
+        S.grid(S.bool("menu_button", "Sidebar button", "Opens Home Assistant's sidebar.", true), S.bool("icons", "Page icons", "", false)),
+        NAV_MENU_FIELD,
+        S.bool("auto_hide", "Hide while scrolling down", "Slides away on the way down, back on the way up.", false),
+      ] },
+      { ...navPagesList("nav_pages"), label: "Navigation bar pages", helper: "Every navigation bar's pages. Empty: the dashboard's own pages, in its order. A bar's own list wins." },
       { type: "expandable", name: "house", title: "Home", schema: [
         S.entity("control", "Control", undefined, { helper: "The house mode: a select opens a picker; a button, scene or switch acts." }),
         S.entity("weather", "Weather", "weather"),

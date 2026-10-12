@@ -11,6 +11,7 @@
 //   ignore: { entities: [], areas: [] }   entities leave every card's auto-discovery; areas leave the home header chips
 //   room_order: [area ids]   the rooms' order in the popups and the room header's row; the rest follow by name
 //   rooms:  { living_room: { name, icon, page, control, light_state, temperature, humidity, include, exclude } }
+//   nav:    { title, icon, subtitle, pages, hide_header, menu_button, dashboard_menu, icons, auto_hide }   every navigation bar's
 //   layout: full | compact
 
 const STYLE = `${BASE_CSS}
@@ -105,7 +106,7 @@ const byOrder = (order) => {
 };
 const toRoomList = (rooms, order) => Object.entries(rooms || {}).map(([area, v]) => ({ area, ...(v && typeof v === "object" ? v : {}) })).sort(byOrder(order));
 const fromRoomList = (list) => Object.fromEntries((list || []).filter((i) => i && i.area).map(({ area, ...rest }) => [area, cleanConfig(rest)]));
-const withoutList = (c) => { const { rooms_list, ...rest } = c || {}; return rest; };
+const withoutList = (c) => { const { rooms_list, nav_pages, ...rest } = c || {}; return rest; };
 
 class SettingsEditor extends SavvyEditor {
   get cardType() { return null; }
@@ -113,12 +114,12 @@ class SettingsEditor extends SavvyEditor {
   setConfig(config) {
     const same = this._config && JSON.stringify(cleanConfig({ ...config })) === JSON.stringify(withoutList(this._config));
     if (same) return;
-    this._config = { ...config, rooms_list: toRoomList(config?.rooms, config?.room_order) };
+    this._config = { ...config, rooms_list: toRoomList(config?.rooms, config?.room_order), nav_pages: config?.nav?.pages };
     this._render();
   }
 
   _emit(config) {
-    let { rooms_list, ...rest } = config;
+    let { rooms_list, nav_pages, ...rest } = config;
     // a new room order re-orders the Rooms entries with it
     if (rooms_list && JSON.stringify(rest.room_order || []) !== JSON.stringify(this._config?.room_order || [])) {
       rooms_list = [...rooms_list].sort(byOrder(rest.room_order));
@@ -129,8 +130,14 @@ class SettingsEditor extends SavvyEditor {
       const map = fromRoomList(rooms_list);
       if (Object.keys(map).length) out.rooms = map; else delete out.rooms;
     }
+    // the navigation bar's pages live in nav.pages; the editor shows them as a list of their own
+    if (nav_pages !== undefined) {
+      const nav = { ...(out.nav || {}) };
+      if (Array.isArray(nav_pages) && nav_pages.length) nav.pages = nav_pages; else delete nav.pages;
+      if (Object.keys(nav).length) out.nav = nav; else delete out.nav;
+    }
     super._emit(out);
-    this._config = { ...this._config, rooms_list: rooms_list ?? toRoomList(this._config.rooms, this._config.room_order) };
+    this._config = { ...this._config, rooms_list: rooms_list ?? toRoomList(this._config.rooms, this._config.room_order), nav_pages: out.nav?.pages };
     if (this._reorder) { this._reorder = false; this._render(); }
   }
 
@@ -180,6 +187,15 @@ class SettingsEditor extends SavvyEditor {
         S.nav("health", "System health page"),
         S.text("room", "Room pages", `A pattern: /lovelace/{slug} (the room with dashes) or {area} (its id).${found.room ? ` Found automatically: ${found.room}.` : " Each room's page is also found by its name."}`),
       ] },
+      { type: "expandable", name: "nav", title: "Navigation bar", schema: [
+        S.grid(S.text("title", "Name", "The home's name in Home Assistant when empty."), S.icon("icon", "Icon")),
+        S.text("subtitle", "Subtitle"),
+        S.bool("hide_header", "Hide Home Assistant's header", "While a navigation bar is on screen. It comes back in edit mode, and with ?savvy_header in the address.", true),
+        S.grid(S.bool("menu_button", "Sidebar button", "Opens Home Assistant's sidebar.", true), S.bool("icons", "Page icons", "", false)),
+        NAV_MENU_FIELD,
+        S.bool("auto_hide", "Hide while scrolling down", "Slides away on the way down, back on the way up.", false),
+      ] },
+      { ...navPagesList("nav_pages"), label: "Navigation bar pages", helper: "Every navigation bar's pages. Empty: the dashboard's own pages, in its order. A bar's own list wins." },
       { type: "expandable", name: "house", title: "Home", schema: [
         S.entity("control", "Control", undefined, { helper: "The house mode: a select opens a picker; a button, scene or switch acts." }),
         S.entity("weather", "Weather", "weather"),

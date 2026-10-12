@@ -79,27 +79,76 @@ export default async function ({ browser, base, check }) {
   await page.waitForTimeout(300);
   check("divider: true draws one too, one line only and none at the ends", (await seps()) === "Home | Lights", await seps());
 
-  // the edit button: only when asked, only for administrators; it opens the dashboard's edit mode
-  const more = () => page.evaluate(() => { const b = window.navRoot().querySelector(".more"); return b && !b.hidden && b.getBoundingClientRect().width > 0; });
-  check("no edit button unless asked", !(await more()));
+  // the dashboard menu (⋮): Home Assistant's own entries, run by its page; only when asked; admin: administrators only
+  const more = () => page.evaluate(() => { const b = window.navRoot().querySelector(".more"); return !!b && !b.hidden && b.getBoundingClientRect().width > 0; });
+  check("no menu unless asked", !(await more()));
   await page.evaluate(() => {
-    window.nav.setConfig({ title: "Our home", edit_button: true, pages: [{ path: "/lovelace/home", name: "Home" }, { path: "/lovelace/lights", name: "Lights" }] });
+    const r = window.huiRoot;
+    window.ran = [];
+    r._showQuickBar = () => window.ran.push("search");
+    r._addDevice = () => window.ran.push("add device");
+    r._enableEditMode = () => { window.ran.push("edit"); r.lovelace.editMode = true; };
+    window.nav.setConfig({ title: "Our home", dashboard_menu: "admin", pages: [{ path: "/lovelace/home", name: "Home" }, { path: "/lovelace/lights", name: "Lights" }] });
     window.nav.hass = { ...window.hass, user: { ...(window.hass.user || {}), is_admin: false } };
   });
   await page.waitForTimeout(300);
-  check("not for someone who is not an administrator", !(await more()));
-  await page.evaluate(() => {
-    window.huiRoot.lovelace.setEditMode = (on) => { window.huiRoot.lovelace.editMode = on; };
-    window.nav.hass = { ...window.hass, user: { ...(window.hass.user || {}), is_admin: true } };
-  });
+  check("admin: not for someone who is not an administrator", !(await more()));
+  await page.evaluate(() => { window.nav.setConfig({ ...window.nav._rawConfig, dashboard_menu: true }); window.nav.hass = { ...window.hass, user: { ...(window.hass.user || {}), is_admin: false } }; });
   await page.waitForTimeout(300);
-  check("an administrator sees it", await more());
-  const dots = await page.evaluate(() => { const r = window.navRoot().querySelector(".more").getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
-  await page.mouse.click(...dots);
+  check("true: everyone sees it", await more());
+  const opts = async () => page.evaluate(() => [...document.querySelector(".savvy-portal").shadowRoot.querySelectorAll(".sv-opt")].map((o) => o.textContent.trim()));
+  const tapMore = async () => {
+    const dots = await page.evaluate(() => { const r = window.navRoot().querySelector(".more").getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
+    await page.mouse.click(...dots);
+    await page.waitForTimeout(500);
+  };
+  await tapMore();
+  check("someone else gets search, not the admin entries", JSON.stringify(await opts()) === JSON.stringify(["Search Home Assistant"]), JSON.stringify(await opts()));
+  await page.keyboard.press("Escape");
   await page.waitForTimeout(400);
-  check("it opens edit mode, and the header comes back", (await page.evaluate(() => window.huiRoot.lovelace.editMode)) && (await headerShown()));
+  await page.evaluate(() => { window.nav.hass = { ...window.hass, user: { ...(window.hass.user || {}), is_admin: true } }; });
+  await page.waitForTimeout(300);
+  await tapMore();
+  check("an administrator gets Home Assistant's entries", JSON.stringify(await opts()) === JSON.stringify(["Search Home Assistant", "Add device", "Edit dashboard"]), JSON.stringify(await opts()));
+  const editAt = await page.evaluate(() => { const o = [...document.querySelector(".savvy-portal").shadowRoot.querySelectorAll(".sv-opt")].find((x) => x.textContent.includes("Edit")); const r = o.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
+  await page.mouse.click(...editAt);
+  await page.waitForTimeout(500);
+  check("Edit dashboard runs Home Assistant's own, and the header comes back", (await page.evaluate(() => window.ran.join())) === "edit" && (await headerShown()), await page.evaluate(() => window.ran.join()));
   await page.evaluate(() => { window.huiRoot.lovelace.editMode = false; window.nav.hass = window.hass; });
   await page.waitForTimeout(300);
+
+  // the settings card's Navigation bar section: every option, the card's own winning
+  await page.evaluate(() => {
+    const S = window.__savvy.SettingsStore;
+    S.set({ nav: { title: "From settings", subtitle: "Ours", pages: [{ path: "/lovelace/home", name: "Home", divider: true }, { path: "/lovelace/lights", name: "Lights" }] } });
+    window.nav.setConfig({});
+    window.nav.hass = window.hass;
+  });
+  await page.waitForTimeout(300);
+  const fromSettings = await page.evaluate(() => [window.navRoot().querySelector(".name").textContent, window.navRoot().querySelector(".sub").textContent].join("/"));
+  check("a bare nav card takes the settings card's options", fromSettings === "From settings/Ours" && (await seps()) === "Home | Lights", fromSettings + " " + (await seps()));
+  await page.evaluate(() => { window.nav.setConfig({ title: "Own name" }); window.nav.hass = window.hass; });
+  await page.waitForTimeout(300);
+  check("its own option wins", (await page.evaluate(() => window.navRoot().querySelector(".name").textContent)) === "Own name");
+  await page.evaluate(() => { window.__savvy.SettingsStore.set(null); });
+
+  // the settings card's editor keeps the bar's pages in nav.pages, shown as a list of their own
+  const saved = await page.evaluate(() => {
+    const ed = document.createElement("savvy-settings-card-editor");
+    ed.hass = window.hass;
+    document.body.appendChild(ed);
+    ed.setConfig({ type: "custom:savvy-settings-card", nav: { title: "Ours", pages: [{ path: "home", name: "Home" }] } });
+    const got = [];
+    ed.addEventListener("config-changed", (e) => got.push(e.detail.config));
+    const shown = JSON.stringify(ed._config.nav_pages);
+    ed._emit({ ...ed._config, nav_pages: [{ path: "home", name: "Home", divider: true }, { path: "lights", name: "Lights" }] });
+    ed._emit({ ...ed._config, nav_pages: [] });
+    ed.remove();
+    return { shown, first: got[0], second: got[1] };
+  });
+  check("the settings editor lists the bar's pages and writes them back to nav.pages",
+    saved.shown === JSON.stringify([{ path: "home", name: "Home" }]) && saved.first?.nav?.pages?.length === 2 && saved.first.nav.title === "Ours" && !("nav_pages" in saved.first)
+    && saved.second?.nav?.title === "Ours" && !("pages" in saved.second.nav), JSON.stringify(saved));
 
   // the dashboard's own views by default, the hidden ones left out
   await page.evaluate(() => {
